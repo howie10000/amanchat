@@ -1,0 +1,7 @@
+Game Simulation Project Tasks
+Plinko is now not working and the drop ball button does not work. please find and fix this error
+create a 3rd categories on the shop page to put out pending offers that anybody can accept as long as they meet the conditions within the offer. so if i want to offer a gold theme for an legendary box then anybody can except it AS LONG AS THEY HAVE A LEGENDARY THEME IN THE BOX.
+Update the trading script to include 'Lootbox' item types from the inventory.
+Add trading numbers for items in trading hub. allow the user if they have multiple of an item to select how many they want to give in the trade
+Add a slot machine to arcade (10000 limit)
+Finnally please make it so the color selection in the theme maker are all not just text as you are able to click and the built in color picker will pop up. also create it so that there is another classifcation of user called a theme maker in which it gives the admin panel but only the theme making part of it.
