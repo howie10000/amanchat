@@ -22,16 +22,22 @@
         @keyframes legendaryGlow { 0%,100%{text-shadow:0 0 8px #ffd700, 0 0 16px #ffd700} 50%{text-shadow:0 0 20px #ffd700, 0 0 40px #ff9900} }
         @keyframes epicGlow { 0%,100%{text-shadow:0 0 8px #b366ff} 50%{text-shadow:0 0 20px #b366ff, 0 0 35px #9900ff} }
         @keyframes rareGlow { 0%,100%{text-shadow:0 0 6px #4d94ff} 50%{text-shadow:0 0 15px #4d94ff} }
+        
+        /* ENHANCED MYTHIC GLOW */
+        @keyframes mythicGlow { 
+            0%,100%{text-shadow:0 0 15px #ff00aa, 0 0 30px #ff00aa, 0 0 40px #00ffff; filter: brightness(1.2) drop-shadow(0 0 10px rgba(255,0,170,0.8));} 
+            50%{text-shadow:0 0 35px #00ffff, 0 0 60px #ff00aa, 0 0 80px #00ffff; filter: brightness(1.5) drop-shadow(0 0 20px rgba(0,255,255,1));} 
+        }
+        @keyframes mythicBurst { 0% { opacity: 1; transform: scale(0); } 100% { opacity: 0; transform: scale(3) translate(var(--dx), var(--dy)); } }
+
         @keyframes boxShake { 0%,100%{transform:translateX(0)} 10%{transform:translateX(-12px) rotate(-5deg)} 20%{transform:translateX(14px) rotate(5deg)} 30%{transform:translateX(-10px) rotate(-3deg)} 40%{transform:translateX(10px) rotate(3deg)} 50%{transform:translateX(-6px) rotate(-2deg)} 60%{transform:translateX(6px) rotate(2deg)} 70%{transform:translateX(0)} 100%{transform:translateX(0)} }
         @keyframes revealItem { 0%{opacity:0;transform:scale(0.2) translateY(30px)} 60%{transform:scale(1.2) translateY(-10px)} 100%{opacity:1;transform:scale(1) translateY(0)} }
-        @keyframes sparkle1 { 0%{opacity:0;transform:translate(0,0) scale(0)} 50%{opacity:1;transform:translate(-30px,-30px) scale(1)} 100%{opacity:0;transform:translate(-60px,-60px) scale(0)} }
-        @keyframes sparkle2 { 0%{opacity:0;transform:translate(0,0) scale(0)} 50%{opacity:1;transform:translate(30px,-40px) scale(1)} 100%{opacity:0;transform:translate(60px,-80px) scale(0)} }
-        @keyframes sparkle3 { 0%{opacity:0;transform:translate(0,0) scale(0)} 50%{opacity:1;transform:translate(-20px,30px) scale(1)} 100%{opacity:0;transform:translate(-40px,60px) scale(0)} }
-        @keyframes sparkle4 { 0%{opacity:0;transform:translate(0,0) scale(0)} 50%{opacity:1;transform:translate(40px,20px) scale(1)} 100%{opacity:0;transform:translate(80px,40px) scale(0)} }
+        
         @keyframes gradientBG { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
 
         body { font-family:'Segoe UI',sans-serif; background: var(--bg); color: var(--text); margin: 0; width:100vw; height:100vh; overflow:hidden; display:flex; transition:0.3s; }
-        #app-container { width:100%; height:100%; display:flex; flex-direction:column; background: var(--panel); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+        #mythic-canvas { position:fixed; inset:0; z-index:0; pointer-events:none; }
+        #app-container { width:100%; height:100%; display:flex; flex-direction:column; background: var(--panel); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); position:relative; z-index:1; }
         .hidden { display:none !important; }
         nav { display:flex; background:rgba(0,0,0,0.8); padding:5px; gap:4px; border-bottom:1px solid rgba(255,255,255,0.1); flex-shrink:0; flex-wrap:wrap; }
         nav button { flex:1; padding:10px 6px; background:transparent; border:none; color:#888; cursor:pointer; border-radius:6px; font-weight:bold; transition:0.2s; position:relative; font-size:0.8em; }
@@ -71,12 +77,13 @@
         @keyframes loadFill { from{width:0%} to{width:100%} }
 
         /* Rarity classes */
-        .rc { color:#aaa; } .rr { color:#4d94ff; animation:rareGlow 2s infinite; } .re { color:#b366ff; animation:epicGlow 2s infinite; } .rl { color:#ffd700; animation:legendaryGlow 2s infinite; } .rcr { color:#ff6666; } .rev { color:#ff9900; }
+        .rc { color:#aaa; } .rr { color:#4d94ff; animation:rareGlow 2s infinite; } .re { color:#b366ff; animation:epicGlow 2s infinite; } .rl { color:#ffd700; animation:legendaryGlow 2s infinite; } .rm { color:#ff00aa; animation:mythicGlow 3s infinite; font-weight:bold; } .rcr { color:#ff6666; } .rev { color:#ff9900; }
         .rarity-badge { font-size:0.7em; padding:2px 8px; border-radius:10px; font-weight:bold; text-transform:uppercase; letter-spacing:1px; }
         .rb-common { background:rgba(170,170,170,0.2); color:#aaa; border:1px solid #aaa; }
         .rb-rare { background:rgba(77,148,255,0.2); color:#4d94ff; border:1px solid #4d94ff; }
         .rb-epic { background:rgba(179,102,255,0.2); color:#b366ff; border:1px solid #b366ff; }
         .rb-legendary { background:rgba(255,215,0,0.2); color:#ffd700; border:1px solid #ffd700; }
+        .rb-mythic { background:rgba(255,0,170,0.2); color:#ff00aa; border:1px solid #ff00aa; }
         .rb-ceremonial { background:rgba(255,102,102,0.2); color:#ff6666; border:1px solid #ff6666; }
         .rb-event { background:rgba(255,153,0,0.2); color:#ff9900; border:1px solid #ff9900; }
         .rb-free { background:rgba(100,100,100,0.2); color:#aaa; border:1px solid #666; }
@@ -87,15 +94,17 @@
         .item-card.ic-rare { border-color:rgba(77,148,255,0.3); }
         .item-card.ic-epic { border-color:rgba(179,102,255,0.3); }
         .item-card.ic-legendary { border-color:rgba(255,215,0,0.4); box-shadow:0 0 8px rgba(255,215,0,0.15); }
+        .item-card.ic-mythic { border-color:rgba(255,0,170,0.5); box-shadow:0 0 10px rgba(255,0,170,0.2); }
         .active-title { font-size:0.85em; padding:3px 10px; border-radius:10px; font-weight:bold; display:inline-block; margin-bottom:6px; }
         .msg-title { font-size:0.72em; color:#aaa; font-weight:normal; font-style:italic; margin-left:6px; }
-        .lootbox-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:20px; width:100%; max-width:900px; }
+        .lootbox-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:20px; width:100%; max-width:1000px; }
         .lb-card { background:rgba(0,0,0,0.5); border-radius:15px; padding:20px; text-align:center; cursor:pointer; transition:0.25s; position:relative; overflow:hidden; backdrop-filter: blur(5px); }
         .lb-card:hover { transform:translateY(-4px); }
         .lb-card-1 { border:2px solid #aaa; }
         .lb-card-2 { border:2px solid #4d94ff; box-shadow:0 0 15px rgba(77,148,255,0.2); }
         .lb-card-3 { border:2px solid #b366ff; box-shadow:0 0 20px rgba(179,102,255,0.3); }
         .lb-card-4 { border:2px solid #ffd700; box-shadow:0 0 25px rgba(255,215,0,0.35); animation:shimmer 2s infinite; }
+        .lb-card-5 { border:2px solid #ff00aa; box-shadow:0 0 35px rgba(255,0,170,0.4); animation:mythicGlow 2s infinite; }
         .lb-icon { font-size:4em; margin-bottom:10px; display:block; }
         .lb-odds { font-size:0.78em; color:#aaa; margin-top:10px; text-align:left; background:rgba(0,0,0,0.3); border-radius:8px; padding:10px; }
         .lb-odd-row { display:flex; justify-content:space-between; margin:2px 0; }
@@ -103,11 +112,7 @@
         .lb-open-box { font-size:5em; display:block; margin:20px auto; width:fit-content; transition:1s; }
         .lb-open-box.shaking { animation:boxShake 0.8s ease; }
         .lb-result-item { animation:revealItem 0.6s ease forwards; opacity:0; position:relative; }
-        .lb-sparkle { position:absolute; font-size:1.5em; pointer-events:none; }
-        .lb-sparkle:nth-child(1) { animation:sparkle1 1s ease 0.3s forwards; opacity:0; }
-        .lb-sparkle:nth-child(2) { animation:sparkle2 1s ease 0.4s forwards; opacity:0; }
-        .lb-sparkle:nth-child(3) { animation:sparkle3 1s ease 0.5s forwards; opacity:0; }
-        .lb-sparkle:nth-child(4) { animation:sparkle4 1s ease 0.6s forwards; opacity:0; }
+
         .inv-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px; width:100%; max-width:900px; }
         .inv-item { background:rgba(0,0,0,0.4); border-radius:10px; padding:12px; text-align:center; position:relative; backdrop-filter: blur(5px); }
         .inv-badge { position:absolute; top:-5px; right:-5px; background:var(--primary); color:#000; border-radius:50%; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:0.75em; font-weight:bold; }
@@ -118,6 +123,43 @@
         .trade-card.declined { border-color:rgba(255,80,80,0.4); opacity:0.7; }
         .trade-side { background:rgba(0,0,0,0.25); border-radius:8px; padding:10px; flex:1; }
         .trade-item-chip { display:inline-flex; align-items:center; gap:4px; background:rgba(255,255,255,0.1); border-radius:8px; padding:3px 8px; font-size:0.8em; margin:2px; }
+        
+        /* Games CSS */
+        .game-card { background:rgba(0,0,0,0.5); border:1px solid var(--primary); border-radius:15px; padding:20px; text-align:center; margin-bottom:20px; backdrop-filter: blur(5px); }
+        
+        .plinko-board { display:flex; flex-direction:column; align-items:center; margin:20px auto; position:relative; width: 100%; max-width: 600px; height: 360px; background: rgba(0,0,0,0.3); border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,0.1); will-change: transform; }
+        .plinko-ball { width: 12px; height: 12px; background: #fff; border-radius: 50%; position: absolute; top: 0; left: 50%; transform: translate(-50%, -20px); box-shadow: 0 0 10px #fff; z-index: 10; will-change: transform; }
+        .plinko-pegs { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-evenly; align-items: center; padding: 20px 0; pointer-events:none; }
+        .plinko-row { display: flex; justify-content: center; gap: 20px; }
+        .plinko-peg { width: 6px; height: 6px; background: #555; border-radius: 50%; box-shadow: inset -1px -1px 3px rgba(0,0,0,0.8); }
+        .plinko-bins { position: absolute; bottom: 0; left: 0; right: 0; display: flex; height: 28px; z-index: 5; }
+        .plinko-bin { flex: 1; border-right: 1px solid rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: center; font-size: 0.5em; font-weight: bold; color: #fff; background: rgba(0,0,0,0.85); min-width: 0; overflow: hidden; padding: 0 1px; line-height: 1; text-shadow: 0 1px 2px rgba(0,0,0,0.9); }
+        .plinko-bin:last-child { border-right: none; }
+        .plinko-bin.active-bin { background: rgba(0,212,255,0.4) !important; color: #00d4ff !important; }
+        
+        /* Roulette CSS */
+        .roulette-board { display:grid; grid-template-columns: 60px repeat(12, 1fr); grid-template-rows: repeat(3, 40px); gap:2px; max-width:800px; margin: 20px auto; background: #222; padding:5px; border-radius:10px; }
+        .rl-spot { display:flex; align-items:center; justify-content:center; font-weight:bold; cursor:pointer; position:relative; background:#0b0b0b; color:white; border:1px solid #444; transition: 0.1s; }
+        .rl-spot:hover { filter: brightness(1.3); }
+        .rl-zero { grid-row: 1 / 4; background:#008800; border-radius:8px 0 0 8px; font-size:1.5em; }
+        .rl-red { background:#cc0000; }
+        .rl-black { background:#111; }
+        .rl-outside { grid-column: 2 / 14; display:flex; gap:2px; margin-top:5px; }
+        .rl-out-btn { flex:1; height:40px; background:#333; color:white; border:1px solid #555; display:flex; align-items:center; justify-content:center; font-weight:bold; cursor:pointer; }
+        .rl-chip { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:24px; height:24px; border-radius:50%; background:var(--primary); color:black; font-size:0.6em; display:flex; align-items:center; justify-content:center; font-weight:bold; border:2px dashed black; z-index:10; pointer-events:none; }
+        
+        /* Physical Wheel Architecture */
+        .rl-wheel-container { width:220px; height:220px; border-radius:50%; border:8px solid #333; margin:0 auto 20px; position:relative; overflow:hidden; background:#222; box-shadow: 0 5px 25px rgba(0,0,0,0.7), inset 0 0 15px rgba(0,0,0,0.8); }
+        .rl-wheel-pointer { width:0; height:0; border-left:12px solid transparent; border-right:12px solid transparent; border-top:20px solid #fff; position:absolute; top:-2px; left:50%; transform:translateX(-50%); z-index:20; filter:drop-shadow(0 4px 4px rgba(0,0,0,0.7)); }
+        #rl-wheel { width:100%; height:100%; position:relative; border-radius:50%; overflow:hidden; transition: transform 4s cubic-bezier(0.15, 0.85, 0.1, 1); }
+        .rl-wedge { position:absolute; top:0; right:50%; width:50%; height:50%; transform-origin:100% 100%; display:flex; align-items:center; justify-content:center; overflow:hidden; border: 1px solid rgba(0,0,0,0.25); box-sizing: border-box; }
+        .rl-wedge span { position:absolute; left:4px; top:14px; font-size: 0.55em; font-weight:bold; color:white; text-shadow: 0 0 3px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,1); white-space:nowrap; pointer-events:none; }
+
+        .rps-btn { font-size: 3em; background: rgba(0,0,0,0.4); border: 2px solid #555; border-radius: 15px; padding: 10px 20px; cursor: pointer; transition: 0.2s; }
+        .rps-btn:hover { border-color: var(--primary); background: rgba(255,255,255,0.1); transform: scale(1.1); }
+        .bj-card { display: inline-block; background: white; color: black; border-radius: 5px; padding: 10px; margin: 5px; font-size: 1.2em; font-weight: bold; width: 40px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
+        .bj-card.red { color: red; }
+        
         .admin-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; width:100%; max-width:1100px; }
         .admin-box { background:rgba(0,0,0,0.3); padding:20px; border-radius:10px; border:1px solid var(--admin); max-height:400px; overflow-y:auto; backdrop-filter: blur(10px); }
         .admin-box.full { grid-column:span 2; max-height:none; }
@@ -129,9 +171,19 @@
         body.gradient-active .msg { background: rgba(0, 0, 0, 0.45) !important; border-color: rgba(255,255,255,0.15) !important; box-shadow: 0 8px 16px rgba(0,0,0,0.2) !important; }
         body.gradient-active .input-area, body.gradient-active nav, body.gradient-active #chat-header { background: rgba(0, 0, 0, 0.3) !important; border-color: rgba(255,255,255,0.1) !important; }
         body.gradient-active .modal-card { backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px); border-color: rgba(255,255,255,0.2) !important; }
+
+        /* Preview Modal Specifics */
+        .preview-pane { background: var(--prev-bg); padding: 20px; border-radius: 10px; display: flex; gap: 10px; border: 1px solid #fff; }
+        .prev-sidebar { background: var(--prev-sidebar); width: 100px; border-radius: 5px; padding: 10px; color: var(--prev-text); font-size: 0.8em; }
+        .prev-chat { background: var(--prev-panel); flex: 1; border-radius: 5px; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+        .prev-msg { background: var(--prev-msg-bg); color: var(--prev-text); padding: 8px; border-radius: 8px; width: fit-content; font-size: 0.8em; }
+        .prev-msg.me { background: var(--prev-msg-me); align-self: flex-end; }
+        .prev-input { background: rgba(0,0,0,0.5); border: 1px solid var(--prev-primary); border-radius: 5px; padding: 8px; margin-top: 10px; color: var(--prev-text); }
     </style>
 </head>
 <body>
+
+<canvas id="mythic-canvas"></canvas>
 
 <!-- Loading Screen -->
 <div id="loading-screen">
@@ -141,7 +193,6 @@
 </div>
 
 <div id="app-container">
-
     <!-- Modals -->
     <div id="modal-delete-srv" class="modal hidden">
         <div class="modal-card">
@@ -151,6 +202,22 @@
                 <button class="btn" style="flex:1; background:red; color:white; box-shadow:0 0 10px rgba(255,0,0,0.5);" onclick="confirmDeleteServer()">Yes, Delete</button>
                 <button class="btn" style="flex:1; background:rgba(255,255,255,0.1); color:white;" onclick="closeM('modal-delete-srv')">Cancel</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Theme Preview Modal -->
+    <div id="modal-theme-preview" class="modal hidden">
+        <div class="modal-card" style="width: 600px;">
+            <h3 style="color:var(--primary); margin-top:0;">🎨 Live Theme Preview</h3>
+            <div id="preview-container" class="preview-pane">
+                <div class="prev-sidebar"># general<br># rules<br><br>Users Online: 2</div>
+                <div class="prev-chat">
+                    <div class="prev-msg"><strong style="color:var(--prev-primary)">@Howard</strong><br>Check out this new theme!</div>
+                    <div class="prev-msg me"><strong style="color:var(--prev-primary)">@You</strong><br>Looks awesome!</div>
+                    <div class="prev-input">Type message...</div>
+                </div>
+            </div>
+            <button class="btn primary" style="width:100%; margin-top:15px;" onclick="closeM('modal-theme-preview')">Close Preview</button>
         </div>
     </div>
 
@@ -253,14 +320,13 @@
             </div>
             <div id="lb-result-phase" class="hidden">
                 <div class="lb-result-item" id="lb-result-inner">
-                    <div id="lb-sparkle-container" style="position:absolute; top:50%; left:50%; pointer-events:none;">
-                        <span class="lb-sparkle">✨</span><span class="lb-sparkle">⭐</span><span class="lb-sparkle">💫</span><span class="lb-sparkle">✨</span>
+                    <div id="lb-sparkle-container" style="position:absolute; top:50%; left:50%; pointer-events:none; z-index: 100;">
                     </div>
-                    <div id="lb-result-icon" style="font-size:3.5em; margin-bottom:10px;"></div>
-                    <div id="lb-result-rarity" style="margin-bottom:8px;"></div>
-                    <div id="lb-result-name" style="font-size:1.3em; font-weight:bold; color:var(--text);"></div>
-                    <div id="lb-result-type" style="font-size:0.85em; color:#888; margin-top:4px;"></div>
-                    <div id="lb-dupe-notice" style="font-size:0.8em; color:#ff9900; margin-top:6px;" class="hidden">Already owned — added as duplicate!</div>
+                    <div id="lb-result-icon" style="font-size:3.5em; margin-bottom:10px; position:relative; z-index:2;"></div>
+                    <div id="lb-result-rarity" style="margin-bottom:8px; position:relative; z-index:2;"></div>
+                    <div id="lb-result-name" style="font-size:1.3em; font-weight:bold; color:var(--text); position:relative; z-index:2;"></div>
+                    <div id="lb-result-type" style="font-size:0.85em; color:#888; margin-top:4px; position:relative; z-index:2;"></div>
+                    <div id="lb-dupe-notice" style="font-size:0.8em; color:#ff9900; margin-top:6px; position:relative; z-index:2;" class="hidden">Already owned — added as duplicate!</div>
                 </div>
                 <button class="btn primary" style="width:100%; margin-top:20px;" onclick="closeM('lootbox-open-modal')">Claim!</button>
             </div>
@@ -333,9 +399,9 @@
     <nav id="app-nav" class="hidden">
         <button id="btn-chat" onclick="tab('chat')" class="active">💬 Chat <span id="nav-dot" class="unread-dot hidden" style="position:absolute; top:5px; right:5px;"></span></button>
         <button id="btn-friends" onclick="tab('friends')">👥 Friends</button>
-        <button id="btn-lootbox" onclick="tab('lootbox')">📦 Lootbox</button>
+        <button id="btn-store" onclick="tab('store'); subTabStore('lootbox');">🏪 Store</button>
+        <button id="btn-games" onclick="tab('games'); subTabGames('plinko');">🎲 Arcade</button>
         <button id="btn-inventory" onclick="tab('inventory'); loadInventory()">🎒 Inventory</button>
-        <button id="btn-trading" onclick="tab('trading'); loadTrades()">🔄 Trading</button>
         <button id="btn-prof" onclick="tab('prof')">👤 Profile</button>
         <button id="btn-admin" onclick="tab('admin')" class="hidden" style="color:var(--admin)">⚙️ Admin</button>
     </nav>
@@ -370,7 +436,6 @@
                         <button id="show-code-btn" class="btn hidden" style="background:#ffaa00; color:black; padding:5px 10px; font-size:0.8em;">🔑 Code</button>
                         <select id="channel-select" onchange="switchChannel(this.value)" style="padding:8px; width:auto;"></select>
                         <button id="add-chan-btn" class="btn primary hidden" style="padding:5px 15px;" onclick="openAddChannel()">+ Chain</button>
-                        <!-- Delete Server Button Added Here -->
                         <button id="del-srv-btn" class="btn hidden" style="background:#ff3333; color:white; padding:5px 10px; font-size:0.8em;" onclick="deleteServer()">🗑️ Delete</button>
                     </div>
                 </div>
@@ -379,7 +444,7 @@
                     <div id="typing-indicator" style="font-size:0.8em; color:#ddd; font-style:italic; min-height:15px; margin-left:5px;"></div>
                     <div class="input-row">
                         <button class="btn" id="draw-btn" onclick="openDrawMsgModal()" style="background:rgba(0,0,0,0.5); font-size:1.2em;" title="Draw & Send">✏️</button>
-                        <input type="text" id="msg-in" placeholder="Type message... (1 pt per 2 msgs)" oninput="markTyping()">
+                        <input type="text" id="msg-in" placeholder="Type message... (1 pt per msg)" oninput="markTyping()">
                         <button class="btn primary" id="send-btn" onclick="send()">Send</button>
                     </div>
                 </div>
@@ -412,21 +477,148 @@
             </div>
         </div>
 
-        <div id="pane-lootbox" class="tab-pane hidden" style="flex-direction:column; align-items:center; padding:30px; overflow-y:auto;">
-            <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5);">📦 Lootboxes</h2>
-            <div class="profile-points-badge">Your Points: <span id="lootbox-points">0</span> ✨</div>
-            <p style="color:#ddd; text-align:center; max-width:600px; margin-bottom:25px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">Roll lootboxes to win exclusive themes and titles! Better boxes have better odds for rare items.</p>
-            <div class="lootbox-grid" id="lootbox-grid"></div>
-            
-            <!-- Dynamic Events render here -->
-            <div id="dynamic-events-container"></div>
+        <div id="pane-store" class="tab-pane hidden">
+            <div class="sidebar" style="padding:15px; gap:10px;">
+                <h3 style="color:var(--primary); margin-top:0; margin-bottom:5px; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">🏪 Store & Economy</h3>
+                <div class="profile-points-badge" style="font-size:1em; margin-top:0; text-align:center;">✨ <span id="store-points">0</span> Points</div>
+                <button class="btn" id="sub-store-lootbox" style="width:100%; text-align:left; background:var(--primary); color:black;" onclick="subTabStore('lootbox')">📦 Lootboxes</button>
+                <button class="btn" id="sub-store-trading" style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;" onclick="subTabStore('trading'); loadTrades();">🔄 Trading Hub</button>
+            </div>
+            <div class="chat-content" style="overflow-y:auto;">
+                <div id="store-view-lootbox" style="display:flex; flex-direction:column; align-items:center; padding:30px;">
+                    <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">📦 Roll Lootboxes</h2>
+                    <p style="color:#ddd; text-align:center; max-width:600px; margin-bottom:25px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">Roll lootboxes to win exclusive themes and titles! Try the new Mythic tier for legendary cosmetic drops.</p>
+                    <div class="lootbox-grid" id="lootbox-grid"></div>
+                    <div id="dynamic-events-container"></div>
+                </div>
+                <div id="store-view-trading" class="hidden" style="display:flex; flex-direction:column; align-items:center; padding:25px;">
+                    <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">🔄 Player Trading</h2>
+                    <button class="btn primary" style="margin-bottom:20px;" onclick="openTradeCreate()">+ New Trade</button>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; width:100%; max-width:1000px;">
+                        <div><h3 style="color:var(--primary); text-shadow: 0 2px 4px rgba(0,0,0,0.5);">Active Trades</h3><div id="trade-active-list"></div></div>
+                        <div><h3 style="color:#ddd; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">Trade History</h3><div id="trade-history-list"></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="pane-games" class="tab-pane hidden">
+            <div class="sidebar" style="padding:15px; gap:10px;">
+                <h3 style="color:var(--primary); margin-top:0; margin-bottom:5px; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">🎲 Arcade</h3>
+                <div class="profile-points-badge" style="font-size:1em; margin-top:0; text-align:center;">✨ <span id="games-points">0</span> Points</div>
+                <button class="btn" id="sub-games-plinko" style="width:100%; text-align:left; background:var(--primary); color:black;" onclick="subTabGames('plinko')">🎯 Cosmic Plinko</button>
+                <button class="btn" id="sub-games-roulette" style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;" onclick="subTabGames('roulette')">🎡 Roulette</button>
+                <button class="btn" id="sub-games-rps" style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;" onclick="subTabGames('rps')">✊ Rock Paper Scissors</button>
+                <button class="btn" id="sub-games-bj" style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;" onclick="subTabGames('bj')">🃏 Blackjack</button>
+            </div>
+            <div class="chat-content" style="overflow-y:auto; padding: 25px; display:flex; flex-direction:column; align-items: center;">
+                
+                <!-- Plinko -->
+                <div id="game-view-plinko" class="game-card" style="width:100%; max-width:800px;">
+                    <h2 style="margin-top:0; color:var(--primary);">🎯 Cosmic Plinko</h2>
+                    <p style="color:#aaa;">Physics naturally favor the center, but the extreme edges hold massive payouts.</p>
+                    <div style="display:flex; justify-content:center; gap:10px; margin-bottom:10px; align-items:center;">
+                        <input type="number" id="plinko-bet" placeholder="Bet (1-50,000)" min="1" max="50000" style="max-width:180px; text-align:center;">
+                        <button class="btn primary" id="plinko-btn" onclick="playPlinko()">Drop Ball</button>
+                    </div>
+                    <div id="plinko-status" style="height:20px; color:#ffcc00; font-weight:bold; margin-bottom:10px;"></div>
+                    <div class="plinko-board" id="plinko-board">
+                        <div class="plinko-pegs" id="plinko-pegs"></div>
+                        <div class="plinko-bins">
+                            <div class="plinko-bin">100</div><div class="plinko-bin">40</div><div class="plinko-bin">10</div><div class="plinko-bin">5</div><div class="plinko-bin">3</div><div class="plinko-bin">1.5</div><div class="plinko-bin">1</div><div class="plinko-bin">.4</div>
+                            <div class="plinko-bin" style="background:rgba(255,0,0,0.3);">.2</div>
+                            <div class="plinko-bin">.4</div><div class="plinko-bin">1</div><div class="plinko-bin">1.5</div><div class="plinko-bin">3</div><div class="plinko-bin">5</div><div class="plinko-bin">10</div><div class="plinko-bin">40</div><div class="plinko-bin">100</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Roulette -->
+                <div id="game-view-roulette" class="game-card hidden" style="width:100%; max-width:800px;">
+                    <h2 style="margin-top:0; color:var(--primary);">🎡 High-Roller Roulette</h2>
+                    <p style="color:#aaa;">Select chip value, click board to place bets, and spin! Max simulated bet: 50,000</p>
+                    
+                    <div class="rl-wheel-container">
+                        <div class="rl-wheel-pointer"></div>
+                        <div id="rl-wheel">
+                            <!-- JS Inject Wedges Here -->
+                        </div>
+                        <!-- Center Cover -->
+                        <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); width:65%; height:65%; background:#222; border-radius:50%; border:3px solid #555; z-index:10; box-shadow: 0 0 10px rgba(0,0,0,0.8);"></div>
+                    </div>
+                    <div id="rl-status" style="font-weight:bold; height:25px; color:#ffcc00;"></div>
+
+                    <div style="margin:10px 0; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                        <button class="btn" style="background:#555; color:white;" onclick="setRlChip(10)">🪙 10</button>
+                        <button class="btn" style="background:#44aaff; color:black;" onclick="setRlChip(50)">🪙 50</button>
+                        <button class="btn" style="background:#33cc33; color:black;" onclick="setRlChip(100)">🪙 100</button>
+                        <button class="btn" style="background:#aa00aa; color:white;" onclick="setRlChip(500)">🪙 500</button>
+                        <button class="btn" style="background:#ffaa00; color:black;" onclick="setRlChip(5000)">🪙 5K</button>
+                        <span style="display:flex; align-items:center; margin-left:10px; color:var(--primary);">Chip: <span id="rl-current-chip" style="font-weight:bold; margin-left:5px;">10</span></span>
+                    </div>
+
+                    <div class="roulette-board" id="rl-board">
+                        <div class="rl-spot rl-zero" onclick="placeRlBet('0')">0<div class="rl-chip hidden" id="rl-chip-0"></div></div>
+                        <div class="rl-outside">
+                            <div class="rl-out-btn" style="background:#cc0000;" onclick="placeRlBet('red')">RED<div class="rl-chip hidden" id="rl-chip-red"></div></div>
+                            <div class="rl-out-btn" style="background:#111;" onclick="placeRlBet('black')">BLACK<div class="rl-chip hidden" id="rl-chip-black"></div></div>
+                            <div class="rl-out-btn" onclick="placeRlBet('even')">EVEN<div class="rl-chip hidden" id="rl-chip-even"></div></div>
+                            <div class="rl-out-btn" onclick="placeRlBet('odd')">ODD<div class="rl-chip hidden" id="rl-chip-odd"></div></div>
+                        </div>
+                    </div>
+                    
+                    <div style="display:flex; justify-content:center; gap:15px; margin-top:15px;">
+                        <button class="btn" style="background:rgba(255,0,0,0.5); color:white;" onclick="clearRlBets()">Clear Bets</button>
+                        <button class="btn primary" style="padding:10px 30px; font-size:1.1em;" id="rl-spin-btn" onclick="spinRoulette()">🎰 Spin Wheel</button>
+                    </div>
+                </div>
+
+                <!-- RPS -->
+                <div id="game-view-rps" class="game-card hidden" style="width:100%; max-width:600px;">
+                    <h2 style="margin-top:0; color:var(--primary);">✊ Rock, Paper, Scissors</h2>
+                    <p style="color:#aaa;">Cost: 10 points. Beat the AI to win 25 points!</p>
+                    <div id="rps-arena" style="margin:30px 0; display:flex; justify-content:space-around; align-items:center;">
+                        <button class="rps-btn" onclick="playRPS('rock')" id="rps-r">✊</button>
+                        <button class="rps-btn" onclick="playRPS('paper')" id="rps-p">✋</button>
+                        <button class="rps-btn" onclick="playRPS('scissors')" id="rps-s">✌️</button>
+                    </div>
+                    <div id="rps-result" style="font-size:1.5em; font-weight:bold; height:40px; margin-top:20px; transition:0.3s;"></div>
+                </div>
+
+                <!-- Blackjack -->
+                <div id="game-view-bj" class="game-card hidden" style="width:100%; max-width:700px;">
+                    <h2 style="margin-top:0; color:var(--primary);">🃏 Blackjack</h2>
+                    <p style="color:#aaa;">Beat the dealer to 21. Win pays double your wager.</p>
+                    <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px; align-items:center;" id="bj-bet-area">
+                        <input type="number" id="bj-bet" placeholder="Bet (1-10,000)" min="1" max="10000" style="max-width:150px; text-align:center;">
+                        <button class="btn primary" onclick="startBlackjack()">Deal</button>
+                    </div>
+                    <div id="bj-arena" class="hidden">
+                        <div style="margin-bottom:20px; display:flex; flex-direction:column; align-items:center;">
+                            <h3 style="color:#ff5555; margin-bottom:5px;">Dealer's Hand <span id="bj-dealer-score" style="font-size:0.8em; color:#aaa;"></span></h3>
+                            <div id="bj-dealer-cards" style="min-height:50px;"></div>
+                        </div>
+                        <div style="margin-bottom:20px; display:flex; flex-direction:column; align-items:center;">
+                            <h3 style="color:#55ff55; margin-bottom:5px;">Your Hand <span id="bj-player-score" style="font-size:0.8em; color:#aaa;"></span></h3>
+                            <div id="bj-player-cards" style="min-height:50px;"></div>
+                        </div>
+                        <div id="bj-controls" style="display:flex; justify-content:center; gap:15px;">
+                            <button class="btn primary" onclick="bjHit()">Hit</button>
+                            <button class="btn" style="background:#ff9900; color:black;" onclick="bjStand()">Stand</button>
+                        </div>
+                        <div id="bj-result" style="font-size:1.5em; font-weight:bold; margin-top:20px; height:30px;"></div>
+                        <button class="btn hidden" id="bj-replay" style="margin-top:15px; background:rgba(255,255,255,0.2); color:white;" onclick="resetBlackjack()">Play Again</button>
+                    </div>
+                </div>
+
+            </div>
         </div>
 
         <div id="pane-inventory" class="tab-pane hidden" style="flex-direction:column; align-items:center; padding:30px; overflow-y:auto;">
             <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5);">🎒 My Inventory</h2>
             <div style="display:flex; gap:15px; margin-bottom:20px; flex-wrap:wrap; justify-content:center;">
-                <button class="btn primary" onclick="showInvTab('themes')">🎨 Themes</button>
-                <button class="btn" style="background:rgba(0,0,0,0.5); color:white;" onclick="showInvTab('titles')">🏷️ Titles</button>
+                <button class="btn primary" id="btn-inv-themes" onclick="showInvTab('themes')">🎨 Themes</button>
+                <button class="btn" id="btn-inv-titles" style="background:rgba(0,0,0,0.5); color:white;" onclick="showInvTab('titles')">🏷️ Titles</button>
+                <button class="btn" id="btn-inv-lootboxes" style="background:rgba(0,0,0,0.5); color:white;" onclick="showInvTab('lootboxes')">📦 Lootboxes</button>
             </div>
             <div id="inv-section-themes" style="width:100%; max-width:900px;">
                 <div style="margin-bottom:15px;"><span style="font-size:0.9em; color:#ddd;">Active Theme: </span><span id="inv-active-theme" style="color:var(--primary); font-weight:bold;">Dark</span></div>
@@ -439,14 +631,8 @@
                 </div>
                 <div class="inv-grid" id="inv-titles-grid"></div>
             </div>
-        </div>
-
-        <div id="pane-trading" class="tab-pane hidden" style="flex-direction:column; align-items:center; padding:25px; overflow-y:auto;">
-            <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5);">🔄 Trading</h2>
-            <button class="btn primary" style="margin-bottom:20px;" onclick="openTradeCreate()">+ New Trade</button>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; width:100%; max-width:900px;">
-                <div><h3 style="color:var(--primary); text-shadow: 0 2px 4px rgba(0,0,0,0.5);">Active Trades</h3><div id="trade-active-list"></div></div>
-                <div><h3 style="color:#ddd; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">Trade History</h3><div id="trade-history-list"></div></div>
+            <div id="inv-section-lootboxes" class="hidden" style="width:100%; max-width:900px;">
+                <div class="inv-grid" id="inv-lootboxes-grid"></div>
             </div>
         </div>
 
@@ -530,21 +716,28 @@
                             <option value="rare">Rare</option>
                             <option value="epic">Epic</option>
                             <option value="legendary">Legendary</option>
+                            <option value="mythic">Mythic</option>
                             <option value="free">Free</option>
                         </select>
                     </div>
                     <div style="display:flex; gap:10px; margin-top:15px; flex-wrap:wrap;">
-                        <label>Primary: <input type="text" id="adm-th-primary" value="#00d4ff" style="width:90px;"></label>
-                        <label>Bg (CSS/Gradient): <input type="text" id="adm-th-bg" value="linear-gradient(45deg, #0f0c29, #302b63, #24243e)" style="width:250px;"></label>
-                        <label>Panel (rgba): <input type="text" id="adm-th-panel" value="rgba(20,20,20,0.85)" style="width:130px;"></label>
-                        <label>Sidebar (rgba): <input type="text" id="adm-th-sidebar" value="rgba(10,10,10,0.85)" style="width:130px;"></label>
-                        <label>Text: <input type="color" id="adm-th-text" value="#f0f0f0"></label>
-                        <label>Msg Bg: <input type="text" id="adm-th-msg" value="rgba(34,34,34,0.85)" style="width:120px;"></label>
-                        <label>Msg Me: <input type="text" id="adm-th-msgme" value="rgba(0,75,90,0.85)" style="width:120px;"></label>
+                        <label>Primary: 
+                            <input type="color" id="adm-th-primary-picker" value="#00d4ff" oninput="document.getElementById('adm-th-primary').value=this.value; livePreviewTheme();" style="width:36px;height:30px;padding:1px;vertical-align:middle;cursor:pointer;">
+                            <input type="text" id="adm-th-primary" value="#00d4ff" oninput="this.previousElementSibling.value=this.value; livePreviewTheme();" style="width:80px;">
+                        </label>
+                        <label>Bg (CSS/Gradient): <input type="text" id="adm-th-bg" value="linear-gradient(45deg, #0f0c29, #302b63, #24243e)" oninput="livePreviewTheme()" style="width:250px;"></label>
+                        <label>Panel (rgba): <input type="text" id="adm-th-panel" value="rgba(20,20,20,0.85)" oninput="livePreviewTheme()" style="width:130px;"></label>
+                        <label>Sidebar (rgba): <input type="text" id="adm-th-sidebar" value="rgba(10,10,10,0.85)" oninput="livePreviewTheme()" style="width:130px;"></label>
+                        <label>Text: <input type="color" id="adm-th-text" value="#f0f0f0" oninput="livePreviewTheme()"></label>
+                        <label>Msg Bg: <input type="text" id="adm-th-msg" value="rgba(34,34,34,0.85)" oninput="livePreviewTheme()" style="width:120px;"></label>
+                        <label>Msg Me: <input type="text" id="adm-th-msgme" value="rgba(0,75,90,0.85)" oninput="livePreviewTheme()" style="width:120px;"></label>
                         <label>Swatch: <input type="text" id="adm-th-swatch" value="linear-gradient(45deg, #0f0c29, #302b63)" style="width:180px;"></label>
                         <label style="display:flex; align-items:center; gap:5px;">Anim BG: <input type="checkbox" id="adm-th-anim" checked></label>
                     </div>
-                    <button class="btn primary" style="margin-top:15px; width:100%;" onclick="adminCreateTheme()">Push Theme to Database</button>
+                    <div style="display:flex; gap:10px; margin-top:15px;">
+                        <button class="btn" style="flex:1; background: #555; color: white;" onclick="previewAdminTheme()">Preview Theme UI</button>
+                        <button class="btn primary" style="flex:2;" onclick="adminCreateTheme()">Push Theme to Database</button>
+                    </div>
                 </div>
 
                 <div class="admin-box full">
@@ -557,6 +750,7 @@
                             <option value="rare">Rare</option>
                             <option value="epic">Epic</option>
                             <option value="legendary">Legendary</option>
+                            <option value="mythic">Mythic</option>
                             <option value="ceremonial">Ceremonial</option>
                         </select>
                         <select id="adm-new-ti-trade" style="flex:1;">
@@ -606,9 +800,9 @@ let aId = null, aType = null, aChan = 'chat-1', aSrvOwner = null, aMyRole = null
 let authMode = 'login', typingTimeout, isCreatingPrivate = false;
 let currentViewUser = null;
 let unreadDMs = {}, unreadServers = {};
-let myPoints = 0, myInventory = { themes: {}, titles: {} }, myCeremonial = {};
+let myPoints = 0, myInventory = { themes: {}, titles: {}, lootboxes: {} }, myCeremonial = {};
 let myActiveTitle = null, myActiveTheme = 'dark';
-let pendingLootboxIndex = null, pendingLootResult = null;
+let pendingLootboxIndex = null, pendingLootResult = null, openingFromInventory = false;
 let pendingTradeId = null;
 let myFriends = [];
 let tradeMySelected = [], tradeTheirSelected = [];
@@ -618,11 +812,142 @@ let currentPartnerInventory = null;
 // DB-loaded config
 let ALL_THEMES = {};
 let ALL_TITLES = {};
-let LOOT_POOL = { common:[], rare:[], epic:[], legendary:[] };
+let LOOT_POOL = { common:[], rare:[], epic:[], legendary:[], mythic:[] };
 let configLoaded = false;
 
 // =========================================================
-//  THEME CSS INJECTION — applies any DB theme to :root vars
+//  CANVAS BACKGROUND ENGINE (MYTHICS)
+// =========================================================
+let bgAnimFrame;
+function startBgAnimation(themeId) {
+    cancelAnimationFrame(bgAnimFrame);
+    const canvas = document.getElementById('mythic-canvas');
+    if (!themeId.startsWith('mythic_')) {
+        canvas.style.display = 'none';
+        return;
+    }
+    
+    canvas.style.display = 'block';
+    const ctx = canvas.getContext('2d');
+    let W = canvas.width = window.innerWidth;
+    let H = canvas.height = window.innerHeight;
+    window.addEventListener('resize', () => { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; });
+
+    let particles = [];
+
+    if (themeId === 'mythic_matrix') {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*';
+        const fontSize = 16;
+        const columns = W / fontSize;
+        const drops = Array(Math.floor(columns)).fill(1);
+        
+        function drawMatrix() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, W, H);
+            ctx.fillStyle = '#0F0';
+            ctx.font = fontSize + 'px monospace';
+            for (let i = 0; i < drops.length; i++) {
+                const text = chars.charAt(Math.floor(Math.random() * chars.length));
+                ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+                if (drops[i] * fontSize > H && Math.random() > 0.975) drops[i] = 0;
+                drops[i]++;
+            }
+            bgAnimFrame = requestAnimationFrame(drawMatrix);
+        }
+        drawMatrix();
+    } 
+    else if (themeId === 'mythic_void') {
+        for(let i=0; i<300; i++) particles.push({ angle: Math.random()*Math.PI*2, radius: Math.random()*W, speed: Math.random()*0.02+0.005 });
+        
+        function drawVoid() {
+            ctx.fillStyle = 'rgba(10, 0, 20, 0.2)';
+            ctx.fillRect(0, 0, W, H);
+            const cx = W/2, cy = H/2;
+            
+            // Heavy Bloom Effects
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#aa00ff';
+            
+            particles.forEach(p => {
+                p.angle += p.speed;
+                p.radius -= 2;
+                if(p.radius < 10) { p.radius = W; p.angle = Math.random()*Math.PI*2; }
+                const x = cx + Math.cos(p.angle) * p.radius;
+                const y = cy + Math.sin(p.angle) * p.radius;
+                ctx.fillStyle = `rgba(170, 0, 255, ${Math.min(1, p.radius/300)})`;
+                ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI*2); ctx.fill();
+            });
+
+            ctx.shadowBlur = 50;
+            ctx.shadowColor = '#ff00aa';
+            ctx.fillStyle = '#000';
+            ctx.beginPath(); ctx.arc(cx, cy, 60, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = '#aa00ff'; ctx.lineWidth = 4;
+            ctx.stroke();
+
+            bgAnimFrame = requestAnimationFrame(drawVoid);
+        }
+        drawVoid();
+    }
+    else if (themeId === 'mythic_inferno') {
+        for(let i=0; i<150; i++) particles.push({ x: Math.random()*W, y: H + Math.random()*H, size: Math.random()*4+1, speedY: Math.random()*3+1, speedX: Math.random()-0.5 });
+        
+        function drawInferno() {
+            ctx.fillStyle = '#110000';
+            ctx.fillRect(0, 0, W, H);
+            
+            particles.forEach(p => {
+                p.y -= p.speedY; p.x += p.speedX;
+                if (p.y < 0) { p.y = H + 50; p.x = Math.random()*W; }
+                ctx.fillStyle = `rgba(255, ${Math.floor(Math.random()*150+50)}, 0, ${p.y/H})`;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+            });
+            bgAnimFrame = requestAnimationFrame(drawInferno);
+        }
+        drawInferno();
+    }
+    else if (themeId === 'mythic_ocean') {
+        let step = 0;
+        function drawOcean() {
+            ctx.fillStyle = '#001122';
+            ctx.fillRect(0, 0, W, H);
+            ctx.lineWidth = 2;
+            
+            for(let j=0; j<5; j++) {
+                ctx.strokeStyle = `rgba(0, 255, 255, ${0.1 + j*0.05})`;
+                ctx.beginPath();
+                for(let i=0; i<=W; i+=20) {
+                    const y = H/2 + Math.sin(i*0.01 + step + j) * 100 + Math.sin(i*0.02 - step) * 50 + (j*40 - 100);
+                    if(i===0) ctx.moveTo(i, y); else ctx.lineTo(i, y);
+                }
+                ctx.stroke();
+            }
+            step += 0.02;
+            bgAnimFrame = requestAnimationFrame(drawOcean);
+        }
+        drawOcean();
+    }
+    else if (themeId === 'mythic_nebula') {
+        for(let i=0; i<400; i++) particles.push({ x: Math.random()*W, y: Math.random()*H, size: Math.random()*2.5, speed: Math.random()*0.5+0.1 });
+        
+        function drawNebula() {
+            ctx.fillStyle = 'rgba(10, 0, 30, 0.3)';
+            ctx.fillRect(0, 0, W, H);
+            
+            particles.forEach(p => {
+                p.x -= p.speed; p.y += p.speed/2;
+                if(p.x < 0) p.x = W; if(p.y > H) p.y = 0;
+                ctx.fillStyle = '#fff';
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+            });
+            bgAnimFrame = requestAnimationFrame(drawNebula);
+        }
+        drawNebula();
+    }
+}
+
+// =========================================================
+//  THEME CSS INJECTION
 // =========================================================
 function injectThemeCSS(themeId, themeData) {
     const styleId = `theme-style-${themeId}`;
@@ -642,7 +967,7 @@ function injectThemeCSS(themeId, themeData) {
         }
     `;
 
-    if(isGradient) {
+    if(isGradient && !themeId.startsWith('mythic_')) {
         cssText += `
         [data-theme="${themeId}"] body,
         body[data-theme="${themeId}"] {
@@ -655,8 +980,11 @@ function injectThemeCSS(themeId, themeData) {
             ${themeData.animate_bg ? 'background-size:400% 400%; animation:gradientBG 15s ease infinite;' : ''}
         }
         `;
-    } else {
+    } else if (!themeId.startsWith('mythic_')) {
         cssText += `[data-theme="${themeId}"] { --bg: ${bg}; }`;
+    } else {
+        // Mythic base resets (canvas handles background)
+        cssText += `[data-theme="${themeId}"] { --bg: transparent; } body[data-theme="${themeId}"] { background: transparent; }`;
     }
 
     const style = document.createElement('style');
@@ -670,31 +998,22 @@ function setTheme(t) {
         injectThemeCSS(t, ALL_THEMES[t]);
         const bg = ALL_THEMES[t].bg || '#0b0b0b';
         if(bg.includes('gradient') || bg.includes('radial')) {
-            document.body.style.background = bg;
-            document.body.classList.add('gradient-active'); // Force "pop" mode
-            if(ALL_THEMES[t].animate_bg) {
-                document.body.style.backgroundSize = '400% 400%';
-                document.body.style.animation = 'gradientBG 15s ease infinite';
-            } else {
-                document.body.style.backgroundSize = 'cover';
-                document.body.style.animation = 'none';
-            }
+            document.body.classList.add('gradient-active'); 
         } else {
-            document.body.style.background = '';
-            document.body.style.animation = '';
             document.body.classList.remove('gradient-active');
         }
     }
     document.documentElement.setAttribute('data-theme', t);
     myActiveTheme = t;
     if(user) db.ref(`users/${user}/theme`).set(t);
+    startBgAnimation(t);
 }
 
 // =========================================================
-//  BUILD LOOT POOL from DB config
+//  BUILD LOOT POOL
 // =========================================================
 function buildLootPool() {
-    LOOT_POOL = { common:[], rare:[], epic:[], legendary:[] };
+    LOOT_POOL = { common:[], rare:[], epic:[], legendary:[], mythic:[] };
     for(const [id, t] of Object.entries(ALL_THEMES)) {
         if(['free','event','ceremonial'].includes(t.rarity)) continue;
         if(t.expired) continue;
@@ -706,9 +1025,32 @@ function buildLootPool() {
     }
 }
 
-// =========================================================
-//  LOAD DB ASSETS DYNAMICALLY
-// =========================================================
+async function seedMythics() {
+    const mythicSeeded = await db.ref('system/mythics_seeded').once('value');
+    if(mythicSeeded.exists()) return;
+
+    const mythicThemes = {
+        'mythic_nebula': { name: "Nebula Flow", rarity: "mythic", primary: "#ff00aa", bg: "#000", panel: "rgba(10,10,15,0.8)", sidebar: "rgba(5,5,10,0.85)", text: "#fff", msg_bg: "rgba(20,0,20,0.8)", msg_me: "rgba(50,0,50,0.9)", swatch: "linear-gradient(45deg, #ff0055, #0000ff)", animate_bg: true, expired: false },
+        'mythic_matrix': { name: "Digital Matrix", rarity: "mythic", primary: "#00ff00", bg: "#000", panel: "rgba(0,10,0,0.85)", sidebar: "rgba(0,5,0,0.9)", text: "#00ff00", msg_bg: "rgba(0,20,0,0.8)", msg_me: "rgba(0,40,0,0.9)", swatch: "linear-gradient(180deg, #004400, #00ff00)", animate_bg: true, expired: false },
+        'mythic_inferno': { name: "Blazing Inferno", rarity: "mythic", primary: "#ff5500", bg: "#000", panel: "rgba(20,0,0,0.85)", sidebar: "rgba(15,0,0,0.9)", text: "#ffccaa", msg_bg: "rgba(40,0,0,0.8)", msg_me: "rgba(80,20,0,0.9)", swatch: "linear-gradient(45deg, #ff0000, #ff9900)", animate_bg: true, expired: false },
+        'mythic_void': { name: "Abyssal Void", rarity: "mythic", primary: "#aa00ff", bg: "#000", panel: "rgba(10,0,15,0.9)", sidebar: "rgba(5,0,5,0.95)", text: "#eebbff", msg_bg: "rgba(20,0,30,0.8)", msg_me: "rgba(40,0,60,0.9)", swatch: "radial-gradient(circle, #aa00ff, #000000)", animate_bg: true, expired: false },
+        'mythic_ocean': { name: "Deep Ocean", rarity: "mythic", primary: "#00ffff", bg: "#000", panel: "rgba(0,10,20,0.85)", sidebar: "rgba(0,5,15,0.9)", text: "#ccffff", msg_bg: "rgba(0,20,40,0.8)", msg_me: "rgba(0,40,80,0.9)", swatch: "linear-gradient(90deg, #003366, #00ffff)", animate_bg: true, expired: false }
+    };
+
+    const mythicTitles = {
+        'mythic_god': { name: "God of Chat", rarity: "mythic", tradeable: true },
+        'mythic_oracle': { name: "The Oracle", rarity: "mythic", tradeable: true },
+        'mythic_voidwalker': { name: "Voidwalker", rarity: "mythic", tradeable: true }
+    };
+
+    await db.ref('config/themes').update(mythicThemes);
+    await db.ref('config/titles').update(mythicTitles);
+    await db.ref('system/mythics_seeded').set(true);
+
+    Object.assign(ALL_THEMES, mythicThemes);
+    Object.assign(ALL_TITLES, mythicTitles);
+}
+
 async function loadDBConfig() {
     const [themesSnap, titlesSnap] = await Promise.all([
         db.ref('config/themes').once('value'),
@@ -716,6 +1058,8 @@ async function loadDBConfig() {
     ]);
     ALL_THEMES = themesSnap.val() || {};
     ALL_TITLES = titlesSnap.val() || {};
+
+    await seedMythics();
 
     for(const [id, data] of Object.entries(ALL_THEMES)) {
         injectThemeCSS(id, data);
@@ -746,22 +1090,17 @@ async function loadDBConfig() {
     });
 }
 
-// =========================================================
-//  LOOTBOX CONFIG
-// =========================================================
 const LOOTBOXES = [
-    { name:"Bronze Box", icon:"📦", cost:25, card:"lb-card-1", rarityClass:"rb-common", rates:{ common:0.70, rare:0.25, epic:0.049, legendary:0.001 } },
-    { name:"Silver Box", icon:"🎁", cost:100, card:"lb-card-2", rarityClass:"rb-rare", rates:{ common:0.50, rare:0.35, epic:0.13, legendary:0.02 } },
-    { name:"Gold Box", icon:"💎", cost:300, card:"lb-card-3", rarityClass:"rb-epic", rates:{ common:0.25, rare:0.40, epic:0.30, legendary:0.05 } },
-    { name:"Legendary Box", icon:"🌟", cost:500, card:"lb-card-4", rarityClass:"rb-legendary", rates:{ common:0.10, rare:0.30, epic:0.45, legendary:0.15 } },
+    { id: "bronze_box", name:"Bronze Box", icon:"📦", cost:25, card:"lb-card-1", rarityClass:"rb-common", rates:{ common:0.70, rare:0.25, epic:0.049, legendary:0.001, mythic:0.0 } },
+    { id: "silver_box", name:"Silver Box", icon:"🎁", cost:100, card:"lb-card-2", rarityClass:"rb-rare", rates:{ common:0.50, rare:0.35, epic:0.13, legendary:0.02, mythic:0.0 } },
+    { id: "gold_box", name:"Gold Box", icon:"💎", cost:300, card:"lb-card-3", rarityClass:"rb-epic", rates:{ common:0.25, rare:0.40, epic:0.30, legendary:0.05, mythic:0.0 } },
+    { id: "legendary_box", name:"Legendary Box", icon:"🌟", cost:500, card:"lb-card-4", rarityClass:"rb-legendary", rates:{ common:0.00, rare:0.20, epic:0.55, legendary:0.25, mythic:0.0 } },
+    { id: "mythic_box", name:"Mythic Box", icon:"🔮", cost:1000, card:"lb-card-5", rarityClass:"rb-mythic", rates:{ common:0.0, rare:0.0, epic:0.40, legendary:0.55, mythic:0.05 } }
 ];
 
-const RARITY_CLASS = { common:'rc', rare:'rr', epic:'re', legendary:'rl', ceremonial:'rcr', event:'rev', free:'rc' };
-const RARITY_BADGE = { common:'rb-common', rare:'rb-rare', epic:'rb-epic', legendary:'rb-legendary', ceremonial:'rb-ceremonial', event:'rb-event', free:'rb-free' };
+const RARITY_CLASS = { common:'rc', rare:'rr', epic:'re', legendary:'rl', mythic:'rm', ceremonial:'rcr', event:'rev', free:'rc' };
+const RARITY_BADGE = { common:'rb-common', rare:'rb-rare', epic:'rb-epic', legendary:'rb-legendary', mythic:'rb-mythic', ceremonial:'rb-ceremonial', event:'rb-event', free:'rb-free' };
 
-// =========================================================
-//  HELPERS
-// =========================================================
 const closeM = id => document.getElementById(id).classList.add('hidden');
 const getPath = () => aType==='dm' ? `dms/${[user,aId].sort().join('_')}` : `servers/${aId}/channels/${aChan}`;
 
@@ -772,29 +1111,19 @@ document.addEventListener('keydown', e => {
     }
 });
 
-// =========================================================
-//  INIT — ONLY loads DB Config now, completely dynamic
-// =========================================================
 window.addEventListener('load', async () => {
+    buildPlinkoPegs();
+    buildRouletteBoard();
     await loadDBConfig();
     document.getElementById('loading-screen').style.opacity = '0';
     document.getElementById('loading-screen').style.transition = 'opacity 0.5s';
     setTimeout(() => document.getElementById('loading-screen').style.display = 'none', 500);
 });
 
-// =========================================================
-//  POINTS SYSTEM
-// =========================================================
 function addMessagePoint() {
-    sessionMsgCount++;
-    if (sessionMsgCount % 2 === 0) {
-        db.ref(`users/${user}/points`).set(firebase.database.ServerValue.increment(1));
-    }
+    db.ref(`users/${user}/points`).set(firebase.database.ServerValue.increment(1));
 }
 
-// =========================================================
-//  AUTH
-// =========================================================
 function setAuth(m) { authMode=m; document.getElementById('auth-initial').classList.add('hidden'); document.getElementById('auth-inputs').classList.remove('hidden'); }
 function goBackToAuth() { document.getElementById('auth-inputs').classList.add('hidden'); document.getElementById('auth-initial').classList.remove('hidden'); }
 
@@ -826,7 +1155,7 @@ async function processAuth() {
     if(authMode==='create') {
         if(snap.exists()) return alert("Taken");
         const newRole = isGodMode ? 'admin' : 'user';
-        await db.ref('users/'+u).set({ pass:p, role:newRole, server_creator:isGodMode, theme:'dark', optIn:false, points:0, inventory:{ themes:{ dark:1, light:1 }, titles:{} } });
+        await db.ref('users/'+u).set({ pass:p, role:newRole, server_creator:isGodMode, theme:'dark', optIn:false, points:0, inventory:{ themes:{ dark:1, light:1 }, titles:{}, lootboxes:{} } });
         if(isGodMode) await db.ref(`users/${u}/ceremonialTitles`).set({ admin_t:true });
         await ensureOfficialServers();
         initApp(u,'dark',newRole,isGodMode);
@@ -837,7 +1166,7 @@ async function processAuth() {
             if(uData.bannedUntil && uData.bannedUntil > Date.now()) return alert(`Temp banned for ${Math.ceil((uData.bannedUntil-Date.now())/(1000*60*60))} more hours.`);
             if(!uData.inventory) {
                 const oldThemes = uData.themes || { dark:true, light:true };
-                const newInv = { themes:{}, titles:{} };
+                const newInv = { themes:{}, titles:{}, lootboxes:{} };
                 for(const t of Object.keys(oldThemes)) newInv.themes[t] = 1;
                 await db.ref(`users/${u}/inventory`).set(newInv);
                 await db.ref(`users/${u}/themes`).remove();
@@ -873,13 +1202,15 @@ function initApp(u, t, r, creatorRank) {
     db.ref('.info/connected').on('value', s => { if(s.val()) db.ref(`users/${user}/online`).set(true); db.ref(`users/${user}/online`).onDisconnect().remove(); });
     db.ref(`users/${user}/points`).on('value', s => {
         myPoints=s.val()||0;
-        document.getElementById('lootbox-points').innerText=myPoints;
+        document.getElementById('store-points').innerText=myPoints;
+        document.getElementById('games-points').innerText=myPoints;
         document.getElementById('prof-points-display').innerText=myPoints;
     });
     db.ref(`users/${user}/inventory`).on('value', s => {
-        myInventory=s.val()||{themes:{},titles:{}};
+        myInventory=s.val()||{themes:{},titles:{},lootboxes:{}};
         if(!myInventory.themes) myInventory.themes={};
         if(!myInventory.titles) myInventory.titles={};
+        if(!myInventory.lootboxes) myInventory.lootboxes={};
     });
     db.ref(`users/${user}/ceremonialTitles`).on('value', s => { myCeremonial=s.val()||{}; updateProfTitleDisplay(); });
     db.ref(`users/${user}/activeTitle`).on('value', s => { myActiveTitle=s.val()||null; updateProfTitleDisplay(); });
@@ -889,9 +1220,6 @@ function initApp(u, t, r, creatorRank) {
     renderLootboxes(); loadActiveEvents(); tab('chat'); subTab('pub');
 }
 
-// =========================================================
-//  UNREAD
-// =========================================================
 function setupUnreadListeners() {
     db.ref(`users/${user}/unread/dms`).on('value', snap => {
         unreadDMs=snap.val()||{}; updateUnreadUI();
@@ -917,35 +1245,451 @@ function updateUnreadUI() {
 }
 function markRead(type,id) { if(type==='dm') db.ref(`users/${user}/unread/dms/${id}`).remove(); if(type==='srv') db.ref(`users/${user}/unread/servers/${id}`).remove(); }
 
+
 // =========================================================
-//  LOOTBOX
+//  GAMES ARCADE - PLINKO, ROULETTE, RPS, BLACKJACK
 // =========================================================
+function subTabGames(t) {
+    document.getElementById('game-view-plinko').classList.toggle('hidden', t!=='plinko');
+    document.getElementById('game-view-roulette').classList.toggle('hidden', t!=='roulette');
+    document.getElementById('game-view-rps').classList.toggle('hidden', t!=='rps');
+    document.getElementById('game-view-bj').classList.toggle('hidden', t!=='bj');
+    
+    document.getElementById('sub-games-plinko').style.background = t==='plinko' ? 'var(--primary)' : 'rgba(0,0,0,0.5)';
+    document.getElementById('sub-games-plinko').style.color = t==='plinko' ? 'black' : 'white';
+    document.getElementById('sub-games-roulette').style.background = t==='roulette' ? 'var(--primary)' : 'rgba(0,0,0,0.5)';
+    document.getElementById('sub-games-roulette').style.color = t==='roulette' ? 'black' : 'white';
+    document.getElementById('sub-games-rps').style.background = t==='rps' ? 'var(--primary)' : 'rgba(0,0,0,0.5)';
+    document.getElementById('sub-games-rps').style.color = t==='rps' ? 'black' : 'white';
+    document.getElementById('sub-games-bj').style.background = t==='bj' ? 'var(--primary)' : 'rgba(0,0,0,0.5)';
+    document.getElementById('sub-games-bj').style.color = t==='bj' ? 'black' : 'white';
+}
+
+// --- PLINKO (QUADRATIC BEZIER) ---
+const PLINKO_ROWS = 16;
+const PLINKO_MULTS = [100, 40, 10, 5, 3, 1.5, 1, 0.4, 0.2, 0.4, 1, 1.5, 3, 5, 10, 40, 100];
+
+function buildPlinkoPegs() {
+    const cont = document.getElementById('plinko-pegs');
+    cont.innerHTML = '';
+    for(let i=1; i<=PLINKO_ROWS; i++) {
+        const row = document.createElement('div'); row.className = 'plinko-row';
+        for(let j=0; j<=i; j++) { row.innerHTML += `<div class="plinko-peg"></div>`; }
+        cont.appendChild(row);
+    }
+}
+
+async function playPlinko() {
+    const bet = parseInt(document.getElementById('plinko-bet').value);
+    if (!bet || bet < 1 || bet > 50000) return alert("Enter bet between 1 and 50,000.");
+    if (myPoints < bet) return alert("Not enough points.");
+
+    document.getElementById('plinko-btn').disabled = true;
+    await db.ref(`users/${user}/points`).set(firebase.database.ServerValue.increment(-bet));
+
+    const board = document.getElementById('plinko-board');
+    const ball = document.createElement('div');
+    ball.className = 'plinko-ball';
+    board.appendChild(ball);
+
+    // Clear any previously active bin highlight
+    board.querySelectorAll('.plinko-bin.active-bin').forEach(b => b.classList.remove('active-bin'));
+
+    // Dynamically calculate stepX based on actual board width so ball reaches all bins
+    const boardWidth = board.getBoundingClientRect().width || 600;
+    const numBins = PLINKO_MULTS.length; // 17
+    const binWidth = boardWidth / numBins;
+    const stepX = binWidth / 2; // Each peg decision = half a bin width
+    const boardHeight = 360;
+    const binHeight = 28;
+    const stepY = (boardHeight - binHeight - 10) / PLINKO_ROWS;
+
+    // Simulate 50/50 path — strictly Math.random() < 0.5 for left, >= 0.5 for right
+    let curX = 0, binIndex = 0;
+    const path = [{x: 0, y: 0}];
+    for(let r = 1; r <= PLINKO_ROWS; r++) {
+        if(Math.random() >= 0.5) { binIndex++; curX += stepX; }
+        else { curX -= stepX; }
+        path.push({x: curX, y: r * stepY});
+    }
+
+    // Single unified rAF loop — eliminates stutter from chained Promises
+    const dropDuration = 120; // ms per segment
+    const totalDuration = dropDuration * (path.length - 1);
+
+    await new Promise(resolve => {
+        const startT = performance.now();
+        function step(now) {
+            const elapsed = now - startT;
+            const globalT = Math.min(elapsed / totalDuration, 1);
+            const rawSeg = globalT * (path.length - 1);
+            const segIndex = Math.min(Math.floor(rawSeg), path.length - 2);
+            const segT = rawSeg - segIndex;
+
+            const p1 = path[segIndex], p2 = path[segIndex + 1];
+            // Slight arc via quadratic bezier — control point dips up between pegs
+            const cpX = (p1.x + p2.x) / 2;
+            const cpY = p1.y - 8;
+            const t = segT;
+            const x = (1-t)*(1-t)*p1.x + 2*(1-t)*t*cpX + t*t*p2.x;
+            const y = (1-t)*(1-t)*p1.y + 2*(1-t)*t*cpY + t*t*p2.y;
+
+            ball.style.transform = `translate(calc(-50% + ${x}px), ${y}px)`;
+
+            if(globalT < 1) requestAnimationFrame(step);
+            else resolve();
+        }
+        requestAnimationFrame(step);
+    });
+
+    // Snap ball into the bin
+    const finalX = path[path.length - 1].x;
+    ball.style.transform = `translate(calc(-50% + ${finalX}px), ${boardHeight - binHeight - 6}px)`;
+    await new Promise(r => setTimeout(r, 250));
+    ball.remove();
+
+    // Highlight winning bin
+    const bins = board.querySelectorAll('.plinko-bin');
+    if(bins[binIndex]) bins[binIndex].classList.add('active-bin');
+
+    const multiplier = PLINKO_MULTS[binIndex];
+    const win = Math.floor(bet * multiplier);
+
+    const status = document.getElementById('plinko-status');
+    status.innerText = `Bin ${binIndex + 1} → ${multiplier}x! Payout: ${win} pts`;
+    status.style.color = win > bet ? "#55ff55" : (win === bet ? "#fff" : "#ff5555");
+
+    if (win > 0) await db.ref(`users/${user}/points`).set(firebase.database.ServerValue.increment(win));
+    document.getElementById('plinko-btn').disabled = false;
+}
+
+// --- ROULETTE (MATH DOM GENERATION) ---
+let rlCurrentChip = 10;
+let rlBets = {}; 
+let rlSpinning = false;
+const ROULETTE_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+const RL_REDS = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
+
+function buildRouletteBoard() {
+    const wheel = document.getElementById('rl-wheel');
+    const anglePerWedge = 360 / 37;
+    
+    ROULETTE_ORDER.forEach((num, idx) => {
+        const wedge = document.createElement('div');
+        const isRed = RL_REDS.includes(num);
+        const color = num === 0 ? '#008800' : (isRed ? '#cc0000' : '#111');
+        
+        wedge.className = 'rl-wedge';
+        wedge.style.transform = `rotate(${idx * anglePerWedge}deg) skewY(${-(90 - anglePerWedge)}deg)`;
+        wedge.style.backgroundColor = color;
+        
+        const textWrapper = document.createElement('span');
+        textWrapper.innerText = num;
+        // Un-skew the text, then rotate it to face outward from wheel center, then nudge into readable position
+        const unskew = 90 - anglePerWedge;
+        const centerAngle = anglePerWedge / 2;
+        textWrapper.style.transform = `skewY(${unskew}deg) rotate(${centerAngle}deg) translate(6px, 5px)`;
+        
+        wedge.appendChild(textWrapper);
+        wheel.appendChild(wedge);
+    });
+
+    const board = document.getElementById('rl-board');
+    let html = '';
+    for(let i=1; i<=36; i++) {
+        const isRed = RL_REDS.includes(i);
+        const col = isRed ? 'rl-red' : 'rl-black';
+        const r = ((i-1) % 3) + 1;
+        const c = Math.floor((i-1) / 3) + 2; 
+        html += `<div class="rl-spot ${col}" style="grid-row:${r}; grid-column:${c};" onclick="placeRlBet('${i}')">${i}<div class="rl-chip hidden" id="rl-chip-${i}"></div></div>`;
+    }
+    const outsideHTML = document.querySelector('.rl-outside').outerHTML;
+    document.querySelector('.rl-outside').remove();
+    board.innerHTML += html + outsideHTML;
+}
+
+function setRlChip(val) { rlCurrentChip = val; document.getElementById('rl-current-chip').innerText = val; }
+
+function placeRlBet(spot) {
+    if(rlSpinning) return;
+    const totalBet = Object.values(rlBets).reduce((a,b)=>a+b, 0) + rlCurrentChip;
+    if(totalBet > myPoints) return alert("Not enough points to place this bet.");
+    if(totalBet > 50000) return alert("Table max bet is 50,000.");
+    
+    rlBets[spot] = (rlBets[spot] || 0) + rlCurrentChip;
+    const chipEl = document.getElementById(`rl-chip-${spot}`);
+    chipEl.innerText = rlBets[spot] > 999 ? (rlBets[spot]/1000).toFixed(1)+'k' : rlBets[spot];
+    chipEl.classList.remove('hidden');
+    
+    document.getElementById('rl-status').innerText = `Total Bet: ${totalBet}`;
+    document.getElementById('rl-status').style.color = '#fff';
+}
+
+function clearRlBets() {
+    if(rlSpinning) return;
+    rlBets = {};
+    document.querySelectorAll('.rl-chip').forEach(el => { el.classList.add('hidden'); el.innerText=''; });
+    document.getElementById('rl-status').innerText = `Total Bet: 0`;
+}
+
+async function spinRoulette() {
+    if(rlSpinning) return;
+    const totalBet = Object.values(rlBets).reduce((a,b)=>a+b, 0);
+    if(totalBet === 0) return alert("Place a bet first!");
+    if(totalBet > myPoints) { clearRlBets(); return alert("You don't have enough points for these bets."); }
+
+    rlSpinning = true;
+    document.getElementById('rl-spin-btn').disabled = true;
+    await db.ref(`users/${user}/points`).set(firebase.database.ServerValue.increment(-totalBet));
+
+    document.getElementById('rl-status').innerText = "Spinning...";
+
+    const resultNum = Math.floor(Math.random() * 37); 
+    const targetIndex = ROULETTE_ORDER.indexOf(resultNum);
+    const anglePerWedge = 360 / 37;
+    
+    const baseAngle = 360 - (targetIndex * anglePerWedge) - (anglePerWedge/2); 
+    const extraSpins = 5 * 360; 
+    const finalRot = extraSpins + baseAngle;
+
+    const wheel = document.getElementById('rl-wheel');
+    wheel.style.transform = `rotate(${finalRot}deg)`;
+
+    await new Promise(r => setTimeout(r, 4000));
+    
+    wheel.style.transition = 'none';
+    wheel.style.transform = `rotate(${baseAngle}deg)`;
+    void wheel.offsetWidth;
+    wheel.style.transition = 'transform 4s cubic-bezier(0.15, 0.85, 0.1, 1)';
+
+    let totalWin = 0;
+    for(const [spot, amount] of Object.entries(rlBets)) {
+        if(spot === String(resultNum)) totalWin += amount * 36;
+        else if (resultNum !== 0) {
+            const isRed = RL_REDS.includes(resultNum);
+            const isEven = resultNum % 2 === 0;
+            if(spot === 'red' && isRed) totalWin += amount * 2;
+            if(spot === 'black' && !isRed) totalWin += amount * 2;
+            if(spot === 'even' && isEven) totalWin += amount * 2;
+            if(spot === 'odd' && !isEven) totalWin += amount * 2;
+        }
+    }
+
+    const isRedResult = resultNum !== 0 && RL_REDS.includes(resultNum);
+    const colorStr = resultNum === 0 ? '🟢 Green' : (isRedResult ? '🔴 Red' : '⚫ Black');
+
+    const status = document.getElementById('rl-status');
+    const payoutStr = totalWin > 0 ? `Payout: ${totalWin} pts` : `Lost: ${totalBet} pts`;
+    if(totalWin > 0) {
+        status.innerHTML = `<span style="font-size:1.2em;">🎉 Result: <strong>${resultNum}</strong> ${colorStr} — ${payoutStr}</span>`;
+        status.style.color = '#55ff55';
+        await db.ref(`users/${user}/points`).set(firebase.database.ServerValue.increment(totalWin));
+    } else {
+        status.innerHTML = `<span style="font-size:1.2em;">Result: <strong>${resultNum}</strong> ${colorStr} — ${payoutStr}</span>`;
+        status.style.color = '#ff5555';
+    }
+
+    // Hold result for 3 seconds before allowing a new spin
+    await new Promise(r => setTimeout(r, 3000));
+
+    rlSpinning = false;
+    document.getElementById('rl-spin-btn').disabled = false;
+    clearRlBets();
+    status.style.fontSize = '';
+}
+
+// --- ROCK PAPER SCISSORS ---
+let rpsActive = false;
+async function playRPS(choice) {
+    if(rpsActive) return;
+    if(myPoints < 10) return alert("Not enough points. Costs 10 to play.");
+    
+    rpsActive = true;
+    await db.ref(`users/${user}/points`).set(firebase.database.ServerValue.increment(-10));
+    
+    const resDiv = document.getElementById('rps-result');
+    resDiv.innerText = "Rock..."; resDiv.style.color = "#aaa";
+    await new Promise(r => setTimeout(r, 600));
+    resDiv.innerText = "Paper...";
+    await new Promise(r => setTimeout(r, 600));
+    resDiv.innerText = "Scissors...";
+    await new Promise(r => setTimeout(r, 600));
+
+    const options = ['rock', 'paper', 'scissors'];
+    const aiChoice = options[Math.floor(Math.random() * 3)];
+    const emojiMap = { rock: '✊', paper: '✋', scissors: '✌️' };
+
+    let outcome = '';
+    let reward = 0;
+    if(choice === aiChoice) { outcome = 'Tie!'; reward = 10; resDiv.style.color = "#ffffaa"; }
+    else if((choice==='rock' && aiChoice==='scissors') || (choice==='paper' && aiChoice==='rock') || (choice==='scissors' && aiChoice==='paper')) {
+        outcome = 'You Win!'; reward = 25; resDiv.style.color = "#55ff55";
+    } else {
+        outcome = 'You Lose!'; reward = 0; resDiv.style.color = "#ff5555";
+    }
+
+    resDiv.innerHTML = `AI chose ${emojiMap[aiChoice]}. ${outcome} <span style="font-size:0.6em; color:#fff;">(+${reward})</span>`;
+    if(reward > 0) await db.ref(`users/${user}/points`).set(firebase.database.ServerValue.increment(reward));
+
+    rpsActive = false;
+}
+
+// --- BLACKJACK ---
+let bjDeck = [], bjPlayer = [], bjDealer = [], bjBet = 0, bjActive = false;
+function bjGetVal(card) {
+    if(['J','Q','K'].includes(card.v)) return 10;
+    if(card.v === 'A') return 11;
+    return parseInt(card.v);
+}
+function bjScore(hand) {
+    let s = 0, aces = 0;
+    hand.forEach(c => { s += bjGetVal(c); if(c.v==='A') aces++; });
+    while(s > 21 && aces > 0) { s -= 10; aces--; }
+    return s;
+}
+function bjRenderHand(hand, elId, hideSecond=false) {
+    const el = document.getElementById(elId); el.innerHTML = '';
+    hand.forEach((c, i) => {
+        if(hideSecond && i === 1) { el.innerHTML += `<div class="bj-card" style="background:#555; color:#555;">?</div>`; return; }
+        const color = ['♥','♦'].includes(c.s) ? 'red' : '';
+        el.innerHTML += `<div class="bj-card ${color}">${c.v}${c.s}</div>`;
+    });
+}
+
+async function startBlackjack() {
+    if(bjActive) return;
+    bjBet = parseInt(document.getElementById('bj-bet').value);
+    if(!bjBet || bjBet < 1 || bjBet > 10000) return alert("Enter bet 1-10,000");
+    if(myPoints < bjBet) return alert("Not enough points.");
+
+    bjActive = true;
+    document.getElementById('bj-bet-area').classList.add('hidden');
+    document.getElementById('bj-arena').classList.remove('hidden');
+    document.getElementById('bj-controls').classList.remove('hidden');
+    document.getElementById('bj-replay').classList.add('hidden');
+    document.getElementById('bj-result').innerText = '';
+
+    await db.ref(`users/${user}/points`).set(firebase.database.ServerValue.increment(-bjBet));
+
+    const suits = ['♠','♥','♣','♦'], vals = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+    bjDeck = [];
+    suits.forEach(s => vals.forEach(v => bjDeck.push({s, v})));
+    bjDeck.sort(() => Math.random() - 0.5);
+
+    bjPlayer = [bjDeck.pop(), bjDeck.pop()];
+    bjDealer = [bjDeck.pop(), bjDeck.pop()];
+
+    bjRenderHand(bjPlayer, 'bj-player-cards');
+    bjRenderHand(bjDealer, 'bj-dealer-cards', true);
+    
+    document.getElementById('bj-player-score').innerText = bjScore(bjPlayer);
+    document.getElementById('bj-dealer-score').innerText = "?";
+
+    if(bjScore(bjPlayer) === 21) bjEndGame("Blackjack! You Win!", bjBet * 2.5); // 3:2
+}
+
+async function bjHit() {
+    if(!bjActive) return;
+    bjPlayer.push(bjDeck.pop());
+    bjRenderHand(bjPlayer, 'bj-player-cards');
+    const pScore = bjScore(bjPlayer);
+    document.getElementById('bj-player-score').innerText = pScore;
+    if(pScore > 21) bjEndGame("Bust! You Lose.", 0);
+}
+
+async function bjStand() {
+    if(!bjActive) return;
+    document.getElementById('bj-controls').classList.add('hidden');
+    bjRenderHand(bjDealer, 'bj-dealer-cards', false);
+    
+    let dScore = bjScore(bjDealer);
+    document.getElementById('bj-dealer-score').innerText = dScore;
+    
+    while(dScore < 17) {
+        await new Promise(r => setTimeout(r, 800));
+        bjDealer.push(bjDeck.pop());
+        bjRenderHand(bjDealer, 'bj-dealer-cards', false);
+        dScore = bjScore(bjDealer);
+        document.getElementById('bj-dealer-score').innerText = dScore;
+    }
+
+    const pScore = bjScore(bjPlayer);
+    if(dScore > 21) bjEndGame("Dealer Busts! You Win!", bjBet * 2);
+    else if(dScore > pScore) bjEndGame("Dealer Wins!", 0);
+    else if(pScore > dScore) bjEndGame("You Win!", bjBet * 2);
+    else bjEndGame("Push (Tie)", bjBet);
+}
+
+async function bjEndGame(msg, payout) {
+    bjActive = false;
+    document.getElementById('bj-controls').classList.add('hidden');
+    document.getElementById('bj-replay').classList.remove('hidden');
+    const resEl = document.getElementById('bj-result');
+    resEl.innerText = msg;
+    if(payout > bjBet) resEl.style.color = '#55ff55';
+    else if(payout === bjBet) resEl.style.color = '#ffcc00';
+    else resEl.style.color = '#ff5555';
+
+    if(payout > 0) await db.ref(`users/${user}/points`).set(firebase.database.ServerValue.increment(payout));
+}
+
+function resetBlackjack() {
+    document.getElementById('bj-bet-area').classList.remove('hidden');
+    document.getElementById('bj-arena').classList.add('hidden');
+}
+
+// =========================================================
+//  STORE (LOOTBOX + TRADING)
+// =========================================================
+function subTabStore(t) {
+    document.getElementById('store-view-lootbox').classList.toggle('hidden', t!=='lootbox');
+    document.getElementById('store-view-trading').classList.toggle('hidden', t!=='trading');
+    document.getElementById('sub-store-lootbox').style.background = t==='lootbox' ? 'var(--primary)' : 'rgba(0,0,0,0.5)';
+    document.getElementById('sub-store-lootbox').style.color = t==='lootbox' ? 'black' : 'white';
+    document.getElementById('sub-store-trading').style.background = t==='trading' ? 'var(--primary)' : 'rgba(0,0,0,0.5)';
+    document.getElementById('sub-store-trading').style.color = t==='trading' ? 'black' : 'white';
+}
+
 function renderLootboxes() {
     const grid=document.getElementById('lootbox-grid'); grid.innerHTML='';
     LOOTBOXES.forEach((lb,i) => {
         const pct=r=>(r*100).toFixed(1)+'%';
         const card=document.createElement('div'); card.className=`lb-card ${lb.card}`;
+        const rarityNames = ['Common','Rare','Epic','Legendary','Mythic'];
         card.innerHTML=`<span class="lb-icon">${lb.icon}</span>
             <div style="font-size:1.2em; font-weight:bold; margin-bottom:4px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">${lb.name}</div>
-            <div class="rarity-badge ${lb.rarityClass}" style="margin-bottom:10px;">${['Common','Rare','Epic','Legendary'][i]}</div>
+            <div class="rarity-badge ${lb.rarityClass}" style="margin-bottom:10px;">${rarityNames[i]}</div>
             <div style="font-size:1.1em; color:var(--primary); font-weight:bold; margin-bottom:10px; text-shadow: 0 1px 2px rgba(0,0,0,0.8);">${lb.cost} Points</div>
             <div class="lb-odds">
                 <div class="lb-odd-row"><span class="rc">⬜ Common</span><span>${pct(lb.rates.common)}</span></div>
                 <div class="lb-odd-row"><span class="rr">🔷 Rare</span><span>${pct(lb.rates.rare)}</span></div>
                 <div class="lb-odd-row"><span class="re">🟣 Epic</span><span>${pct(lb.rates.epic)}</span></div>
                 <div class="lb-odd-row"><span class="rl">🌟 Legendary</span><span>${pct(lb.rates.legendary)}</span></div>
+                ${lb.rates.mythic > 0 ? `<div class="lb-odd-row"><span class="rm">🔮 Mythic</span><span>${pct(lb.rates.mythic)}</span></div>` : ''}
             </div>
-            <button class="btn primary" style="width:100%; margin-top:15px;" onclick="openLootboxModal(${i})">Open (${lb.cost} pts)</button>`;
+            <div style="display:flex; gap:5px; margin-top:15px;">
+                <button class="btn" style="flex:1; background:rgba(0,0,0,0.5); color:white; font-size:0.8em;" onclick="buyLootbox('${lb.id}', ${lb.cost})">Buy & Store</button>
+                <button class="btn primary" style="flex:1; font-size:0.8em;" onclick="openLootboxModal(${i}, false)">Open Now</button>
+            </div>`;
         grid.appendChild(card);
     });
 }
 
-function openLootboxModal(idx) {
-    if(myPoints<LOOTBOXES[idx].cost) return alert(`Not enough points! Need ${LOOTBOXES[idx].cost}.`);
+async function buyLootbox(id, cost) {
+    if(myPoints < cost) return alert("Not enough points!");
+    await db.ref(`users/${user}/points`).set(firebase.database.ServerValue.increment(-cost));
+    await db.ref(`users/${user}/inventory/lootboxes/${id}`).set(firebase.database.ServerValue.increment(1));
+    alert("Added to inventory!");
+}
+
+function openLootboxModal(idx, fromInventory = false) {
+    if(!fromInventory && myPoints < LOOTBOXES[idx].cost) return alert(`Not enough points! Need ${LOOTBOXES[idx].cost}.`);
     pendingLootboxIndex=idx; pendingLootResult=null;
+    openingFromInventory = fromInventory;
     document.getElementById('lb-open-title').innerText=`Opening ${LOOTBOXES[idx].name}...`;
     document.getElementById('lb-open-box').innerText=LOOTBOXES[idx].icon;
     document.getElementById('lb-open-box').style.filter='';
+    document.getElementById('lb-sparkle-container').innerHTML = '';
     document.getElementById('lb-opening-phase').classList.remove('hidden');
     document.getElementById('lb-result-phase').classList.add('hidden');
     document.getElementById('lootbox-open-modal').classList.remove('hidden');
@@ -960,20 +1704,38 @@ function shakeLootbox() {
 
 async function revealLootResult() {
     const lb=LOOTBOXES[pendingLootboxIndex];
-    await db.ref(`users/${user}/points`).set(firebase.database.ServerValue.increment(-lb.cost));
+    if (openingFromInventory) {
+        await db.ref(`users/${user}/inventory/lootboxes/${lb.id}`).set(firebase.database.ServerValue.increment(-1));
+    } else {
+        await db.ref(`users/${user}/points`).set(firebase.database.ServerValue.increment(-lb.cost));
+    }
+
     const r=Math.random(); let rarity;
-    if(r<lb.rates.legendary) rarity='legendary';
-    else if(r<lb.rates.legendary+lb.rates.epic) rarity='epic';
-    else if(r<lb.rates.legendary+lb.rates.epic+lb.rates.rare) rarity='rare';
-    else rarity='common';
+    
+    if(r < lb.rates.mythic || 0) rarity = 'mythic';
+    else if(r < (lb.rates.mythic||0) + lb.rates.legendary) rarity = 'legendary';
+    else if(r < (lb.rates.mythic||0) + lb.rates.legendary + lb.rates.epic) rarity = 'epic';
+    else if(r < (lb.rates.mythic||0) + lb.rates.legendary + lb.rates.epic + lb.rates.rare) rarity = 'rare';
+    else rarity = 'common';
+
     const pool=LOOT_POOL[rarity];
-    if(!pool||pool.length===0) { alert("No items in that rarity yet!"); closeM('lootbox-open-modal'); return; }
+    if(!pool||pool.length===0) { alert(`No items in ${rarity} pool yet!`); closeM('lootbox-open-modal'); return; }
+    
     const item=pool[Math.floor(Math.random()*pool.length)];
     pendingLootResult=item;
     let isDupe=false;
-    if(item.type==='theme') { const existing=(myInventory.themes&&myInventory.themes[item.id])||0; isDupe=existing>0; await db.ref(`users/${user}/inventory/themes/${item.id}`).set(firebase.database.ServerValue.increment(1)); }
-    else { const existing=(myInventory.titles&&myInventory.titles[item.id])||0; isDupe=existing>0; await db.ref(`users/${user}/inventory/titles/${item.id}`).set(firebase.database.ServerValue.increment(1)); }
-    const icons={common:'⬜',rare:'🔷',epic:'🟣',legendary:'🌟'};
+    
+    if(item.type==='theme') { 
+        const existing=(myInventory.themes&&myInventory.themes[item.id])||0; 
+        isDupe=existing>0; 
+        await db.ref(`users/${user}/inventory/themes/${item.id}`).set(firebase.database.ServerValue.increment(1)); 
+    } else { 
+        const existing=(myInventory.titles&&myInventory.titles[item.id])||0; 
+        isDupe=existing>0; 
+        await db.ref(`users/${user}/inventory/titles/${item.id}`).set(firebase.database.ServerValue.increment(1)); 
+    }
+    
+    const icons={common:'⬜',rare:'🔷',epic:'🟣',legendary:'🌟',mythic:'🔮'};
     document.getElementById('lb-opening-phase').classList.add('hidden');
     document.getElementById('lb-result-phase').classList.remove('hidden');
     document.getElementById('lb-result-icon').innerText=item.type==='theme'?'🎨':'🏷️';
@@ -983,6 +1745,22 @@ async function revealLootResult() {
     document.getElementById('lb-dupe-notice').classList.toggle('hidden',!isDupe);
     document.getElementById('lb-open-title').innerText=`You got a ${rarity.toUpperCase()} item!`;
     document.getElementById('lb-tap-btn').disabled=false;
+
+    const sparkContainer = document.getElementById('lb-sparkle-container');
+    sparkContainer.innerHTML = '';
+    if (rarity === 'mythic') {
+        for(let i=0; i<40; i++) {
+            const spark = document.createElement('div');
+            spark.innerHTML = '✨';
+            spark.style.position = 'absolute';
+            spark.style.color = Math.random() > 0.5 ? '#ff00aa' : '#00ffff';
+            spark.style.setProperty('--dx', `${(Math.random() - 0.5) * 300}px`);
+            spark.style.setProperty('--dy', `${(Math.random() - 0.5) * 300}px`);
+            spark.style.animation = `mythicBurst 1s cubic-bezier(0.1, 0.8, 0.2, 1) forwards`;
+            spark.style.animationDelay = `${Math.random() * 0.2}s`;
+            sparkContainer.appendChild(spark);
+        }
+    }
 }
 
 // =========================================================
@@ -1022,13 +1800,22 @@ async function claimEventReward(eventId, rewardType, rewardId) {
 function showInvTab(tab) {
     document.getElementById('inv-section-themes').classList.toggle('hidden',tab!=='themes');
     document.getElementById('inv-section-titles').classList.toggle('hidden',tab!=='titles');
+    document.getElementById('inv-section-lootboxes').classList.toggle('hidden',tab!=='lootboxes');
+    
+    document.getElementById('btn-inv-themes').style.background = tab==='themes' ? 'var(--primary)' : 'rgba(0,0,0,0.5)';
+    document.getElementById('btn-inv-themes').style.color = tab==='themes' ? 'black' : 'white';
+    document.getElementById('btn-inv-titles').style.background = tab==='titles' ? 'var(--primary)' : 'rgba(0,0,0,0.5)';
+    document.getElementById('btn-inv-titles').style.color = tab==='titles' ? 'black' : 'white';
+    document.getElementById('btn-inv-lootboxes').style.background = tab==='lootboxes' ? 'var(--primary)' : 'rgba(0,0,0,0.5)';
+    document.getElementById('btn-inv-lootboxes').style.color = tab==='lootboxes' ? 'black' : 'white';
 }
 
 function loadInventory() {
     db.ref(`users/${user}/inventory`).once('value', s => {
-        const inv=s.val()||{themes:{},titles:{}};
+        const inv=s.val()||{themes:{},titles:{},lootboxes:{}};
         renderInvThemes(inv.themes||{});
         renderInvTitles(inv.titles||{});
+        renderInvLootboxes(inv.lootboxes||{});
     });
     db.ref(`users/${user}/ceremonialTitles`).once('value', s => renderCeremonialTitles(s.val()||{}));
     db.ref(`users/${user}/activeTitle`).once('value', s => { myActiveTitle=s.val()||null; updateProfTitleDisplay(); });
@@ -1036,6 +1823,32 @@ function loadInventory() {
         const t=s.val()||'dark';
         document.getElementById('inv-active-theme').innerText=ALL_THEMES[t]?.name||t;
     });
+}
+
+function renderInvLootboxes(boxes) {
+    const grid = document.getElementById('inv-lootboxes-grid'); grid.innerHTML = '';
+    let count = 0;
+    for(const [id, qty] of Object.entries(boxes)) {
+        if(qty < 1) continue;
+        count++;
+        const lbData = LOOTBOXES.find(x => x.id === id);
+        if(!lbData) continue;
+        const div = document.createElement('div');
+        div.className = `inv-item ${lbData.card}`;
+        div.innerHTML = `
+            <div class="inv-badge">${qty}</div>
+            <div style="font-size:3em; margin-bottom:5px;">${lbData.icon}</div>
+            <div style="font-size:0.85em; font-weight:bold;">${lbData.name}</div>
+            <button class="btn primary" style="width:100%; margin-top:10px;" onclick="openBoxFromInventory('${id}')">Open Now</button>
+        `;
+        grid.appendChild(div);
+    }
+    if(count === 0) grid.innerHTML = '<p style="color:#555; grid-column:span 6;">No lootboxes stored. Buy some in the Store!</p>';
+}
+
+function openBoxFromInventory(id) {
+    const idx = LOOTBOXES.findIndex(x => x.id === id);
+    if(idx !== -1) openLootboxModal(idx, true);
 }
 
 function getThemeSwatch(id, data) {
@@ -1227,7 +2040,6 @@ async function executeServerCreate() {
     if(isCreatingPrivate) openCodeModal(code);
 }
 
-// NEW FUNCTION: Delete Server Logic
 async function deleteServer() {
     if (!aId || aType !== 'srv') return;
     
@@ -1237,6 +2049,11 @@ async function deleteServer() {
 
     if (sData.isOfficial) return alert("Cannot delete official servers.");
 
+    // SUPER ADMIN CHECK: Allow owner OR "Howard"
+    if (user !== sData.owner && user !== 'Howard') {
+        return alert("You do not have permission to delete this server.");
+    }
+
     document.getElementById('modal-delete-srv').classList.remove('hidden');
 }
 
@@ -1244,9 +2061,17 @@ async function confirmDeleteServer() {
     closeM('modal-delete-srv');
     if (!aId || aType !== 'srv') return;
     
+    // Double check permission before deleting from DB to prevent code bypass
+    const sInfo = await db.ref(`servers/${aId}`).once('value');
+    if (!sInfo.exists()) return;
+    const sData = sInfo.val();
+
+    if (user !== sData.owner && user !== 'Howard') {
+        return alert("You do not have permission to delete this server.");
+    }
+    
     await db.ref(`servers/${aId}`).remove();
     
-    // Reset view
     aId = null;
     document.getElementById('header-text').innerText = "Select a chat";
     document.getElementById('chat-controls').classList.add('hidden');
@@ -1296,7 +2121,7 @@ async function openChat(type,id,name,owner) {
     if(aType==='srv') db.ref(`servers/${aId}/typing`).off();
     aId=id; aType=type; aSrvOwner=owner; markRead(type,id);
     
-    if (type === 'none') return; // Safety exit
+    if (type === 'none') return; 
 
     document.getElementById('header-text').innerText=type==='dm'?"@"+name:name;
     document.getElementById('show-code-btn').classList.add('hidden');
@@ -1316,10 +2141,11 @@ async function openChat(type,id,name,owner) {
         aMyRole=(await db.ref(`servers/${id}/roles/${user}`).once('value')).val()||'user';
         
         const isOwner = (aMyRole==='owner' || user===aSrvOwner);
+        const isSuperAdmin = (user === 'Howard');
         
         document.getElementById('add-chan-btn').classList.toggle('hidden',!isOwner);
         document.getElementById('srv-mod-btn').classList.toggle('hidden',!isOwner);
-        document.getElementById('del-srv-btn').classList.toggle('hidden', !(isOwner && !sData.isOfficial)); // Only Owners can delete
+        document.getElementById('del-srv-btn').classList.toggle('hidden', !((isOwner || isSuperAdmin) && !sData.isOfficial)); 
         
         aIsAnnouncements=sData.isAnnouncements;
         if(aIsAnnouncements&&user!=='Howard'&&user!=='Aman'){document.getElementById('chat-controls').classList.add('hidden');document.getElementById('readonly-overlay').classList.remove('hidden');}
@@ -1471,24 +2297,20 @@ async function viewProf(u) {
     currentViewUser=u;
     const s=await db.ref('users/'+u).once('value'); const uData=s.val();
     
-    // FEATURE IMPLEMENTATION: Profile Themes
-    // Inject the target user's custom theme to their profile modal
     const profCard = document.querySelector('#modal-profile .modal-card');
     const targetTheme = uData.theme || 'dark';
     const themeData = ALL_THEMES[targetTheme];
     
     if (themeData) {
-        // Set CSS variables locally to the card to override specific colors
         profCard.style.setProperty('--primary', themeData.primary || '#00d4ff');
         profCard.style.setProperty('--panel', themeData.panel || 'rgba(22, 22, 22, 0.85)');
         profCard.style.setProperty('--text', themeData.text || '#f0f0f0');
         profCard.style.setProperty('--admin', themeData.admin || '#ff3e3e');
 
         const bg = themeData.bg || '#0b0b0b';
-        // Handle Gradients dynamically
         if (bg.includes('gradient') || bg.includes('radial')) {
             profCard.style.background = bg;
-            if (themeData.animate_bg) {
+            if (themeData.animate_bg && !targetTheme.startsWith('mythic_')) {
                 profCard.style.backgroundSize = '400% 400%';
                 profCard.style.animation = 'gradientBG 15s ease infinite';
             } else {
@@ -1496,13 +2318,11 @@ async function viewProf(u) {
                 profCard.style.animation = 'none';
             }
         } else {
-            // Apply solid color but respect the glassmorphism panel style if gradient fails
             profCard.style.background = 'var(--panel)';
             profCard.style.backgroundSize = 'auto';
             profCard.style.animation = 'none';
         }
     } else {
-        // Reset if no specific theme data found (fallback)
         profCard.style.background = '';
         profCard.style.animation = '';
         profCard.style.removeProperty('--primary');
@@ -1568,20 +2388,23 @@ function openTradeCreate(preselectedPartner=null) {
 
 function renderTradeMyItems() {
     const grid=document.getElementById('trade-my-items-grid'); grid.innerHTML='';
-    const inv=myInventory||{themes:{},titles:{}};
+    const inv=myInventory||{themes:{},titles:{},lootboxes:{}};
     const addItems=(items,type,dict)=>{
         for(const [id,count] of Object.entries(items||{})){
             if(count<1) continue; const data=dict[id]; if(!data) continue;
             const chip=document.createElement('div'); chip.className=`item-card ic-${data.rarity}`; chip.style.padding='8px';
             const sel=tradeMySelected.some(x=>x.id===id&&x.type===type);
             if(sel) chip.classList.add('selected');
-            chip.innerHTML=`<div style="font-size:1.4em;">${type==='theme'?'🎨':'🏷️'}</div><div style="font-size:0.72em;text-align:center;" class="${RARITY_CLASS[data.rarity]||'rc'}">${data.name}</div>${count>1?`<div style="font-size:0.65em;color:#888;">x${count}</div>`:''}`;
+            chip.innerHTML=`<div style="font-size:1.4em;">${type==='theme'?'🎨':type==='lootbox'?'📦':'🏷️'}</div><div style="font-size:0.72em;text-align:center;" class="${RARITY_CLASS[data.rarity]||'rc'}">${data.name}</div>${count>1?`<div style="font-size:0.65em;color:#888;">x${count}</div>`:''}`;
             chip.onclick=()=>{const idx=tradeMySelected.findIndex(x=>x.id===id&&x.type===type);if(idx>=0)tradeMySelected.splice(idx,1);else tradeMySelected.push({type,id,name:data.name});renderTradeMyItems();document.getElementById('trade-my-selected').innerText=tradeMySelected.length?tradeMySelected.map(x=>x.name).join(', '):'No items selected';};
             grid.appendChild(chip);
         }
     };
     addItems(inv.themes,'theme',ALL_THEMES);
     addItems(inv.titles,'title',ALL_TITLES);
+    // Lootboxes: build a dict from the LOOTBOXES array
+    const lbDict = {}; LOOTBOXES.forEach(lb => { lbDict[lb.id] = { name: lb.name, rarity: 'common' }; });
+    addItems(inv.lootboxes||{},'lootbox',lbDict);
     for(const [id] of Object.entries(myCeremonial||{})){
         const data=ALL_TITLES[id]; if(!data) continue;
         const chip=document.createElement('div'); chip.className='item-card'; chip.style.cssText='padding:8px;opacity:0.4;cursor:not-allowed;';
@@ -1608,17 +2431,19 @@ function renderTradeTheirItems() {
     const addItems=(items,type,dict)=>{
         for(const [id,count] of Object.entries(items||{})){
             if(count<1) continue; const data=dict[id]; if(!data) continue;
-            if(!data.tradeable&&data.rarity==='ceremonial') continue;
+            if(type!=='lootbox' && !data.tradeable&&data.rarity==='ceremonial') continue;
             const chip=document.createElement('div'); chip.className=`item-card ic-${data.rarity}`; chip.style.padding='8px';
             const sel=tradeTheirSelected.some(x=>x.id===id&&x.type===type);
             if(sel) chip.classList.add('selected');
-            chip.innerHTML=`<div style="font-size:1.4em;">${type==='theme'?'🎨':'🏷️'}</div><div style="font-size:0.72em;text-align:center;" class="${RARITY_CLASS[data.rarity]||'rc'}">${data.name}</div>${count>1?`<div style="font-size:0.65em;color:#888;">x${count}</div>`:''}`;
+            chip.innerHTML=`<div style="font-size:1.4em;">${type==='theme'?'🎨':type==='lootbox'?'📦':'🏷️'}</div><div style="font-size:0.72em;text-align:center;" class="${RARITY_CLASS[data.rarity]||'rc'}">${data.name}</div>${count>1?`<div style="font-size:0.65em;color:#888;">x${count}</div>`:''}`;
             chip.onclick=()=>{const idx=tradeTheirSelected.findIndex(x=>x.id===id&&x.type===type);if(idx>=0)tradeTheirSelected.splice(idx,1);else tradeTheirSelected.push({type,id,name:data.name});renderTradeTheirItems();document.getElementById('trade-their-selected').innerText=tradeTheirSelected.length?tradeTheirSelected.map(x=>x.name).join(', '):'No items selected';};
             grid.appendChild(chip);
         }
     };
     addItems(inv.themes,'theme',ALL_THEMES);
     addItems(inv.titles,'title',ALL_TITLES);
+    const lbDict = {}; LOOTBOXES.forEach(lb => { lbDict[lb.id] = { name: lb.name, rarity: 'common' }; });
+    addItems(inv.lootboxes||{},'lootbox',lbDict);
     if(grid.children.length===0) grid.innerHTML='<div style="color:#555;font-size:0.85em;">No tradeable items</div>';
 }
 
@@ -1672,8 +2497,12 @@ function renderTradeItems(offer) {
     let html='';
     if(offer.points>0) html+=`<span class="trade-item-chip">✨ ${offer.points} pts</span>`;
     (offer.items||[]).forEach(item=>{
-        const data=item.type==='theme'?ALL_THEMES[item.id]:ALL_TITLES[item.id];
-        if(data) html+=`<span class="trade-item-chip ${RARITY_CLASS[data.rarity]||'rc'}">${item.type==='theme'?'🎨':'🏷️'} ${data.name}</span>`;
+        let data;
+        if(item.type==='theme') data=ALL_THEMES[item.id];
+        else if(item.type==='lootbox') { const lb=LOOTBOXES.find(x=>x.id===item.id); data=lb?{name:lb.name,rarity:'common'}:null; }
+        else data=ALL_TITLES[item.id];
+        const icon=item.type==='theme'?'🎨':item.type==='lootbox'?'📦':'🏷️';
+        if(data) html+=`<span class="trade-item-chip ${RARITY_CLASS[data.rarity]||'rc'}">${icon} ${data.name}</span>`;
     });
     return html||'<span style="color:#555;font-size:0.8em;">Nothing</span>';
 }
@@ -1737,7 +2566,6 @@ async function admAct(t) {
     else{await ref.update({banned:true});alert("Permanently Banned!");}
 }
 
-// ===== BAN/UNBAN USERNAME (prevents account creation) =====
 async function admBanUsername() {
     const u = document.getElementById('adm-user').value.trim(); if(!u) return alert("Enter a username.");
     await db.ref(`banned_usernames/${u}`).set(true);
@@ -1785,23 +2613,53 @@ async function adminGiveItem() {
 // =========================================================
 //  NEW DYNAMIC ASSET CREATION
 // =========================================================
+// =========================================================
+//  THEME PREVIEW (ADMIN)
+// =========================================================
+function applyThemePreviewVars() {
+    const primary = document.getElementById('adm-th-primary').value.trim() || '#00d4ff';
+    const bg      = document.getElementById('adm-th-bg').value.trim()      || '#0b0b0b';
+    const panel   = document.getElementById('adm-th-panel').value.trim()   || 'rgba(22,22,22,0.85)';
+    const sidebar = document.getElementById('adm-th-sidebar').value.trim() || 'rgba(17,17,17,0.85)';
+    const text    = document.getElementById('adm-th-text').value            || '#f0f0f0';
+    const msgBg   = document.getElementById('adm-th-msg').value.trim()     || 'rgba(34,34,34,0.85)';
+    const msgMe   = document.getElementById('adm-th-msgme').value.trim()   || 'rgba(0,75,90,0.85)';
+
+    const container = document.getElementById('preview-container');
+    container.style.setProperty('--prev-primary', primary);
+    container.style.setProperty('--prev-bg',      bg);
+    container.style.setProperty('--prev-panel',   panel);
+    container.style.setProperty('--prev-sidebar', sidebar);
+    container.style.setProperty('--prev-text',    text);
+    container.style.setProperty('--prev-msg-bg',  msgBg);
+    container.style.setProperty('--prev-msg-me',  msgMe);
+}
+
+function livePreviewTheme() {
+    // Only update live if the preview modal is already open
+    const modal = document.getElementById('modal-theme-preview');
+    if(!modal.classList.contains('hidden')) applyThemePreviewVars();
+}
+
+function previewAdminTheme() {
+    applyThemePreviewVars();
+    document.getElementById('modal-theme-preview').classList.remove('hidden');
+}
+
 async function adminCreateTheme() {
     const id = document.getElementById('adm-new-th-id').value.trim();
     if(!id) return alert("Requires an ID");
 
-    // Auto-fix background gradients if the user just typed colors (e.g., "red, blue")
     let finalBg = document.getElementById('adm-th-bg').value.trim();
     if (finalBg.includes(',') && !finalBg.includes('gradient')) {
         finalBg = `linear-gradient(45deg, ${finalBg})`;
     }
     
-    // Auto-fix swatch gradients similarly
     let finalSwatch = document.getElementById('adm-th-swatch').value.trim();
     if (finalSwatch.includes(',') && !finalSwatch.includes('gradient')) {
         finalSwatch = `linear-gradient(45deg, ${finalSwatch})`;
     }
     
-    // Using string values for better CSS support (Gradients/Glassmorphism)
     const themeData = {
         name: document.getElementById('adm-new-th-name').value.trim() || id,
         rarity: document.getElementById('adm-new-th-rarity').value,
