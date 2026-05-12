@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aman Chat 2.0</title>
-    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <style>
         /* Dynamic theme styles injected by JS */
         :root {
@@ -4809,17 +4809,6 @@
 
             socket.on('new_msg', msg => {
                 if (msg.channel_id === currentChannel) {
-                    // 1. Try to find the specific optimistic placeholder by ID
-                    if (msg._optimisticId) {
-                        const optEl = document.querySelector(`.msg[data-optimistic-id="${msg._optimisticId}"]`);
-                        if (optEl) optEl.remove();
-                    } 
-                    // 2. Fallback: if it's our message but no specific ID match, remove any general optimistic placeholder
-                    else if (msg.u === currentUser.username) {
-                        const optEl = document.querySelector('.msg[data-optimistic="1"]');
-                        if (optEl) optEl.remove();
-                    }
-                    
                     appendMessage(msg);
                 } else if (dmChannelIds.has(msg.channel_id)) {
                     document.getElementById('subdot-dm').classList.remove('hidden');
@@ -5115,24 +5104,20 @@
             div.className = isMe ? 'msg me' : 'msg';
             div.setAttribute('data-id', msg.id);
             div.setAttribute('data-ts', msg.ts);
-            // Mark optimistic messages so the socket handler can remove them
-            if (msg._optimistic) {
-                div.setAttribute('data-optimistic', '1');
-                if (msg._optimisticId) div.setAttribute('data-optimistic-id', msg._optimisticId);
-            }
 
             const titleHtml = msg.title
                 ? `<span style="color:${rarityColor(msg.titleRarity)};font-size:0.8em;margin-right:5px;font-weight:normal;">[${msg.title}]</span>`
                 : '';
             const safeName = msg.u.replace(/'/g, "\\'");
 
-            // Delete button only for real (non-optimistic) messages
+            // Delete button logic
             let deleteBtnHtml = '';
-            if (!msg._optimistic && (isMe || isAdmin)) {
+            if (isMe || isAdmin) {
                 deleteBtnHtml = `<span class="del-msg" onclick="deleteMessage('${msg.id}')" title="Delete Message">✕</span>`;
             }
 
             const pfpSrc = msg.pfp || generateDefaultPfp(msg.u);
+
 
             div.innerHTML = `
                 <div style="display:flex; gap:10px; align-items:flex-start;">
@@ -5164,6 +5149,7 @@
                 textSpan.textContent = content;
                 contentContainer.appendChild(textSpan);
             }
+
 
             const container = document.getElementById('msg-history');
             if (!container) return;
@@ -5263,9 +5249,6 @@
             } catch (e) { console.error(e); }
         }
 
-        // Cache channel names to avoid repeated API calls
-        const channelNameCache = {};
-
         function switchChannel(channelId) {
             openChannel(channelId);
         }
@@ -5278,24 +5261,18 @@
             currentChannel = channelId;
             socket.emit('join_channel', currentChannel);
 
-            // Use cached channel name if available, otherwise fetch and cache
-            let chanName = channelNameCache[channelId] || '';
-            if (!chanName && currentServer) {
-                try {
-                    const channels = await api(`/api/servers/${currentServer}/channels`);
-                    // Populate entire cache for this server
-                    channels.forEach(c => { channelNameCache[c.id] = c.name; });
-                    const c = channels.find(x => x.id === channelId);
-                    if (c) {
-                        chanName = c.name;
-                    }
-                } catch (e) { }
-            }
-            if (chanName) {
-                currentChannelName = chanName;
-                const select = document.getElementById('channel-select');
-                if (select) select.value = channelId;
-            }
+            // Fetch channel info to check name for announcements/protection
+            let chanName = '';
+            try {
+                const channels = await api(`/api/servers/${currentServer}/channels`);
+                const c = channels.find(x => x.id === channelId);
+                if (c) {
+                    chanName = c.name;
+                    currentChannelName = c.name;
+                    const select = document.getElementById('channel-select');
+                    if (select) select.value = channelId;
+                }
+            } catch (e) { }
 
             const isAdmin = ['admin', 'creator', 'god'].includes(currentUser.rank);
             const isOfficialHub = currentServerName === 'Official Public Hub';
@@ -5441,10 +5418,10 @@
             }
         }
 
-        async function sendMessage(text, _optimisticId = null) {
+        async function sendMessage(text) {
             if (!text || !currentChannel) return;
             try {
-                const res = await api(`/api/messages/${currentChannel}`, 'POST', { text, _optimisticId });
+                const res = await api(`/api/messages/${currentChannel}`, 'POST', { text });
                 if (res.points !== undefined) {
                     myPoints = res.points;
                     updatePointsUI();
@@ -5457,24 +5434,7 @@
             if (input) {
                 const text = input.value.trim();
                 if (!text) return;
-                
-                const optId = 'opt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
-
-                // Optimistic render: show message immediately for sender
-                const optimisticMsg = {
-                    id: optId,
-                    u: currentUser.username,
-                    t: text,
-                    ts: Date.now(),
-                    pfp: currentUser.pfp_b64 || null,
-                    title: currentUser.active_title ? (currentUser.active_title_name || null) : null,
-                    titleRarity: null,
-                    channel_id: currentChannel,
-                    _optimistic: true,
-                    _optimisticId: optId
-                };
-                appendMessage(optimisticMsg);
-                sendMessage(text, optId);
+                sendMessage(text);
                 input.value = '';
                 input.style.height = '38px';
             }
@@ -7928,14 +7888,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
 
         async function pokerLeave() {
             try {
-                if (pokerGameId) {
-                    const data = await api('/api/poker/leave', 'POST', { gameId: pokerGameId });
-                    // Update points — buy-in is refunded if game hadn't started
-                    if (data && data.newPoints !== undefined) {
-                        myPoints = data.newPoints;
-                        updatePointsUI();
-                    }
-                }
+                if (pokerGameId) await api('/api/poker/leave', 'POST', { gameId: pokerGameId });
             } catch (e) { }
             pokerGameId = null;
             clearInterval(pokerPollTimer);
@@ -8525,7 +8478,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             document.getElementById('slots-status').innerText = 'Spinning...';
             initSlotsReels();
 
-            // Start all 3 reels spinning immediately
+            // Start all 3 reels spinning immediately via JS interval
             for (let r = 0; r < 3; r++) {
                 const strip = document.getElementById(`slots-strip-${r}`);
                 const totalH = strip.children.length * SLOT_H;
@@ -8535,57 +8488,52 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     pos = (pos + SLOT_H) % totalH;
                     strip.style.transition = 'none';
                     strip.style.transform = `translateY(-${pos}px)`;
-                }, 80);
+                }, 80); // ~12 symbols/sec — looks like fast spinning
             }
-
-            const startTime = Date.now();
-            const minSpinTime = 1500; 
 
             try {
                 const data = await api('/api/game/slots', 'POST', { bet });
-                
-                const elapsed = Date.now() - startTime;
-                const remaining = Math.max(0, minSpinTime - elapsed);
-                
-                setTimeout(() => {
-                    data.result.forEach((sym, r) => {
-                        setTimeout(() => {
-                            clearInterval(slotsSpinIntervals[r]);
-                            slotsSpinIntervals[r] = null;
-                            const reel = document.getElementById(`slots-r${r}`);
-                            reel.classList.remove('spinning');
-                            reel.classList.add('winner');
 
-                            const strip = document.getElementById(`slots-strip-${r}`);
-                            strip.children[0].textContent = sym;
-                            const nearEnd = (strip.children.length - 2) * SLOT_H;
-                            strip.style.transition = 'none';
-                            strip.style.transform = `translateY(-${nearEnd}px)`;
-                            requestAnimationFrame(() => requestAnimationFrame(() => {
-                                strip.style.transition = 'transform 0.45s cubic-bezier(0.17,0.67,0.21,1)';
-                                strip.style.transform = 'translateY(0)';
-                            }));
-                        }, r * 400); 
-                    });
-
+                // Staggered stops: reel 0 at 1000ms, reel 1 at 1500ms, reel 2 at 2000ms
+                data.result.forEach((sym, r) => {
                     setTimeout(() => {
-                        myPoints = data.newPoints;
-                        updatePointsUI();
-                        const status = document.getElementById('slots-status');
-                        if (data.win > 0) {
-                            status.innerHTML = `<span style="color:#ffd700;">🎰 ${data.mult}x — Win: ${data.win} pts!</span>`;
-                        } else {
-                            status.innerText = 'No match — better luck next time!';
-                        }
-                        btn.disabled = false;
-                    }, 1500);
-                }, remaining);
+                        clearInterval(slotsSpinIntervals[r]);
+                        slotsSpinIntervals[r] = null;
+                        const reel = document.getElementById(`slots-r${r}`);
+                        reel.classList.remove('spinning');
+                        reel.classList.add('winner');
+
+                        const strip = document.getElementById(`slots-strip-${r}`);
+                        // Place winning symbol at position 0 (visible when transform=0)
+                        strip.children[0].textContent = sym;
+                        // Snap to near-end of strip (last symbol visible), then ease to top (winning symbol)
+                        const nearEnd = (strip.children.length - 2) * SLOT_H;
+                        strip.style.transition = 'none';
+                        strip.style.transform = `translateY(-${nearEnd}px)`;
+                        requestAnimationFrame(() => requestAnimationFrame(() => {
+                            strip.style.transition = 'transform 0.45s cubic-bezier(0.17,0.67,0.21,1)';
+                            strip.style.transform = 'translateY(0)';
+                        }));
+                    }, 1000 + r * 500);
+                });
+
+                // Show result after all reels settle
+                setTimeout(() => {
+                    myPoints = data.newPoints;
+                    updatePointsUI();
+                    const status = document.getElementById('slots-status');
+                    if (data.win > 0) {
+                        status.innerHTML = `<span style="color:#ffd700;">🎰 ${data.mult}x — Win: ${data.win} pts!</span>`;
+                    } else {
+                        status.innerText = 'No match — better luck next time!';
+                    }
+                    btn.disabled = false;
+                }, 2600);
+
             } catch (e) {
-                slotsSpinIntervals.forEach((id, r) => { if (id) clearInterval(id); slotsSpinIntervals[r] = null; });
-                for (let r = 0; r < 3; r++) {
-                    const reel = document.getElementById(`slots-r${r}`);
-                    if (reel) reel.classList.remove('spinning');
-                }
+                slotsSpinIntervals.forEach(id => { if (id) clearInterval(id); });
+                slotsSpinIntervals = [null, null, null];
+                for (let r = 0; r < 3; r++) document.getElementById(`slots-r${r}`).classList.remove('spinning');
                 alert(e.message);
                 btn.disabled = false;
                 document.getElementById('slots-status').innerText = '';
@@ -9695,26 +9643,19 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             };
             const draw = (e) => {
                 if (!drawing) return;
+                pfpCtx.lineWidth = 5;
+                pfpCtx.lineCap = "round";
                 const colorInput = document.getElementById('draw-color');
-                const currentColor = colorInput ? colorInput.value : '#000';
+                pfpCtx.strokeStyle = colorInput ? colorInput.value : '#000';
 
                 const rect = canvas.getBoundingClientRect();
-                const scaleX = canvas.width / rect.width;
-                const scaleY = canvas.height / rect.height;
-                const clientX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
-                const clientY = e.clientY || (e.touches && e.touches[0].clientY) || 0;
-                const x = (clientX - rect.left) * scaleX;
-                const y = (clientY - rect.top) * scaleY;
+                const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+                const y = (e.clientY || (e.touches && e.touches[0].clientY)) - rect.top;
 
-                // Start a fresh path per draw event so color changes take effect immediately
+                pfpCtx.lineTo(x, y);
+                pfpCtx.stroke();
                 pfpCtx.beginPath();
                 pfpCtx.moveTo(x, y);
-                pfpCtx.lineTo(x + 0.1, y + 0.1); // tiny line ensures dots appear on click
-                pfpCtx.lineWidth = 6;
-                pfpCtx.lineCap = "round";
-                pfpCtx.lineJoin = "round";
-                pfpCtx.strokeStyle = currentColor;
-                pfpCtx.stroke();
             };
 
             canvas.addEventListener("mousedown", startPos);
@@ -9899,79 +9840,39 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
         async function spinRoulette() {
             if (rlIsSpinning) return;
             if (Object.keys(rlBets).length === 0) return alert('Place some bets!');
-
-            // Deduct bet and start spinning IMMEDIATELY (before API call to avoid delay)
-            const totalBet = Object.values(rlBets).reduce((a, b) => a + b, 0);
-            myPoints -= totalBet;
-            updatePointsUI();
-            rlIsSpinning = true;
-
-            const status = document.getElementById('rl-status');
-            status.innerText = 'Spinning...';
-
-            const numbers = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
-            const redNumbers = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
-            const slice = (2 * Math.PI / 37);
-
-            // Pre-spin: animate the wheel at a fast constant speed while awaiting the API result
-            const preDuration = 2000; // 2s pre-spin before we know the result
-            const preSpin = 3 * 2 * Math.PI; // 3 full rotations during pre-spin
-            const preStartA = rlAngle;
-            const preBallStartA = rlBallAngle;
-            let preStart = null;
-            let preAnimFrame = null;
-            let apiResolved = false;
-            let pendingRes = null;
-
-            function preAnimate(time) {
-                if (!preStart) preStart = time;
-                const progress = Math.min((time - preStart) / preDuration, 1);
-                rlAngle = preStartA + preSpin * progress;
-                rlBallAngle = preBallStartA - (2 * 2 * Math.PI) * progress;
-                drawRoulette();
-                if (progress < 1 || !apiResolved) {
-                    preAnimFrame = requestAnimationFrame(preAnimate);
-                } else {
-                    // API result ready — start final stop animation
-                    startFinalSpin(pendingRes);
-                }
-            }
-            preAnimFrame = requestAnimationFrame(preAnimate);
-
             try {
-                const res = await api('/api/game/roulette', 'POST', { bets: rlBets });
-                pendingRes = res;
-                apiResolved = true;
-                // If pre-spin already finished, start final immediately
-                if (!preAnimFrame) startFinalSpin(res);
-            } catch (e) {
-                cancelAnimationFrame(preAnimFrame);
-                alert(e.message);
-                rlIsSpinning = false;
-                myPoints += totalBet;
+                // Visually deduct bet immediately before API call
+                const totalBet = Object.values(rlBets).reduce((a, b) => a + b, 0);
+                myPoints -= totalBet;
                 updatePointsUI();
-                status.innerText = '';
-                return;
-            }
 
-            function startFinalSpin(res) {
+                const res = await api('/api/game/roulette', 'POST', { bets: rlBets });
+
+                rlIsSpinning = true;
+                const status = document.getElementById('rl-status');
+                status.innerText = 'Spinning...';
+
+                const numbers = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+                const redNumbers = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
                 const winIdx = numbers.indexOf(res.winningNumber);
+                const slice = (2 * Math.PI / 37);
+                // Wheel target: winning slice lands at top (angle 0 = 12 o'clock)
                 const targetA = -(winIdx * slice + slice / 2);
 
                 let start = null;
-                const duration = 3000; // 3s final deceleration spin
-                const extraSpins = 4 * 2 * Math.PI;
+                const duration = 5000;
+                const wheelSpins = 5 * 2 * Math.PI;
                 const startA = rlAngle;
                 const startBallA = rlBallAngle;
 
                 let diff = (targetA - (startA % (2 * Math.PI))) % (2 * Math.PI);
                 if (diff < 0) diff += 2 * Math.PI;
-                const finalWheelAngle = startA + extraSpins + diff;
+                const finalWheelAngle = startA + wheelSpins + diff;
 
                 const finalBallAngle_screen = finalWheelAngle + (winIdx * slice + slice / 2);
                 let ballDiff = (finalBallAngle_screen - (startBallA % (2 * Math.PI))) % (2 * Math.PI);
                 if (ballDiff > 0) ballDiff -= 2 * Math.PI;
-                const finalBallAngle = startBallA - (6 * 2 * Math.PI) + ballDiff;
+                const finalBallAngle = startBallA - (8 * 2 * Math.PI) + ballDiff;
 
                 function animate(time) {
                     if (!start) start = time;
@@ -9989,6 +9890,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                         rlBallRadius = 110;
                         drawRoulette();
                         rlIsSpinning = false;
+                        // Now apply final points from server
                         myPoints = res.newPoints;
                         updatePointsUI();
                         const isRed = redNumbers.includes(res.winningNumber);
@@ -10003,7 +9905,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     }
                 }
                 requestAnimationFrame(animate);
-            }
+            } catch (e) { alert(e.message); rlIsSpinning = false; myPoints += Object.values(rlBets).reduce((a, b) => a + b, 0); updatePointsUI(); }
         }
 
         function showAdminTab(t) {
