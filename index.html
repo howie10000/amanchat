@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aman Chat 2.0</title>
-    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <script src="http://127.0.0.1:3000/socket.io/socket.io.js"></script>
     <style>
         /* Dynamic theme styles injected by JS */
         :root {
@@ -2670,8 +2670,9 @@
                     <canvas id="draw-canvas" width="450" height="300"></canvas>
                 </div>
                 <div class="draw-toolbar">
-                    <input type="color" id="draw-color" class="draw-color-picker" value="#00d4ff" title="Pick Color">
-                    <input type="range" id="draw-size" class="draw-brush-size" min="1" max="20" value="5"
+                    <input type="color" id="msg-main-color" class="draw-color-picker" value="#000000"
+                        title="Pick Color">
+                    <input type="range" id="msg-main-size" class="draw-brush-size" min="1" max="20" value="5"
                         title="Brush Size">
                     <button class="draw-tool-btn active" id="tool-brush" onclick="setDrawTool('brush')">
                         🖌️ Brush
@@ -2930,9 +2931,11 @@
             <div class="modal-card" style="max-width:860px; width:95vw; padding:20px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                     <h3 style="margin:0; color:var(--primary);">📺 Screen Share</h3>
-                    <button class="btn" style="background:#cc2222; color:#fff; padding:5px 16px;" onclick="ssEnd()">✕ End</button>
+                    <button class="btn" style="background:#cc2222; color:#fff; padding:5px 16px;" onclick="ssEnd()">✕
+                        End</button>
                 </div>
-                <div id="ss-modal-status" style="font-size:0.8em; color:#aaa; text-align:center; margin-bottom:8px;"></div>
+                <div id="ss-modal-status" style="font-size:0.8em; color:#aaa; text-align:center; margin-bottom:8px;">
+                </div>
                 <video id="ss-local-video" autoplay playsinline muted
                     style="width:100%; border-radius:8px; background:#000; max-height:65vh; display:none;"></video>
                 <video id="ss-remote-video" autoplay playsinline
@@ -3282,12 +3285,19 @@
                             chatting!</div>
                     </div>
                     <!-- Screen Share In-DM Popup -->
-                    <div id="ss-popup" class="hidden" style="display:flex; align-items:center; gap:12px; padding:10px 18px; background:var(--card); border-top:2px solid var(--primary); flex-wrap:wrap;">
+                    <div id="ss-popup" class="hidden"
+                        style="display:flex; align-items:center; gap:12px; padding:10px 18px; background:var(--card); border-top:2px solid var(--primary); flex-wrap:wrap;">
                         <span style="font-size:1.2em;">📺</span>
                         <span id="ss-popup-text" style="color:#ddd; font-size:0.9em; flex:1; min-width:120px;"></span>
-                        <button id="ss-popup-accept"  class="btn primary"  style="padding:5px 16px; font-size:0.85em; display:none;" onclick="ssAccept()">Accept</button>
-                        <button id="ss-popup-decline" class="btn"          style="padding:5px 16px; font-size:0.85em; background:#cc2222; color:#fff; display:none;" onclick="ssDecline()">Decline</button>
-                        <button id="ss-popup-cancel"  class="btn"          style="padding:5px 16px; font-size:0.85em; background:#555; color:#fff; display:none;" onclick="ssCancel()">Cancel</button>
+                        <button id="ss-popup-accept" class="btn primary"
+                            style="padding:5px 16px; font-size:0.85em; display:none;"
+                            onclick="ssAccept()">Accept</button>
+                        <button id="ss-popup-decline" class="btn"
+                            style="padding:5px 16px; font-size:0.85em; background:#cc2222; color:#fff; display:none;"
+                            onclick="ssDecline()">Decline</button>
+                        <button id="ss-popup-cancel" class="btn"
+                            style="padding:5px 16px; font-size:0.85em; background:#555; color:#fff; display:none;"
+                            onclick="ssCancel()">Cancel</button>
                     </div>
 
                     <div class="input-area hidden" id="chat-controls">
@@ -4118,7 +4128,7 @@
                     style="display:flex; gap:10px; margin:10px 0; align-items:center; justify-content:center; width:100%;">
                     <label style="text-shadow: 0 1px 2px rgba(0,0,0,0.5); font-size:0.9em;">Brush Color:</label>
                     <div style="width:40px; height:40px; overflow:hidden; border:1px solid #444; border-radius:1px;">
-                        <input type="color" id="draw-color" value="#000000"
+                        <input type="color" id="prof-draw-color" value="#000000"
                             style="padding:0; width:40px; height:40px; cursor:pointer; border:none; margin:0;">
                     </div>
                     <button class="btn"
@@ -4809,6 +4819,15 @@
 
             socket.on('new_msg', msg => {
                 if (msg.channel_id === currentChannel) {
+                    // Skip if we already optimistically rendered this message
+                    if (msg._optimisticId && document.querySelector(`.msg[data-optimistic-id="${msg._optimisticId}"]`)) {
+                        return;
+                    }
+                    // Remove any optimistic placeholder for our own messages (matched by user + time)
+                    if (msg.u === currentUser.username) {
+                        const optEl = document.querySelector('.msg[data-optimistic="1"]');
+                        if (optEl) optEl.remove();
+                    }
                     appendMessage(msg);
                 } else if (dmChannelIds.has(msg.channel_id)) {
                     document.getElementById('subdot-dm').classList.remove('hidden');
@@ -4911,13 +4930,13 @@
 
             // --- Screen Share socket listeners ---
             socket.on('ss_request', ssOnRequest);
-            socket.on('ss_accept',  ssOnAccepted);
+            socket.on('ss_accept', ssOnAccepted);
             socket.on('ss_decline', () => { ssHidePopup(); ssCloseModal(); ssClosePeer(); showToast('Screen share declined.'); });
-            socket.on('ss_offer',   ssOnOffer);
-            socket.on('ss_answer',  ssOnAnswer);
-            socket.on('ss_ice',     ssOnIce);
-            socket.on('ss_end',     ssOnEnd);
-            socket.on('ss_error',   ssOnError);
+            socket.on('ss_offer', ssOnOffer);
+            socket.on('ss_answer', ssOnAnswer);
+            socket.on('ss_ice', ssOnIce);
+            socket.on('ss_end', ssOnEnd);
+            socket.on('ss_error', ssOnError);
         }
 
         // --- SERVER DELETION ---
@@ -4945,15 +4964,15 @@
 
         function ssPopup(text, showAccept, showDecline, showCancel) {
             document.getElementById('ss-popup-text').textContent = text;
-            document.getElementById('ss-popup-accept').style.display  = showAccept  ? '' : 'none';
+            document.getElementById('ss-popup-accept').style.display = showAccept ? '' : 'none';
             document.getElementById('ss-popup-decline').style.display = showDecline ? '' : 'none';
-            document.getElementById('ss-popup-cancel').style.display  = showCancel  ? '' : 'none';
+            document.getElementById('ss-popup-cancel').style.display = showCancel ? '' : 'none';
             document.getElementById('ss-popup').classList.remove('hidden');
         }
         function ssHidePopup() { document.getElementById('ss-popup').classList.add('hidden'); }
 
         function ssModalStatus(t) { const el = document.getElementById('ss-modal-status'); if (el) el.textContent = t; }
-        function ssOpenModal()  { document.getElementById('ss-modal').classList.remove('hidden'); }
+        function ssOpenModal() { document.getElementById('ss-modal').classList.remove('hidden'); }
         function ssCloseModal() {
             document.getElementById('ss-modal').classList.add('hidden');
             document.getElementById('ss-local-video').style.display = 'none';
@@ -5043,7 +5062,7 @@
         }
 
         async function ssOnIce(data) {
-            try { if (ssConn && data.candidate) await ssConn.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch (_) {}
+            try { if (ssConn && data.candidate) await ssConn.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch (_) { }
         }
 
         function ssOnEnd() {
@@ -5095,7 +5114,7 @@
                 list.appendChild(div);
             });
         }
-        function appendMessage(msg, prepend = false) {
+        function renderMessage(msg) {
             const timeStr = new Date(msg.ts).toLocaleString([], { hour: '2-digit', minute: '2-digit', month: 'numeric', day: 'numeric' });
             const isMe = msg.u === currentUser.username;
             const isAdmin = ['admin', 'creator', 'god'].includes(currentUser.rank);
@@ -5104,20 +5123,21 @@
             div.className = isMe ? 'msg me' : 'msg';
             div.setAttribute('data-id', msg.id);
             div.setAttribute('data-ts', msg.ts);
+            // Mark optimistic messages so the socket handler can remove them
+            if (msg._optimistic) div.setAttribute('data-optimistic', '1');
 
             const titleHtml = msg.title
                 ? `<span style="color:${rarityColor(msg.titleRarity)};font-size:0.8em;margin-right:5px;font-weight:normal;">[${msg.title}]</span>`
                 : '';
             const safeName = msg.u.replace(/'/g, "\\'");
 
-            // Delete button logic
+            // Delete button only for real (non-optimistic) messages
             let deleteBtnHtml = '';
-            if (isMe || isAdmin) {
+            if (!msg._optimistic && (isMe || isAdmin)) {
                 deleteBtnHtml = `<span class="del-msg" onclick="deleteMessage('${msg.id}')" title="Delete Message">✕</span>`;
             }
 
             const pfpSrc = msg.pfp || generateDefaultPfp(msg.u);
-
 
             div.innerHTML = `
                 <div style="display:flex; gap:10px; align-items:flex-start;">
@@ -5149,8 +5169,11 @@
                 textSpan.textContent = content;
                 contentContainer.appendChild(textSpan);
             }
+            return div;
+        }
 
-
+        function appendMessage(msg, prepend = false) {
+            const div = renderMessage(msg);
             const container = document.getElementById('msg-history');
             if (!container) return;
 
@@ -5249,6 +5272,9 @@
             } catch (e) { console.error(e); }
         }
 
+        // Cache channel names to avoid repeated API calls
+        const channelNameCache = {};
+
         function switchChannel(channelId) {
             openChannel(channelId);
         }
@@ -5261,18 +5287,24 @@
             currentChannel = channelId;
             socket.emit('join_channel', currentChannel);
 
-            // Fetch channel info to check name for announcements/protection
-            let chanName = '';
-            try {
-                const channels = await api(`/api/servers/${currentServer}/channels`);
-                const c = channels.find(x => x.id === channelId);
-                if (c) {
-                    chanName = c.name;
-                    currentChannelName = c.name;
-                    const select = document.getElementById('channel-select');
-                    if (select) select.value = channelId;
-                }
-            } catch (e) { }
+            // Use cached channel name if available, otherwise fetch and cache
+            let chanName = channelNameCache[channelId] || '';
+            if (!chanName && currentServer) {
+                try {
+                    const channels = await api(`/api/servers/${currentServer}/channels`);
+                    // Populate entire cache for this server
+                    channels.forEach(c => { channelNameCache[c.id] = c.name; });
+                    const c = channels.find(x => x.id === channelId);
+                    if (c) {
+                        chanName = c.name;
+                    }
+                } catch (e) { }
+            }
+            if (chanName) {
+                currentChannelName = chanName;
+                const select = document.getElementById('channel-select');
+                if (select) select.value = channelId;
+            }
 
             const isAdmin = ['admin', 'creator', 'god'].includes(currentUser.rank);
             const isOfficialHub = currentServerName === 'Official Public Hub';
@@ -5347,7 +5379,14 @@
                 if (container) {
                     container.innerHTML = '';
                     if (msgs.length < 25) chatAllLoaded = true;
-                    msgs.forEach(m => appendMessage(m));
+
+                    // Use DocumentFragment for faster batch appending
+                    const fragment = document.createDocumentFragment();
+                    msgs.forEach(m => {
+                        const div = renderMessage(m);
+                        fragment.appendChild(div);
+                    });
+                    container.appendChild(fragment);
                     container.scrollTop = container.scrollHeight;
                 }
             } catch (e) { console.error(e); }
@@ -5404,8 +5443,13 @@
                 }
                 if (msgs.length < 10) chatAllLoaded = true;
 
-                // Append in reverse order to the top
-                msgs.reverse().forEach(m => appendMessage(m, true));
+                // Batch prepend
+                const fragment = document.createDocumentFragment();
+                msgs.reverse().forEach(m => {
+                    const div = renderMessage(m);
+                    fragment.appendChild(div);
+                });
+                container.prepend(fragment);
 
                 // Maintain scroll position with a small delay to ensure rendering
                 setTimeout(() => {
@@ -5434,6 +5478,19 @@
             if (input) {
                 const text = input.value.trim();
                 if (!text) return;
+                // Optimistic render: show message immediately for sender
+                const optimisticMsg = {
+                    id: 'opt_' + Date.now(),
+                    u: currentUser.username,
+                    t: text,
+                    ts: Date.now(),
+                    pfp: currentUser.pfp_b64 || null,
+                    title: currentUser.activeTitle || null,
+                    titleRarity: null,
+                    channel_id: currentChannel,
+                    _optimistic: true
+                };
+                appendMessage(optimisticMsg);
                 sendMessage(text);
                 input.value = '';
                 input.style.height = '38px';
@@ -7888,7 +7945,14 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
 
         async function pokerLeave() {
             try {
-                if (pokerGameId) await api('/api/poker/leave', 'POST', { gameId: pokerGameId });
+                if (pokerGameId) {
+                    const data = await api('/api/poker/leave', 'POST', { gameId: pokerGameId });
+                    // Update points — buy-in is refunded if game hadn't started
+                    if (data && data.newPoints !== undefined) {
+                        myPoints = data.newPoints;
+                        updatePointsUI();
+                    }
+                }
             } catch (e) { }
             pokerGameId = null;
             clearInterval(pokerPollTimer);
@@ -8239,13 +8303,13 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
 
-            drawCtx.lineWidth = document.getElementById('draw-size').value;
+            drawCtx.lineWidth = document.getElementById('msg-main-size').value;
             if (drawTool === 'eraser') {
                 drawCtx.globalCompositeOperation = 'destination-out';
                 drawCtx.strokeStyle = 'rgba(0,0,0,1)';
             } else {
                 drawCtx.globalCompositeOperation = 'source-over';
-                drawCtx.strokeStyle = document.getElementById('draw-color').value;
+                drawCtx.strokeStyle = document.getElementById('msg-main-color').value;
             }
 
             drawCtx.lineTo(x, y);
@@ -8494,7 +8558,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             try {
                 const data = await api('/api/game/slots', 'POST', { bet });
 
-                // Staggered stops: reel 0 at 1000ms, reel 1 at 1500ms, reel 2 at 2000ms
+                // Staggered stops: reel 0 at 600ms, reel 1 at 900ms, reel 2 at 1200ms (shorter for snappiness)
                 data.result.forEach((sym, r) => {
                     setTimeout(() => {
                         clearInterval(slotsSpinIntervals[r]);
@@ -8504,17 +8568,15 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                         reel.classList.add('winner');
 
                         const strip = document.getElementById(`slots-strip-${r}`);
-                        // Place winning symbol at position 0 (visible when transform=0)
                         strip.children[0].textContent = sym;
-                        // Snap to near-end of strip (last symbol visible), then ease to top (winning symbol)
                         const nearEnd = (strip.children.length - 2) * SLOT_H;
                         strip.style.transition = 'none';
                         strip.style.transform = `translateY(-${nearEnd}px)`;
                         requestAnimationFrame(() => requestAnimationFrame(() => {
-                            strip.style.transition = 'transform 0.45s cubic-bezier(0.17,0.67,0.21,1)';
+                            strip.style.transition = 'transform 0.3s cubic-bezier(0.17,0.67,0.21,1)';
                             strip.style.transform = 'translateY(0)';
                         }));
-                    }, 1000 + r * 500);
+                    }, 600 + r * 300);
                 });
 
                 // Show result after all reels settle
@@ -8528,7 +8590,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                         status.innerText = 'No match — better luck next time!';
                     }
                     btn.disabled = false;
-                }, 2600);
+                }, 1600);
 
             } catch (e) {
                 slotsSpinIntervals.forEach(id => { if (id) clearInterval(id); });
@@ -9643,14 +9705,21 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             };
             const draw = (e) => {
                 if (!drawing) return;
-                pfpCtx.lineWidth = 5;
-                pfpCtx.lineCap = "round";
-                const colorInput = document.getElementById('draw-color');
-                pfpCtx.strokeStyle = colorInput ? colorInput.value : '#000';
+                const colorInput = document.getElementById('prof-draw-color');
+                const currentColor = colorInput ? colorInput.value : '#000';
 
                 const rect = canvas.getBoundingClientRect();
-                const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
-                const y = (e.clientY || (e.touches && e.touches[0].clientY)) - rect.top;
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const clientX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
+                const clientY = e.clientY || (e.touches && e.touches[0].clientY) || 0;
+                const x = (clientX - rect.left) * scaleX;
+                const y = (clientY - rect.top) * scaleY;
+
+                pfpCtx.lineWidth = 6;
+                pfpCtx.lineCap = "round";
+                pfpCtx.lineJoin = "round";
+                pfpCtx.strokeStyle = currentColor;
 
                 pfpCtx.lineTo(x, y);
                 pfpCtx.stroke();
@@ -9840,39 +9909,79 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
         async function spinRoulette() {
             if (rlIsSpinning) return;
             if (Object.keys(rlBets).length === 0) return alert('Place some bets!');
+
+            // Deduct bet and start spinning IMMEDIATELY (before API call to avoid delay)
+            const totalBet = Object.values(rlBets).reduce((a, b) => a + b, 0);
+            myPoints -= totalBet;
+            updatePointsUI();
+            rlIsSpinning = true;
+
+            const status = document.getElementById('rl-status');
+            status.innerText = 'Spinning...';
+
+            const numbers = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+            const redNumbers = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
+            const slice = (2 * Math.PI / 37);
+
+            // Pre-spin: animate the wheel at a fast constant speed while awaiting the API result
+            const preDuration = 2000; // 2s pre-spin before we know the result
+            const preSpin = 3 * 2 * Math.PI; // 3 full rotations during pre-spin
+            const preStartA = rlAngle;
+            const preBallStartA = rlBallAngle;
+            let preStart = null;
+            let preAnimFrame = null;
+            let apiResolved = false;
+            let pendingRes = null;
+
+            function preAnimate(time) {
+                if (!preStart) preStart = time;
+                const progress = Math.min((time - preStart) / preDuration, 1);
+                rlAngle = preStartA + preSpin * progress;
+                rlBallAngle = preBallStartA - (2 * 2 * Math.PI) * progress;
+                drawRoulette();
+                if (progress < 1 || !apiResolved) {
+                    preAnimFrame = requestAnimationFrame(preAnimate);
+                } else {
+                    // API result ready — start final stop animation
+                    startFinalSpin(pendingRes);
+                }
+            }
+            preAnimFrame = requestAnimationFrame(preAnimate);
+
             try {
-                // Visually deduct bet immediately before API call
-                const totalBet = Object.values(rlBets).reduce((a, b) => a + b, 0);
-                myPoints -= totalBet;
-                updatePointsUI();
-
                 const res = await api('/api/game/roulette', 'POST', { bets: rlBets });
+                pendingRes = res;
+                apiResolved = true;
+                // If pre-spin already finished, start final immediately
+                if (!preAnimFrame) startFinalSpin(res);
+            } catch (e) {
+                cancelAnimationFrame(preAnimFrame);
+                alert(e.message);
+                rlIsSpinning = false;
+                myPoints += totalBet;
+                updatePointsUI();
+                status.innerText = '';
+                return;
+            }
 
-                rlIsSpinning = true;
-                const status = document.getElementById('rl-status');
-                status.innerText = 'Spinning...';
-
-                const numbers = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
-                const redNumbers = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
+            function startFinalSpin(res) {
                 const winIdx = numbers.indexOf(res.winningNumber);
-                const slice = (2 * Math.PI / 37);
-                // Wheel target: winning slice lands at top (angle 0 = 12 o'clock)
                 const targetA = -(winIdx * slice + slice / 2);
 
                 let start = null;
-                const duration = 5000;
-                const wheelSpins = 5 * 2 * Math.PI;
+                const duration = 3000; // 3s final deceleration spin
+                const extraSpins = 4 * 2 * Math.PI;
                 const startA = rlAngle;
                 const startBallA = rlBallAngle;
 
                 let diff = (targetA - (startA % (2 * Math.PI))) % (2 * Math.PI);
                 if (diff < 0) diff += 2 * Math.PI;
-                const finalWheelAngle = startA + wheelSpins + diff;
+                const finalWheelAngle = startA + extraSpins + diff;
 
                 const finalBallAngle_screen = finalWheelAngle + (winIdx * slice + slice / 2);
                 let ballDiff = (finalBallAngle_screen - (startBallA % (2 * Math.PI))) % (2 * Math.PI);
                 if (ballDiff > 0) ballDiff -= 2 * Math.PI;
-                const finalBallAngle = startBallA - (8 * 2 * Math.PI) + ballDiff;
+                const finalBallAngle = startBallA - (6 * 2 * Math.PI) + ballDiff;
 
                 function animate(time) {
                     if (!start) start = time;
@@ -9890,7 +9999,6 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                         rlBallRadius = 110;
                         drawRoulette();
                         rlIsSpinning = false;
-                        // Now apply final points from server
                         myPoints = res.newPoints;
                         updatePointsUI();
                         const isRed = redNumbers.includes(res.winningNumber);
@@ -9905,7 +10013,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     }
                 }
                 requestAnimationFrame(animate);
-            } catch (e) { alert(e.message); rlIsSpinning = false; myPoints += Object.values(rlBets).reduce((a, b) => a + b, 0); updatePointsUI(); }
+            }
         }
 
         function showAdminTab(t) {
