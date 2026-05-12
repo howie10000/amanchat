@@ -4809,15 +4809,17 @@
 
             socket.on('new_msg', msg => {
                 if (msg.channel_id === currentChannel) {
-                    // Skip if we already optimistically rendered this message
-                    if (msg._optimisticId && document.querySelector(`.msg[data-optimistic-id="${msg._optimisticId}"]`)) {
-                        return;
-                    }
-                    // Remove any optimistic placeholder for our own messages (matched by user + time)
-                    if (msg.u === currentUser.username) {
+                    // 1. Try to find the specific optimistic placeholder by ID
+                    if (msg._optimisticId) {
+                        const optEl = document.querySelector(`.msg[data-optimistic-id="${msg._optimisticId}"]`);
+                        if (optEl) optEl.remove();
+                    } 
+                    // 2. Fallback: if it's our message but no specific ID match, remove any general optimistic placeholder
+                    else if (msg.u === currentUser.username) {
                         const optEl = document.querySelector('.msg[data-optimistic="1"]');
                         if (optEl) optEl.remove();
                     }
+                    
                     appendMessage(msg);
                 } else if (dmChannelIds.has(msg.channel_id)) {
                     document.getElementById('subdot-dm').classList.remove('hidden');
@@ -5114,7 +5116,10 @@
             div.setAttribute('data-id', msg.id);
             div.setAttribute('data-ts', msg.ts);
             // Mark optimistic messages so the socket handler can remove them
-            if (msg._optimistic) div.setAttribute('data-optimistic', '1');
+            if (msg._optimistic) {
+                div.setAttribute('data-optimistic', '1');
+                if (msg._optimisticId) div.setAttribute('data-optimistic-id', msg._optimisticId);
+            }
 
             const titleHtml = msg.title
                 ? `<span style="color:${rarityColor(msg.titleRarity)};font-size:0.8em;margin-right:5px;font-weight:normal;">[${msg.title}]</span>`
@@ -5436,10 +5441,10 @@
             }
         }
 
-        async function sendMessage(text) {
+        async function sendMessage(text, _optimisticId = null) {
             if (!text || !currentChannel) return;
             try {
-                const res = await api(`/api/messages/${currentChannel}`, 'POST', { text });
+                const res = await api(`/api/messages/${currentChannel}`, 'POST', { text, _optimisticId });
                 if (res.points !== undefined) {
                     myPoints = res.points;
                     updatePointsUI();
@@ -5452,20 +5457,24 @@
             if (input) {
                 const text = input.value.trim();
                 if (!text) return;
+                
+                const optId = 'opt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+
                 // Optimistic render: show message immediately for sender
                 const optimisticMsg = {
-                    id: 'opt_' + Date.now(),
+                    id: optId,
                     u: currentUser.username,
                     t: text,
                     ts: Date.now(),
                     pfp: currentUser.pfp_b64 || null,
-                    title: currentUser.activeTitle || null,
+                    title: currentUser.active_title ? (currentUser.active_title_name || null) : null,
                     titleRarity: null,
                     channel_id: currentChannel,
-                    _optimistic: true
+                    _optimistic: true,
+                    _optimisticId: optId
                 };
                 appendMessage(optimisticMsg);
-                sendMessage(text);
+                sendMessage(text, optId);
                 input.value = '';
                 input.style.height = '38px';
             }
@@ -8516,7 +8525,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             document.getElementById('slots-status').innerText = 'Spinning...';
             initSlotsReels();
 
-            // Start all 3 reels spinning immediately via JS interval
+            // Start all 3 reels spinning immediately
             for (let r = 0; r < 3; r++) {
                 const strip = document.getElementById(`slots-strip-${r}`);
                 const totalH = strip.children.length * SLOT_H;
@@ -8526,52 +8535,57 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     pos = (pos + SLOT_H) % totalH;
                     strip.style.transition = 'none';
                     strip.style.transform = `translateY(-${pos}px)`;
-                }, 80); // ~12 symbols/sec — looks like fast spinning
+                }, 80);
             }
+
+            const startTime = Date.now();
+            const minSpinTime = 1500; 
 
             try {
                 const data = await api('/api/game/slots', 'POST', { bet });
-
-                // Staggered stops: reel 0 at 1000ms, reel 1 at 1500ms, reel 2 at 2000ms
-                data.result.forEach((sym, r) => {
-                    setTimeout(() => {
-                        clearInterval(slotsSpinIntervals[r]);
-                        slotsSpinIntervals[r] = null;
-                        const reel = document.getElementById(`slots-r${r}`);
-                        reel.classList.remove('spinning');
-                        reel.classList.add('winner');
-
-                        const strip = document.getElementById(`slots-strip-${r}`);
-                        // Place winning symbol at position 0 (visible when transform=0)
-                        strip.children[0].textContent = sym;
-                        // Snap to near-end of strip (last symbol visible), then ease to top (winning symbol)
-                        const nearEnd = (strip.children.length - 2) * SLOT_H;
-                        strip.style.transition = 'none';
-                        strip.style.transform = `translateY(-${nearEnd}px)`;
-                        requestAnimationFrame(() => requestAnimationFrame(() => {
-                            strip.style.transition = 'transform 0.45s cubic-bezier(0.17,0.67,0.21,1)';
-                            strip.style.transform = 'translateY(0)';
-                        }));
-                    }, 1000 + r * 500);
-                });
-
-                // Show result after all reels settle
+                
+                const elapsed = Date.now() - startTime;
+                const remaining = Math.max(0, minSpinTime - elapsed);
+                
                 setTimeout(() => {
-                    myPoints = data.newPoints;
-                    updatePointsUI();
-                    const status = document.getElementById('slots-status');
-                    if (data.win > 0) {
-                        status.innerHTML = `<span style="color:#ffd700;">🎰 ${data.mult}x — Win: ${data.win} pts!</span>`;
-                    } else {
-                        status.innerText = 'No match — better luck next time!';
-                    }
-                    btn.disabled = false;
-                }, 2600);
+                    data.result.forEach((sym, r) => {
+                        setTimeout(() => {
+                            clearInterval(slotsSpinIntervals[r]);
+                            slotsSpinIntervals[r] = null;
+                            const reel = document.getElementById(`slots-r${r}`);
+                            reel.classList.remove('spinning');
+                            reel.classList.add('winner');
 
+                            const strip = document.getElementById(`slots-strip-${r}`);
+                            strip.children[0].textContent = sym;
+                            const nearEnd = (strip.children.length - 2) * SLOT_H;
+                            strip.style.transition = 'none';
+                            strip.style.transform = `translateY(-${nearEnd}px)`;
+                            requestAnimationFrame(() => requestAnimationFrame(() => {
+                                strip.style.transition = 'transform 0.45s cubic-bezier(0.17,0.67,0.21,1)';
+                                strip.style.transform = 'translateY(0)';
+                            }));
+                        }, r * 400); 
+                    });
+
+                    setTimeout(() => {
+                        myPoints = data.newPoints;
+                        updatePointsUI();
+                        const status = document.getElementById('slots-status');
+                        if (data.win > 0) {
+                            status.innerHTML = `<span style="color:#ffd700;">🎰 ${data.mult}x — Win: ${data.win} pts!</span>`;
+                        } else {
+                            status.innerText = 'No match — better luck next time!';
+                        }
+                        btn.disabled = false;
+                    }, 1500);
+                }, remaining);
             } catch (e) {
-                slotsSpinIntervals.forEach(id => { if (id) clearInterval(id); });
-                slotsSpinIntervals = [null, null, null];
-                for (let r = 0; r < 3; r++) document.getElementById(`slots-r${r}`).classList.remove('spinning');
+                slotsSpinIntervals.forEach((id, r) => { if (id) clearInterval(id); slotsSpinIntervals[r] = null; });
+                for (let r = 0; r < 3; r++) {
+                    const reel = document.getElementById(`slots-r${r}`);
+                    if (reel) reel.classList.remove('spinning');
+                }
                 alert(e.message);
                 btn.disabled = false;
                 document.getElementById('slots-status').innerText = '';
