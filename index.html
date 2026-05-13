@@ -2858,7 +2858,7 @@
                     style="border:2px solid var(--primary); background:white; cursor:crosshair; border-radius:10px; touch-action:none; display:block; margin:0 auto;"></canvas>
                 <div style="display:flex; gap:10px; margin:14px 0; align-items:center; justify-content:center;">
                     <label style="font-size:0.85em;">Color:</label>
-                    <input type="color" id="pfp-draw-color" value="#000000"
+                    <input type="color" id="pfp-modal-draw-color" value="#000000"
                         style="padding:0; width:40px; height:40px; cursor:pointer;">
                     <label style="font-size:0.85em;">Size:</label>
                     <input type="range" id="pfp-draw-size" min="1" max="20" value="4" style="width:80px;">
@@ -4118,7 +4118,7 @@
                     style="display:flex; gap:10px; margin:10px 0; align-items:center; justify-content:center; width:100%;">
                     <label style="text-shadow: 0 1px 2px rgba(0,0,0,0.5); font-size:0.9em;">Brush Color:</label>
                     <div style="width:40px; height:40px; overflow:hidden; border:1px solid #444; border-radius:1px;">
-                        <input type="color" id="draw-color" value="#000000"
+                        <input type="color" id="pfp-embed-draw-color" value="#000000"
                             style="padding:0; width:40px; height:40px; cursor:pointer; border:none; margin:0;">
                     </div>
                     <button class="btn"
@@ -4616,19 +4616,33 @@
 
         // --- CORE API ---
         async function api(path, method = 'GET', body = null) {
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), 15000);
             const headers = { 'Content-Type': 'application/json' };
             if (token) headers['Authorization'] = token;
-            const res = await fetch(SERVER_URL + path, { method, headers, body: body ? JSON.stringify(body) : null });
+            try {
+                const res = await fetch(SERVER_URL + path, { 
+                    method, 
+                    headers, 
+                    body: body ? JSON.stringify(body) : null,
+                    signal: controller.signal
+                });
+                clearTimeout(id);
 
-            const contentType = res.headers.get("content-type");
-            if (contentType && contentType.indexOf("application/json") !== -1) {
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || `Error ${res.status}: ${res.statusText}`);
-                return data;
-            } else {
-                const text = await res.text();
-                if (!res.ok) throw new Error(`Server Error ${res.status}: ${text.substring(0, 100)}`);
-                return text;
+                const contentType = res.headers.get("content-type");
+                if (contentType && contentType.indexOf("application/json") !== -1) {
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || `Error ${res.status}: ${res.statusText}`);
+                    return data;
+                } else {
+                    const text = await res.text();
+                    if (!res.ok) throw new Error(`Server Error ${res.status}: ${text.substring(0, 100)}`);
+                    return text;
+                }
+            } catch (e) {
+                clearTimeout(id);
+                if (e.name === 'AbortError') throw new Error('Request timed out. If this persists, a browser extension like Blocksi may be blocking the request.');
+                throw e;
             }
         }
 
@@ -4918,6 +4932,16 @@
             socket.on('ss_ice',     ssOnIce);
             socket.on('ss_end',     ssOnEnd);
             socket.on('ss_error',   ssOnError);
+            socket.on('user_typing', data => {
+                if (data.channelId === currentChannel && data.username !== currentUser.username) {
+                    const indicator = document.getElementById('typing-indicator');
+                    if (indicator) {
+                        indicator.innerText = `@${data.username} is typing...`;
+                        clearTimeout(indicator.hideTimer);
+                        indicator.hideTimer = setTimeout(() => { indicator.innerText = ''; }, 4000);
+                    }
+                }
+            });
         }
 
         // --- SERVER DELETION ---
@@ -6368,7 +6392,7 @@
             try {
                 myPoints -= bet;
                 updatePointsUI();
-                const data = await api('/api/game/plinko', 'POST', { bet });
+                const data = await api('/v1/action/plinko', 'POST', { bet });
                 // Do NOT update points here — deferred until ball visually lands
                 plinkoBalls.push({
                     x: plinkoW / 2 + (Math.random() * 10 - 5),
@@ -7641,7 +7665,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             const bombs = parseInt(document.getElementById('mines-bombs').value);
             if (isNaN(bet) || bet < 1) return alert('Enter bet');
             try {
-                const data = await api('/api/game/mines/start', 'POST', { bet, bombs });
+                const data = await api('/v1/action/mines/start', 'POST', { bet, bombs });
                 myPoints = data.newPoints;
                 updatePointsUI();
 
@@ -7687,7 +7711,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
         async function revealMineCell(idx, btn) {
             if (!minesActive || btn.disabled) return;
             try {
-                const data = await api('/api/game/mines/reveal', 'POST', { idx });
+                const data = await api('/v1/action/mines/reveal', 'POST', { idx });
                 btn.disabled = true;
                 if (data.hit) {
                     minesActive = false;
@@ -7719,7 +7743,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
         async function cashoutMines() {
             if (!minesActive) return;
             try {
-                const data = await api('/api/game/mines/cashout', 'POST', {});
+                const data = await api('/v1/action/mines/cashout', 'POST', {});
                 minesActive = false;
                 myPoints = data.newPoints;
                 updatePointsUI();
@@ -7753,7 +7777,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             const buyIn = parseInt(prompt('Buy-in amount (default 500):') || '500');
             if (isNaN(buyIn) || buyIn < 10) return alert('Invalid buy-in');
             try {
-                const data = await api('/api/poker/create', 'POST', { buyIn, maxPlayers: 6 });
+                const data = await api('/v1/action/poker/create', 'POST', { buyIn, maxPlayers: 6 });
                 myPoints = data.newPoints; updatePointsUI();
                 pokerGameId = data.gameId;
                 document.getElementById('poker-display-code').innerText = data.inviteCode;
@@ -7772,10 +7796,10 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             const code = document.getElementById('poker-code-in').value.trim().toUpperCase();
             if (!code) return;
             try {
-                const data = await api('/api/poker/join', 'POST', { code });
+                const data = await api('/v1/action/poker/join', 'POST', { code });
                 myPoints = data.newPoints; updatePointsUI();
                 pokerGameId = data.gameId;
-                const state = await api(`/api/poker/${pokerGameId}`);
+                const state = await api(`/v1/action/poker/${pokerGameId}`);
                 document.getElementById('poker-display-code').innerText = state.inviteCode;
                 document.getElementById('poker-pts-badge').innerText = `✨ ${myPoints} pts`;
                 pokerShowSection('poker-waiting');
@@ -7808,14 +7832,14 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
 
         async function pokerInviteFriend(targetUserId) {
             try {
-                await api('/api/poker/invite', 'POST', { gameId: pokerGameId, targetUserId });
+                await api('/v1/action/poker/invite', 'POST', { gameId: pokerGameId, targetUserId });
                 alert('Invite sent via DM!');
             } catch (e) { alert(e.message); }
         }
 
         async function pokerStartGame() {
             try {
-                const data = await api('/api/poker/start', 'POST', { gameId: pokerGameId });
+                const data = await api('/v1/action/poker/start', 'POST', { gameId: pokerGameId });
                 pokerRenderTable(data.state);
                 pokerShowSection('poker-table');
             } catch (e) { alert(e.message); }
@@ -7878,7 +7902,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
         async function pokerAction(action) {
             const amount = action === 'raise' ? parseInt(document.getElementById('poker-raise-in').value) : undefined;
             try {
-                const data = await api('/api/poker/action', 'POST', { gameId: pokerGameId, action, amount });
+                const data = await api('/v1/action/poker/action', 'POST', { gameId: pokerGameId, action, amount });
                 pokerRenderTable(data.state);
                 document.getElementById('poker-raise-row').classList.add('hidden');
             } catch (e) { alert(e.message); }
@@ -7888,7 +7912,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
 
         async function pokerLeave() {
             try {
-                if (pokerGameId) await api('/api/poker/leave', 'POST', { gameId: pokerGameId });
+                if (pokerGameId) await api('/v1/action/poker/leave', 'POST', { gameId: pokerGameId });
             } catch (e) { }
             pokerGameId = null;
             clearInterval(pokerPollTimer);
@@ -7901,7 +7925,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             pokerPollTimer = setInterval(async () => {
                 if (!pokerGameId) { clearInterval(pokerPollTimer); return; }
                 try {
-                    const state = await api(`/api/poker/${pokerGameId}`);
+                    const state = await api(`/api/game/poker/${pokerGameId}`);
                     if (state.phase === 'WAITING') { pokerUpdateWaiting(state); }
                     else { pokerRenderTable(state); if (document.getElementById('poker-waiting').classList.contains('hidden') === false) pokerShowSection('poker-table'); }
                 } catch (e) { }
@@ -8445,7 +8469,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             document.getElementById('bj-hand2-area').classList.add('hidden');
             document.getElementById('bj-player-cards-2').innerHTML = '';
             document.getElementById('bj-bet-area').classList.remove('hidden');
-            document.getElementById('bj-arena').classList.add('hidden');
+            document.getElementById('bj-arena').classList.remove('hidden');
             document.getElementById('bj-result').innerText = '';
         }
 
@@ -8478,7 +8502,6 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             document.getElementById('slots-status').innerText = 'Spinning...';
             initSlotsReels();
 
-            // Start all 3 reels spinning immediately via JS interval
             for (let r = 0; r < 3; r++) {
                 const strip = document.getElementById(`slots-strip-${r}`);
                 const totalH = strip.children.length * SLOT_H;
@@ -8488,13 +8511,12 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     pos = (pos + SLOT_H) % totalH;
                     strip.style.transition = 'none';
                     strip.style.transform = `translateY(-${pos}px)`;
-                }, 80); // ~12 symbols/sec — looks like fast spinning
+                }, 80);
             }
 
             try {
-                const data = await api('/api/game/slots', 'POST', { bet });
+                const data = await api('/v1/action/slots', 'POST', { bet });
 
-                // Staggered stops: reel 0 at 1000ms, reel 1 at 1500ms, reel 2 at 2000ms
                 data.result.forEach((sym, r) => {
                     setTimeout(() => {
                         clearInterval(slotsSpinIntervals[r]);
@@ -8504,32 +8526,25 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                         reel.classList.add('winner');
 
                         const strip = document.getElementById(`slots-strip-${r}`);
-                        // Place winning symbol at position 0 (visible when transform=0)
                         strip.children[0].textContent = sym;
-                        // Snap to near-end of strip (last symbol visible), then ease to top (winning symbol)
                         const nearEnd = (strip.children.length - 2) * SLOT_H;
                         strip.style.transition = 'none';
                         strip.style.transform = `translateY(-${nearEnd}px)`;
-                        requestAnimationFrame(() => requestAnimationFrame(() => {
-                            strip.style.transition = 'transform 0.45s cubic-bezier(0.17,0.67,0.21,1)';
+
+                        setTimeout(() => {
+                            strip.style.transition = 'transform 0.5s cubic-bezier(0.1, 0.8, 0.2, 1)';
                             strip.style.transform = 'translateY(0)';
-                        }));
-                    }, 1000 + r * 500);
+                        }, 50);
+
+                        if (r === 2) {
+                            btn.disabled = false;
+                            myPoints = data.newPoints;
+                            updatePointsUI();
+                            const winMsg = data.win > 0 ? `<span style="color:#ffd700;">🎰 ${data.mult}x — Win: ${data.win} pts!</span>` : 'No match — better luck next time!';
+                            document.getElementById('slots-status').innerHTML = winMsg;
+                        }
+                    }, 1000 + (r * 500));
                 });
-
-                // Show result after all reels settle
-                setTimeout(() => {
-                    myPoints = data.newPoints;
-                    updatePointsUI();
-                    const status = document.getElementById('slots-status');
-                    if (data.win > 0) {
-                        status.innerHTML = `<span style="color:#ffd700;">🎰 ${data.mult}x — Win: ${data.win} pts!</span>`;
-                    } else {
-                        status.innerText = 'No match — better luck next time!';
-                    }
-                    btn.disabled = false;
-                }, 2600);
-
             } catch (e) {
                 slotsSpinIntervals.forEach(id => { if (id) clearInterval(id); });
                 slotsSpinIntervals = [null, null, null];
@@ -9645,7 +9660,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 if (!drawing) return;
                 pfpCtx.lineWidth = 5;
                 pfpCtx.lineCap = "round";
-                const colorInput = document.getElementById('draw-color');
+                const colorInput = document.getElementById('pfp-embed-draw-color');
                 pfpCtx.strokeStyle = colorInput ? colorInput.value : '#000';
 
                 const rect = canvas.getBoundingClientRect();
@@ -9846,7 +9861,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 myPoints -= totalBet;
                 updatePointsUI();
 
-                const res = await api('/api/game/roulette', 'POST', { bets: rlBets });
+                const res = await api('/v1/action/roulette', 'POST', { bets: rlBets });
 
                 rlIsSpinning = true;
                 const status = document.getElementById('rl-status');
@@ -10182,7 +10197,12 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             }
         }
 
-        function markTyping() { }
+        let typingTimer = null;
+        function markTyping() {
+            if (!currentChannel || typingTimer) return;
+            socket.emit('typing', { channelId: currentChannel });
+            typingTimer = setTimeout(() => { typingTimer = null; }, 3000);
+        }
 
         document.addEventListener('click', (e) => {
             if (currentUser && currentUser.disable_click_fx) return;
