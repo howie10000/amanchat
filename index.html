@@ -1356,7 +1356,7 @@
 
         .title-shape-wing::before,
         .title-shape-wing::after {
-            content: 'ðŸª½';
+            content: '🏮';
             position: absolute;
             font-size: 1em;
             top: 50%;
@@ -2394,7 +2394,7 @@
             border-color: rgba(255, 255, 255, 0.2) !important;
         }
 
-        /* â”€â”€ Leaderboard â”€â”€ */
+        /* ── Leaderboard ── */
         .lb-podium-slot {
             display: flex;
             flex-direction: column;
@@ -2651,7 +2651,7 @@
         <!-- Custom Confirm Modal -->
         <div id="modal-confirm" class="modal hidden">
             <div class="modal-card" style="max-width:380px;">
-                <div id="confirm-icon" style="font-size:2.5em; margin-bottom:10px;">â“</div>
+                <div id="confirm-icon" style="font-size:2.5em; margin-bottom:10px;">❓</div>
                 <h3 id="confirm-title" style="color:var(--primary); margin:0 0 10px;">Are you sure?</h3>
                 <p id="confirm-msg" style="color:#ddd; margin-bottom:20px; font-size:0.95em;"></p>
                 <div style="display:flex; gap:10px;">
@@ -2674,13 +2674,13 @@
                     <input type="range" id="draw-size" class="draw-brush-size" min="1" max="20" value="5"
                         title="Brush Size">
                     <button class="draw-tool-btn active" id="tool-brush" onclick="setDrawTool('brush')">
-                        ðŸ–Œï¸ Brush
+                        🖌️ Brush
                     </button>
                     <button class="draw-tool-btn" id="tool-eraser" onclick="setDrawTool('eraser')">
                         🧼 Eraser
                     </button>
                     <button class="draw-tool-btn" onclick="clearCanvas()">
-                        ðŸ—‘ï¸ Clear
+                        🗑️ Clear
                     </button>
                 </div>
                 <div style="display:flex; gap:10px;">
@@ -2695,7 +2695,7 @@
 
         <div id="modal-delete-srv" class="modal hidden">
             <div class="modal-card">
-                <h3 style="color:red; font-size:1.5em; margin-top:0;">ðŸ—‘ï¸ Delete Server</h3>
+                <h3 style="color:red; font-size:1.5em; margin-top:0;">🗑️ Delete Server</h3>
                 <p style="color:#ddd; margin-bottom:20px;">Are you absolutely sure you want to delete this server? This
                     action <strong>cannot be undone</strong> and all chat history will be lost forever.</p>
                 <div style="display:flex; gap:10px;">
@@ -2797,10 +2797,10 @@
                     <p style="color:#aaa; font-size:0.78em; margin-top:14px;">Last updated: 2026-05-06</p>
                 </div>
                 <div style="display:flex; gap:10px; margin-top:14px;">
-                    <button class="btn primary" style="flex:1; font-weight:bold;" onclick="agreeTOS()">âœ… Yes, I
+                    <button class="btn primary" style="flex:1; font-weight:bold;" onclick="agreeTOS()">✅ Yes, I
                         Agree</button>
                     <button class="btn" style="flex:1; background:rgba(255,0,0,0.4); color:white; font-weight:bold;"
-                        onclick="declineTOS()">âŒ No</button>
+                        onclick="declineTOS()">❌ No</button>
                 </div>
             </div>
         </div>
@@ -2875,7 +2875,7 @@
         <!-- Dev Logs Detected Fullscreen Lockout -->
         <div id="dev-logs-detected" class="hidden"
             style="position:fixed; inset:0; background:#000; z-index:99999; display:flex; align-items:center; justify-content:center; flex-direction:column; font-family: 'Courier New', monospace; color:#00ff00; padding:20px; text-align:center;">
-            <div style="font-size:5em; margin-bottom:20px; text-shadow: 0 0 20px #00ff00;">âš ï¸</div>
+            <div style="font-size:5em; margin-bottom:20px; text-shadow: 0 0 20px #00ff00;">⚠️</div>
             <h1
                 style="color:#ff0000; font-size:2.5em; margin:0 0 20px; text-shadow: 0 0 10px #ff0000; letter-spacing:3px;">
                 DEV LOGS DETECTED</h1>
@@ -3088,10 +3088,10 @@
                     </div>
                 </div>
                 <div style="display:flex; gap:10px;">
-                    <button class="btn primary" style="flex:1;" onclick="executeTrade('accept')">âœ… Accept</button>
+                    <button class="btn primary" style="flex:1;" onclick="executeTrade('accept')">✅ Accept</button>
                     <button class="btn"
                         style="flex:1; background:rgba(0,0,0,0.5); color:var(--admin); border:1px solid var(--admin);"
-                        onclick="executeTrade('decline')">âŒ Decline</button>
+                        onclick="executeTrade('decline')">❌ Decline</button>
                 </div>
                 <button class="btn" style="width:100%; background:none; color:#ddd; margin-top:8px;"
                     onclick="closeM('modal-trade-view')">Close</button>
@@ -3100,7 +3100,7 @@
 
         <div id="modal-market-create" class="modal hidden">
             <div class="modal-card" style="width:680px; max-width:96vw;">
-                <h3 style="color:var(--primary);">ðŸŒ Post Market Offer</h3>
+                <h3 style="color:var(--primary);">🛍️ Post Market Offer</h3>
                 <p style="color:#aaa; font-size:0.85em; margin-top:0;">Anyone who holds the required items can accept
                     your offer.</p>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:15px;">
@@ -3129,7 +3129,7 @@
                                 id="mkt-want-tab-theme" onclick="setMktWantTab('theme')">🎨 Themes</button>
                             <button class="btn"
                                 style="padding:4px 8px; font-size:0.75em; background:rgba(0,0,0,0.5); color:white;"
-                                id="mkt-want-tab-title" onclick="setMktWantTab('title')">ðŸ·ï¸ Titles</button>
+                                id="mkt-want-tab-title" onclick="setMktWantTab('title')">🏷️ Titles</button>
                             <button class="btn"
                                 style="padding:4px 8px; font-size:0.75em; background:rgba(0,0,0,0.5); color:white;"
                                 id="mkt-want-tab-lootbox" onclick="setMktWantTab('lootbox')">📦 Boxes</button>
@@ -3196,12 +3196,12 @@
             <button id="btn-chat" onclick="tab('chat')" class="active">💬 Chat <span id="nav-dot"
                     class="unread-dot hidden" style="position:absolute; top:5px; right:5px;"></span></button>
             <button id="btn-friends" onclick="tab('friends')">👥 Friends</button>
-            <button id="btn-store" onclick="tab('store'); subTabStore('lootbox');">ðŸª Store</button>
+            <button id="btn-store" onclick="tab('store'); subTabStore('lootbox');">🛍️ Store</button>
             <button id="btn-games" onclick="tab('games'); subTabGames('plinko');">🎲 Arcade</button>
             <button id="btn-inventory" onclick="tab('inventory'); loadInventory()">🎒 Inventory</button>
             <button id="btn-prof" onclick="tab('prof')">👤 Profile</button>
-            <button id="btn-leaderboard" onclick="tab('leaderboard')">ðŸ† Rich List</button>
-            <button id="btn-admin" onclick="tab('admin')" class="hidden" style="color:var(--admin)">âš™ï¸ Admin</button>
+            <button id="btn-leaderboard" onclick="tab('leaderboard')">🏆 Rich List</button>
+            <button id="btn-admin" onclick="tab('admin')" class="hidden" style="color:var(--admin)">⚙️ Admin</button>
             <button id="btn-thememaker" onclick="tab('thememaker')" class="hidden" style="color:#b366ff">🎨
                 Themes</button>
         </nav>
@@ -3252,13 +3252,13 @@
                         <div id="channel-controls" class="hidden" style="display:flex; gap:10px; align-items:center;">
                             <button id="god-clear-btn" class="btn hidden"
                                 style="background:#ffd700; color:black; padding:5px 10px; font-size:0.8em;"
-                                onclick="clearAllMessages()">âš¡ Clear All</button>
+                                onclick="clearAllMessages()">⚡ Clear All</button>
                             <button id="spam-clear-btn" class="btn hidden"
                                 style="background:#ff6600; color:white; padding:5px 10px; font-size:0.8em;"
                                 onclick="clearAllMessages()">🧹 Clear All</button>
                             <button id="srv-mod-btn" class="btn hidden"
                                 style="background:var(--admin); color:white; padding:5px 10px; font-size:0.8em;"
-                                onclick="openSrvMod()">ðŸ›¡ï¸ Mod</button>
+                                onclick="openSrvMod()">🛡️ Mod</button>
                             <button id="show-code-btn" class="btn hidden"
                                 style="background:#ffaa00; color:black; padding:5px 10px; font-size:0.8em;">🔑
                                 Code</button>
@@ -3271,10 +3271,10 @@
                                 onclick="ssStart()">📺 Share Screen</button>
                             <button id="del-srv-btn" class="btn hidden"
                                 style="background:#ff3333; color:white; padding:5px 10px; font-size:0.8em;"
-                                onclick="deleteServer()">ðŸ—‘ï¸ Delete</button>
+                                onclick="deleteServer()">🗑️ Delete</button>
                             <button id="del-server-btn" class="btn hidden"
                                 style="background:#cc0000; color:white; padding:5px 10px; font-size:0.8em;"
-                                onclick="deleteServer()">ðŸ—‘ï¸ Del Server</button>
+                                onclick="deleteServer()">🗑️ Del Server</button>
                         </div>
                     </div>
                     <div id="msg-history">
@@ -3296,7 +3296,7 @@
                         </div>
                         <div class="input-row">
                             <button class="btn" id="draw-btn" onclick="openDrawMsgModal()"
-                                style="background:rgba(0,0,0,0.5); font-size:1.2em;" title="Draw & Send">âœï¸</button>
+                                style="background:rgba(0,0,0,0.5); font-size:1.2em;" title="Draw & Send">✏️ </button>
                             <textarea id="msg-in" placeholder="Type message... (Shift+Enter for newline, 1 pt per msg)"
                                 oninput="markTyping(); this.style.height='38px'; if(this.value.includes('\n')) this.style.height=Math.min(this.scrollHeight,120)+'px';"
                                 onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); }"
@@ -3322,7 +3322,7 @@
                     <h3 style="color:var(--primary); margin:0 0 8px;">👥 Friends</h3>
                     <button class="btn primary" id="frnd-btn-my" onclick="toggleFriendView('my')">My Friends</button>
                     <button class="btn" id="frnd-btn-find" style="background:rgba(0,0,0,0.5); color:white;"
-                        onclick="toggleFriendView('find')">ðŸ” Find Friends</button>
+                        onclick="toggleFriendView('find')">🔍 Find Friends</button>
                     <hr style="border:0; border-bottom:1px solid rgba(255,255,255,0.07); margin:8px 0;">
                     <div style="font-size:0.80em; color:#aaa; margin-bottom:2px;">Send Friend Request</div>
                     <input type="text" id="friend-in" placeholder="Username..."
@@ -3356,8 +3356,8 @@
                 <div class="sidebar" style="padding:15px; gap:10px;">
                     <h3
                         style="color:var(--primary); margin-top:0; margin-bottom:5px; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">
-                        ðŸª Store & Economy</h3>
-                    <div class="profile-points-badge" style="font-size:1em; margin-top:0; text-align:center;">âœ¨ <span
+                        🛍️ Store & Economy</h3>
+                    <div class="profile-points-badge" style="font-size:1em; margin-top:0; text-align:center;">✨ <span
                             id="store-points">0</span> Points</div>
                     <button class="btn" id="sub-store-lootbox"
                         style="width:100%; text-align:left; background:var(--primary); color:black;"
@@ -3376,10 +3376,10 @@
                         onclick="subTabStore('trading'); loadTrades();">🔄 Trading Hub</button>
                     <button class="btn" id="sub-store-market"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabStore('market'); loadMarket();">ðŸŒ Open Market</button>
+                        onclick="subTabStore('market'); loadMarket();">🛍️ Open Market</button>
                     <button class="btn" id="sub-store-bank"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabStore('bank');">ðŸ¦ Bank</button>
+                        onclick="subTabStore('bank');">🏦 Bank</button>
                 </div>
                 <div class="chat-content" style="overflow-y:auto;">
                     <div id="store-view-lootbox"
@@ -3393,7 +3393,7 @@
                     </div>
 
                     <div id="store-view-richlist" class="hidden" style="padding:30px;">
-                        <h2 style="text-align:center;">ðŸ† AmanChat Rich List</h2>
+                        <h2 style="text-align:center;">🏆 AmanChat Rich List</h2>
                         <div id="rich-list-container"
                             style="max-width:600px; margin:0 auto; background:rgba(0,0,0,0.3); border-radius:10px; padding:20px;">
                             <div style="text-align:center; color:#aaa;">Loading leaderboard...</div>
@@ -3411,7 +3411,7 @@
                             <div id="index-themes-grid"
                                 style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:15px; margin-bottom:30px;">
                             </div>
-                            <h3 style="color:var(--primary); margin-bottom:15px;">ðŸ·ï¸ Titles</h3>
+                            <h3 style="color:var(--primary); margin-bottom:15px;">🏷️ Titles</h3>
                             <div id="index-titles-grid"
                                 style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:15px;">
                             </div>
@@ -3480,7 +3480,7 @@
 
                         <div id="auction-admin-panel" class="hidden"
                             style="width:100%; max-width:600px; background:rgba(0,0,0,0.3); padding:20px; border-radius:10px; border:1px solid var(--admin); margin-top:20px;">
-                            <h3 style="color:var(--admin); margin-top:0; margin-bottom:15px;">ðŸ‘‘ Create Auction (God
+                            <h3 style="color:var(--admin); margin-top:0; margin-bottom:15px;">👑 Create Auction (God
                                 Mode Only)</h3>
                             <select id="auction-item-type"
                                 style="width:100%; margin-bottom:10px; padding:8px; background:rgba(0,0,0,0.5); color:white; border:1px solid #444;">
@@ -3530,7 +3530,7 @@
                     </div>
                     <div id="store-view-market" class="hidden"
                         style="display:flex; flex-direction:column; align-items:center; padding:25px;">
-                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">ðŸŒ Open Market</h2>
+                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">🛍️ Open Market</h2>
                         <p style="color:#aaa; text-align:center; max-width:600px; margin-bottom:20px;">Post public trade
                             offers. Anyone who meets the conditions can accept them.</p>
                         <button class="btn primary" style="margin-bottom:20px;" onclick="openMarketCreate()">+ Post
@@ -3539,7 +3539,7 @@
                     </div>
                     <div id="store-view-bank" class="hidden"
                         style="display:flex; flex-direction:column; align-items:center; padding:25px; width:100%; box-sizing:border-box;">
-                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">ðŸ¦ AmanChat Bank</h2>
+                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">🏦 AmanChat Bank</h2>
                         <div id="bank-content" style="width:100%; max-width:700px;">
                             <div style="text-align:center;color:#aaa;">Loading bank info...</div>
                         </div>
@@ -3552,20 +3552,20 @@
                     <h3
                         style="color:var(--primary); margin-top:0; margin-bottom:5px; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">
                         🎲 Arcade</h3>
-                    <div class="profile-points-badge" style="font-size:1em; margin-top:0; text-align:center;">âœ¨ <span
+                    <div class="profile-points-badge" style="font-size:1em; margin-top:0; text-align:center;">✨ <span
                             id="games-points">0</span> Points</div>
                     <button class="btn" id="sub-games-plinko"
                         style="width:100%; text-align:left; background:var(--primary); color:black;"
-                        onclick="subTabGames('plinko')">ðŸŽ¯ Cosmic Plinko</button>
+                        onclick="subTabGames('plinko')">🎯 Cosmic Plinko</button>
                     <button class="btn" id="sub-games-roulette"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabGames('roulette')">ðŸŽ¡ Roulette</button>
+                        onclick="subTabGames('roulette')">🎡 Roulette</button>
                     <button class="btn" id="sub-games-rps"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabGames('rps')">âœŠ Rock Paper Scissors</button>
+                        onclick="subTabGames('rps')">✊ Rock Paper Scissors</button>
                     <button class="btn" id="sub-games-bj"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabGames('bj')">ðŸƒ Blackjack</button>
+                        onclick="subTabGames('bj')">🃏 Blackjack</button>
                     <button class="btn" id="sub-games-slots"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
                         onclick="subTabGames('slots')">🎰 Slot Machine</button>
@@ -3574,16 +3574,16 @@
                         onclick="subTabGames('mines')">💎 Diamond & Bomb</button>
                     <button class="btn" id="sub-games-poker"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabGames('poker')">ðŸƒ Texas Hold'em</button>
+                        onclick="subTabGames('poker')">🃏 Texas Hold'em</button>
                     <button class="btn" id="sub-games-avia"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabGames('avia')">âœˆï¸ Avia Masters</button>
+                        onclick="subTabGames('avia')">✈️ Avia Masters</button>
                 </div>
                 <div class="chat-content">
 
                     <!-- Plinko -->
                     <div id="game-view-plinko" class="game-card" style="width:100%; max-width:800px;">
-                        <h2 style="margin-top:0; color:var(--primary);">ðŸŽ¯ Cosmic Plinko</h2>
+                        <h2 style="margin-top:0; color:var(--primary);">🎯 Cosmic Plinko</h2>
                         <p style="color:#aaa;">Physics naturally favor the center, but the extreme edges hold massive
                             payouts. Click repeatedly to drop multiple balls at once!</p>
                         <div
@@ -3601,7 +3601,7 @@
 
                     <!-- Roulette -->
                     <div id="game-view-roulette" class="game-card hidden" style="width:100%; max-width:800px;">
-                        <h2 style="margin-top:0; color:var(--primary);">ðŸŽ¡ High-Roller Roulette</h2>
+                        <h2 style="margin-top:0; color:var(--primary);">🎡 High-Roller Roulette</h2>
                         <p style="color:#aaa;">Select chip value, click board to place bets, and spin! Max simulated
                             bet: 50,000</p>
 
@@ -3614,15 +3614,15 @@
                         </div>
 
                         <div style="margin:10px 0; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-                            <button class="btn" style="background:#555; color:white;" onclick="setRlChip(10)">ðŸª™
+                            <button class="btn" style="background:#555; color:white;" onclick="setRlChip(10)">🪙
                                 10</button>
-                            <button class="btn" style="background:#44aaff; color:black;" onclick="setRlChip(50)">ðŸª™
+                            <button class="btn" style="background:#44aaff; color:black;" onclick="setRlChip(50)">🪙
                                 50</button>
-                            <button class="btn" style="background:#33cc33; color:black;" onclick="setRlChip(100)">ðŸª™
+                            <button class="btn" style="background:#33cc33; color:black;" onclick="setRlChip(100)">🪙
                                 100</button>
-                            <button class="btn" style="background:#aa00aa; color:white;" onclick="setRlChip(500)">ðŸª™
+                            <button class="btn" style="background:#aa00aa; color:white;" onclick="setRlChip(500)">🪙
                                 500</button>
-                            <button class="btn" style="background:#ffaa00; color:black;" onclick="setRlChip(5000)">ðŸª™
+                            <button class="btn" style="background:#ffaa00; color:black;" onclick="setRlChip(5000)">🪙
                                 5K</button>
                             <span
                                 style="display:flex; align-items:center; margin-left:10px; color:var(--primary);">Chip:
@@ -3663,7 +3663,7 @@
 
                     <!-- RPS -->
                     <div id="game-view-rps" class="game-card hidden" style="width:100%; max-width:600px;">
-                        <h2 style="margin-top:0; color:var(--primary);">âœŠ Rock, Paper, Scissors</h2>
+                        <h2 style="margin-top:0; color:var(--primary);">✊ Rock, Paper, Scissors</h2>
                         <p style="color:#aaa;">Place a bet, pick your move. Win = 2x your bet. Tie = bet returned. Lose
                             = 0.</p>
                         <div
@@ -3674,10 +3674,10 @@
                         </div>
                         <div id="rps-arena"
                             style="margin:10px 0 25px; display:flex; justify-content:space-around; align-items:center;">
-                            <button class="rps-btn" onclick="playRPS('rock')" id="rps-r" title="Rock">âœŠ</button>
-                            <button class="rps-btn" onclick="playRPS('paper')" id="rps-p" title="Paper">âœ‹</button>
+                            <button class="rps-btn" onclick="playRPS('rock')" id="rps-r" title="Rock">✊</button>
+                            <button class="rps-btn" onclick="playRPS('paper')" id="rps-p" title="Paper">✋</button>
                             <button class="rps-btn" onclick="playRPS('scissors')" id="rps-s"
-                                title="Scissors">âœŒï¸</button>
+                                title="Scissors">✌️</button>
                         </div>
                         <div id="rps-result"
                             style="display:none; background:rgba(0,0,0,0.4); border-radius:12px; padding:20px; text-align:center; border:1px solid #333;">
@@ -3700,7 +3700,7 @@
 
                     <!-- Blackjack -->
                     <div id="game-view-bj" class="game-card hidden" style="width:100%; max-width:700px;">
-                        <h2 style="margin-top:0; color:var(--primary);">ðŸƒ Blackjack</h2>
+                        <h2 style="margin-top:0; color:var(--primary);">🃏 Blackjack</h2>
                         <p style="color:#aaa;">Beat the dealer to 21. Win pays double your wager.</p>
                         <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px; align-items:center;"
                             id="bj-bet-area">
@@ -3770,13 +3770,13 @@
                         <div
                             style="background:rgba(0,0,0,0.4); border-radius:8px; padding:12px; font-size:0.8em; color:#aaa; max-width:400px; margin:0 auto; text-align:left;">
                             <div style="font-weight:bold; color:var(--primary); margin-bottom:6px;">Paytable</div>
-                            <div>ðŸ’ðŸ’ðŸ’ â†’ <strong style="color:#55ff55;">5x</strong></div>
-                            <div>ðŸ‹ðŸ‹ðŸ‹ â†’ <strong style="color:#55ff55;">8x</strong></div>
-                            <div>🔔🔔🔔 â†’ <strong style="color:#55ff55;">12x</strong></div>
-                            <div>💎💎💎 â†’ <strong style="color:#55ff55;">25x</strong></div>
-                            <div>7ï¸âƒ£7ï¸âƒ£7ï¸âƒ£ â†’ <strong style="color:#ffd700;">50x</strong></div>
-                            <div>â­â­â­ â†’ <strong style="color:#ff00aa;">100x</strong></div>
-                            <div>Any 2 match â†’ <strong style="color:#fff;">1.5x</strong></div>
+                            <div>🍒🍒🍒 → <strong style="color:#55ff55;">5x</strong></div>
+                            <div>🍋🍋🍋 → <strong style="color:#55ff55;">8x</strong></div>
+                            <div>🔔🔔🔔 → <strong style="color:#55ff55;">12x</strong></div>
+                            <div>💎💎💎 → <strong style="color:#55ff55;">25x</strong></div>
+                            <div>7️⃣7️⃣7️⃣ → <strong style="color:#ffd700;">50x</strong></div>
+                            <div>⭐⭐⭐ → <strong style="color:#ff00aa;">100x</strong></div>
+                            <div>Any 2 match → <strong style="color:#fff;">1.5x</strong></div>
                         </div>
                     </div>
                     <!-- Diamond & Bomb -->
@@ -3826,12 +3826,12 @@
                             style="background:rgba(0,0,0,0.4); border-radius:8px; padding:12px; font-size:0.8em; color:#aaa; max-width:400px; margin:20px auto 0; text-align:left;">
                             <div style="font-weight:bold; color:var(--primary); margin-bottom:6px;">Multipliers (per gem
                                 found)</div>
-                            <div>1 Bomb: 1.02x â†’ 1.05x â†’ 1.09x â†’ 1.14x â†’ 1.20x</div>
-                            <div>3 Bombs: 1.05x â†’ 1.14x â†’ 1.26x â†’ 1.41x â†’ 1.59x</div>
-                            <div>5 Bombs: 1.08x â†’ 1.22x â†’ 1.40x â†’ 1.62x â†’ 1.88x</div>
-                            <div>10 Bombs: 1.30x â†’ 1.70x â†’ 2.25x â†’ 3.00x â†’ 4.00x</div>
-                            <div>15 Bombs: 1.70x â†’ 2.89x â†’ 4.91x â†’ 8.35x â†’ 14.20x</div>
-                            <div>20 Bombs: 2.30x â†’ 5.29x â†’ 12.17x â†’ 27.99x â†’ 64.38x</div>
+                            <div>1 Bomb: 1.02x → 1.05x → 1.09x → 1.14x → 1.20x</div>
+                            <div>3 Bombs: 1.05x → 1.14x → 1.26x → 1.41x → 1.59x</div>
+                            <div>5 Bombs: 1.08x → 1.22x → 1.40x → 1.62x → 1.88x</div>
+                            <div>10 Bombs: 1.30x → 1.70x → 2.25x → 3.00x → 4.00x</div>
+                            <div>15 Bombs: 1.70x → 2.89x → 4.91x → 8.35x → 14.20x</div>
+                            <div>20 Bombs: 2.30x → 5.29x → 12.17x → 27.99x → 64.38x</div>
                         </div>
                     </div>
                     <!-- Texas Hold'em Poker -->
@@ -3841,7 +3841,7 @@
                             style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.1);">
                             <h2
                                 style="margin:0; color:#4ade80; text-shadow:0 0 10px rgba(74,222,128,0.5); font-size:1.4em;">
-                                ðŸƒ Texas Hold'em</h2>
+                                🃏 Texas Hold'em</h2>
                             <div id="poker-pts-badge"
                                 style="font-size:1em; color:#ffd700; font-weight:bold; text-shadow:0 0 8px rgba(255,215,0,0.4);">
                             </div>
@@ -3855,7 +3855,7 @@
                                 style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-bottom:20px;">
                                 <button class="btn"
                                     style="padding:14px 32px; font-size:1.1em; background:linear-gradient(135deg,#22c55e,#16a34a); border:2px solid #4ade80; box-shadow:0 4px 15px rgba(34,197,94,0.3);"
-                                    onclick="pokerCreate()">ðŸŽ® Create Game</button>
+                                    onclick="pokerCreate()">🎮 Create Game</button>
                                 <button class="btn"
                                     style="padding:14px 32px; font-size:1.1em; background:linear-gradient(135deg,#3b82f6,#2563eb); border:2px solid #60a5fa; box-shadow:0 4px 15px rgba(59,130,246,0.3);"
                                     onclick="pokerShowJoin()">🔑 Join with Code</button>
@@ -3891,10 +3891,10 @@
                                     style="padding:12px 24px; background:linear-gradient(135deg,#22c55e,#16a34a); border:2px solid #4ade80; box-shadow:0 4px 15px rgba(34,197,94,0.3);">📨
                                     Invite Players</button>
                                 <button class="btn" id="poker-start-btn" class="hidden" onclick="pokerStartGame()"
-                                    style="padding:12px 24px; background:linear-gradient(135deg,#f59e0b,#d97706); border:2px solid #fbbf24; box-shadow:0 4px 15px rgba(245,158,11,0.3);">â–¶
+                                    style="padding:12px 24px; background:linear-gradient(135deg,#f59e0b,#d97706); border:2px solid #fbbf24; box-shadow:0 4px 15px rgba(245,158,11,0.3);">▶
                                     Start Game</button>
                                 <button class="btn" onclick="pokerLeave()"
-                                    style="padding:12px 24px; background:linear-gradient(135deg,#ef4444,#dc2626); border:2px solid #f87171; box-shadow:0 4px 15px rgba(239,68,68,0.3);">âœ–
+                                    style="padding:12px 24px; background:linear-gradient(135deg,#ef4444,#dc2626); border:2px solid #f87171; box-shadow:0 4px 15px rgba(239,68,68,0.3);">✖
                                     Leave</button>
                             </div>
                             <div id="poker-wait-msg"
@@ -4025,16 +4025,16 @@
                         style="width:100%; max-width:850px; background:linear-gradient(135deg, #1a1c2c, #4a192c); border:2px solid #ff3e3e; box-shadow: 0 0 20px rgba(255,62,62,0.2);">
                         <div
                             style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.1);">
-                            <h2 style="margin:0; color:#ff3e3e; text-shadow: 0 0 10px #ff3e3e;">âœˆï¸ Avia Masters</h2>
+                            <h2 style="margin:0; color:#ff3e3e; text-shadow: 0 0 10px #ff3e3e;">✈️ Avia Masters</h2>
                             <div id="avia-pts-badge" style="font-size:1.1em; color:#ffd700; font-weight:bold;"></div>
                         </div>
                         <p style="color:#aaa; font-size:0.9em; margin-bottom:15px;">
-                            ðŸ–±ï¸ <strong>Click canvas or Space</strong> to flap upward — gravity pulls the plane
+                            🖱️ <strong>Click canvas or Space</strong> to flap upward — gravity pulls the plane
                             down.<br>
-                            ðŸŸ¢ <strong>Green balls</strong> = +multiplier bonus &nbsp;|&nbsp; ðŸ”´ <strong>Red
+                            🟢 <strong>Green balls</strong> = +multiplier bonus &nbsp;|&nbsp; 🔴 <strong>Red
                                 balls</strong> = -multiplier penalty<br>
-                            âŒ <strong>Red X hazards</strong> + hitting the ground = crash = lose bet<br>
-                            âš“ <strong>Carriers appear at 1.5x</strong> — land on one for full payout &nbsp;|&nbsp;
+                            ❌ <strong>Red X hazards</strong> + hitting the ground = crash = lose bet<br>
+                            ⚓ <strong>Carriers appear at 1.5x</strong> — land on one for full payout &nbsp;|&nbsp;
                             <strong>E key</strong> = early cashout (1/3x)
                         </p>
 
@@ -4073,11 +4073,11 @@
 
             <div id="pane-inventory" class="tab-pane hidden"
                 style="flex-direction:column; align-items:center; padding:30px; overflow-y:auto;">
-                <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5);">ðŸŽ’ My Inventory</h2>
+                <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5);">🎒 My Inventory</h2>
                 <div style="display:flex; gap:15px; margin-bottom:20px; flex-wrap:wrap; justify-content:center;">
                     <button class="btn primary" id="btn-inv-themes" onclick="showInvTab('themes')">🎨 Themes</button>
                     <button class="btn" id="btn-inv-titles" style="background:rgba(0,0,0,0.5); color:white;"
-                        onclick="showInvTab('titles')">ðŸ·ï¸ Titles</button>
+                        onclick="showInvTab('titles')">🏷️ Titles</button>
                     <button class="btn" id="btn-inv-lootboxes" style="background:rgba(0,0,0,0.5); color:white;"
                         onclick="showInvTab('lootboxes')">📦 Lootboxes</button>
                 </div>
@@ -4105,7 +4105,7 @@
             <div id="pane-prof" class="tab-pane hidden"
                 style="flex-direction:column; align-items:center; padding:30px; overflow-y:auto;">
                 <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5);">Profile Settings</h2>
-                <div class="profile-points-badge">â­ <span id="prof-points-display">0</span> Points Earned</div>
+                <div class="profile-points-badge">✨ <span id="prof-points-display">0</span> Points Earned</div>
                 <div
                     style="margin-bottom:15px; text-align:center; background:rgba(0,0,0,0.4); padding:10px; border-radius:10px;">
                     <div style="font-size:0.85em; color:#ddd; margin-bottom:5px;">Active Title:</div>
@@ -4167,9 +4167,7 @@
                     <button class="btn primary"
                         style="padding:16px; font-weight:bold; font-size:1.1em; box-shadow:0 4px 15px rgba(0,212,255,0.2);"
                         onclick="saveProf()">Save Profile</button>
-                    <button class="btn"
-                        style="padding:12px; background:rgba(0,0,0,0.4); color:#ddd; border:1px solid #555; font-size:0.9em;"
-                        onclick="openChangePasswordModal()">🔑 Change Password</button>
+                                    onclick="openChangePasswordModal()">🔑 Change Password</button>
                     <a href="https://docs.google.com/document/d/14qRI6kciyENO3bdvoFc8yoAZ_wH_Ay_Zda4ZlJsS6Ns/edit?usp=sharing"
                         target="_blank" class="btn"
                         style="padding:10px; background:none; color:#888; font-size:0.85em; text-decoration:underline; display:block; text-align:center;">📜
@@ -4182,7 +4180,7 @@
                 style="flex-direction:column; align-items:center; padding:30px; overflow-y:auto;">
                 <h2
                     style="margin-top:0; color:var(--primary); text-shadow:0 0 15px rgba(0,212,255,0.4); letter-spacing:2px;">
-                    ðŸ† Rich List</h2>
+                    🏆 Rich List</h2>
                 <p style="color:#aaa; margin-top:-10px; margin-bottom:20px; font-size:0.85em; text-align:center;">Top 50
                     wealthiest players — updated each time someone logs in.</p>
 
@@ -4200,18 +4198,18 @@
 
                 <div id="leaderboard-empty" class="hidden"
                     style="color:#555; text-align:center; margin-top:40px; font-size:1.1em;">No data yet. Be the first
-                    to get rich! ðŸ’¸</div>
+                    to get rich! 💸</div>
             </div>
 
             <div id="pane-admin" class="tab-pane hidden"
                 style="flex-direction:column; align-items:center; padding:30px; overflow-y:auto;">
-                <h2 style="color:var(--admin); margin-bottom:20px; text-shadow: 0 2px 5px rgba(0,0,0,0.5);">âš™ï¸ Admin
+                <h2 style="color:var(--admin); margin-bottom:20px; text-shadow: 0 2px 5px rgba(0,0,0,0.5);">⚙️ Admin
                     Dashboard</h2>
 
                 <div style="width:100%; max-width:1000px; margin-bottom:20px; display:flex; gap:10px;">
                     <button class="btn primary" onclick="showAdminTab('dashboard')">Dashboard</button>
                     <button class="btn" style="background:rgba(0,0,0,0.5); color:white;"
-                        onclick="showAdminTab('explorer'); loadExplorer();">ðŸ“ Data Explorer (Firebase Style)</button>
+                        onclick="showAdminTab('explorer'); loadExplorer();">📁 Data Explorer (Firebase Style)</button>
                 </div>
 
                 <div id="admin-view-dashboard">
@@ -4247,14 +4245,14 @@
                                     onclick="admAct('ban')">Perm Ban</button>
                                 <button class="btn"
                                     style="background:rgba(0,0,0,0.6); color:#ff6666; border:1px solid #ff6666;"
-                                    onclick="admBanUsername()">ðŸš« Ban Username</button>
+                                    onclick="admBanUsername()">🚫 Ban Username</button>
                                 <button class="btn"
                                     style="background:rgba(0,0,0,0.6); color:#88ff88; border:1px solid #88ff88;"
-                                    onclick="admUnbanUsername()">âœ… Unban Username</button>
+                                    onclick="admUnbanUsername()">✅ Unban Username</button>
                             </div>
                         </div>
                         <div class="admin-box full" style="border-color:#ffd700; border-width:2px;">
-                            <h3 style="margin-top:0; color:#ffd700;">ðŸ† Leaderboard Ban</h3>
+                            <h3 style="margin-top:0; color:#ffd700;">🏆 Leaderboard Ban</h3>
                             <p style="color:#aaa; font-size:0.85em; margin-top:0;">Tag a player's account to hide them
                                 from
                                 the Rich List permanently. Their points are unaffected.</p>
@@ -4263,10 +4261,10 @@
                                     style="flex:1; min-width:160px;">
                                 <button class="btn"
                                     style="background:#8B6914; color:#ffd700; border:1px solid #ffd700; white-space:nowrap;"
-                                    onclick="admLbBan()">ðŸš« Ban from Leaderboard</button>
+                                    onclick="admLbBan()">🚫 Ban from Leaderboard</button>
                                 <button class="btn"
                                     style="background:rgba(0,0,0,0.5); color:#88ff88; border:1px solid #88ff88; white-space:nowrap;"
-                                    onclick="admLbUnban()">âœ… Restore to Leaderboard</button>
+                                    onclick="admLbUnban()">✅ Restore to Leaderboard</button>
                             </div>
                             <div id="adm-lb-status" style="margin-top:10px; font-size:0.85em; min-height:18px;"></div>
                             <div style="margin-top:14px;">
@@ -4280,7 +4278,7 @@
                             </div>
                         </div>
                         <div class="admin-box full" style="border-color:#9966cc;">
-                            <h3 style="margin-top:0; color:#b366ff;">ðŸŽ Give Item to Player</h3>
+                            <h3 style="margin-top:0; color:#b366ff;">🎁 Give Item to Player</h3>
                             <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
                                 <div style="flex:1; min-width:140px;">
                                     <label style="font-size:0.8em; color:#ddd; display:block; margin-bottom:4px;">Target
@@ -4301,7 +4299,7 @@
                                     <select id="adm-give-item" style="width:100%;"></select>
                                 </div>
                                 <button class="btn" style="background:#9966cc; color:white; white-space:nowrap;"
-                                    onclick="adminGiveItem()">ðŸŽ Give Item</button>
+                                    onclick="adminGiveItem()">🎁 Give Item</button>
                             </div>
                         </div>
 
@@ -4373,7 +4371,7 @@
 
                             <div id="admin-view-explorer" class="hidden" style="width:100%; max-width:1000px;">
                                 <div class="admin-box full" style="font-family: monospace; background:#050505;">
-                                    <h3 style="margin-top:0; color:#00ff00;">ðŸ“ amanchat-database-root</h3>
+                                    <h3 style="margin-top:0; color:#00ff00;">📁 amanchat-database-root</h3>
                                     <div id="explorer-root" style="padding-left:20px; border-left:1px solid #333;">
                                         <div style="color:#666;">Loading database structure...</div>
                                     </div>
@@ -4423,7 +4421,7 @@
                     </div>
 
                     <div class="admin-box full">
-                        <h3 style="margin-top:0;">ðŸ·ï¸ Create New Title</h3>
+                        <h3 style="margin-top:0;">🏷️ Create New Title</h3>
                         <div style="display:flex; gap:10px; flex-wrap:wrap;">
                             <input type="text" id="adm-new-ti-id" placeholder="ID (e.g., 'chat_king')" style="flex:1;">
                             <input type="text" id="adm-new-ti-name" placeholder="Display Name" style="flex:1;">
@@ -4456,7 +4454,7 @@
                             Theme Makers appear here in real-time. Review and approve or reject them below.</p>
                         <div id="admin-theme-submissions"
                             style="display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px;">
-                            <div style="color:#666; font-size:0.9em; font-style:italic;">â³ Loading submissions...</div>
+                            <div style="color:#666; font-size:0.9em; font-style:italic;">⏳ Loading submissions...</div>
                         </div>
                     </div>
 
@@ -4571,7 +4569,7 @@
                         </div>
                     </div>
                     <div style="display:flex; gap:10px; margin-top:15px;">
-                        <button class="btn primary" style="flex:1;" onclick="themeMakerSubmit()">ðŸ“¤ Submit
+                        <button class="btn primary" style="flex:1;" onclick="themeMakerSubmit()">📤 Submit
                             Theme</button>
                     </div>
                 </div>
@@ -4961,7 +4959,7 @@
             } catch (e) { alert(e.message); }
         }
 
-        // â”€â”€ Screen Share (server-init signaling â†’ P2P WebRTC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ── Screen Share (server-init signaling → P2P WebRTC) ──
         const SS_ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
         let ssConn = null;
         let ssLocalStream = null;
@@ -4997,11 +4995,11 @@
             ssPeerId = currentDMOtherUserId;
             ssLocalStream.getVideoTracks()[0].onended = () => ssEnd();
             ssOpenModal();
-            ssModalStatus('Waiting for the other user to acceptâ€¦');
+            ssModalStatus('Waiting for the other user to accept…');
             const vid = document.getElementById('ss-local-video');
             vid.srcObject = ssLocalStream;
             vid.style.display = 'block';
-            ssPopup('Waiting for acceptanceâ€¦', false, false, true);
+            ssPopup('Waiting for acceptance…', false, false, true);
             socket.emit('ss_request', { dmChannelId: currentChannel });
         }
 
@@ -5013,7 +5011,7 @@
         async function ssAccept() {
             ssHidePopup();
             ssOpenModal();
-            ssModalStatus('Connectingâ€¦');
+            ssModalStatus('Connecting…');
             ssConn = new RTCPeerConnection(SS_ICE);
             ssConn.ontrack = e => {
                 const vid = document.getElementById('ss-remote-video');
@@ -5042,7 +5040,7 @@
         }
 
         async function ssOnAccepted(data) {
-            ssModalStatus('Peer accepted — establishing connectionâ€¦');
+            ssModalStatus('Peer accepted — establishing connection…');
             ssPeerId = data.accepterUserId;
             ssConn = new RTCPeerConnection(SS_ICE);
             ssLocalStream.getTracks().forEach(t => ssConn.addTrack(t, ssLocalStream));
@@ -5221,7 +5219,7 @@
                     btn.style.marginBottom = '5px';
 
                     const isSystemServer = s.name === 'Official Public Hub' || s.name === 'Announcements';
-                    btn.innerHTML = isSystemServer ? `<span style="color:var(--primary);">â˜…</span> ${s.name}` : s.name;
+                    btn.innerHTML = isSystemServer ? `<span style="color:var(--primary);">★</span> ${s.name}` : s.name;
 
                     btn.onclick = () => openServer(s.id, s.name, s.owner_id);
                     list.appendChild(btn);
@@ -5253,7 +5251,7 @@
             }
 
             const isSystemServer = serverName === 'Official Public Hub' || serverName === 'Announcements';
-            document.getElementById('header-text').innerHTML = isSystemServer ? `<span style="color:var(--primary);">â˜…</span> ${serverName}` : serverName;
+            document.getElementById('header-text').innerHTML = isSystemServer ? `<span style="color:var(--primary);">★</span> ${serverName}` : serverName;
 
             try {
                 const channels = await api(`/api/servers/${serverId}/channels`);
@@ -5323,7 +5321,7 @@
                 const isAnnouncementsServer = currentServerName === 'Announcements';
                 const isGeneralProtected = (isOfficialHub || isAnnouncementsServer) && PROTECTED_CHANNELS.includes(chanName.toLowerCase());
                 delChan.classList.toggle('hidden', !isAdmin || isGeneralProtected || currentChannelIsDM);
-                delChan.innerText = "ðŸ—‘ï¸ Delete Chan";
+                delChan.innerText = "🗑️ Delete Chan";
                 delChan.onclick = () => deleteChannel(channelId);
             }
 
@@ -5544,7 +5542,7 @@
             try {
                 const boxes = await api('/api/lootboxes');
                 grid.innerHTML = '';
-                const icons = { bronze: '📦', silver: 'ðŸŽ', gold: '💎', legendary: 'â­', mythic: 'ðŸ”®' };
+                const icons = { bronze: '📦', silver: '🎁', gold: '💎', legendary: '⭐', mythic: '🔮', legend: '👑' };
                 for (const type in boxes) {
                     if (type === 'legend') continue; // legend box not listed in store
                     const box = boxes[type];
@@ -5553,7 +5551,7 @@
                     div.style.border = `2px solid ${box.color}`;
                     div.style.boxShadow = `0 0 10px ${box.color}`;
 
-                    let dropsHtml = box.drops.map(d => `<tr><td style="color:${rarityColor(d.rarity)}">â€¢</td><td>${d.rarity.toUpperCase()}</td><td style="text-align:right;">${d.chance}%</td></tr>`).join('');
+                    let dropsHtml = box.drops.map(d => `<tr><td style="color:${rarityColor(d.rarity)}">•</td><td>${d.rarity.toUpperCase()}</td><td style="text-align:right;">${d.chance}%</td></tr>`).join('');
 
                     div.innerHTML = `
                         <div class="lb-icon">${icons[type] || '📦'}</div>
@@ -5591,7 +5589,7 @@
                 if (res.success) {
                     myPoints = res.points;
                     updatePointsUI();
-                    if (!silent) showToast(`âœ… Bought a ${type} box! Check your inventory.`);
+                    if (!silent) showToast(`✅ Bought a ${type} box! Check your inventory.`);
                     return true;
                 }
             } catch (e) {
@@ -5641,7 +5639,7 @@
             let res;
             try { res = await api('/api/lootbox/open', 'POST', { type }); }
             catch (e) { alert(e.message); closeM('lootbox-open-modal'); return; }
-            boxEl.textContent = 'âœ¨';
+            boxEl.textContent = '✨';
             await new Promise(r => setTimeout(r, 300));
 
             // Full-screen reveal for event themes (Sorrow / Joy)
@@ -5672,7 +5670,7 @@
             const nameEl = document.getElementById('lb-result-name');
             const typeEl = document.getElementById('lb-result-type');
             const dupeEl = document.getElementById('lb-dupe-notice');
-            iconEl.textContent = res.itemType === 'theme' ? '🎨' : res.itemType === 'title' ? 'ðŸ·ï¸' : 'â“';
+            iconEl.textContent = res.itemType === 'theme' ? '🎨' : res.itemType === 'title' ? '🏷️' : '❓';
             rarEl.innerHTML = `<span style="color:${col};font-weight:bold;font-size:1.1em;text-transform:uppercase;letter-spacing:2px;">${res.rarity}</span>`;
             nameEl.textContent = res.itemName;
             nameEl.style.color = col;
@@ -5680,7 +5678,7 @@
             typeEl.textContent = res.itemType === 'theme' ? 'Theme' : res.itemType === 'title' ? 'Title' : '';
             if (res.isDuplicate) {
                 dupeEl.classList.remove('hidden');
-                dupeEl.textContent = `Duplicate! You now have Ã—${res.dupeCount + 1} of this ${res.itemType}.`;
+                dupeEl.textContent = `Duplicate! You now have ×${res.dupeCount + 1} of this ${res.itemType}.`;
             }
             renderOwnedLootboxes();
         }
@@ -6444,8 +6442,8 @@
                     <div style="background:rgba(0,0,0,0.4); padding:8px 10px; border-radius:8px; border:1px solid #333;">
                         <div style="font-weight:bold; margin-bottom:5px;">${r.username}</div>
                         <div style="display:flex; gap:6px;">
-                            <button class="btn primary" style="padding:4px 10px; font-size:0.78em;" onclick="respondFriend('${r.fid}','accept')">âœ“ Accept</button>
-                            <button class="btn" style="padding:4px 10px; font-size:0.78em; background:rgba(255,62,62,0.3); color:white;" onclick="respondFriend('${r.fid}','decline')">âœ— Decline</button>
+                            <button class="btn primary" style="padding:4px 10px; font-size:0.78em;" onclick="respondFriend('${r.fid}','accept')">✓ Accept</button>
+                            <button class="btn" style="padding:4px 10px; font-size:0.78em; background:rgba(255,62,62,0.3); color:white;" onclick="respondFriend('${r.fid}','decline')">✗ Decline</button>
                         </div>
                     </div>`).join('');
             } catch (e) { }
@@ -6507,7 +6505,7 @@
                     } else if (p.friendshipStatus === 'pending') {
                         if (addBtn) {
                             addBtn.style.display = '';
-                            addBtn.textContent = 'âœ“ Request Pending';
+                            addBtn.textContent = '✓ Request Pending';
                             addBtn.disabled = true;
                             addBtn.style.background = '#555';
                         }
@@ -6562,7 +6560,7 @@
             try {
                 await api('/api/friends/request', 'POST', { targetUsername: _profileViewTarget });
                 const btn = document.getElementById('prof-btn-add');
-                if (btn) { btn.textContent = 'âœ“ Request Sent'; btn.disabled = true; btn.style.background = '#555'; }
+                if (btn) { btn.textContent = '✓ Request Sent'; btn.disabled = true; btn.style.background = '#555'; }
             } catch (e) { alert(e.message); }
         }
 
@@ -6658,7 +6656,7 @@
             if (!username) return;
             try {
                 await api('/api/friends/request', 'POST', { targetUsername: username });
-                msg.innerText = 'âœ“ Request sent!'; msg.style.color = '#00ff55';
+                msg.innerText = '✓ Request sent!'; msg.style.color = '#00ff55';
                 document.getElementById('friend-in').value = '';
             } catch (e) { msg.innerText = e.message; msg.style.color = '#ff5555'; }
             setTimeout(() => { msg.innerText = ''; }, 3000);
@@ -6686,7 +6684,7 @@
         async function addFriendFromSearch(username, btn) {
             try {
                 await api('/api/friends/request', 'POST', { targetUsername: username });
-                btn.innerText = 'âœ“ Sent'; btn.disabled = true; btn.style.background = '#555';
+                btn.innerText = '✓ Sent'; btn.disabled = true; btn.style.background = '#555';
             } catch (e) { alert(e.message); }
         }
         async function burnSelectedItems() {
@@ -6733,7 +6731,7 @@
                         const owned = ownedThemeIds.has(t.id);
                         const col = rarityColor(t.rarity);
                         return `<div style="position:relative;background:rgba(0,0,0,0.4)${owned ? ';background:rgba(0,200,100,0.06)' : ''};border:2px solid ${owned ? '#00cc66' : '#333'};border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px;">
-                          ${owned ? '<span style="position:absolute;top:6px;right:6px;background:#00cc66;color:black;font-size:0.7em;font-weight:bold;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;">âœ“</span>' : '<span style="position:absolute;top:6px;right:6px;background:#333;color:#666;font-size:0.7em;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;">ðŸ”’</span>'}
+                          ${owned ? '<span style="position:absolute;top:6px;right:6px;background:#00cc66;color:black;font-size:0.7em;font-weight:bold;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;">✓</span>' : '<span style="position:absolute;top:6px;right:6px;background:#333;color:#666;font-size:0.7em;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;">🔐</span>'}
                           <div style="display:flex;gap:4px;"><div style="width:14px;height:14px;border-radius:3px;background:${t.bg_color || '#0b0b0b'};border:1px solid #555;"></div><div style="width:14px;height:14px;border-radius:3px;background:${t.accent_color || '#00d4ff'};border:1px solid #555;"></div><div style="width:14px;height:14px;border-radius:3px;background:${t.panel_color || '#1a1a1a'};border:1px solid #555;"></div></div>
                           <div style="font-weight:bold;color:#fff;font-size:0.9em;">${t.name}</div>
                           <div style="font-size:0.72em;color:${col};">${t.rarity.toUpperCase()}</div>
@@ -6746,7 +6744,7 @@
                         const owned = ownedTitleIds.has(t.id);
                         const col = rarityColor(t.rarity);
                         return `<div style="position:relative;background:${owned ? 'rgba(0,200,100,0.06)' : 'rgba(0,0,0,0.4)'};border:2px solid ${owned ? '#00cc66' : '#333'};border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px;">
-                          ${owned ? '<span style="position:absolute;top:6px;right:6px;background:#00cc66;color:black;font-size:0.7em;font-weight:bold;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;">âœ“</span>' : '<span style="position:absolute;top:6px;right:6px;background:#333;color:#666;font-size:0.7em;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;">ðŸ”’</span>'}
+                          ${owned ? '<span style="position:absolute;top:6px;right:6px;background:#00cc66;color:black;font-size:0.7em;font-weight:bold;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;">✓</span>' : '<span style="position:absolute;top:6px;right:6px;background:#333;color:#666;font-size:0.7em;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;">🔐</span>'}
                           <div style="font-weight:bold;color:${col};font-size:0.95em;">[${t.name}]</div>
                           <div style="font-size:0.72em;color:${col};">${t.rarity.toUpperCase()}</div>
                         </div>`;
@@ -6787,12 +6785,10 @@
                         const shards = ALTAR_SHARD_VALS[it.def.rarity] || 5;
                         const key = `${it.type}::${it.id}`;
                         return `<div style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;background:rgba(0,0,0,0.3);margin-bottom:6px;">
-                            <span style="font-size:1.2em;">${it.type === 'theme' ? '🎨' : 'ðŸ·ï¸'}</span>
+                            <span style="font-size:1.2em;">${it.type === 'theme' ? '🎨' : '🏷️'}</span>
                             <div style="flex:1;">
                                 <div style="font-weight:bold;color:${col};">${it.def.name}</div>
                                 <div style="font-size:0.75em;color:#aaa;">${it.def.rarity.toUpperCase()} | Owned: ${it.total}</div>
-                            </div>
-                            <div style="display:flex; flex-direction:column; align-items:flex-end;">
                                 <span id="altar-shard-preview-${it.type}-${it.id}" data-shards="${shards}" style="color:#00ffcc;font-weight:bold;font-size:0.85em; margin-bottom:5px;">+${shards} 💎 each</span>
                                 <input type="number" id="burn-qty-${key}" min="0" max="${it.total}" value="0" style="width:60px; padding:4px; background:#222; border:1px solid #444; color:white; border-radius:4px; text-align:center;">
                             </div>
@@ -6802,7 +6798,7 @@
             }
 
             const FUSE_COSTS = { bronze: 10, silver: 45, gold: 80, legendary: 115, mythic: 150, legend: 400 };
-            const BOX_ICONS = { bronze: '📦', silver: 'ðŸŽ', gold: '💎', legendary: 'â­', mythic: 'ðŸ”®', legend: 'ðŸ‘‘' };
+            const BOX_ICONS = { bronze: '📦', silver: '🎁', gold: '💎', legendary: '⭐', mythic: '🔮', legend: '👑' };
             const shopDiv = document.getElementById('altar-shop');
             if (!shopDiv) return;
             shopDiv.innerHTML = '';
@@ -6841,7 +6837,7 @@
                 const auctions = await api('/api/auctions');
                 const adminPanel = currentUser && ['admin', 'creator', 'god'].includes(currentUser.rank)
                     ? `<div style="background:rgba(255,200,0,0.08);border:1px solid #ffd70055;border-radius:12px;padding:18px;margin-bottom:20px;">
-                        <h4 style="color:#ffd700;margin:0 0 12px;">âš™ï¸ Admin — Create Auction</h4>
+                        <h4 style="color:#ffd700;margin:0 0 12px;">⚙️ Admin — Create Auction</h4>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                           <input id="adm-auc-title" placeholder="Auction title" style="background:rgba(0,0,0,0.4);border:1px solid #333;border-radius:8px;padding:8px;color:#fff;width:100%;box-sizing:border-box;">
                           <select id="adm-auc-type" onchange="loadAucItemDropdown()" style="background:rgba(0,0,0,0.4);border:1px solid #333;border-radius:8px;padding:8px;color:#fff;">
@@ -6855,7 +6851,7 @@
                             <option value="72">3 Days</option><option value="168">1 Week</option>
                           </select>
                         </div>
-                        <button class="btn primary" style="margin-top:12px;" onclick="createAuction()">ðŸ·ï¸ Create Auction</button>
+                        <button class="btn primary" style="margin-top:12px;" onclick="createAuction()">🏷️ Create Auction</button>
                        </div>` : '';
                 let cardsHtml = '';
                 if (!auctions.length) {
@@ -6869,9 +6865,9 @@
                         return `<div style="background:rgba(0,0,0,0.4);border:1px solid #333;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px;">
                           <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                             <div><div style="font-size:1.1em;font-weight:bold;color:#fff;">${a.title}</div>
-                              <div style="color:#aaa;font-size:0.82em;">${a.item_type.toUpperCase()}: ${a.item_id} â€¢ by ${a.creator_username || 'admin'}</div></div>
-                            <div style="text-align:right;"><div style="color:#ffd700;font-weight:bold;">â± ${timeStr}</div>
-                              ${isOwn ? '<div style="color:#00ff88;font-size:0.8em;">â˜… Your bid</div>' : ''}</div>
+                              <div style="color:#aaa;font-size:0.82em;">${a.item_type.toUpperCase()}: ${a.item_id} • by ${a.creator_username || 'admin'}</div></div>
+                            <div style="text-align:right;"><div style="color:#ffd700;font-weight:bold;">± ${timeStr}</div>
+                              ${isOwn ? '<div style="color:#00ff88;font-size:0.8em;">★ Your bid</div>' : ''}</div>
                           </div>
                           <div style="display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.04);padding:10px;border-radius:8px;">
                             <div><div style="color:#aaa;font-size:0.8em;">Current Bid</div><div style="font-size:1.2em;font-weight:bold;color:#00d4ff;">${a.current_bid} pts</div></div>
@@ -6970,7 +6966,7 @@
 
                     return `<div style="background:rgba(0,0,0,0.4);border:1px solid #333;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;">
                       <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <div style="font-weight:bold;">${t.initiator_name} â†’ ${t.responder_name}</div>
+                        <div style="font-weight:bold;">${t.initiator_name} → ${t.responder_name}</div>
                         <div style="color:${statusColor};font-size:0.85em;font-weight:bold;">${t.status.toUpperCase()}</div>
                       </div>
                       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.85em;">
@@ -6984,8 +6980,8 @@
                         </div>
                       </div>
                       ${t.status === 'pending' ? `<div style="display:flex;gap:8px;">
-                        ${!isInitiator ? `<button class="btn primary" onclick="acceptTrade('${t.id}')">âœ“ Accept</button>
-                          <button class="btn" style="background:rgba(255,62,62,0.3);color:white;" onclick="declineTrade('${t.id}')">âœ— Decline</button>` : ''}
+                        ${!isInitiator ? `<button class="btn primary" onclick="acceptTrade('${t.id}')">✓ Accept</button>
+                          <button class="btn" style="background:rgba(255,62,62,0.3);color:white;" onclick="declineTrade('${t.id}')">✗ Decline</button>` : ''}
                         ${isInitiator ? `<button class="btn" style="background:rgba(100,100,100,0.3);color:#aaa;" onclick="cancelTrade('${t.id}')">Cancel</button>` : ''}
                       </div>` : ''}
                     </div>`;
@@ -7066,7 +7062,7 @@
                 const col = rarityColor(it.def.rarity);
                 const key = `${it.type}::${it.id}`;
                 return `<div id="tmy-${it.type}-${it.id}" style="background:rgba(0,0,0,0.5);border:2px solid #333;border-radius:8px;padding:8px;text-align:center;font-size:0.78em;">
-                    <div style="font-size:1.3em;">${it.type === 'theme' ? '🎨' : 'ðŸ·ï¸'}</div>
+                    <div style="font-size:1.3em;">${it.type === 'theme' ? '🎨' : '🏷️'}</div>
                     <div style="color:${col};font-weight:bold;margin-top:3px;">${it.def.name}</div>
                     <div style="color:#666;font-size:0.75em;">${it.def.rarity} | Owned: ${it.total}</div>
                     <div style="margin-top:5px;">
@@ -7127,7 +7123,7 @@
                     const col = rarityColor(it.def.rarity);
                     const key = `${it.type}::${it.id}`;
                     return `<div style="background:rgba(0,0,0,0.5);border:2px solid #333;border-radius:8px;padding:8px;text-align:center;font-size:0.78em;">
-                        <div style="font-size:1.3em;">${it.type === 'theme' ? '🎨' : 'ðŸ·ï¸'}</div>
+                        <div style="font-size:1.3em;">${it.type === 'theme' ? '🎨' : '🏷️'}</div>
                         <div style="color:${col};font-weight:bold;margin-top:3px;">${it.def.name}</div>
                         <div style="color:#666;font-size:0.75em;">${it.def.rarity} | Owned: ${it.total}</div>
                         <div style="margin-top:5px;">
@@ -7225,16 +7221,16 @@
                               <div style="color:#ddd;font-size:0.9em;">${wantDesc}</div>
                             </div>
                           </div>
-                          <div style="color:#666;font-size:0.8em;">by ${l.seller_username} â€¢ Expires ${exp}</div>
+                          <div style="color:#666;font-size:0.8em;">by ${l.seller_username} • Expires ${exp}</div>
                           ${isOwn
-                                ? `<button class="btn" style="background:rgba(255,62,62,0.2);color:#ff5555;" onclick="delistMarket('${l.id}')">ðŸ—‘ Delist</button>`
-                                : `<button class="btn primary" onclick="buyMarketItem('${l.id}')">âœ“ Accept Trade</button>`}
+                                ? `<button class="btn" style="background:rgba(255,62,62,0.2);color:#ff5555;" onclick="delistMarket('${l.id}')">🗑️ Delist</button>`
+                                : `<button class="btn primary" onclick="buyMarketItem('${l.id}')">✓ Accept Trade</button>`}
                         </div>`;
                     }).join('');
                 }
                 el.innerHTML = `
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                    <h3 style="margin:0;color:var(--primary);">ðŸŒ Open Market</h3>
+                    <h3 style="margin:0;color:var(--primary);">🌐 Open Market</h3>
                     <button class="btn primary" onclick="openMarketCreate()">+ List Item</button>
                   </div>
                   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;">${cardsHtml}</div>`;
@@ -7286,13 +7282,13 @@
                     const qty = selected ? selected.quantity : 0;
                     const isSelected = qty > 0;
                     return `<div id="mkt-card-${it.type}-${it.id}" style="position:relative;cursor:pointer;background:${isSelected ? 'rgba(0,212,255,0.15)' : 'rgba(0,0,0,0.5)'};border:2px solid ${isSelected ? 'var(--primary)' : '#333'};border-radius:8px;padding:8px;text-align:center;font-size:0.78em;" onmouseenter="this.querySelector('.mkt-qty-controls')?.style.opacity==='1' || (this.querySelector('.mkt-qty-controls').style.display='flex')" onmouseleave="setTimeout(() => { const c = document.querySelector('#${it.type}-${it.id} .mkt-qty-controls'); if (c && c.dataset.hovered !== 'true') c.style.display='none'; }, 100)">
-                        <div style="font-size:1.3em;">${it.type === 'theme' ? '🎨' : 'ðŸ·ï¸'}</div>
+                        <div style="font-size:1.3em;">${it.type === 'theme' ? '🎨' : '🏷️'}</div>
                         <div style="color:${col};font-weight:bold;margin-top:3px;">${it.def.name}</div>
                         <div style="color:#666;font-size:0.75em;">${it.def.rarity}</div>
                         ${isSelected ? `<div style="color:var(--primary);font-weight:bold;margin-top:4px;font-size:0.9em;">x${qty}</div>` : ''}
                         <div class="mkt-qty-controls" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);gap:6px;background:rgba(0,0,0,0.9);padding:8px;border-radius:6px;z-index:100;" data-hovered="false" onmouseenter="this.dataset.hovered='true'" onmouseleave="this.dataset.hovered='false'">
                             <button style="padding:4px 8px;background:var(--primary);color:black;border:none;border-radius:4px;cursor:pointer;font-weight:bold;" onclick="mktAdjustQty('${it.type}','${it.id}','${it.def.name}',1); event.stopPropagation();">+</button>
-                            <button style="padding:4px 8px;background:#cc2222;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;" onclick="mktAdjustQty('${it.type}','${it.id}','${it.def.name}',-1); event.stopPropagation();">âˆ’</button>
+                            <button style="padding:4px 8px;background:#cc2222;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;" onclick="mktAdjustQty('${it.type}','${it.id}','${it.def.name}',-1); event.stopPropagation();">−</button>
                         </div>
                     </div>`;
                 }).join('') || '<div style="color:#555;padding:10px;">No items to list.</div>';
@@ -7368,17 +7364,17 @@
             // Build detailed exchange summary
             const youGiveLines = [
                 ...(givePoints > 0 ? [`💰 ${givePoints} points`] : []),
-                ..._mktSelectedGiveItems.map(x => `${x.quantity > 1 ? '✖' + x.quantity + ' ' : 'â€¢ '}${x.name}`)
+                ..._mktSelectedGiveItems.map(x => `${x.quantity > 1 ? '✖' + x.quantity + ' ' : '• '}${x.name}`)
             ];
             const theyGiveLines = [
                 ...(wantPoints > 0 ? [`💰 ${wantPoints} points`] : []),
-                ..._mktWantSelectedItems.map(x => `${x.quantity > 1 ? '✖' + x.quantity + ' ' : 'â€¢ '}${x.name}`)
+                ..._mktWantSelectedItems.map(x => `${x.quantity > 1 ? '✖' + x.quantity + ' ' : '• '}${x.name}`)
             ];
 
             const summary = `
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
            MARKET OFFER SUMMARY
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 YOU GIVE:
 ${youGiveLines.length > 0 ? youGiveLines.join('\n') : '(nothing)'}
@@ -7386,7 +7382,7 @@ ${youGiveLines.length > 0 ? youGiveLines.join('\n') : '(nothing)'}
 THEY GIVE:
 ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'}
 
-â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•`;
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
             if (!confirm(summary + '\n\nPost this offer to the market?')) return;
 
@@ -7439,7 +7435,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 const qty = selected ? selected.quantity : 0;
                 const isSelected = qty > 0;
                 const col = rarityColor(it.def.rarity || 'common');
-                const emoji = it.type === 'theme' ? '🎨' : it.type === 'title' ? 'ðŸ·ï¸' : '📦';
+                const emoji = it.type === 'theme' ? '🎨' : it.type === 'title' ? '🏷️' : '📦';
                 return `<div id="mkt-want-${it.type}-${it.id}" style="position:relative;cursor:pointer;background:${isSelected ? 'rgba(0,212,255,0.15)' : 'rgba(0,0,0,0.5)'};border:2px solid ${isSelected ? 'var(--primary)' : '#333'};border-radius:8px;padding:8px;text-align:center;font-size:0.78em;" onmouseenter="this.querySelector('.mkt-want-qty-controls')?.style.opacity==='1' || (this.querySelector('.mkt-want-qty-controls').style.display='flex')" onmouseleave="setTimeout(() => { const c = document.querySelector('#${it.type}-${it.id} .mkt-want-qty-controls'); if (c && c.dataset.hovered !== 'true') c.style.display='none'; }, 100)">
                     <div style="font-size:1.3em;">${emoji}</div>
                     <div style="color:${col};font-weight:bold;margin-top:3px;">${it.def.name}</div>
@@ -7447,7 +7443,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     ${isSelected ? `<div style="color:var(--primary);font-weight:bold;margin-top:4px;font-size:0.9em;">x${qty}</div>` : ''}
                     <div class="mkt-want-qty-controls" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);gap:6px;background:rgba(0,0,0,0.9);padding:8px;border-radius:6px;z-index:100;" data-hovered="false" onmouseenter="this.dataset.hovered='true'" onmouseleave="this.dataset.hovered='false'">
                         <button style="padding:4px 8px;background:var(--primary);color:black;border:none;border-radius:4px;cursor:pointer;font-weight:bold;" onclick="mktAdjustWantQty('${it.type}','${it.id}','${it.def.name}',1); event.stopPropagation();">+</button>
-                        <button style="padding:4px 8px;background:#cc2222;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;" onclick="mktAdjustWantQty('${it.type}','${it.id}','${it.def.name}',-1); event.stopPropagation();">âˆ’</button>
+                        <button style="padding:4px 8px;background:#cc2222;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;" onclick="mktAdjustWantQty('${it.type}','${it.id}','${it.def.name}',-1); event.stopPropagation();">−</button>
                     </div>
                 </div>`;
             }).join('');
@@ -7537,7 +7533,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     activeLoanHtml = `
                       <div style="background:rgba(${isDefaulted ? '255,50,50' : '0,212,255'},0.08);border:1px solid ${isDefaulted ? '#ff5555' : 'var(--primary)'};border-radius:12px;padding:20px;margin-bottom:20px;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                          <h3 style="margin:0;color:${isDefaulted ? '#ff5555' : 'var(--primary)'};">${isDefaulted ? 'ðŸš¨ DEFAULTED LOAN' : 'ðŸ“‹ Active Loan'}</h3>
+                          <h3 style="margin:0;color:${isDefaulted ? '#ff5555' : 'var(--primary)'};">${isDefaulted ? '🚨 DEFAULTED LOAN' : '📋 Active Loan'}</h3>
                           ${isDefaulted ? '<span style="color:#ff5555;font-size:0.85em;">20% garnishment active</span>' : ''}
                         </div>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;font-size:0.9em;">
@@ -7555,7 +7551,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                         ${!isDefaulted
                             ? `<div style="display:flex;gap:10px;">
                                  <input type="number" id="bank-repay-amount" placeholder="Amount (leave empty for full)" max="${remaining}" style="flex:1;padding:10px;background:rgba(0,0,0,0.4);border:1px solid #444;border-radius:8px;color:white;">
-                                 <button class="btn primary" style="flex:1;" onclick="repayLoan(${remaining})">ðŸ’¸ Repay Now</button>
+                                 <button class="btn primary" style="flex:1;" onclick="repayLoan(${remaining})">💸 Repay Now</button>
                                </div>`
                             : '<div style="color:#aaa;font-size:0.85em;text-align:center;">Repayment is automatic — 20% of all earned points go to the bank until paid off.</div>'}
                       </div>`;
@@ -7583,15 +7579,15 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                             </select>
                           </div>
                         </div>
-                        <div style="color:#aaa;font-size:0.82em;margin-bottom:14px;">5% interest applied for 24 hours, each additional time above that is + 2.5% each. Total to repay = amount Ã— 1.05. Early repayment allowed with no penalty. Credit score improves if you spend the money and repay on time.</div>
-                        <button class="btn primary" style="width:100%;" onclick="takeLoan()">ðŸ¦ Take Loan</button>
+                        <div style="color:#aaa;font-size:0.82em;margin-bottom:14px;">5% interest applied for 24 hours, each additional time above that is + 2.5% each. Total to repay = amount × 1.05. Early repayment allowed with no penalty. Credit score improves if you spend the money and repay on time.</div>
+                        <button class="btn primary" style="width:100%;" onclick="takeLoan()">🏦 Take Loan</button>
                       </div>`;
                 }
 
                 let historyHtml = '';
                 if (history && history.length) {
                     const rows = history.map(h => {
-                        const icon = h.status === 'repaid' ? 'âœ…' : h.status === 'defaulted' ? 'âŒ' : 'â³';
+                        const icon = h.status === 'repaid' ? '✅' : h.status === 'defaulted' ? '❌' : '⏳';
                         const statusColor = h.status === 'repaid' ? '#55ff99' : h.status === 'defaulted' ? '#ff5555' : '#ffaa00';
                         const date = new Date(h.taken_at).toLocaleDateString();
                         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #222;font-size:0.88em;">
@@ -7692,9 +7688,9 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
         function minesRevealAll(grid, btns, hitIdx) {
             grid.forEach((isBomb, i) => {
                 const cell = btns[i];
-                if (i === hitIdx) return; // already shown as ðŸ’£ with red
+                if (i === hitIdx) return; // already shown as 💣 with red
                 if (isBomb) {
-                    cell.innerText = 'ðŸ’£';
+                    cell.innerText = '💣';
                     cell.style.background = 'rgba(255,50,50,0.75)';
                     cell.style.opacity = '1';
                     cell.style.boxShadow = '0 0 10px rgba(255,0,0,0.5)';
@@ -7715,10 +7711,10 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 btn.disabled = true;
                 if (data.hit) {
                     minesActive = false;
-                    btn.innerText = 'ðŸ’£';
+                    btn.innerText = '💣';
                     btn.style.background = '#ff3e3e';
                     btn.style.opacity = '1';
-                    document.getElementById('mines-status').innerText = 'ðŸ’¥ BOOM! You hit a bomb.';
+                    document.getElementById('mines-status').innerText = '💥 BOOM! You hit a bomb.';
                     document.getElementById('mines-cashout-btn').disabled = true;
                     const btns = document.getElementById('mines-grid').children;
                     minesRevealAll(data.grid, btns, idx);
@@ -7781,7 +7777,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 myPoints = data.newPoints; updatePointsUI();
                 pokerGameId = data.gameId;
                 document.getElementById('poker-display-code').innerText = data.inviteCode;
-                document.getElementById('poker-pts-badge').innerText = `âœ¨ ${myPoints} pts`;
+                document.getElementById('poker-pts-badge').innerText = `✨ ${myPoints} pts`;
                 pokerShowSection('poker-waiting');
                 document.getElementById('poker-start-btn').style.display = '';
                 pokerPoll();
@@ -7801,7 +7797,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 pokerGameId = data.gameId;
                 const state = await api(`/v1/action/poker/${pokerGameId}`);
                 document.getElementById('poker-display-code').innerText = state.inviteCode;
-                document.getElementById('poker-pts-badge').innerText = `âœ¨ ${myPoints} pts`;
+                document.getElementById('poker-pts-badge').innerText = `✨ ${myPoints} pts`;
                 pokerShowSection('poker-waiting');
                 document.getElementById('poker-start-btn').style.display = 'none';
                 pokerUpdateWaiting(state);
@@ -7813,7 +7809,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             const el = document.getElementById('poker-waiting-players');
             el.innerHTML = state.players.map(p => `
                 <div style="display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.3); padding:8px 14px; border-radius:8px; border:1px solid #2d5a27;">
-                    <span style="font-size:1.2em;">ðŸƒ</span>
+                    <span style="font-size:1.2em;">🂡 </span>
                     <span style="font-weight:bold; color:#4ade80;">${p.username}</span>
                     <span style="color:#aaa; font-size:0.85em;">${p.chips} chips</span>
                     ${p.userId !== currentUser?.id ? `<button class="btn" style="margin-left:auto; padding:3px 10px; font-size:0.75em; background:rgba(34,197,94,0.2); border:1px solid #4ade80; color:#4ade80;" onclick="pokerInviteFriend('${p.userId}')">📨</button>` : ''}
@@ -7881,7 +7877,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     <button class="btn" style="background:linear-gradient(135deg,#ef4444,#dc2626); border:2px solid #f87171; color:white; padding:10px 20px;" onclick="pokerAction('fold')">Fold</button>
                     ${canCheck ? `<button class="btn" style="background:linear-gradient(135deg,#6b7280,#4b5563); border:2px solid #9ca3af; color:white; padding:10px 20px;" onclick="pokerAction('check')">Check</button>` : `<button class="btn" style="background:linear-gradient(135deg,#3b82f6,#2563eb); border:2px solid #60a5fa; color:white; padding:10px 20px;" onclick="pokerAction('call')">Call ${toCall}</button>`}
                     <button class="btn" style="background:linear-gradient(135deg,#22c55e,#16a34a); border:2px solid #4ade80; color:white; padding:10px 20px;" onclick="document.getElementById('poker-raise-row').classList.toggle('hidden')">Raise</button>`;
-                document.getElementById('poker-status-msg').innerText = 'â­ Your turn!';
+                document.getElementById('poker-status-msg').innerText = '⭐ Your turn!';
             } else {
                 document.getElementById('poker-status-msg').innerText = curPlayer ? `Waiting for ${curPlayer.username}...` : '';
             }
@@ -7889,7 +7885,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             // Showdown
             if (state.phase === 'SHOWDOWN' && state.winnersInfo) {
                 pokerShowSection('poker-round-end');
-                const winMsg = state.winnersInfo.map(w => `ðŸ† ${w.username} wins ${w.amount} pts (${w.handName})`).join('\n');
+                const winMsg = state.winnersInfo.map(w => `🏆 ${w.username} wins ${w.amount} pts (${w.handName})`).join('\n');
                 document.getElementById('poker-winner-msg').innerText = winMsg;
                 document.getElementById('poker-showdown-hands').innerHTML = state.players.filter(p => !p.folded).map(p =>
                     `<div style="text-align:center; margin-bottom:10px;">
@@ -8096,7 +8092,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 2;
                     ctx.strokeRect(o.x, o.y, o.w, o.h);
                     ctx.fillStyle = '#4ade80'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
-                    ctx.fillText('âš“ LAND', o.x + o.w / 2, o.y - 5);
+                    ctx.fillText('🛬 LAND', o.x + o.w / 2, o.y - 5);
                 }
             });
 
@@ -8105,12 +8101,12 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             ctx.save();
             const tilt = Math.max(-0.5, Math.min(0.4, planeVY * 0.06));
             ctx.translate(PLANE_X, planeY); ctx.rotate(tilt);
-            ctx.fillText('âœˆï¸', 0, 8);
+            ctx.fillText('✈️', 0, 8);
             ctx.restore();
 
             // HUD hint
             ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '11px Arial'; ctx.textAlign = 'left';
-            ctx.fillText('Click/Space = flap  â€¢  E = early cashout (1/3x)  â€¢  Land on âš“ for full payout', 8, 18);
+            ctx.fillText('Click/Space = flap  •  E = early cashout (1/3x)  •  Land on 🛬 for full payout', 8, 18);
 
             aviaRaf = requestAnimationFrame(aviaLoop);
         }
@@ -8123,7 +8119,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 const ctx = canvas.getContext('2d');
                 ctx.fillStyle = 'rgba(255,0,0,0.4)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = '#fff'; ctx.font = 'bold 48px Arial'; ctx.textAlign = 'center';
-                ctx.fillText('ðŸ’¥ CRASHED!', canvas.width / 2, canvas.height / 2);
+                ctx.fillText('💥 CRASHED!', canvas.width / 2, canvas.height / 2);
             }
             document.getElementById('avia-multiplier').style.color = '#ff3e3e';
             document.getElementById('avia-status').innerText = `Crashed at ${aviaMult.toFixed(2)}x — bet lost`;
@@ -8142,7 +8138,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             try {
                 const data = await api('/v1/action/avia/cashout', 'POST', { mult: aviaMult, isEarly: false });
                 myPoints = data.newPoints; updatePointsUI();
-                document.getElementById('avia-status').innerText = `ðŸ›¬ Landed! Win: ${data.win} pts (${aviaMult.toFixed(2)}x)`;
+                document.getElementById('avia-status').innerText = `🛫 Landed! Win: ${data.win} pts (${aviaMult.toFixed(2)}x)`;
                 document.getElementById('avia-status').style.color = '#4ade80';
             } catch (e) { }
             document.getElementById('avia-cashout').style.display = 'none';
@@ -8317,7 +8313,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             if ((e.key === 'e' || e.key === 'E') && aviaActive) { cashoutAvia(); return; }
             if (e.key === ' ' && aviaActive) { e.preventDefault(); aviaFlap(); }
         });
-        const rpsEmoji = { rock: 'âœŠ', paper: 'âœ‹', scissors: 'âœŒï¸' };
+        const rpsEmoji = { rock: '✊', paper: '✋', scissors: '✌️' };
         async function playRPS(choice) {
             const bet = parseInt(document.getElementById('rps-bet').value);
             if (isNaN(bet) || bet < 1) return alert('Enter a valid bet amount first.');
@@ -8331,9 +8327,9 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 document.getElementById('rps-you-emoji').innerText = rpsEmoji[choice];
                 document.getElementById('rps-ai-emoji').innerText = rpsEmoji[data.aiChoice];
                 const outcomeEl = document.getElementById('rps-outcome');
-                if (data.result === 'WIN') { outcomeEl.innerText = 'ðŸŽ‰ YOU WIN!'; outcomeEl.style.color = '#00ff55'; }
-                else if (data.result === 'LOSE') { outcomeEl.innerText = 'ðŸ’€ YOU LOSE'; outcomeEl.style.color = '#ff3e3e'; }
-                else { outcomeEl.innerText = 'ðŸ¤ TIE'; outcomeEl.style.color = '#ffcc00'; }
+                if (data.result === 'WIN') { outcomeEl.innerText = '🎉 YOU WIN!'; outcomeEl.style.color = '#00ff55'; }
+                else if (data.result === 'LOSE') { outcomeEl.innerText = '💀 YOU LOSE'; outcomeEl.style.color = '#ff3e3e'; }
+                else { outcomeEl.innerText = '🤝 TIE'; outcomeEl.style.color = '#ffcc00'; }
                 const delta = data.winAmount - bet;
                 document.getElementById('rps-points-delta').innerText = delta >= 0 ? `+${delta} points` : `${delta} points`;
                 document.getElementById('rps-points-delta').style.color = delta >= 0 ? '#00ff55' : '#ff5555';
@@ -8380,14 +8376,14 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
 
                 pArea.innerHTML = `
                     <div class="bj-hand-container ${a === 1 ? 'active' : ''}" style="min-width:140px;">
-                        <div class="bj-hand-label" style="color:${a === 1 ? 'var(--primary)' : '#aaa'}">${a === 1 ? 'â–¶ ' : ''}Hand 1</div>
+                        <div class="bj-hand-label" style="color:${a === 1 ? 'var(--primary)' : '#aaa'}">${a === 1 ? '▶ ' : ''}Hand 1</div>
                         <div style="display:flex; flex-wrap:wrap; justify-content:center;">${(data.hand1 || []).map(cardHtml).join('')}</div>
                         <div style="font-size:0.82em; margin-top:4px; color:${done ? labelColor(data.status1) : '#aaa'}">
                             Score: ${data.score1 || ''}${done ? ' — ' + data.status1 : ''}
                         </div>
                     </div>
                     <div class="bj-hand-container ${a === 2 ? 'active' : ''}" style="min-width:140px; ${a === 1 ? 'opacity:0.55' : ''}">
-                        <div class="bj-hand-label" style="color:${a === 2 ? 'var(--primary)' : '#aaa'}">${a === 2 ? 'â–¶ ' : ''}Hand 2</div>
+                        <div class="bj-hand-label" style="color:${a === 2 ? 'var(--primary)' : '#aaa'}">${a === 2 ? '▶ ' : ''}Hand 2</div>
                         <div style="display:flex; flex-wrap:wrap; justify-content:center;">${(data.hand2 || []).map(cardHtml).join('')}</div>
                         <div style="font-size:0.82em; margin-top:4px; color:${done ? labelColor(data.status2) : '#aaa'}">
                             Score: ${data.score2 || ''}${done ? ' — ' + data.status2 : ''}
@@ -8402,7 +8398,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     document.getElementById('bj-controls').classList.add('hidden');
                     document.getElementById('bj-replay').classList.remove('hidden');
                 } else {
-                    resultEl.innerText = a === 1 ? 'â–¶ Playing Hand 1 — Hit or Stand' : 'â–¶ Playing Hand 2 — Hit or Stand';
+                    resultEl.innerText = a === 1 ? '▶ Playing Hand 1 — Hit or Stand' : '▶ Playing Hand 2 — Hit or Stand';
                     resultEl.style.color = '#00d4ff';
                     document.getElementById('bj-controls').classList.remove('hidden');
                     document.getElementById('bj-replay').classList.add('hidden');
@@ -8422,12 +8418,12 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
 
             const terminal = ['BUST', 'WIN', 'LOSE', 'PUSH', 'BLACKJACK', 'CHARLIE_WIN'].includes(data.status);
 
-            if (data.status === 'BUST') { resultEl.innerText = 'ðŸ’¥ BUSTED! Dealer wins.'; resultEl.style.color = '#ff3e3e'; }
-            else if (data.status === 'BLACKJACK') { resultEl.innerText = `ðŸƒ BLACKJACK! You win ${data.win} pts (3x)!`; resultEl.style.color = '#ffd700'; }
-            else if (data.status === 'CHARLIE_WIN') { resultEl.innerText = `ðŸŽ´ 5-CARD CHARLIE! You win ${data.win} pts!`; resultEl.style.color = '#00ff99'; }
-            else if (data.status === 'WIN') { resultEl.innerText = `ðŸŽ‰ YOU WIN ${data.win} pts!`; resultEl.style.color = '#00ff55'; }
-            else if (data.status === 'LOSE') { resultEl.innerText = 'ðŸ˜ž DEALER WINS!'; resultEl.style.color = '#ff3e3e'; }
-            else if (data.status === 'PUSH') { resultEl.innerText = 'ðŸ¤ PUSH! Bet returned.'; resultEl.style.color = '#ffcc00'; }
+            if (data.status === 'BUST') { resultEl.innerText = '💥 BUSTED! Dealer wins.'; resultEl.style.color = '#ff3e3e'; }
+            else if (data.status === 'BLACKJACK') { resultEl.innerText = `🂡 BLACKJACK! You win ${data.win} pts (3x)!`; resultEl.style.color = '#ffd700'; }
+            else if (data.status === 'CHARLIE_WIN') { resultEl.innerText = `🎰 5-CARD CHARLIE! You win ${data.win} pts!`; resultEl.style.color = '#00ff99'; }
+            else if (data.status === 'WIN') { resultEl.innerText = `🎉 YOU WIN ${data.win} pts!`; resultEl.style.color = '#00ff55'; }
+            else if (data.status === 'LOSE') { resultEl.innerText = '😟 DEALER WINS!'; resultEl.style.color = '#ff3e3e'; }
+            else if (data.status === 'PUSH') { resultEl.innerText = '🤝 PUSH! Bet returned.'; resultEl.style.color = '#ffcc00'; }
             else resultEl.innerText = '';
 
             if (terminal) {
@@ -8438,6 +8434,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 document.getElementById('bj-replay').classList.add('hidden');
                 const canDouble = data.pHand && data.pHand.length === 2 && myPoints >= (data.bet || 0);
                 const canSplit = data.pHand && data.pHand.length === 2 && data.pHand[0].v === data.pHand[1].v && myPoints >= (data.bet || 0);
+        const SLOT_SYMS = ['🍒', '🍋', '🔔', '💎', '7️⃣', '⭐'];
                 document.getElementById('bj-double-btn').style.display = canDouble ? '' : 'none';
                 document.getElementById('bj-split-btn').style.display = canSplit ? '' : 'none';
             }
@@ -8473,7 +8470,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             document.getElementById('bj-result').innerText = '';
         }
 
-        const SLOT_SYMS = ['ðŸ’', 'ðŸ‹', '🔔', '💎', '7ï¸âƒ£', 'â­'];
+        const SLOT_SYMS = ['🍒', '🍋', '🔔', '💎', '7️⃣', '⭐'];
         const SLOT_H = 80; // px per symbol
         let slotsSpinIntervals = [null, null, null];
 
@@ -8629,7 +8626,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                       <div style="font-weight:bold;color:#fff;">${def ? def.name : tid}</div>
                       <div style="font-size:0.78em;color:${col};">${def ? def.rarity.toUpperCase() : 'BUILT-IN'}</div>
                       <button class="btn${isActive ? ' primary' : ''}" onclick="equipTheme('${tid}')" style="margin-top:4px;font-size:0.85em;">
-                        ${isActive ? 'âœ“ Equipped' : 'Equip'}
+                        ${isActive ? '✅ Equipped' : 'Equip'}
                       </button>
                     </div>`;
                 }).join('');
@@ -9125,7 +9122,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     bg.addColorStop(1, '#1a0008');
                     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
-                    // Diagonal rain (falling rightâ†’left at small angle)
+                    // Diagonal rain (falling right→left at small angle)
                     const rainDX = -0.28; // horizontal drift per speed unit
                     sorrowRain.forEach(r => {
                         r.y += r.speed;
@@ -9323,7 +9320,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     ctx.restore();
                     ctx.shadowBlur = 0; ctx.restore();
 
-                    // Diagonal rain (rightâ†’left)
+                    // Diagonal rain (right→left)
                     const rainDX = -0.28;
                     joyRain.forEach(r => {
                         r.y += r.speed;
@@ -9505,7 +9502,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                       <div style="font-weight:bold;color:${col};font-size:1.05em;">${def ? def.name : tid}</div>
                       <div style="font-size:0.78em;color:${col};">${def ? def.rarity.toUpperCase() : ''}</div>
                       <button class="btn${isActive ? ' primary' : ''}" onclick="equipTitle('${tid}')" style="margin-top:4px;font-size:0.85em;">
-                        ${isActive ? 'âœ“ Equipped' : 'Equip'}
+                        ${isActive ? '✅ Equipped' : 'Equip'}
                       </button>
                     </div>`;
                 }).join('');
@@ -9529,7 +9526,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 const lb = invData.inventory.lootboxes || {};
                 const entries = Object.entries(lb).filter(([, q]) => q > 0);
                 const colors = { bronze: '#888', silver: '#4d94ff', gold: '#b366ff', legendary: '#ffd700', mythic: '#ff00aa', legend: '#ffaa00' };
-                const icons = { bronze: '📦', silver: 'ðŸŽ', gold: '💎', legendary: 'â­', mythic: 'ðŸ”®', legend: 'ðŸ‘‘' };
+                const icons = { bronze: '📦', silver: '🎁', gold: '💎', legendary: '⭐', mythic: '🔮', legend: '👑' };
                 grid.innerHTML = entries.length
                     ? entries.map(([type, qty]) => `
                         <div style="background:rgba(0,0,0,0.4);border:2px solid ${colors[type] || '#333'};border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;box-shadow:0 0 8px ${colors[type] || '#333'}44;">
@@ -9987,7 +9984,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             if (!username) return alert('Enter or click a username first.');
             try {
                 await api('/api/admin/action', 'POST', { username, action });
-                alert(`Done: ${action} â†’ ${username}`);
+                alert(`Done: ${action} → ${username}`);
                 loadAdminDashboard();
             } catch (e) { alert(e.message); }
         }
@@ -10090,14 +10087,14 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 div.style.margin = '5px 0 5px 15px';
 
                 if (typeof item === 'object' && item !== null) {
-                    div.innerHTML = `<span style="color:#ffd700; cursor:pointer;" onclick="this.nextElementSibling.classList.toggle('hidden')">ðŸ“ ${key}</span>`;
+                    div.innerHTML = `<span style="color:#ffd700; cursor:pointer;" onclick="this.nextElementSibling.classList.toggle('hidden')">📂  ${key}</span>`;
                     const subContainer = document.createElement('div');
                     subContainer.className = 'hidden';
                     subContainer.style.borderLeft = '1px solid #222';
                     renderExplorerNode(subContainer, item);
                     div.appendChild(subContainer);
                 } else {
-                    div.innerHTML = `<span style="color:#aaa;">ðŸ“„ ${key}:</span> <span style="color:#fff;">${item}</span>`;
+                    div.innerHTML = `<span style="color:#aaa;">📄 ${key}:</span> <span style="color:#fff;">${item}</span>`;
                 }
                 container.appendChild(div);
             }
@@ -10165,7 +10162,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     const div = document.createElement('div');
                     div.style.cssText = `display:flex; flex-direction:column; align-items:center; flex:1;`;
                     div.innerHTML = `
-                        <div style="font-weight:bold; color:${color}; margin-bottom:5px;">${rank === 1 ? 'ðŸ‘‘' : rank === 2 ? 'ðŸ¥ˆ' : 'ðŸ¥‰'}</div>
+                        <div style="font-weight:bold; color:${color}; margin-bottom:5px;">${rank === 1 ? '👑' : rank === 2 ? '🥈' : '🥉'}</div>
                         <div style="font-size:0.9em; margin-bottom:5px; max-width:80px; overflow:hidden; text-overflow:ellipsis;">@${u.username}</div>
                         <div style="width:100%; height:${height}px; background:${color}33; border:2px solid ${color}; border-radius:10px 10px 0 0; display:flex; flex-direction:column; justify-content:center; align-items:center;">
                             <div style="font-size:1.5em; font-weight:bold; color:${color};">${rank}</div>
