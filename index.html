@@ -1356,7 +1356,7 @@
 
         .title-shape-wing::before,
         .title-shape-wing::after {
-            content: '🪽';
+            content: 'ðŸª½';
             position: absolute;
             font-size: 1em;
             top: 50%;
@@ -2394,7 +2394,7 @@
             border-color: rgba(255, 255, 255, 0.2) !important;
         }
 
-        /* ── Leaderboard ── */
+        /* â”€â”€ Leaderboard â”€â”€ */
         .lb-podium-slot {
             display: flex;
             flex-direction: column;
@@ -2651,7 +2651,7 @@
         <!-- Custom Confirm Modal -->
         <div id="modal-confirm" class="modal hidden">
             <div class="modal-card" style="max-width:380px;">
-                <div id="confirm-icon" style="font-size:2.5em; margin-bottom:10px;">❓</div>
+                <div id="confirm-icon" style="font-size:2.5em; margin-bottom:10px;">â“</div>
                 <h3 id="confirm-title" style="color:var(--primary); margin:0 0 10px;">Are you sure?</h3>
                 <p id="confirm-msg" style="color:#ddd; margin-bottom:20px; font-size:0.95em;"></p>
                 <div style="display:flex; gap:10px;">
@@ -2665,7 +2665,7 @@
         <!-- Drawing Modal -->
         <div id="modal-draw" class="modal hidden">
             <div class="modal-card">
-                <h3 style="color:var(--primary); margin:0 0 15px;">🎨 Draw a Message</h3>
+                <h3 style="color:var(--primary); margin:0 0 15px;">ðŸŽ¨ Draw a Message</h3>
                 <div class="draw-canvas-container">
                     <canvas id="draw-canvas" width="450" height="300"></canvas>
                 </div>
@@ -2674,13 +2674,13 @@
                     <input type="range" id="draw-size" class="draw-brush-size" min="1" max="20" value="5"
                         title="Brush Size">
                     <button class="draw-tool-btn active" id="tool-brush" onclick="setDrawTool('brush')">
-                        🖌️ Brush
+                        ðŸ–Œï¸ Brush
                     </button>
                     <button class="draw-tool-btn" id="tool-eraser" onclick="setDrawTool('eraser')">
-                        🧽 Eraser
+                        ðŸ§½ Eraser
                     </button>
                     <button class="draw-tool-btn" onclick="clearCanvas()">
-                        🗑️ Clear
+                        ðŸ—‘ï¸ Clear
                     </button>
                 </div>
                 <div style="display:flex; gap:10px;">
@@ -2695,7 +2695,7 @@
 
         <div id="modal-delete-srv" class="modal hidden">
             <div class="modal-card">
-                <h3 style="color:red; font-size:1.5em; margin-top:0;">🗑️ Delete Server</h3>
+                <h3 style="color:red; font-size:1.5em; margin-top:0;">ðŸ—‘ï¸ Delete Server</h3>
                 <p style="color:#ddd; margin-bottom:20px;">Are you absolutely sure you want to delete this server? This
                     action <strong>cannot be undone</strong> and all chat history will be lost forever.</p>
                 <div style="display:flex; gap:10px;">
@@ -2711,7 +2711,7 @@
         <!-- Theme Preview Modal -->
         <div id="modal-theme-preview" class="modal hidden">
             <div class="modal-card" style="width: 600px;">
-                <h3 style="color:var(--primary); margin-top:0;">🎨 Live Theme Preview</h3>
+                <h3 style="color:var(--primary); margin-top:0;">ðŸŽ¨ Live Theme Preview</h3>
                 <div id="preview-container" class="preview-pane">
                     <div class="prev-sidebar"># general<br># rules<br><br>Users Online: 2</div>
                     <div class="prev-chat">
@@ -2748,7 +2748,7 @@
                         style="display:none; background:rgba(255,62,62,0.3); color:white;">Unfriend</button>
                     <button class="btn" id="prof-btn-trade"
                         style="background:rgba(0,0,0,0.5); color:var(--primary); border:1px solid var(--primary);"
-                        onclick="openTradeFromProfile()">📦 Trade</button>
+                        onclick="openTradeFromProfile()">ðŸ“¦ Trade</button>
                     <button class="btn" id="prof-btn-report"
                         style="background:rgba(0,0,0,0.5); color:white; border:1px solid red;"
                         onclick="openReportModal()">Report User</button>
@@ -2764,7 +2764,7 @@
         <div id="modal-tos" class="modal hidden" style="z-index:99998;">
             <div class="modal-card"
                 style="max-width:520px; max-height:85vh; display:flex; flex-direction:column; border:2px solid var(--primary);">
-                <h2 style="color:var(--primary); margin:0 0 8px;">📜 Terms of Service</h2>
+                <h2 style="color:var(--primary); margin:0 0 8px;">ðŸ“œ Terms of Service</h2>
                 <p style="color:#aaa; font-size:0.85em; margin:0 0 12px;">You must agree to continue using Aman Chat.
                 </p>
                 <div
@@ -2797,10 +2797,10 @@
                     <p style="color:#aaa; font-size:0.78em; margin-top:14px;">Last updated: 2026-05-06</p>
                 </div>
                 <div style="display:flex; gap:10px; margin-top:14px;">
-                    <button class="btn primary" style="flex:1; font-weight:bold;" onclick="agreeTOS()">✅ Yes, I
+                    <button class="btn primary" style="flex:1; font-weight:bold;" onclick="agreeTOS()">âœ… Yes, I
                         Agree</button>
                     <button class="btn" style="flex:1; background:rgba(255,0,0,0.4); color:white; font-weight:bold;"
-                        onclick="declineTOS()">❌ No</button>
+                        onclick="declineTOS()">âŒ No</button>
                 </div>
             </div>
         </div>
@@ -2808,7 +2808,7 @@
         <!-- TOS Preview Modal (from Create Account link) -->
         <div id="modal-tos-preview" class="modal hidden">
             <div class="modal-card" style="max-width:520px; max-height:85vh; display:flex; flex-direction:column;">
-                <h2 style="color:var(--primary); margin:0 0 8px;">📜 Terms of Service</h2>
+                <h2 style="color:var(--primary); margin:0 0 8px;">ðŸ“œ Terms of Service</h2>
                 <div
                     style="flex:1; overflow-y:auto; background:rgba(0,0,0,0.4); padding:14px; border-radius:8px; color:#ddd; font-size:0.85em; line-height:1.5; text-align:left;">
                     <p><strong>1. Acceptance of Terms.</strong> By using Aman Chat, you agree to these Terms of Service.
@@ -2833,7 +2833,7 @@
         <!-- Password Change Modal -->
         <div id="modal-change-pass" class="modal hidden">
             <div class="modal-card" style="max-width:380px;">
-                <h3 style="color:var(--primary); margin-top:0;">🔑 Change Password</h3>
+                <h3 style="color:var(--primary); margin-top:0;">ðŸ”‘ Change Password</h3>
                 <p style="color:#aaa; font-size:0.85em; margin-bottom:14px;">Enter your current password to verify.</p>
                 <input type="password" id="cpw-current" placeholder="Current password"
                     style="width:100%; margin-bottom:10px;">
@@ -2852,7 +2852,7 @@
         <!-- Profile Picture Drawing Modal -->
         <div id="modal-draw-pfp" class="modal hidden">
             <div class="modal-card" style="max-width:400px;">
-                <h3 style="color:var(--primary); margin-top:0;">🎨 Draw Your Profile Picture</h3>
+                <h3 style="color:var(--primary); margin-top:0;">ðŸŽ¨ Draw Your Profile Picture</h3>
                 <p style="color:#aaa; font-size:0.85em; margin:0 0 12px;">Use mouse or touchscreen.</p>
                 <canvas id="pfp-draw-canvas" width="280" height="280"
                     style="border:2px solid var(--primary); background:white; cursor:crosshair; border-radius:10px; touch-action:none; display:block; margin:0 auto;"></canvas>
@@ -2875,7 +2875,7 @@
         <!-- Dev Logs Detected Fullscreen Lockout -->
         <div id="dev-logs-detected" class="hidden"
             style="position:fixed; inset:0; background:#000; z-index:99999; display:flex; align-items:center; justify-content:center; flex-direction:column; font-family: 'Courier New', monospace; color:#00ff00; padding:20px; text-align:center;">
-            <div style="font-size:5em; margin-bottom:20px; text-shadow: 0 0 20px #00ff00;">⚠️</div>
+            <div style="font-size:5em; margin-bottom:20px; text-shadow: 0 0 20px #00ff00;">âš ï¸</div>
             <h1
                 style="color:#ff0000; font-size:2.5em; margin:0 0 20px; text-shadow: 0 0 10px #ff0000; letter-spacing:3px;">
                 DEV LOGS DETECTED</h1>
@@ -2929,8 +2929,8 @@
         <div id="ss-modal" class="modal hidden" style="z-index:9999;">
             <div class="modal-card" style="max-width:860px; width:95vw; padding:20px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <h3 style="margin:0; color:var(--primary);">📺 Screen Share</h3>
-                    <button class="btn" style="background:#cc2222; color:#fff; padding:5px 16px;" onclick="ssEnd()">✕ End</button>
+                    <h3 style="margin:0; color:var(--primary);">ðŸ“º Screen Share</h3>
+                    <button class="btn" style="background:#cc2222; color:#fff; padding:5px 16px;" onclick="ssEnd()">âœ• End</button>
                 </div>
                 <div id="ss-modal-status" style="font-size:0.8em; color:#aaa; text-align:center; margin-bottom:8px;"></div>
                 <video id="ss-local-video" autoplay playsinline muted
@@ -3002,7 +3002,7 @@
             <div class="modal-card" style="min-height:380px; position:relative;">
                 <h3 id="lb-open-title" style="color:var(--primary);">Opening Lootbox...</h3>
                 <div id="lb-opening-phase">
-                    <span id="lb-open-box" class="lb-open-box">📦</span>
+                    <span id="lb-open-box" class="lb-open-box">ðŸ“¦</span>
                     <p style="color:#aaa; margin:5px 0;">Tap the box to open!</p>
                     <button id="lb-tap-btn" class="btn primary" style="width:100%; margin-top:10px;"
                         onclick="shakeLootbox()">🎲 Open It!</button>
@@ -3032,7 +3032,7 @@
 
         <div id="modal-trade-create" class="modal hidden">
             <div class="modal-card" style="width:700px; max-width:96vw;">
-                <h3 style="color:var(--primary);">📦 Create Trade</h3>
+                <h3 style="color:var(--primary);">ðŸ“¦ Create Trade</h3>
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px;">
                     <div style="flex:1; min-width:200px;">
                         <div style="font-size:0.85em; color:#aaa; margin-bottom:5px;">Trade Partner:</div>
@@ -3075,7 +3075,7 @@
 
         <div id="modal-trade-view" class="modal hidden">
             <div class="modal-card" style="width:600px; max-width:95vw;">
-                <h3 style="color:var(--primary);">📦 Trade Offer</h3>
+                <h3 style="color:var(--primary);">ðŸ“¦ Trade Offer</h3>
                 <p id="tv-from-user" style="color:#aaa;"></p>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin:15px 0;">
                     <div class="trade-side">
@@ -3088,10 +3088,10 @@
                     </div>
                 </div>
                 <div style="display:flex; gap:10px;">
-                    <button class="btn primary" style="flex:1;" onclick="executeTrade('accept')">✅ Accept</button>
+                    <button class="btn primary" style="flex:1;" onclick="executeTrade('accept')">âœ… Accept</button>
                     <button class="btn"
                         style="flex:1; background:rgba(0,0,0,0.5); color:var(--admin); border:1px solid var(--admin);"
-                        onclick="executeTrade('decline')">❌ Decline</button>
+                        onclick="executeTrade('decline')">âŒ Decline</button>
                 </div>
                 <button class="btn" style="width:100%; background:none; color:#ddd; margin-top:8px;"
                     onclick="closeM('modal-trade-view')">Close</button>
@@ -3100,7 +3100,7 @@
 
         <div id="modal-market-create" class="modal hidden">
             <div class="modal-card" style="width:680px; max-width:96vw;">
-                <h3 style="color:var(--primary);">🌐 Post Market Offer</h3>
+                <h3 style="color:var(--primary);">ðŸŒ Post Market Offer</h3>
                 <p style="color:#aaa; font-size:0.85em; margin-top:0;">Anyone who holds the required items can accept
                     your offer.</p>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:15px;">
@@ -3126,13 +3126,13 @@
                         <div id="mkt-want-type-tabs" style="display:flex; gap:5px; margin-bottom:8px; flex-wrap:wrap;">
                             <button class="btn"
                                 style="padding:4px 8px; font-size:0.75em; background:var(--primary); color:black;"
-                                id="mkt-want-tab-theme" onclick="setMktWantTab('theme')">🎨 Themes</button>
+                                id="mkt-want-tab-theme" onclick="setMktWantTab('theme')">ðŸŽ¨ Themes</button>
                             <button class="btn"
                                 style="padding:4px 8px; font-size:0.75em; background:rgba(0,0,0,0.5); color:white;"
-                                id="mkt-want-tab-title" onclick="setMktWantTab('title')">🏷️ Titles</button>
+                                id="mkt-want-tab-title" onclick="setMktWantTab('title')">ðŸ·ï¸ Titles</button>
                             <button class="btn"
                                 style="padding:4px 8px; font-size:0.75em; background:rgba(0,0,0,0.5); color:white;"
-                                id="mkt-want-tab-lootbox" onclick="setMktWantTab('lootbox')">📦 Boxes</button>
+                                id="mkt-want-tab-lootbox" onclick="setMktWantTab('lootbox')">ðŸ“¦ Boxes</button>
                         </div>
                         <div id="mkt-want-grid"
                             style="display:grid; grid-template-columns:repeat(auto-fill,minmax(90px,1fr)); gap:6px; max-height:180px; overflow-y:auto;">
@@ -3141,7 +3141,7 @@
                             set</div>
                     </div>
                 </div>
-                <button class="btn primary" style="width:100%; margin-bottom:8px;" onclick="submitMarketOffer()">📢 Post
+                <button class="btn primary" style="width:100%; margin-bottom:8px;" onclick="submitMarketOffer()">ðŸ“¢ Post
                     to Market</button>
                 <button class="btn" style="width:100%; background:none; color:#ddd;"
                     onclick="closeM('modal-market-create')">Cancel</button>
@@ -3150,7 +3150,7 @@
         <!-- Poker Invite Modal -->
         <div id="modal-poker-invite" class="modal hidden">
             <div class="modal-card" style="width:420px; max-width:96vw;">
-                <h3 style="color:var(--primary); margin-top:0;">📨 Invite Players</h3>
+                <h3 style="color:var(--primary); margin-top:0;">ðŸ“¨ Invite Players</h3>
                 <p style="color:#aaa; font-size:0.88em; margin-bottom:12px;">Select online users to send a DM invite
                     with your game code.</p>
                 <div id="poker-invite-list" style="max-height:260px; overflow-y:auto; margin-bottom:14px;"></div>
@@ -3176,7 +3176,7 @@
                 <div style="margin-top:14px;">
                     <a href="https://docs.google.com/document/d/14qRI6kciyENO3bdvoFc8yoAZ_wH_Ay_Zda4ZlJsS6Ns/edit?usp=sharing"
                         target="_blank"
-                        style="color:var(--primary); font-size:0.85em; text-decoration:underline; cursor:pointer;">📜
+                        style="color:var(--primary); font-size:0.85em; text-decoration:underline; cursor:pointer;">ðŸ“œ
                         Terms of Service</a>
                 </div>
             </div>
@@ -3193,16 +3193,16 @@
         </div>
 
         <nav id="app-nav" class="hidden">
-            <button id="btn-chat" onclick="tab('chat')" class="active">💬 Chat <span id="nav-dot"
+            <button id="btn-chat" onclick="tab('chat')" class="active">ðŸ’¬ Chat <span id="nav-dot"
                     class="unread-dot hidden" style="position:absolute; top:5px; right:5px;"></span></button>
-            <button id="btn-friends" onclick="tab('friends')">👥 Friends</button>
-            <button id="btn-store" onclick="tab('store'); subTabStore('lootbox');">🏪 Store</button>
+            <button id="btn-friends" onclick="tab('friends')">ðŸ‘¥ Friends</button>
+            <button id="btn-store" onclick="tab('store'); subTabStore('lootbox');">ðŸª Store</button>
             <button id="btn-games" onclick="tab('games'); subTabGames('plinko');">🎲 Arcade</button>
-            <button id="btn-inventory" onclick="tab('inventory'); loadInventory()">🎒 Inventory</button>
-            <button id="btn-prof" onclick="tab('prof')">👤 Profile</button>
-            <button id="btn-leaderboard" onclick="tab('leaderboard')">🏆 Rich List</button>
-            <button id="btn-admin" onclick="tab('admin')" class="hidden" style="color:var(--admin)">⚙️ Admin</button>
-            <button id="btn-thememaker" onclick="tab('thememaker')" class="hidden" style="color:#b366ff">🎨
+            <button id="btn-inventory" onclick="tab('inventory'); loadInventory()">ðŸŽ’ Inventory</button>
+            <button id="btn-prof" onclick="tab('prof')">ðŸ‘¤ Profile</button>
+            <button id="btn-leaderboard" onclick="tab('leaderboard')">ðŸ† Rich List</button>
+            <button id="btn-admin" onclick="tab('admin')" class="hidden" style="color:var(--admin)">âš™ï¸ Admin</button>
+            <button id="btn-thememaker" onclick="tab('thememaker')" class="hidden" style="color:#b366ff">ðŸŽ¨
                 Themes</button>
         </nav>
 
@@ -3211,10 +3211,10 @@
             <div id="pane-chat" class="tab-pane">
                 <div id="auction-banner" class="hidden"
                     style="position:absolute; top:0; left:0; right:0; background:linear-gradient(135deg, #ff6600, #ffcc00); color:black; padding:12px 20px; z-index:100; display:flex; align-items:center; justify-content:center; gap:10px; font-weight:bold; box-shadow:0 2px 10px rgba(0,0,0,0.5);">
-                    <span style="font-size:1.3em;">📢</span>
+                    <span style="font-size:1.3em;">ðŸ“¢</span>
                     <span id="auction-banner-message"></span>
                     <button onclick="document.getElementById('auction-banner').classList.add('hidden')"
-                        style="background:rgba(0,0,0,0.2); border:none; color:black; padding:2px 8px; border-radius:4px; cursor:pointer; margin-left:10px;">✕</button>
+                        style="background:rgba(0,0,0,0.2); border:none; color:black; padding:2px 8px; border-radius:4px; cursor:pointer; margin-left:10px;">âœ•</button>
                 </div>
                 <div class="sidebar">
                     <div style="display:flex; padding:5px; background:rgba(0,0,0,0.5);">
@@ -3238,7 +3238,7 @@
                                 onclick="checkServerPermsAndOpen(true)">+ Private Server</button>
                             <button class="btn"
                                 style="font-size:0.8em; border:1px solid var(--primary); color:var(--primary); background:none;"
-                                onclick="openJoinPrivate()">🔑 Private Code</button>
+                                onclick="openJoinPrivate()">ðŸ”‘ Private Code</button>
                         </div>
                         <div class="list-header">Servers</div>
                         <div id="list-pub"></div>
@@ -3252,15 +3252,15 @@
                         <div id="channel-controls" class="hidden" style="display:flex; gap:10px; align-items:center;">
                             <button id="god-clear-btn" class="btn hidden"
                                 style="background:#ffd700; color:black; padding:5px 10px; font-size:0.8em;"
-                                onclick="clearAllMessages()">⚡ Clear All</button>
+                                onclick="clearAllMessages()">âš¡ Clear All</button>
                             <button id="spam-clear-btn" class="btn hidden"
                                 style="background:#ff6600; color:white; padding:5px 10px; font-size:0.8em;"
-                                onclick="clearAllMessages()">🧹 Clear All</button>
+                                onclick="clearAllMessages()">ðŸ§¹ Clear All</button>
                             <button id="srv-mod-btn" class="btn hidden"
                                 style="background:var(--admin); color:white; padding:5px 10px; font-size:0.8em;"
-                                onclick="openSrvMod()">🛡️ Mod</button>
+                                onclick="openSrvMod()">ðŸ›¡ï¸ Mod</button>
                             <button id="show-code-btn" class="btn hidden"
-                                style="background:#ffaa00; color:black; padding:5px 10px; font-size:0.8em;">🔑
+                                style="background:#ffaa00; color:black; padding:5px 10px; font-size:0.8em;">ðŸ”‘
                                 Code</button>
                             <select id="channel-select" onchange="switchChannel(this.value)"
                                 style="padding:8px; width:auto;"></select>
@@ -3268,13 +3268,13 @@
                                 onclick="openAddChannel()">+ Chain</button>
                             <button id="ss-btn" class="btn hidden"
                                 style="background:#5865f2; color:#fff; padding:5px 10px; font-size:0.8em;"
-                                onclick="ssStart()">📺 Share Screen</button>
+                                onclick="ssStart()">ðŸ“º Share Screen</button>
                             <button id="del-srv-btn" class="btn hidden"
                                 style="background:#ff3333; color:white; padding:5px 10px; font-size:0.8em;"
-                                onclick="deleteServer()">🗑️ Delete</button>
+                                onclick="deleteServer()">ðŸ—‘ï¸ Delete</button>
                             <button id="del-server-btn" class="btn hidden"
                                 style="background:#cc0000; color:white; padding:5px 10px; font-size:0.8em;"
-                                onclick="deleteServer()">🗑️ Del Server</button>
+                                onclick="deleteServer()">ðŸ—‘ï¸ Del Server</button>
                         </div>
                     </div>
                     <div id="msg-history">
@@ -3283,7 +3283,7 @@
                     </div>
                     <!-- Screen Share In-DM Popup -->
                     <div id="ss-popup" class="hidden" style="display:flex; align-items:center; gap:12px; padding:10px 18px; background:var(--card); border-top:2px solid var(--primary); flex-wrap:wrap;">
-                        <span style="font-size:1.2em;">📺</span>
+                        <span style="font-size:1.2em;">ðŸ“º</span>
                         <span id="ss-popup-text" style="color:#ddd; font-size:0.9em; flex:1; min-width:120px;"></span>
                         <button id="ss-popup-accept"  class="btn primary"  style="padding:5px 16px; font-size:0.85em; display:none;" onclick="ssAccept()">Accept</button>
                         <button id="ss-popup-decline" class="btn"          style="padding:5px 16px; font-size:0.85em; background:#cc2222; color:#fff; display:none;" onclick="ssDecline()">Decline</button>
@@ -3296,7 +3296,7 @@
                         </div>
                         <div class="input-row">
                             <button class="btn" id="draw-btn" onclick="openDrawMsgModal()"
-                                style="background:rgba(0,0,0,0.5); font-size:1.2em;" title="Draw & Send">✏️</button>
+                                style="background:rgba(0,0,0,0.5); font-size:1.2em;" title="Draw & Send">âœï¸</button>
                             <textarea id="msg-in" placeholder="Type message... (Shift+Enter for newline, 1 pt per msg)"
                                 oninput="markTyping(); this.style.height='38px'; if(this.value.includes('\n')) this.style.height=Math.min(this.scrollHeight,120)+'px';"
                                 onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); }"
@@ -3309,7 +3309,7 @@
                         Read Only Channel</div>
                     <div id="spam-bandwidth-overlay" class="hidden"
                         style="padding:10px; background:rgba(255,102,0,0.2); text-align:center; color:#ff9933; font-size:0.85em; border-top:1px solid rgba(255,102,0,0.3);">
-                        📡 Spam Mode: No typing indicators</div>
+                        ðŸ“¡ Spam Mode: No typing indicators</div>
                 </div>
                 <div class="right-sidebar hidden" id="member-sidebar">
                     <div class="list-header">Online Members</div>
@@ -3319,10 +3319,10 @@
 
             <div id="pane-friends" class="tab-pane hidden">
                 <div class="sidebar" style="padding:15px; gap:10px; display:flex; flex-direction:column;">
-                    <h3 style="color:var(--primary); margin:0 0 8px;">👥 Friends</h3>
+                    <h3 style="color:var(--primary); margin:0 0 8px;">ðŸ‘¥ Friends</h3>
                     <button class="btn primary" id="frnd-btn-my" onclick="toggleFriendView('my')">My Friends</button>
                     <button class="btn" id="frnd-btn-find" style="background:rgba(0,0,0,0.5); color:white;"
-                        onclick="toggleFriendView('find')">🔍 Find Friends</button>
+                        onclick="toggleFriendView('find')">ðŸ” Find Friends</button>
                     <hr style="border:0; border-bottom:1px solid rgba(255,255,255,0.07); margin:8px 0;">
                     <div style="font-size:0.80em; color:#aaa; margin-bottom:2px;">Send Friend Request</div>
                     <input type="text" id="friend-in" placeholder="Username..."
@@ -3356,15 +3356,15 @@
                 <div class="sidebar" style="padding:15px; gap:10px;">
                     <h3
                         style="color:var(--primary); margin-top:0; margin-bottom:5px; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">
-                        🏪 Store & Economy</h3>
-                    <div class="profile-points-badge" style="font-size:1em; margin-top:0; text-align:center;">✨ <span
+                        ðŸª Store & Economy</h3>
+                    <div class="profile-points-badge" style="font-size:1em; margin-top:0; text-align:center;">âœ¨ <span
                             id="store-points">0</span> Points</div>
                     <button class="btn" id="sub-store-lootbox"
                         style="width:100%; text-align:left; background:var(--primary); color:black;"
-                        onclick="subTabStore('lootbox')">📦 Lootboxes</button>
+                        onclick="subTabStore('lootbox')">ðŸ“¦ Lootboxes</button>
                     <button class="btn" id="sub-store-index"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabStore('index'); loadIndex();">📚 Collection Index</button>
+                        onclick="subTabStore('index'); loadIndex();">ðŸ“š Collection Index</button>
                     <button class="btn" id="sub-store-altar"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
                         onclick="subTabStore('altar'); loadAltar();">🔥 The Altar</button>
@@ -3373,18 +3373,18 @@
                         onclick="subTabStore('auction'); loadAuction();">🎰 Aman Auction</button>
                     <button class="btn" id="sub-store-trading"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabStore('trading'); loadTrades();">🔄 Trading Hub</button>
+                        onclick="subTabStore('trading'); loadTrades();">ðŸ”„ Trading Hub</button>
                     <button class="btn" id="sub-store-market"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabStore('market'); loadMarket();">🌐 Open Market</button>
+                        onclick="subTabStore('market'); loadMarket();">ðŸŒ Open Market</button>
                     <button class="btn" id="sub-store-bank"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabStore('bank');">🏦 Bank</button>
+                        onclick="subTabStore('bank');">ðŸ¦ Bank</button>
                 </div>
                 <div class="chat-content" style="overflow-y:auto;">
                     <div id="store-view-lootbox"
                         style="display:flex; flex-direction:column; align-items:center; padding:30px;">
-                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">📦 Roll Lootboxes</h2>
+                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">ðŸ“¦ Roll Lootboxes</h2>
                         <p
                             style="color:#ddd; text-align:center; max-width:600px; margin-bottom:25px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">
                             Roll lootboxes to win exclusive themes and titles! Try the new Mythic tier for legendary
@@ -3393,7 +3393,7 @@
                     </div>
 
                     <div id="store-view-richlist" class="hidden" style="padding:30px;">
-                        <h2 style="text-align:center;">🏆 AmanChat Rich List</h2>
+                        <h2 style="text-align:center;">ðŸ† AmanChat Rich List</h2>
                         <div id="rich-list-container"
                             style="max-width:600px; margin:0 auto; background:rgba(0,0,0,0.3); border-radius:10px; padding:20px;">
                             <div style="text-align:center; color:#aaa;">Loading leaderboard...</div>
@@ -3403,15 +3403,15 @@
                     <!-- </div> moved down to correctly wrap sub-views -->
                     <div id="store-view-index" class="hidden"
                         style="display:flex; flex-direction:column; align-items:center; padding:25px;">
-                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">📚 Collection Index</h2>
+                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">ðŸ“š Collection Index</h2>
                         <p style="color:#aaa; text-align:center; max-width:600px; margin-bottom:20px;">View all
                             available themes and titles. Items you own are highlighted.</p>
                         <div style="width:100%; max-width:1200px;">
-                            <h3 style="color:var(--primary); margin-bottom:15px;">🎨 Themes</h3>
+                            <h3 style="color:var(--primary); margin-bottom:15px;">ðŸŽ¨ Themes</h3>
                             <div id="index-themes-grid"
                                 style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:15px; margin-bottom:30px;">
                             </div>
-                            <h3 style="color:var(--primary); margin-bottom:15px;">🏷️ Titles</h3>
+                            <h3 style="color:var(--primary); margin-bottom:15px;">ðŸ·ï¸ Titles</h3>
                             <div id="index-titles-grid"
                                 style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:15px;">
                             </div>
@@ -3440,7 +3440,7 @@
 
                             <div
                                 style="background:rgba(0,0,0,0.3); padding:20px; border-radius:10px; border:1px solid #444;">
-                                <h3 style="color:var(--primary); margin-top:0; margin-bottom:15px;">📦 Fuse Shards into
+                                <h3 style="color:var(--primary); margin-top:0; margin-bottom:15px;">ðŸ“¦ Fuse Shards into
                                     Lootboxes</h3>
                                 <p style="color:#aaa; font-size:0.85em; margin-bottom:15px;">Use shards to craft
                                     lootboxes.</p>
@@ -3480,7 +3480,7 @@
 
                         <div id="auction-admin-panel" class="hidden"
                             style="width:100%; max-width:600px; background:rgba(0,0,0,0.3); padding:20px; border-radius:10px; border:1px solid var(--admin); margin-top:20px;">
-                            <h3 style="color:var(--admin); margin-top:0; margin-bottom:15px;">👑 Create Auction (God
+                            <h3 style="color:var(--admin); margin-top:0; margin-bottom:15px;">ðŸ‘‘ Create Auction (God
                                 Mode Only)</h3>
                             <select id="auction-item-type"
                                 style="width:100%; margin-bottom:10px; padding:8px; background:rgba(0,0,0,0.5); color:white; border:1px solid #444;">
@@ -3504,7 +3504,7 @@
                                 <option value="604800000">1 Week</option>
                             </select>
                             <label style="color:#aaa; font-size:0.85em; margin-bottom:10px; display:block;">
-                                <input type="checkbox" id="auction-announce" checked> 📢 Announce to all players
+                                <input type="checkbox" id="auction-announce" checked> ðŸ“¢ Announce to all players
                             </label>
                             <button class="btn primary" style="width:100%;" onclick="createAuction()">🎰 Create
                                 Auction</button>
@@ -3512,7 +3512,7 @@
                     </div>
                     <div id="store-view-trading" class="hidden"
                         style="display:flex; flex-direction:column; align-items:center; padding:25px;">
-                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">🔄 Player Trading</h2>
+                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">ðŸ”„ Player Trading</h2>
                         <button class="btn primary" style="margin-bottom:20px;" onclick="openTradeCreate()">+ New
                             Trade</button>
                         <div
@@ -3530,7 +3530,7 @@
                     </div>
                     <div id="store-view-market" class="hidden"
                         style="display:flex; flex-direction:column; align-items:center; padding:25px;">
-                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">🌐 Open Market</h2>
+                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">ðŸŒ Open Market</h2>
                         <p style="color:#aaa; text-align:center; max-width:600px; margin-bottom:20px;">Post public trade
                             offers. Anyone who meets the conditions can accept them.</p>
                         <button class="btn primary" style="margin-bottom:20px;" onclick="openMarketCreate()">+ Post
@@ -3539,7 +3539,7 @@
                     </div>
                     <div id="store-view-bank" class="hidden"
                         style="display:flex; flex-direction:column; align-items:center; padding:25px; width:100%; box-sizing:border-box;">
-                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">🏦 AmanChat Bank</h2>
+                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">ðŸ¦ AmanChat Bank</h2>
                         <div id="bank-content" style="width:100%; max-width:700px;">
                             <div style="text-align:center;color:#aaa;">Loading bank info...</div>
                         </div>
@@ -3552,20 +3552,20 @@
                     <h3
                         style="color:var(--primary); margin-top:0; margin-bottom:5px; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">
                         🎲 Arcade</h3>
-                    <div class="profile-points-badge" style="font-size:1em; margin-top:0; text-align:center;">✨ <span
+                    <div class="profile-points-badge" style="font-size:1em; margin-top:0; text-align:center;">âœ¨ <span
                             id="games-points">0</span> Points</div>
                     <button class="btn" id="sub-games-plinko"
                         style="width:100%; text-align:left; background:var(--primary); color:black;"
-                        onclick="subTabGames('plinko')">🎯 Cosmic Plinko</button>
+                        onclick="subTabGames('plinko')">ðŸŽ¯ Cosmic Plinko</button>
                     <button class="btn" id="sub-games-roulette"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabGames('roulette')">🎡 Roulette</button>
+                        onclick="subTabGames('roulette')">ðŸŽ¡ Roulette</button>
                     <button class="btn" id="sub-games-rps"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabGames('rps')">✊ Rock Paper Scissors</button>
+                        onclick="subTabGames('rps')">âœŠ Rock Paper Scissors</button>
                     <button class="btn" id="sub-games-bj"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabGames('bj')">🃏 Blackjack</button>
+                        onclick="subTabGames('bj')">ðŸƒ Blackjack</button>
                     <button class="btn" id="sub-games-slots"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
                         onclick="subTabGames('slots')">🎰 Slot Machine</button>
@@ -3574,16 +3574,16 @@
                         onclick="subTabGames('mines')">💎 Diamond & Bomb</button>
                     <button class="btn" id="sub-games-poker"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabGames('poker')">🃏 Texas Hold'em</button>
+                        onclick="subTabGames('poker')">ðŸƒ Texas Hold'em</button>
                     <button class="btn" id="sub-games-avia"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabGames('avia')">✈️ Avia Masters</button>
+                        onclick="subTabGames('avia')">âœˆï¸ Avia Masters</button>
                 </div>
                 <div class="chat-content">
 
                     <!-- Plinko -->
                     <div id="game-view-plinko" class="game-card" style="width:100%; max-width:800px;">
-                        <h2 style="margin-top:0; color:var(--primary);">🎯 Cosmic Plinko</h2>
+                        <h2 style="margin-top:0; color:var(--primary);">ðŸŽ¯ Cosmic Plinko</h2>
                         <p style="color:#aaa;">Physics naturally favor the center, but the extreme edges hold massive
                             payouts. Click repeatedly to drop multiple balls at once!</p>
                         <div
@@ -3601,7 +3601,7 @@
 
                     <!-- Roulette -->
                     <div id="game-view-roulette" class="game-card hidden" style="width:100%; max-width:800px;">
-                        <h2 style="margin-top:0; color:var(--primary);">🎡 High-Roller Roulette</h2>
+                        <h2 style="margin-top:0; color:var(--primary);">ðŸŽ¡ High-Roller Roulette</h2>
                         <p style="color:#aaa;">Select chip value, click board to place bets, and spin! Max simulated
                             bet: 50,000</p>
 
@@ -3614,15 +3614,15 @@
                         </div>
 
                         <div style="margin:10px 0; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-                            <button class="btn" style="background:#555; color:white;" onclick="setRlChip(10)">🪙
+                            <button class="btn" style="background:#555; color:white;" onclick="setRlChip(10)">ðŸª™
                                 10</button>
-                            <button class="btn" style="background:#44aaff; color:black;" onclick="setRlChip(50)">🪙
+                            <button class="btn" style="background:#44aaff; color:black;" onclick="setRlChip(50)">ðŸª™
                                 50</button>
-                            <button class="btn" style="background:#33cc33; color:black;" onclick="setRlChip(100)">🪙
+                            <button class="btn" style="background:#33cc33; color:black;" onclick="setRlChip(100)">ðŸª™
                                 100</button>
-                            <button class="btn" style="background:#aa00aa; color:white;" onclick="setRlChip(500)">🪙
+                            <button class="btn" style="background:#aa00aa; color:white;" onclick="setRlChip(500)">ðŸª™
                                 500</button>
-                            <button class="btn" style="background:#ffaa00; color:black;" onclick="setRlChip(5000)">🪙
+                            <button class="btn" style="background:#ffaa00; color:black;" onclick="setRlChip(5000)">ðŸª™
                                 5K</button>
                             <span
                                 style="display:flex; align-items:center; margin-left:10px; color:var(--primary);">Chip:
@@ -3663,7 +3663,7 @@
 
                     <!-- RPS -->
                     <div id="game-view-rps" class="game-card hidden" style="width:100%; max-width:600px;">
-                        <h2 style="margin-top:0; color:var(--primary);">✊ Rock, Paper, Scissors</h2>
+                        <h2 style="margin-top:0; color:var(--primary);">âœŠ Rock, Paper, Scissors</h2>
                         <p style="color:#aaa;">Place a bet, pick your move. Win = 2x your bet. Tie = bet returned. Lose
                             = 0.</p>
                         <div
@@ -3674,10 +3674,10 @@
                         </div>
                         <div id="rps-arena"
                             style="margin:10px 0 25px; display:flex; justify-content:space-around; align-items:center;">
-                            <button class="rps-btn" onclick="playRPS('rock')" id="rps-r" title="Rock">✊</button>
-                            <button class="rps-btn" onclick="playRPS('paper')" id="rps-p" title="Paper">✋</button>
+                            <button class="rps-btn" onclick="playRPS('rock')" id="rps-r" title="Rock">âœŠ</button>
+                            <button class="rps-btn" onclick="playRPS('paper')" id="rps-p" title="Paper">âœ‹</button>
                             <button class="rps-btn" onclick="playRPS('scissors')" id="rps-s"
-                                title="Scissors">✌️</button>
+                                title="Scissors">âœŒï¸</button>
                         </div>
                         <div id="rps-result"
                             style="display:none; background:rgba(0,0,0,0.4); border-radius:12px; padding:20px; text-align:center; border:1px solid #333;">
@@ -3700,7 +3700,7 @@
 
                     <!-- Blackjack -->
                     <div id="game-view-bj" class="game-card hidden" style="width:100%; max-width:700px;">
-                        <h2 style="margin-top:0; color:var(--primary);">🃏 Blackjack</h2>
+                        <h2 style="margin-top:0; color:var(--primary);">ðŸƒ Blackjack</h2>
                         <p style="color:#aaa;">Beat the dealer to 21. Win pays double your wager.</p>
                         <div style="display:flex; justify-content:center; gap:10px; margin-bottom:20px; align-items:center;"
                             id="bj-bet-area">
@@ -3770,13 +3770,13 @@
                         <div
                             style="background:rgba(0,0,0,0.4); border-radius:8px; padding:12px; font-size:0.8em; color:#aaa; max-width:400px; margin:0 auto; text-align:left;">
                             <div style="font-weight:bold; color:var(--primary); margin-bottom:6px;">Paytable</div>
-                            <div>🍒🍒🍒 → <strong style="color:#55ff55;">5x</strong></div>
-                            <div>🍋🍋🍋 → <strong style="color:#55ff55;">8x</strong></div>
-                            <div>🔔🔔🔔 → <strong style="color:#55ff55;">12x</strong></div>
-                            <div>💎💎💎 → <strong style="color:#55ff55;">25x</strong></div>
-                            <div>7️⃣7️⃣7️⃣ → <strong style="color:#ffd700;">50x</strong></div>
-                            <div>⭐⭐⭐ → <strong style="color:#ff00aa;">100x</strong></div>
-                            <div>Any 2 match → <strong style="color:#fff;">1.5x</strong></div>
+                            <div>ðŸ’ðŸ’ðŸ’ â†’ <strong style="color:#55ff55;">5x</strong></div>
+                            <div>ðŸ‹ðŸ‹ðŸ‹ â†’ <strong style="color:#55ff55;">8x</strong></div>
+                            <div>🔔🔔🔔 â†’ <strong style="color:#55ff55;">12x</strong></div>
+                            <div>💎💎💎 â†’ <strong style="color:#55ff55;">25x</strong></div>
+                            <div>7ï¸âƒ£7ï¸âƒ£7ï¸âƒ£ â†’ <strong style="color:#ffd700;">50x</strong></div>
+                            <div>â­â­â­ â†’ <strong style="color:#ff00aa;">100x</strong></div>
+                            <div>Any 2 match â†’ <strong style="color:#fff;">1.5x</strong></div>
                         </div>
                     </div>
                     <!-- Diamond & Bomb -->
@@ -3826,12 +3826,12 @@
                             style="background:rgba(0,0,0,0.4); border-radius:8px; padding:12px; font-size:0.8em; color:#aaa; max-width:400px; margin:20px auto 0; text-align:left;">
                             <div style="font-weight:bold; color:var(--primary); margin-bottom:6px;">Multipliers (per gem
                                 found)</div>
-                            <div>1 Bomb: 1.02x → 1.05x → 1.09x → 1.14x → 1.20x</div>
-                            <div>3 Bombs: 1.05x → 1.14x → 1.26x → 1.41x → 1.59x</div>
-                            <div>5 Bombs: 1.08x → 1.22x → 1.40x → 1.62x → 1.88x</div>
-                            <div>10 Bombs: 1.30x → 1.70x → 2.25x → 3.00x → 4.00x</div>
-                            <div>15 Bombs: 1.70x → 2.89x → 4.91x → 8.35x → 14.20x</div>
-                            <div>20 Bombs: 2.30x → 5.29x → 12.17x → 27.99x → 64.38x</div>
+                            <div>1 Bomb: 1.02x â†’ 1.05x â†’ 1.09x â†’ 1.14x â†’ 1.20x</div>
+                            <div>3 Bombs: 1.05x â†’ 1.14x â†’ 1.26x â†’ 1.41x â†’ 1.59x</div>
+                            <div>5 Bombs: 1.08x â†’ 1.22x â†’ 1.40x â†’ 1.62x â†’ 1.88x</div>
+                            <div>10 Bombs: 1.30x â†’ 1.70x â†’ 2.25x â†’ 3.00x â†’ 4.00x</div>
+                            <div>15 Bombs: 1.70x â†’ 2.89x â†’ 4.91x â†’ 8.35x â†’ 14.20x</div>
+                            <div>20 Bombs: 2.30x â†’ 5.29x â†’ 12.17x â†’ 27.99x â†’ 64.38x</div>
                         </div>
                     </div>
                     <!-- Texas Hold'em Poker -->
@@ -3841,7 +3841,7 @@
                             style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.1);">
                             <h2
                                 style="margin:0; color:#4ade80; text-shadow:0 0 10px rgba(74,222,128,0.5); font-size:1.4em;">
-                                🃏 Texas Hold'em</h2>
+                                ðŸƒ Texas Hold'em</h2>
                             <div id="poker-pts-badge"
                                 style="font-size:1em; color:#ffd700; font-weight:bold; text-shadow:0 0 8px rgba(255,215,0,0.4);">
                             </div>
@@ -3855,10 +3855,10 @@
                                 style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-bottom:20px;">
                                 <button class="btn"
                                     style="padding:14px 32px; font-size:1.1em; background:linear-gradient(135deg,#22c55e,#16a34a); border:2px solid #4ade80; box-shadow:0 4px 15px rgba(34,197,94,0.3);"
-                                    onclick="pokerCreate()">🎮 Create Game</button>
+                                    onclick="pokerCreate()">ðŸŽ® Create Game</button>
                                 <button class="btn"
                                     style="padding:14px 32px; font-size:1.1em; background:linear-gradient(135deg,#3b82f6,#2563eb); border:2px solid #60a5fa; box-shadow:0 4px 15px rgba(59,130,246,0.3);"
-                                    onclick="pokerShowJoin()">🔑 Join with Code</button>
+                                    onclick="pokerShowJoin()">ðŸ”‘ Join with Code</button>
                             </div>
                             <div id="poker-join-area" class="hidden"
                                 style="display:flex; gap:10px; justify-content:center; margin-bottom:16px;">
@@ -3888,13 +3888,13 @@
                             </div>
                             <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
                                 <button class="btn" id="poker-invite-btn" onclick="pokerInviteModal()"
-                                    style="padding:12px 24px; background:linear-gradient(135deg,#22c55e,#16a34a); border:2px solid #4ade80; box-shadow:0 4px 15px rgba(34,197,94,0.3);">📨
+                                    style="padding:12px 24px; background:linear-gradient(135deg,#22c55e,#16a34a); border:2px solid #4ade80; box-shadow:0 4px 15px rgba(34,197,94,0.3);">ðŸ“¨
                                     Invite Players</button>
                                 <button class="btn" id="poker-start-btn" class="hidden" onclick="pokerStartGame()"
-                                    style="padding:12px 24px; background:linear-gradient(135deg,#f59e0b,#d97706); border:2px solid #fbbf24; box-shadow:0 4px 15px rgba(245,158,11,0.3);">▶
+                                    style="padding:12px 24px; background:linear-gradient(135deg,#f59e0b,#d97706); border:2px solid #fbbf24; box-shadow:0 4px 15px rgba(245,158,11,0.3);">â–¶
                                     Start Game</button>
                                 <button class="btn" onclick="pokerLeave()"
-                                    style="padding:12px 24px; background:linear-gradient(135deg,#ef4444,#dc2626); border:2px solid #f87171; box-shadow:0 4px 15px rgba(239,68,68,0.3);">✖
+                                    style="padding:12px 24px; background:linear-gradient(135deg,#ef4444,#dc2626); border:2px solid #f87171; box-shadow:0 4px 15px rgba(239,68,68,0.3);">âœ–
                                     Leave</button>
                             </div>
                             <div id="poker-wait-msg"
@@ -3905,7 +3905,7 @@
                                 style="margin-top:18px; background:rgba(0,0,0,0.45); border:1px solid rgba(255,255,255,0.12); border-radius:12px; overflow:hidden;">
                                 <div
                                     style="padding:8px 12px; background:rgba(255,255,255,0.06); font-size:0.78em; color:#aaa; text-transform:uppercase; letter-spacing:2px; font-weight:bold; border-bottom:1px solid rgba(255,255,255,0.08);">
-                                    💬 Lobby Chat</div>
+                                    ðŸ’¬ Lobby Chat</div>
                                 <div id="poker-chat-msgs"
                                     style="height:130px; overflow-y:auto; padding:8px 12px; display:flex; flex-direction:column; gap:4px; scroll-behavior:smooth;">
                                 </div>
@@ -3986,7 +3986,7 @@
                                 style="margin-top:16px; background:rgba(0,0,0,0.45); border:1px solid rgba(255,255,255,0.12); border-radius:12px; overflow:hidden;">
                                 <div
                                     style="padding:8px 12px; background:rgba(255,255,255,0.06); font-size:0.78em; color:#aaa; text-transform:uppercase; letter-spacing:2px; font-weight:bold; border-bottom:1px solid rgba(255,255,255,0.08);">
-                                    💬 Table Chat</div>
+                                    ðŸ’¬ Table Chat</div>
                                 <div id="poker-chat-msgs-table"
                                     style="height:130px; overflow-y:auto; padding:8px 12px; display:flex; flex-direction:column; gap:4px; scroll-behavior:smooth;">
                                 </div>
@@ -4010,7 +4010,7 @@
                             </h3>
                             <div id="poker-showdown-hands" style="margin-bottom:22px;"></div>
                             <button class="btn" id="poker-play-again-btn" onclick="pokerPlayAgain()"
-                                style="padding:14px 36px; font-size:1.1em; background:linear-gradient(135deg,#22c55e,#16a34a); border:2px solid #4ade80; box-shadow:0 4px 15px rgba(34,197,94,0.3);">🔄
+                                style="padding:14px 36px; font-size:1.1em; background:linear-gradient(135deg,#22c55e,#16a34a); border:2px solid #4ade80; box-shadow:0 4px 15px rgba(34,197,94,0.3);">ðŸ”„
                                 Play Again</button>
                             <div id="poker-play-again-status"
                                 style="color:#cfcfcf; margin-top:10px; font-size:0.95em; font-weight:500;"></div>
@@ -4025,16 +4025,16 @@
                         style="width:100%; max-width:850px; background:linear-gradient(135deg, #1a1c2c, #4a192c); border:2px solid #ff3e3e; box-shadow: 0 0 20px rgba(255,62,62,0.2);">
                         <div
                             style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.1);">
-                            <h2 style="margin:0; color:#ff3e3e; text-shadow: 0 0 10px #ff3e3e;">✈️ Avia Masters</h2>
+                            <h2 style="margin:0; color:#ff3e3e; text-shadow: 0 0 10px #ff3e3e;">âœˆï¸ Avia Masters</h2>
                             <div id="avia-pts-badge" style="font-size:1.1em; color:#ffd700; font-weight:bold;"></div>
                         </div>
                         <p style="color:#aaa; font-size:0.9em; margin-bottom:15px;">
-                            🖱️ <strong>Click canvas or Space</strong> to flap upward — gravity pulls the plane
+                            ðŸ–±ï¸ <strong>Click canvas or Space</strong> to flap upward — gravity pulls the plane
                             down.<br>
-                            🟢 <strong>Green balls</strong> = +multiplier bonus &nbsp;|&nbsp; 🔴 <strong>Red
+                            ðŸŸ¢ <strong>Green balls</strong> = +multiplier bonus &nbsp;|&nbsp; ðŸ”´ <strong>Red
                                 balls</strong> = -multiplier penalty<br>
-                            ❌ <strong>Red X hazards</strong> + hitting the ground = crash = lose bet<br>
-                            ⚓ <strong>Carriers appear at 1.5x</strong> — land on one for full payout &nbsp;|&nbsp;
+                            âŒ <strong>Red X hazards</strong> + hitting the ground = crash = lose bet<br>
+                            âš“ <strong>Carriers appear at 1.5x</strong> — land on one for full payout &nbsp;|&nbsp;
                             <strong>E key</strong> = early cashout (1/3x)
                         </p>
 
@@ -4073,13 +4073,13 @@
 
             <div id="pane-inventory" class="tab-pane hidden"
                 style="flex-direction:column; align-items:center; padding:30px; overflow-y:auto;">
-                <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5);">🎒 My Inventory</h2>
+                <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5);">ðŸŽ’ My Inventory</h2>
                 <div style="display:flex; gap:15px; margin-bottom:20px; flex-wrap:wrap; justify-content:center;">
-                    <button class="btn primary" id="btn-inv-themes" onclick="showInvTab('themes')">🎨 Themes</button>
+                    <button class="btn primary" id="btn-inv-themes" onclick="showInvTab('themes')">ðŸŽ¨ Themes</button>
                     <button class="btn" id="btn-inv-titles" style="background:rgba(0,0,0,0.5); color:white;"
-                        onclick="showInvTab('titles')">🏷️ Titles</button>
+                        onclick="showInvTab('titles')">ðŸ·ï¸ Titles</button>
                     <button class="btn" id="btn-inv-lootboxes" style="background:rgba(0,0,0,0.5); color:white;"
-                        onclick="showInvTab('lootboxes')">📦 Lootboxes</button>
+                        onclick="showInvTab('lootboxes')">ðŸ“¦ Lootboxes</button>
                 </div>
                 <div id="inv-section-themes" style="width:100%; max-width:900px;">
                     <div style="margin-bottom:15px;"><span style="font-size:0.9em; color:#ddd;">Active Theme:
@@ -4105,7 +4105,7 @@
             <div id="pane-prof" class="tab-pane hidden"
                 style="flex-direction:column; align-items:center; padding:30px; overflow-y:auto;">
                 <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5);">Profile Settings</h2>
-                <div class="profile-points-badge">⭐ <span id="prof-points-display">0</span> Points Earned</div>
+                <div class="profile-points-badge">â­ <span id="prof-points-display">0</span> Points Earned</div>
                 <div
                     style="margin-bottom:15px; text-align:center; background:rgba(0,0,0,0.4); padding:10px; border-radius:10px;">
                     <div style="font-size:0.85em; color:#ddd; margin-bottom:5px;">Active Title:</div>
@@ -4169,10 +4169,10 @@
                         onclick="saveProf()">Save Profile</button>
                     <button class="btn"
                         style="padding:12px; background:rgba(0,0,0,0.4); color:#ddd; border:1px solid #555; font-size:0.9em;"
-                        onclick="openChangePasswordModal()">🔑 Change Password</button>
+                        onclick="openChangePasswordModal()">ðŸ”‘ Change Password</button>
                     <a href="https://docs.google.com/document/d/14qRI6kciyENO3bdvoFc8yoAZ_wH_Ay_Zda4ZlJsS6Ns/edit?usp=sharing"
                         target="_blank" class="btn"
-                        style="padding:10px; background:none; color:#888; font-size:0.85em; text-decoration:underline; display:block; text-align:center;">📜
+                        style="padding:10px; background:none; color:#888; font-size:0.85em; text-decoration:underline; display:block; text-align:center;">ðŸ“œ
                         Terms of Service</a>
                 </div>
             </div>
@@ -4182,7 +4182,7 @@
                 style="flex-direction:column; align-items:center; padding:30px; overflow-y:auto;">
                 <h2
                     style="margin-top:0; color:var(--primary); text-shadow:0 0 15px rgba(0,212,255,0.4); letter-spacing:2px;">
-                    🏆 Rich List</h2>
+                    ðŸ† Rich List</h2>
                 <p style="color:#aaa; margin-top:-10px; margin-bottom:20px; font-size:0.85em; text-align:center;">Top 50
                     wealthiest players — updated each time someone logs in.</p>
 
@@ -4200,18 +4200,18 @@
 
                 <div id="leaderboard-empty" class="hidden"
                     style="color:#555; text-align:center; margin-top:40px; font-size:1.1em;">No data yet. Be the first
-                    to get rich! 💸</div>
+                    to get rich! ðŸ’¸</div>
             </div>
 
             <div id="pane-admin" class="tab-pane hidden"
                 style="flex-direction:column; align-items:center; padding:30px; overflow-y:auto;">
-                <h2 style="color:var(--admin); margin-bottom:20px; text-shadow: 0 2px 5px rgba(0,0,0,0.5);">⚙️ Admin
+                <h2 style="color:var(--admin); margin-bottom:20px; text-shadow: 0 2px 5px rgba(0,0,0,0.5);">âš™ï¸ Admin
                     Dashboard</h2>
 
                 <div style="width:100%; max-width:1000px; margin-bottom:20px; display:flex; gap:10px;">
                     <button class="btn primary" onclick="showAdminTab('dashboard')">Dashboard</button>
                     <button class="btn" style="background:rgba(0,0,0,0.5); color:white;"
-                        onclick="showAdminTab('explorer'); loadExplorer();">📁 Data Explorer (Firebase Style)</button>
+                        onclick="showAdminTab('explorer'); loadExplorer();">ðŸ“ Data Explorer (Firebase Style)</button>
                 </div>
 
                 <div id="admin-view-dashboard">
@@ -4237,7 +4237,7 @@
                                 <button class="btn" style="background:rgba(0,0,0,0.6); color:white;"
                                     onclick="admAct('og')">Give OG Title</button>
                                 <button class="btn" style="background:#b366ff; color:white;"
-                                    onclick="admAct('thememaker')">🎨 Give Theme Maker</button>
+                                    onclick="admAct('thememaker')">ðŸŽ¨ Give Theme Maker</button>
                                 <button class="btn" style="background:#ff9900; color:black;"
                                     onclick="admAct('mute')">Mute
                                     (Hours)</button>
@@ -4247,14 +4247,14 @@
                                     onclick="admAct('ban')">Perm Ban</button>
                                 <button class="btn"
                                     style="background:rgba(0,0,0,0.6); color:#ff6666; border:1px solid #ff6666;"
-                                    onclick="admBanUsername()">🚫 Ban Username</button>
+                                    onclick="admBanUsername()">ðŸš« Ban Username</button>
                                 <button class="btn"
                                     style="background:rgba(0,0,0,0.6); color:#88ff88; border:1px solid #88ff88;"
-                                    onclick="admUnbanUsername()">✅ Unban Username</button>
+                                    onclick="admUnbanUsername()">âœ… Unban Username</button>
                             </div>
                         </div>
                         <div class="admin-box full" style="border-color:#ffd700; border-width:2px;">
-                            <h3 style="margin-top:0; color:#ffd700;">🏆 Leaderboard Ban</h3>
+                            <h3 style="margin-top:0; color:#ffd700;">ðŸ† Leaderboard Ban</h3>
                             <p style="color:#aaa; font-size:0.85em; margin-top:0;">Tag a player's account to hide them
                                 from
                                 the Rich List permanently. Their points are unaffected.</p>
@@ -4263,10 +4263,10 @@
                                     style="flex:1; min-width:160px;">
                                 <button class="btn"
                                     style="background:#8B6914; color:#ffd700; border:1px solid #ffd700; white-space:nowrap;"
-                                    onclick="admLbBan()">🚫 Ban from Leaderboard</button>
+                                    onclick="admLbBan()">ðŸš« Ban from Leaderboard</button>
                                 <button class="btn"
                                     style="background:rgba(0,0,0,0.5); color:#88ff88; border:1px solid #88ff88; white-space:nowrap;"
-                                    onclick="admLbUnban()">✅ Restore to Leaderboard</button>
+                                    onclick="admLbUnban()">âœ… Restore to Leaderboard</button>
                             </div>
                             <div id="adm-lb-status" style="margin-top:10px; font-size:0.85em; min-height:18px;"></div>
                             <div style="margin-top:14px;">
@@ -4280,7 +4280,7 @@
                             </div>
                         </div>
                         <div class="admin-box full" style="border-color:#9966cc;">
-                            <h3 style="margin-top:0; color:#b366ff;">🎁 Give Item to Player</h3>
+                            <h3 style="margin-top:0; color:#b366ff;">ðŸŽ Give Item to Player</h3>
                             <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
                                 <div style="flex:1; min-width:140px;">
                                     <label style="font-size:0.8em; color:#ddd; display:block; margin-bottom:4px;">Target
@@ -4301,7 +4301,7 @@
                                     <select id="adm-give-item" style="width:100%;"></select>
                                 </div>
                                 <button class="btn" style="background:#9966cc; color:white; white-space:nowrap;"
-                                    onclick="adminGiveItem()">🎁 Give Item</button>
+                                    onclick="adminGiveItem()">ðŸŽ Give Item</button>
                             </div>
                         </div>
 
@@ -4330,7 +4330,7 @@
                         </div>
 
                         <div class="admin-box full">
-                            <h3 style="margin-top:0;">🎨 Create New Theme</h3>
+                            <h3 style="margin-top:0;">ðŸŽ¨ Create New Theme</h3>
                             <p style="color:#aaa; font-size:0.85em; margin-top:0;">Use linear-gradient(...) or standard
                                 Hex/rgba values. Panels support Glassmorphism naturally.</p>
                             <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
@@ -4373,7 +4373,7 @@
 
                             <div id="admin-view-explorer" class="hidden" style="width:100%; max-width:1000px;">
                                 <div class="admin-box full" style="font-family: monospace; background:#050505;">
-                                    <h3 style="margin-top:0; color:#00ff00;">📁 amanchat-database-root</h3>
+                                    <h3 style="margin-top:0; color:#00ff00;">ðŸ“ amanchat-database-root</h3>
                                     <div id="explorer-root" style="padding-left:20px; border-left:1px solid #333;">
                                         <div style="color:#666;">Loading database structure...</div>
                                     </div>
@@ -4423,7 +4423,7 @@
                     </div>
 
                     <div class="admin-box full">
-                        <h3 style="margin-top:0;">🏷️ Create New Title</h3>
+                        <h3 style="margin-top:0;">ðŸ·ï¸ Create New Title</h3>
                         <div style="display:flex; gap:10px; flex-wrap:wrap;">
                             <input type="text" id="adm-new-ti-id" placeholder="ID (e.g., 'chat_king')" style="flex:1;">
                             <input type="text" id="adm-new-ti-name" placeholder="Display Name" style="flex:1;">
@@ -4447,7 +4447,7 @@
                         style="border-color:#b366ff; border-width:2px; box-shadow:0 0 20px rgba(179,102,255,0.2);">
                         <div
                             style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
-                            <h3 style="margin:0; color:#b366ff; font-size:1.2em;">🎨 Theme Submission Approvals</h3>
+                            <h3 style="margin:0; color:#b366ff; font-size:1.2em;">ðŸŽ¨ Theme Submission Approvals</h3>
                             <span id="submission-badge"
                                 style="background:#b366ff; color:white; border-radius:20px; padding:4px 14px; font-size:0.85em; font-weight:bold; display:none;">0
                                 Pending</span>
@@ -4456,7 +4456,7 @@
                             Theme Makers appear here in real-time. Review and approve or reject them below.</p>
                         <div id="admin-theme-submissions"
                             style="display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px;">
-                            <div style="color:#666; font-size:0.9em; font-style:italic;">⏳ Loading submissions...</div>
+                            <div style="color:#666; font-size:0.9em; font-style:italic;">â³ Loading submissions...</div>
                         </div>
                     </div>
 
@@ -4482,7 +4482,7 @@
 
             <div id="pane-thememaker" class="tab-pane hidden"
                 style="flex-direction:column; align-items:center; padding:30px; overflow-y:auto;">
-                <h2 style="color:#b366ff; margin-bottom:20px; text-shadow: 0 2px 5px rgba(0,0,0,0.5);">🎨 Theme Studio
+                <h2 style="color:#b366ff; margin-bottom:20px; text-shadow: 0 2px 5px rgba(0,0,0,0.5);">ðŸŽ¨ Theme Studio
                 </h2>
                 <div
                     style="width:100%; max-width:800px; background:rgba(0,0,0,0.3); padding:20px; border-radius:10px; border:1px solid #b366ff;">
@@ -4571,7 +4571,7 @@
                         </div>
                     </div>
                     <div style="display:flex; gap:10px; margin-top:15px;">
-                        <button class="btn primary" style="flex:1;" onclick="themeMakerSubmit()">📤 Submit
+                        <button class="btn primary" style="flex:1;" onclick="themeMakerSubmit()">ðŸ“¤ Submit
                             Theme</button>
                     </div>
                 </div>
@@ -4838,7 +4838,7 @@
                 if (data.channel_id === currentChannel) {
                     const container = document.getElementById('msg-history');
                     if (container) container.innerHTML = '';
-                    showToast('🧹 Channel cleared by an administrator.');
+                    showToast('ðŸ§¹ Channel cleared by an administrator.');
                 }
             });
 
@@ -4852,7 +4852,7 @@
             socket.on('announcement', data => {
                 const banner = document.createElement('div');
                 banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#00d4ff,#7b2ff7);color:white;text-align:center;padding:12px 20px;font-weight:bold;font-size:1em;box-shadow:0 2px 12px rgba(0,0,0,0.5);';
-                banner.innerHTML = `📢 <strong>${data.from}:</strong> ${data.message} <span style="float:right;cursor:pointer;opacity:0.7;" onclick="this.parentElement.remove()">✕</span>`;
+                banner.innerHTML = `ðŸ“¢ <strong>${data.from}:</strong> ${data.message} <span style="float:right;cursor:pointer;opacity:0.7;" onclick="this.parentElement.remove()">âœ•</span>`;
                 document.body.prepend(banner);
                 setTimeout(() => { if (banner.parentElement) banner.remove(); }, 10000);
             });
@@ -4961,7 +4961,7 @@
             } catch (e) { alert(e.message); }
         }
 
-        // ── Screen Share (server-init signaling → P2P WebRTC) ──────────────────
+        // â”€â”€ Screen Share (server-init signaling â†’ P2P WebRTC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         const SS_ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
         let ssConn = null;
         let ssLocalStream = null;
@@ -4997,11 +4997,11 @@
             ssPeerId = currentDMOtherUserId;
             ssLocalStream.getVideoTracks()[0].onended = () => ssEnd();
             ssOpenModal();
-            ssModalStatus('Waiting for the other user to accept…');
+            ssModalStatus('Waiting for the other user to acceptâ€¦');
             const vid = document.getElementById('ss-local-video');
             vid.srcObject = ssLocalStream;
             vid.style.display = 'block';
-            ssPopup('Waiting for acceptance…', false, false, true);
+            ssPopup('Waiting for acceptanceâ€¦', false, false, true);
             socket.emit('ss_request', { dmChannelId: currentChannel });
         }
 
@@ -5013,7 +5013,7 @@
         async function ssAccept() {
             ssHidePopup();
             ssOpenModal();
-            ssModalStatus('Connecting…');
+            ssModalStatus('Connectingâ€¦');
             ssConn = new RTCPeerConnection(SS_ICE);
             ssConn.ontrack = e => {
                 const vid = document.getElementById('ss-remote-video');
@@ -5042,7 +5042,7 @@
         }
 
         async function ssOnAccepted(data) {
-            ssModalStatus('Peer accepted — establishing connection…');
+            ssModalStatus('Peer accepted — establishing connectionâ€¦');
             ssPeerId = data.accepterUserId;
             ssConn = new RTCPeerConnection(SS_ICE);
             ssLocalStream.getTracks().forEach(t => ssConn.addTrack(t, ssLocalStream));
@@ -5137,7 +5137,7 @@
             // Delete button logic
             let deleteBtnHtml = '';
             if (isMe || isAdmin) {
-                deleteBtnHtml = `<span class="del-msg" onclick="deleteMessage('${msg.id}')" title="Delete Message">✕</span>`;
+                deleteBtnHtml = `<span class="del-msg" onclick="deleteMessage('${msg.id}')" title="Delete Message">âœ•</span>`;
             }
 
             const pfpSrc = msg.pfp || generateDefaultPfp(msg.u);
@@ -5221,7 +5221,7 @@
                     btn.style.marginBottom = '5px';
 
                     const isSystemServer = s.name === 'Official Public Hub' || s.name === 'Announcements';
-                    btn.innerHTML = isSystemServer ? `<span style="color:var(--primary);">★</span> ${s.name}` : s.name;
+                    btn.innerHTML = isSystemServer ? `<span style="color:var(--primary);">â˜…</span> ${s.name}` : s.name;
 
                     btn.onclick = () => openServer(s.id, s.name, s.owner_id);
                     list.appendChild(btn);
@@ -5253,7 +5253,7 @@
             }
 
             const isSystemServer = serverName === 'Official Public Hub' || serverName === 'Announcements';
-            document.getElementById('header-text').innerHTML = isSystemServer ? `<span style="color:var(--primary);">★</span> ${serverName}` : serverName;
+            document.getElementById('header-text').innerHTML = isSystemServer ? `<span style="color:var(--primary);">â˜…</span> ${serverName}` : serverName;
 
             try {
                 const channels = await api(`/api/servers/${serverId}/channels`);
@@ -5323,7 +5323,7 @@
                 const isAnnouncementsServer = currentServerName === 'Announcements';
                 const isGeneralProtected = (isOfficialHub || isAnnouncementsServer) && PROTECTED_CHANNELS.includes(chanName.toLowerCase());
                 delChan.classList.toggle('hidden', !isAdmin || isGeneralProtected || currentChannelIsDM);
-                delChan.innerText = "🗑️ Delete Chan";
+                delChan.innerText = "ðŸ—‘ï¸ Delete Chan";
                 delChan.onclick = () => deleteChannel(channelId);
             }
 
@@ -5544,7 +5544,7 @@
             try {
                 const boxes = await api('/api/lootboxes');
                 grid.innerHTML = '';
-                const icons = { bronze: '📦', silver: '🎁', gold: '💎', legendary: '⭐', mythic: '🔮' };
+                const icons = { bronze: 'ðŸ“¦', silver: 'ðŸŽ', gold: '💎', legendary: 'â­', mythic: 'ðŸ”®' };
                 for (const type in boxes) {
                     if (type === 'legend') continue; // legend box not listed in store
                     const box = boxes[type];
@@ -5553,10 +5553,10 @@
                     div.style.border = `2px solid ${box.color}`;
                     div.style.boxShadow = `0 0 10px ${box.color}`;
 
-                    let dropsHtml = box.drops.map(d => `<tr><td style="color:${rarityColor(d.rarity)}">•</td><td>${d.rarity.toUpperCase()}</td><td style="text-align:right;">${d.chance}%</td></tr>`).join('');
+                    let dropsHtml = box.drops.map(d => `<tr><td style="color:${rarityColor(d.rarity)}">â€¢</td><td>${d.rarity.toUpperCase()}</td><td style="text-align:right;">${d.chance}%</td></tr>`).join('');
 
                     div.innerHTML = `
-                        <div class="lb-icon">${icons[type] || '📦'}</div>
+                        <div class="lb-icon">${icons[type] || 'ðŸ“¦'}</div>
                         <div class="lb-name">${box.name}</div>
                         <div class="lb-rarity-badge" style="background:${box.color}; color:${type === 'bronze' ? 'white' : 'black'}">${type.toUpperCase()}</div>
                         <div class="lb-price">${box.price} Points</div>
@@ -5591,7 +5591,7 @@
                 if (res.success) {
                     myPoints = res.points;
                     updatePointsUI();
-                    if (!silent) showToast(`✅ Bought a ${type} box! Check your inventory.`);
+                    if (!silent) showToast(`âœ… Bought a ${type} box! Check your inventory.`);
                     return true;
                 }
             } catch (e) {
@@ -5621,7 +5621,7 @@
             resultPhase.classList.add('hidden');
             document.getElementById('lb-dupe-notice').classList.add('hidden');
             modal.classList.remove('hidden');
-            boxEl.textContent = '📦';
+            boxEl.textContent = 'ðŸ“¦';
             boxEl.style.animation = 'none';
             document.getElementById('lb-tap-btn').disabled = false;
             document.getElementById('lb-tap-btn').onclick = () => doOpenBoxAnim(type);
@@ -5641,7 +5641,7 @@
             let res;
             try { res = await api('/api/lootbox/open', 'POST', { type }); }
             catch (e) { alert(e.message); closeM('lootbox-open-modal'); return; }
-            boxEl.textContent = '✨';
+            boxEl.textContent = 'âœ¨';
             await new Promise(r => setTimeout(r, 300));
 
             // Full-screen reveal for event themes (Sorrow / Joy)
@@ -5672,7 +5672,7 @@
             const nameEl = document.getElementById('lb-result-name');
             const typeEl = document.getElementById('lb-result-type');
             const dupeEl = document.getElementById('lb-dupe-notice');
-            iconEl.textContent = res.itemType === 'theme' ? '🎨' : res.itemType === 'title' ? '🏷️' : '❓';
+            iconEl.textContent = res.itemType === 'theme' ? 'ðŸŽ¨' : res.itemType === 'title' ? 'ðŸ·ï¸' : 'â“';
             rarEl.innerHTML = `<span style="color:${col};font-weight:bold;font-size:1.1em;text-transform:uppercase;letter-spacing:2px;">${res.rarity}</span>`;
             nameEl.textContent = res.itemName;
             nameEl.style.color = col;
@@ -5680,7 +5680,7 @@
             typeEl.textContent = res.itemType === 'theme' ? 'Theme' : res.itemType === 'title' ? 'Title' : '';
             if (res.isDuplicate) {
                 dupeEl.classList.remove('hidden');
-                dupeEl.textContent = `Duplicate! You now have ×${res.dupeCount + 1} of this ${res.itemType}.`;
+                dupeEl.textContent = `Duplicate! You now have Ã—${res.dupeCount + 1} of this ${res.itemType}.`;
             }
             renderOwnedLootboxes();
         }
@@ -6430,7 +6430,7 @@
                     <div style="display:flex; align-items:center; gap:12px; background:rgba(0,0,0,0.3); padding:12px; border-radius:10px; border:1px solid #333;">
                         <img src="${f.pfp_b64 || generateDefaultPfp(f.username)}" style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:2px solid var(--primary);">
                         <div style="flex:1;"><div style="font-weight:bold;cursor:pointer;" onclick="viewUserProfile('${f.username}')">${f.username}</div><div style="color:#aaa; font-size:0.8em;">${f.rank}</div></div>
-                        <button class="btn primary" style="padding:6px 12px; font-size:0.85em;" onclick="openDM('${f.id}')">💬 DM</button>
+                        <button class="btn primary" style="padding:6px 12px; font-size:0.85em;" onclick="openDM('${f.id}')">ðŸ’¬ DM</button>
                     </div>`).join('');
             } catch (e) { }
         }
@@ -6444,8 +6444,8 @@
                     <div style="background:rgba(0,0,0,0.4); padding:8px 10px; border-radius:8px; border:1px solid #333;">
                         <div style="font-weight:bold; margin-bottom:5px;">${r.username}</div>
                         <div style="display:flex; gap:6px;">
-                            <button class="btn primary" style="padding:4px 10px; font-size:0.78em;" onclick="respondFriend('${r.fid}','accept')">✓ Accept</button>
-                            <button class="btn" style="padding:4px 10px; font-size:0.78em; background:rgba(255,62,62,0.3); color:white;" onclick="respondFriend('${r.fid}','decline')">✗ Decline</button>
+                            <button class="btn primary" style="padding:4px 10px; font-size:0.78em;" onclick="respondFriend('${r.fid}','accept')">âœ“ Accept</button>
+                            <button class="btn" style="padding:4px 10px; font-size:0.78em; background:rgba(255,62,62,0.3); color:white;" onclick="respondFriend('${r.fid}','decline')">âœ— Decline</button>
                         </div>
                     </div>`).join('');
             } catch (e) { }
@@ -6507,7 +6507,7 @@
                     } else if (p.friendshipStatus === 'pending') {
                         if (addBtn) {
                             addBtn.style.display = '';
-                            addBtn.textContent = '✓ Request Pending';
+                            addBtn.textContent = 'âœ“ Request Pending';
                             addBtn.disabled = true;
                             addBtn.style.background = '#555';
                         }
@@ -6562,7 +6562,7 @@
             try {
                 await api('/api/friends/request', 'POST', { targetUsername: _profileViewTarget });
                 const btn = document.getElementById('prof-btn-add');
-                if (btn) { btn.textContent = '✓ Request Sent'; btn.disabled = true; btn.style.background = '#555'; }
+                if (btn) { btn.textContent = 'âœ“ Request Sent'; btn.disabled = true; btn.style.background = '#555'; }
             } catch (e) { alert(e.message); }
         }
 
@@ -6658,7 +6658,7 @@
             if (!username) return;
             try {
                 await api('/api/friends/request', 'POST', { targetUsername: username });
-                msg.innerText = '✓ Request sent!'; msg.style.color = '#00ff55';
+                msg.innerText = 'âœ“ Request sent!'; msg.style.color = '#00ff55';
                 document.getElementById('friend-in').value = '';
             } catch (e) { msg.innerText = e.message; msg.style.color = '#ff5555'; }
             setTimeout(() => { msg.innerText = ''; }, 3000);
@@ -6686,7 +6686,7 @@
         async function addFriendFromSearch(username, btn) {
             try {
                 await api('/api/friends/request', 'POST', { targetUsername: username });
-                btn.innerText = '✓ Sent'; btn.disabled = true; btn.style.background = '#555';
+                btn.innerText = 'âœ“ Sent'; btn.disabled = true; btn.style.background = '#555';
             } catch (e) { alert(e.message); }
         }
         async function burnSelectedItems() {
@@ -6733,7 +6733,7 @@
                         const owned = ownedThemeIds.has(t.id);
                         const col = rarityColor(t.rarity);
                         return `<div style="position:relative;background:rgba(0,0,0,0.4)${owned ? ';background:rgba(0,200,100,0.06)' : ''};border:2px solid ${owned ? '#00cc66' : '#333'};border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px;">
-                          ${owned ? '<span style="position:absolute;top:6px;right:6px;background:#00cc66;color:black;font-size:0.7em;font-weight:bold;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;">✓</span>' : '<span style="position:absolute;top:6px;right:6px;background:#333;color:#666;font-size:0.7em;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;">🔒</span>'}
+                          ${owned ? '<span style="position:absolute;top:6px;right:6px;background:#00cc66;color:black;font-size:0.7em;font-weight:bold;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;">âœ“</span>' : '<span style="position:absolute;top:6px;right:6px;background:#333;color:#666;font-size:0.7em;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;">ðŸ”’</span>'}
                           <div style="display:flex;gap:4px;"><div style="width:14px;height:14px;border-radius:3px;background:${t.bg_color || '#0b0b0b'};border:1px solid #555;"></div><div style="width:14px;height:14px;border-radius:3px;background:${t.accent_color || '#00d4ff'};border:1px solid #555;"></div><div style="width:14px;height:14px;border-radius:3px;background:${t.panel_color || '#1a1a1a'};border:1px solid #555;"></div></div>
                           <div style="font-weight:bold;color:#fff;font-size:0.9em;">${t.name}</div>
                           <div style="font-size:0.72em;color:${col};">${t.rarity.toUpperCase()}</div>
@@ -6746,7 +6746,7 @@
                         const owned = ownedTitleIds.has(t.id);
                         const col = rarityColor(t.rarity);
                         return `<div style="position:relative;background:${owned ? 'rgba(0,200,100,0.06)' : 'rgba(0,0,0,0.4)'};border:2px solid ${owned ? '#00cc66' : '#333'};border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px;">
-                          ${owned ? '<span style="position:absolute;top:6px;right:6px;background:#00cc66;color:black;font-size:0.7em;font-weight:bold;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;">✓</span>' : '<span style="position:absolute;top:6px;right:6px;background:#333;color:#666;font-size:0.7em;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;">🔒</span>'}
+                          ${owned ? '<span style="position:absolute;top:6px;right:6px;background:#00cc66;color:black;font-size:0.7em;font-weight:bold;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;">âœ“</span>' : '<span style="position:absolute;top:6px;right:6px;background:#333;color:#666;font-size:0.7em;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;">ðŸ”’</span>'}
                           <div style="font-weight:bold;color:${col};font-size:0.95em;">[${t.name}]</div>
                           <div style="font-size:0.72em;color:${col};">${t.rarity.toUpperCase()}</div>
                         </div>`;
@@ -6787,7 +6787,7 @@
                         const shards = ALTAR_SHARD_VALS[it.def.rarity] || 5;
                         const key = `${it.type}::${it.id}`;
                         return `<div style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;background:rgba(0,0,0,0.3);margin-bottom:6px;">
-                            <span style="font-size:1.2em;">${it.type === 'theme' ? '🎨' : '🏷️'}</span>
+                            <span style="font-size:1.2em;">${it.type === 'theme' ? 'ðŸŽ¨' : 'ðŸ·ï¸'}</span>
                             <div style="flex:1;">
                                 <div style="font-weight:bold;color:${col};">${it.def.name}</div>
                                 <div style="font-size:0.75em;color:#aaa;">${it.def.rarity.toUpperCase()} | Owned: ${it.total}</div>
@@ -6802,7 +6802,7 @@
             }
 
             const FUSE_COSTS = { bronze: 10, silver: 45, gold: 80, legendary: 115, mythic: 150, legend: 400 };
-            const BOX_ICONS = { bronze: '📦', silver: '🎁', gold: '💎', legendary: '⭐', mythic: '🔮', legend: '👑' };
+            const BOX_ICONS = { bronze: 'ðŸ“¦', silver: 'ðŸŽ', gold: '💎', legendary: 'â­', mythic: 'ðŸ”®', legend: 'ðŸ‘‘' };
             const shopDiv = document.getElementById('altar-shop');
             if (!shopDiv) return;
             shopDiv.innerHTML = '';
@@ -6841,7 +6841,7 @@
                 const auctions = await api('/api/auctions');
                 const adminPanel = currentUser && ['admin', 'creator', 'god'].includes(currentUser.rank)
                     ? `<div style="background:rgba(255,200,0,0.08);border:1px solid #ffd70055;border-radius:12px;padding:18px;margin-bottom:20px;">
-                        <h4 style="color:#ffd700;margin:0 0 12px;">⚙️ Admin — Create Auction</h4>
+                        <h4 style="color:#ffd700;margin:0 0 12px;">âš™ï¸ Admin — Create Auction</h4>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                           <input id="adm-auc-title" placeholder="Auction title" style="background:rgba(0,0,0,0.4);border:1px solid #333;border-radius:8px;padding:8px;color:#fff;width:100%;box-sizing:border-box;">
                           <select id="adm-auc-type" onchange="loadAucItemDropdown()" style="background:rgba(0,0,0,0.4);border:1px solid #333;border-radius:8px;padding:8px;color:#fff;">
@@ -6855,7 +6855,7 @@
                             <option value="72">3 Days</option><option value="168">1 Week</option>
                           </select>
                         </div>
-                        <button class="btn primary" style="margin-top:12px;" onclick="createAuction()">🏷️ Create Auction</button>
+                        <button class="btn primary" style="margin-top:12px;" onclick="createAuction()">ðŸ·ï¸ Create Auction</button>
                        </div>` : '';
                 let cardsHtml = '';
                 if (!auctions.length) {
@@ -6869,9 +6869,9 @@
                         return `<div style="background:rgba(0,0,0,0.4);border:1px solid #333;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:10px;">
                           <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                             <div><div style="font-size:1.1em;font-weight:bold;color:#fff;">${a.title}</div>
-                              <div style="color:#aaa;font-size:0.82em;">${a.item_type.toUpperCase()}: ${a.item_id} • by ${a.creator_username || 'admin'}</div></div>
-                            <div style="text-align:right;"><div style="color:#ffd700;font-weight:bold;">⏱ ${timeStr}</div>
-                              ${isOwn ? '<div style="color:#00ff88;font-size:0.8em;">★ Your bid</div>' : ''}</div>
+                              <div style="color:#aaa;font-size:0.82em;">${a.item_type.toUpperCase()}: ${a.item_id} â€¢ by ${a.creator_username || 'admin'}</div></div>
+                            <div style="text-align:right;"><div style="color:#ffd700;font-weight:bold;">â± ${timeStr}</div>
+                              ${isOwn ? '<div style="color:#00ff88;font-size:0.8em;">â˜… Your bid</div>' : ''}</div>
                           </div>
                           <div style="display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.04);padding:10px;border-radius:8px;">
                             <div><div style="color:#aaa;font-size:0.8em;">Current Bid</div><div style="font-size:1.2em;font-weight:bold;color:#00d4ff;">${a.current_bid} pts</div></div>
@@ -6970,7 +6970,7 @@
 
                     return `<div style="background:rgba(0,0,0,0.4);border:1px solid #333;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;">
                       <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <div style="font-weight:bold;">${t.initiator_name} → ${t.responder_name}</div>
+                        <div style="font-weight:bold;">${t.initiator_name} â†’ ${t.responder_name}</div>
                         <div style="color:${statusColor};font-size:0.85em;font-weight:bold;">${t.status.toUpperCase()}</div>
                       </div>
                       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.85em;">
@@ -6984,15 +6984,15 @@
                         </div>
                       </div>
                       ${t.status === 'pending' ? `<div style="display:flex;gap:8px;">
-                        ${!isInitiator ? `<button class="btn primary" onclick="acceptTrade('${t.id}')">✓ Accept</button>
-                          <button class="btn" style="background:rgba(255,62,62,0.3);color:white;" onclick="declineTrade('${t.id}')">✗ Decline</button>` : ''}
+                        ${!isInitiator ? `<button class="btn primary" onclick="acceptTrade('${t.id}')">âœ“ Accept</button>
+                          <button class="btn" style="background:rgba(255,62,62,0.3);color:white;" onclick="declineTrade('${t.id}')">âœ— Decline</button>` : ''}
                         ${isInitiator ? `<button class="btn" style="background:rgba(100,100,100,0.3);color:#aaa;" onclick="cancelTrade('${t.id}')">Cancel</button>` : ''}
                       </div>` : ''}
                     </div>`;
                 };
                 el.innerHTML = `
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                    <h3 style="margin:0;color:var(--primary);">🔄 Trading Hub</h3>
+                    <h3 style="margin:0;color:var(--primary);">ðŸ”„ Trading Hub</h3>
                     <button class="btn primary" onclick="openTradeCreate()">+ New Trade</button>
                   </div>
                   <div style="margin-bottom:20px;">
@@ -7066,7 +7066,7 @@
                 const col = rarityColor(it.def.rarity);
                 const key = `${it.type}::${it.id}`;
                 return `<div id="tmy-${it.type}-${it.id}" style="background:rgba(0,0,0,0.5);border:2px solid #333;border-radius:8px;padding:8px;text-align:center;font-size:0.78em;">
-                    <div style="font-size:1.3em;">${it.type === 'theme' ? '🎨' : '🏷️'}</div>
+                    <div style="font-size:1.3em;">${it.type === 'theme' ? 'ðŸŽ¨' : 'ðŸ·ï¸'}</div>
                     <div style="color:${col};font-weight:bold;margin-top:3px;">${it.def.name}</div>
                     <div style="color:#666;font-size:0.75em;">${it.def.rarity} | Owned: ${it.total}</div>
                     <div style="margin-top:5px;">
@@ -7127,7 +7127,7 @@
                     const col = rarityColor(it.def.rarity);
                     const key = `${it.type}::${it.id}`;
                     return `<div style="background:rgba(0,0,0,0.5);border:2px solid #333;border-radius:8px;padding:8px;text-align:center;font-size:0.78em;">
-                        <div style="font-size:1.3em;">${it.type === 'theme' ? '🎨' : '🏷️'}</div>
+                        <div style="font-size:1.3em;">${it.type === 'theme' ? 'ðŸŽ¨' : 'ðŸ·ï¸'}</div>
                         <div style="color:${col};font-weight:bold;margin-top:3px;">${it.def.name}</div>
                         <div style="color:#666;font-size:0.75em;">${it.def.rarity} | Owned: ${it.total}</div>
                         <div style="margin-top:5px;">
@@ -7219,22 +7219,22 @@
                         return `<div style="background:rgba(0,0,0,0.4);border:1px solid #333;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;">
                           <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                             <div style="flex:1;">
-                              <div style="font-weight:bold;color:var(--primary);margin-bottom:4px;">📦 Offering</div>
+                              <div style="font-weight:bold;color:var(--primary);margin-bottom:4px;">ðŸ“¦ Offering</div>
                               <div style="color:#ddd;font-size:0.9em;margin-bottom:8px;">${giveDesc}</div>
                               <div style="font-weight:bold;color:#ff9900;margin-bottom:4px;">Wants</div>
                               <div style="color:#ddd;font-size:0.9em;">${wantDesc}</div>
                             </div>
                           </div>
-                          <div style="color:#666;font-size:0.8em;">by ${l.seller_username} • Expires ${exp}</div>
+                          <div style="color:#666;font-size:0.8em;">by ${l.seller_username} â€¢ Expires ${exp}</div>
                           ${isOwn
-                                ? `<button class="btn" style="background:rgba(255,62,62,0.2);color:#ff5555;" onclick="delistMarket('${l.id}')">🗑 Delist</button>`
-                                : `<button class="btn primary" onclick="buyMarketItem('${l.id}')">✓ Accept Trade</button>`}
+                                ? `<button class="btn" style="background:rgba(255,62,62,0.2);color:#ff5555;" onclick="delistMarket('${l.id}')">ðŸ—‘ Delist</button>`
+                                : `<button class="btn primary" onclick="buyMarketItem('${l.id}')">âœ“ Accept Trade</button>`}
                         </div>`;
                     }).join('');
                 }
                 el.innerHTML = `
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                    <h3 style="margin:0;color:var(--primary);">🌐 Open Market</h3>
+                    <h3 style="margin:0;color:var(--primary);">ðŸŒ Open Market</h3>
                     <button class="btn primary" onclick="openMarketCreate()">+ List Item</button>
                   </div>
                   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;">${cardsHtml}</div>`;
@@ -7286,13 +7286,13 @@
                     const qty = selected ? selected.quantity : 0;
                     const isSelected = qty > 0;
                     return `<div id="mkt-card-${it.type}-${it.id}" style="position:relative;cursor:pointer;background:${isSelected ? 'rgba(0,212,255,0.15)' : 'rgba(0,0,0,0.5)'};border:2px solid ${isSelected ? 'var(--primary)' : '#333'};border-radius:8px;padding:8px;text-align:center;font-size:0.78em;" onmouseenter="this.querySelector('.mkt-qty-controls')?.style.opacity==='1' || (this.querySelector('.mkt-qty-controls').style.display='flex')" onmouseleave="setTimeout(() => { const c = document.querySelector('#${it.type}-${it.id} .mkt-qty-controls'); if (c && c.dataset.hovered !== 'true') c.style.display='none'; }, 100)">
-                        <div style="font-size:1.3em;">${it.type === 'theme' ? '🎨' : '🏷️'}</div>
+                        <div style="font-size:1.3em;">${it.type === 'theme' ? 'ðŸŽ¨' : 'ðŸ·ï¸'}</div>
                         <div style="color:${col};font-weight:bold;margin-top:3px;">${it.def.name}</div>
                         <div style="color:#666;font-size:0.75em;">${it.def.rarity}</div>
                         ${isSelected ? `<div style="color:var(--primary);font-weight:bold;margin-top:4px;font-size:0.9em;">x${qty}</div>` : ''}
                         <div class="mkt-qty-controls" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);gap:6px;background:rgba(0,0,0,0.9);padding:8px;border-radius:6px;z-index:100;" data-hovered="false" onmouseenter="this.dataset.hovered='true'" onmouseleave="this.dataset.hovered='false'">
                             <button style="padding:4px 8px;background:var(--primary);color:black;border:none;border-radius:4px;cursor:pointer;font-weight:bold;" onclick="mktAdjustQty('${it.type}','${it.id}','${it.def.name}',1); event.stopPropagation();">+</button>
-                            <button style="padding:4px 8px;background:#cc2222;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;" onclick="mktAdjustQty('${it.type}','${it.id}','${it.def.name}',-1); event.stopPropagation();">−</button>
+                            <button style="padding:4px 8px;background:#cc2222;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;" onclick="mktAdjustQty('${it.type}','${it.id}','${it.def.name}',-1); event.stopPropagation();">âˆ’</button>
                         </div>
                     </div>`;
                 }).join('') || '<div style="color:#555;padding:10px;">No items to list.</div>';
@@ -7368,17 +7368,17 @@
             // Build detailed exchange summary
             const youGiveLines = [
                 ...(givePoints > 0 ? [`💰 ${givePoints} points`] : []),
-                ..._mktSelectedGiveItems.map(x => `${x.quantity > 1 ? '✕' + x.quantity + ' ' : '• '}${x.name}`)
+                ..._mktSelectedGiveItems.map(x => `${x.quantity > 1 ? 'âœ•' + x.quantity + ' ' : 'â€¢ '}${x.name}`)
             ];
             const theyGiveLines = [
                 ...(wantPoints > 0 ? [`💰 ${wantPoints} points`] : []),
-                ..._mktWantSelectedItems.map(x => `${x.quantity > 1 ? '✕' + x.quantity + ' ' : '• '}${x.name}`)
+                ..._mktWantSelectedItems.map(x => `${x.quantity > 1 ? 'âœ•' + x.quantity + ' ' : 'â€¢ '}${x.name}`)
             ];
 
             const summary = `
-═══════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
            MARKET OFFER SUMMARY
-═══════════════════════════════════════
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 YOU GIVE:
 ${youGiveLines.length > 0 ? youGiveLines.join('\n') : '(nothing)'}
@@ -7386,7 +7386,7 @@ ${youGiveLines.length > 0 ? youGiveLines.join('\n') : '(nothing)'}
 THEY GIVE:
 ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'}
 
-═══════════════════════════════════════`;
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•`;
 
             if (!confirm(summary + '\n\nPost this offer to the market?')) return;
 
@@ -7439,7 +7439,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 const qty = selected ? selected.quantity : 0;
                 const isSelected = qty > 0;
                 const col = rarityColor(it.def.rarity || 'common');
-                const emoji = it.type === 'theme' ? '🎨' : it.type === 'title' ? '🏷️' : '📦';
+                const emoji = it.type === 'theme' ? 'ðŸŽ¨' : it.type === 'title' ? 'ðŸ·ï¸' : 'ðŸ“¦';
                 return `<div id="mkt-want-${it.type}-${it.id}" style="position:relative;cursor:pointer;background:${isSelected ? 'rgba(0,212,255,0.15)' : 'rgba(0,0,0,0.5)'};border:2px solid ${isSelected ? 'var(--primary)' : '#333'};border-radius:8px;padding:8px;text-align:center;font-size:0.78em;" onmouseenter="this.querySelector('.mkt-want-qty-controls')?.style.opacity==='1' || (this.querySelector('.mkt-want-qty-controls').style.display='flex')" onmouseleave="setTimeout(() => { const c = document.querySelector('#${it.type}-${it.id} .mkt-want-qty-controls'); if (c && c.dataset.hovered !== 'true') c.style.display='none'; }, 100)">
                     <div style="font-size:1.3em;">${emoji}</div>
                     <div style="color:${col};font-weight:bold;margin-top:3px;">${it.def.name}</div>
@@ -7447,7 +7447,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     ${isSelected ? `<div style="color:var(--primary);font-weight:bold;margin-top:4px;font-size:0.9em;">x${qty}</div>` : ''}
                     <div class="mkt-want-qty-controls" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);gap:6px;background:rgba(0,0,0,0.9);padding:8px;border-radius:6px;z-index:100;" data-hovered="false" onmouseenter="this.dataset.hovered='true'" onmouseleave="this.dataset.hovered='false'">
                         <button style="padding:4px 8px;background:var(--primary);color:black;border:none;border-radius:4px;cursor:pointer;font-weight:bold;" onclick="mktAdjustWantQty('${it.type}','${it.id}','${it.def.name}',1); event.stopPropagation();">+</button>
-                        <button style="padding:4px 8px;background:#cc2222;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;" onclick="mktAdjustWantQty('${it.type}','${it.id}','${it.def.name}',-1); event.stopPropagation();">−</button>
+                        <button style="padding:4px 8px;background:#cc2222;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:bold;" onclick="mktAdjustWantQty('${it.type}','${it.id}','${it.def.name}',-1); event.stopPropagation();">âˆ’</button>
                     </div>
                 </div>`;
             }).join('');
@@ -7537,7 +7537,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     activeLoanHtml = `
                       <div style="background:rgba(${isDefaulted ? '255,50,50' : '0,212,255'},0.08);border:1px solid ${isDefaulted ? '#ff5555' : 'var(--primary)'};border-radius:12px;padding:20px;margin-bottom:20px;">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                          <h3 style="margin:0;color:${isDefaulted ? '#ff5555' : 'var(--primary)'};">${isDefaulted ? '🚨 DEFAULTED LOAN' : '📋 Active Loan'}</h3>
+                          <h3 style="margin:0;color:${isDefaulted ? '#ff5555' : 'var(--primary)'};">${isDefaulted ? 'ðŸš¨ DEFAULTED LOAN' : 'ðŸ“‹ Active Loan'}</h3>
                           ${isDefaulted ? '<span style="color:#ff5555;font-size:0.85em;">20% garnishment active</span>' : ''}
                         </div>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;font-size:0.9em;">
@@ -7555,7 +7555,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                         ${!isDefaulted
                             ? `<div style="display:flex;gap:10px;">
                                  <input type="number" id="bank-repay-amount" placeholder="Amount (leave empty for full)" max="${remaining}" style="flex:1;padding:10px;background:rgba(0,0,0,0.4);border:1px solid #444;border-radius:8px;color:white;">
-                                 <button class="btn primary" style="flex:1;" onclick="repayLoan(${remaining})">💸 Repay Now</button>
+                                 <button class="btn primary" style="flex:1;" onclick="repayLoan(${remaining})">ðŸ’¸ Repay Now</button>
                                </div>`
                             : '<div style="color:#aaa;font-size:0.85em;text-align:center;">Repayment is automatic — 20% of all earned points go to the bank until paid off.</div>'}
                       </div>`;
@@ -7583,15 +7583,15 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                             </select>
                           </div>
                         </div>
-                        <div style="color:#aaa;font-size:0.82em;margin-bottom:14px;">5% interest applied for 24 hours, each additional time above that is + 2.5% each. Total to repay = amount × 1.05. Early repayment allowed with no penalty. Credit score improves if you spend the money and repay on time.</div>
-                        <button class="btn primary" style="width:100%;" onclick="takeLoan()">🏦 Take Loan</button>
+                        <div style="color:#aaa;font-size:0.82em;margin-bottom:14px;">5% interest applied for 24 hours, each additional time above that is + 2.5% each. Total to repay = amount Ã— 1.05. Early repayment allowed with no penalty. Credit score improves if you spend the money and repay on time.</div>
+                        <button class="btn primary" style="width:100%;" onclick="takeLoan()">ðŸ¦ Take Loan</button>
                       </div>`;
                 }
 
                 let historyHtml = '';
                 if (history && history.length) {
                     const rows = history.map(h => {
-                        const icon = h.status === 'repaid' ? '✅' : h.status === 'defaulted' ? '❌' : '⏳';
+                        const icon = h.status === 'repaid' ? 'âœ…' : h.status === 'defaulted' ? 'âŒ' : 'â³';
                         const statusColor = h.status === 'repaid' ? '#55ff99' : h.status === 'defaulted' ? '#ff5555' : '#ffaa00';
                         const date = new Date(h.taken_at).toLocaleDateString();
                         return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #222;font-size:0.88em;">
@@ -7601,7 +7601,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     }).join('');
                     historyHtml = `
                       <div style="background:rgba(0,0,0,0.3);border:1px solid #333;border-radius:12px;padding:20px;">
-                        <h3 style="margin:0 0 12px 0;color:var(--primary);">📜 Loan History</h3>
+                        <h3 style="margin:0 0 12px 0;color:var(--primary);">ðŸ“œ Loan History</h3>
                         ${rows}
                       </div>`;
                 }
@@ -7692,9 +7692,9 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
         function minesRevealAll(grid, btns, hitIdx) {
             grid.forEach((isBomb, i) => {
                 const cell = btns[i];
-                if (i === hitIdx) return; // already shown as 💣 with red
+                if (i === hitIdx) return; // already shown as ðŸ’£ with red
                 if (isBomb) {
-                    cell.innerText = '💣';
+                    cell.innerText = 'ðŸ’£';
                     cell.style.background = 'rgba(255,50,50,0.75)';
                     cell.style.opacity = '1';
                     cell.style.boxShadow = '0 0 10px rgba(255,0,0,0.5)';
@@ -7715,10 +7715,10 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 btn.disabled = true;
                 if (data.hit) {
                     minesActive = false;
-                    btn.innerText = '💣';
+                    btn.innerText = 'ðŸ’£';
                     btn.style.background = '#ff3e3e';
                     btn.style.opacity = '1';
-                    document.getElementById('mines-status').innerText = '💥 BOOM! You hit a bomb.';
+                    document.getElementById('mines-status').innerText = 'ðŸ’¥ BOOM! You hit a bomb.';
                     document.getElementById('mines-cashout-btn').disabled = true;
                     const btns = document.getElementById('mines-grid').children;
                     minesRevealAll(data.grid, btns, idx);
@@ -7781,7 +7781,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 myPoints = data.newPoints; updatePointsUI();
                 pokerGameId = data.gameId;
                 document.getElementById('poker-display-code').innerText = data.inviteCode;
-                document.getElementById('poker-pts-badge').innerText = `✨ ${myPoints} pts`;
+                document.getElementById('poker-pts-badge').innerText = `âœ¨ ${myPoints} pts`;
                 pokerShowSection('poker-waiting');
                 document.getElementById('poker-start-btn').style.display = '';
                 pokerPoll();
@@ -7801,7 +7801,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 pokerGameId = data.gameId;
                 const state = await api(`/v1/action/poker/${pokerGameId}`);
                 document.getElementById('poker-display-code').innerText = state.inviteCode;
-                document.getElementById('poker-pts-badge').innerText = `✨ ${myPoints} pts`;
+                document.getElementById('poker-pts-badge').innerText = `âœ¨ ${myPoints} pts`;
                 pokerShowSection('poker-waiting');
                 document.getElementById('poker-start-btn').style.display = 'none';
                 pokerUpdateWaiting(state);
@@ -7813,10 +7813,10 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             const el = document.getElementById('poker-waiting-players');
             el.innerHTML = state.players.map(p => `
                 <div style="display:flex; align-items:center; gap:8px; background:rgba(0,0,0,0.3); padding:8px 14px; border-radius:8px; border:1px solid #2d5a27;">
-                    <span style="font-size:1.2em;">🃏</span>
+                    <span style="font-size:1.2em;">ðŸƒ</span>
                     <span style="font-weight:bold; color:#4ade80;">${p.username}</span>
                     <span style="color:#aaa; font-size:0.85em;">${p.chips} chips</span>
-                    ${p.userId !== currentUser?.id ? `<button class="btn" style="margin-left:auto; padding:3px 10px; font-size:0.75em; background:rgba(34,197,94,0.2); border:1px solid #4ade80; color:#4ade80;" onclick="pokerInviteFriend('${p.userId}')">📨</button>` : ''}
+                    ${p.userId !== currentUser?.id ? `<button class="btn" style="margin-left:auto; padding:3px 10px; font-size:0.75em; background:rgba(34,197,94,0.2); border:1px solid #4ade80; color:#4ade80;" onclick="pokerInviteFriend('${p.userId}')">ðŸ“¨</button>` : ''}
                 </div>`).join('');
             document.getElementById('poker-wait-msg').innerText = `${state.players.length} player(s) in lobby`;
         }
@@ -7881,7 +7881,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     <button class="btn" style="background:linear-gradient(135deg,#ef4444,#dc2626); border:2px solid #f87171; color:white; padding:10px 20px;" onclick="pokerAction('fold')">Fold</button>
                     ${canCheck ? `<button class="btn" style="background:linear-gradient(135deg,#6b7280,#4b5563); border:2px solid #9ca3af; color:white; padding:10px 20px;" onclick="pokerAction('check')">Check</button>` : `<button class="btn" style="background:linear-gradient(135deg,#3b82f6,#2563eb); border:2px solid #60a5fa; color:white; padding:10px 20px;" onclick="pokerAction('call')">Call ${toCall}</button>`}
                     <button class="btn" style="background:linear-gradient(135deg,#22c55e,#16a34a); border:2px solid #4ade80; color:white; padding:10px 20px;" onclick="document.getElementById('poker-raise-row').classList.toggle('hidden')">Raise</button>`;
-                document.getElementById('poker-status-msg').innerText = '⭐ Your turn!';
+                document.getElementById('poker-status-msg').innerText = 'â­ Your turn!';
             } else {
                 document.getElementById('poker-status-msg').innerText = curPlayer ? `Waiting for ${curPlayer.username}...` : '';
             }
@@ -7889,7 +7889,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             // Showdown
             if (state.phase === 'SHOWDOWN' && state.winnersInfo) {
                 pokerShowSection('poker-round-end');
-                const winMsg = state.winnersInfo.map(w => `🏆 ${w.username} wins ${w.amount} pts (${w.handName})`).join('\n');
+                const winMsg = state.winnersInfo.map(w => `ðŸ† ${w.username} wins ${w.amount} pts (${w.handName})`).join('\n');
                 document.getElementById('poker-winner-msg').innerText = winMsg;
                 document.getElementById('poker-showdown-hands').innerHTML = state.players.filter(p => !p.folded).map(p =>
                     `<div style="text-align:center; margin-bottom:10px;">
@@ -7925,7 +7925,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             pokerPollTimer = setInterval(async () => {
                 if (!pokerGameId) { clearInterval(pokerPollTimer); return; }
                 try {
-                    const state = await api(`/api/game/poker/${pokerGameId}`);
+                    const state = await api(`/v1/action/poker/${pokerGameId}`);
                     if (state.phase === 'WAITING') { pokerUpdateWaiting(state); }
                     else { pokerRenderTable(state); if (document.getElementById('poker-waiting').classList.contains('hidden') === false) pokerShowSection('poker-table'); }
                 } catch (e) { }
@@ -8096,7 +8096,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 2;
                     ctx.strokeRect(o.x, o.y, o.w, o.h);
                     ctx.fillStyle = '#4ade80'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'center';
-                    ctx.fillText('⚓ LAND', o.x + o.w / 2, o.y - 5);
+                    ctx.fillText('âš“ LAND', o.x + o.w / 2, o.y - 5);
                 }
             });
 
@@ -8105,12 +8105,12 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             ctx.save();
             const tilt = Math.max(-0.5, Math.min(0.4, planeVY * 0.06));
             ctx.translate(PLANE_X, planeY); ctx.rotate(tilt);
-            ctx.fillText('✈️', 0, 8);
+            ctx.fillText('âœˆï¸', 0, 8);
             ctx.restore();
 
             // HUD hint
             ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '11px Arial'; ctx.textAlign = 'left';
-            ctx.fillText('Click/Space = flap  •  E = early cashout (1/3x)  •  Land on ⚓ for full payout', 8, 18);
+            ctx.fillText('Click/Space = flap  â€¢  E = early cashout (1/3x)  â€¢  Land on âš“ for full payout', 8, 18);
 
             aviaRaf = requestAnimationFrame(aviaLoop);
         }
@@ -8123,7 +8123,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 const ctx = canvas.getContext('2d');
                 ctx.fillStyle = 'rgba(255,0,0,0.4)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = '#fff'; ctx.font = 'bold 48px Arial'; ctx.textAlign = 'center';
-                ctx.fillText('💥 CRASHED!', canvas.width / 2, canvas.height / 2);
+                ctx.fillText('ðŸ’¥ CRASHED!', canvas.width / 2, canvas.height / 2);
             }
             document.getElementById('avia-multiplier').style.color = '#ff3e3e';
             document.getElementById('avia-status').innerText = `Crashed at ${aviaMult.toFixed(2)}x — bet lost`;
@@ -8140,9 +8140,9 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             aviaActive = false;
             cancelAnimationFrame(aviaRaf);
             try {
-                const data = await api('/api/game/avia/cashout', 'POST', { mult: aviaMult, isEarly: false });
+                const data = await api('/v1/action/avia/cashout', 'POST', { mult: aviaMult, isEarly: false });
                 myPoints = data.newPoints; updatePointsUI();
-                document.getElementById('avia-status').innerText = `🛬 Landed! Win: ${data.win} pts (${aviaMult.toFixed(2)}x)`;
+                document.getElementById('avia-status').innerText = `ðŸ›¬ Landed! Win: ${data.win} pts (${aviaMult.toFixed(2)}x)`;
                 document.getElementById('avia-status').style.color = '#4ade80';
             } catch (e) { }
             document.getElementById('avia-cashout').style.display = 'none';
@@ -8157,7 +8157,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             const bet = parseInt(document.getElementById('avia-bet').value);
             if (isNaN(bet) || bet < 1) return alert('Enter bet');
             try {
-                const data = await api('/api/game/avia/start', 'POST', { bet });
+                const data = await api('/v1/action/avia/start', 'POST', { bet });
                 myPoints = data.newPoints; updatePointsUI();
                 aviaBet = bet; aviaActive = false; aviaMult = 1.0; aviaFrame = 0; aviaSpawnFrame = 0;
                 aviaObjects = []; aviaLanded = false; aviaLastTime = 0;
@@ -8194,7 +8194,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             aviaActive = false;
             cancelAnimationFrame(aviaRaf);
             try {
-                const data = await api('/api/game/avia/cashout', 'POST', { mult: aviaMult, isEarly: true });
+                const data = await api('/v1/action/avia/cashout', 'POST', { mult: aviaMult, isEarly: true });
                 myPoints = data.newPoints; updatePointsUI();
                 document.getElementById('avia-status').innerText = `Early cashout: Win ${data.win} pts (${(aviaMult / 3).toFixed(2)}x effective)`;
                 document.getElementById('avia-status').style.color = '#ffcc00';
@@ -8317,23 +8317,23 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             if ((e.key === 'e' || e.key === 'E') && aviaActive) { cashoutAvia(); return; }
             if (e.key === ' ' && aviaActive) { e.preventDefault(); aviaFlap(); }
         });
-        const rpsEmoji = { rock: '✊', paper: '✋', scissors: '✌️' };
+        const rpsEmoji = { rock: 'âœŠ', paper: 'âœ‹', scissors: 'âœŒï¸' };
         async function playRPS(choice) {
             const bet = parseInt(document.getElementById('rps-bet').value);
             if (isNaN(bet) || bet < 1) return alert('Enter a valid bet amount first.');
             const btns = document.querySelectorAll('.rps-btn');
             btns.forEach(b => b.disabled = true);
             try {
-                const data = await api('/api/game/rps', 'POST', { choice, bet });
+                const data = await api('/v1/action/rps', 'POST', { choice, bet });
                 myPoints = data.newPoints;
                 updatePointsUI();
                 const resultEl = document.getElementById('rps-result');
                 document.getElementById('rps-you-emoji').innerText = rpsEmoji[choice];
                 document.getElementById('rps-ai-emoji').innerText = rpsEmoji[data.aiChoice];
                 const outcomeEl = document.getElementById('rps-outcome');
-                if (data.result === 'WIN') { outcomeEl.innerText = '🎉 YOU WIN!'; outcomeEl.style.color = '#00ff55'; }
-                else if (data.result === 'LOSE') { outcomeEl.innerText = '💀 YOU LOSE'; outcomeEl.style.color = '#ff3e3e'; }
-                else { outcomeEl.innerText = '🤝 TIE'; outcomeEl.style.color = '#ffcc00'; }
+                if (data.result === 'WIN') { outcomeEl.innerText = 'ðŸŽ‰ YOU WIN!'; outcomeEl.style.color = '#00ff55'; }
+                else if (data.result === 'LOSE') { outcomeEl.innerText = 'ðŸ’€ YOU LOSE'; outcomeEl.style.color = '#ff3e3e'; }
+                else { outcomeEl.innerText = 'ðŸ¤ TIE'; outcomeEl.style.color = '#ffcc00'; }
                 const delta = data.winAmount - bet;
                 document.getElementById('rps-points-delta').innerText = delta >= 0 ? `+${delta} points` : `${delta} points`;
                 document.getElementById('rps-points-delta').style.color = delta >= 0 ? '#00ff55' : '#ff5555';
@@ -8346,7 +8346,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             const bet = parseInt(document.getElementById('bj-bet').value);
             if (isNaN(bet) || bet < 1) return alert('Enter bet');
             try {
-                const data = await api('/api/game/blackjack/start', 'POST', { bet });
+                const data = await api('/v1/action/blackjack/start', 'POST', { bet });
                 myPoints = data.newPoints; updatePointsUI();
                 document.getElementById('bj-bet-area').classList.add('hidden');
                 document.getElementById('bj-arena').classList.remove('hidden');
@@ -8380,14 +8380,14 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
 
                 pArea.innerHTML = `
                     <div class="bj-hand-container ${a === 1 ? 'active' : ''}" style="min-width:140px;">
-                        <div class="bj-hand-label" style="color:${a === 1 ? 'var(--primary)' : '#aaa'}">${a === 1 ? '▶ ' : ''}Hand 1</div>
+                        <div class="bj-hand-label" style="color:${a === 1 ? 'var(--primary)' : '#aaa'}">${a === 1 ? 'â–¶ ' : ''}Hand 1</div>
                         <div style="display:flex; flex-wrap:wrap; justify-content:center;">${(data.hand1 || []).map(cardHtml).join('')}</div>
                         <div style="font-size:0.82em; margin-top:4px; color:${done ? labelColor(data.status1) : '#aaa'}">
                             Score: ${data.score1 || ''}${done ? ' — ' + data.status1 : ''}
                         </div>
                     </div>
                     <div class="bj-hand-container ${a === 2 ? 'active' : ''}" style="min-width:140px; ${a === 1 ? 'opacity:0.55' : ''}">
-                        <div class="bj-hand-label" style="color:${a === 2 ? 'var(--primary)' : '#aaa'}">${a === 2 ? '▶ ' : ''}Hand 2</div>
+                        <div class="bj-hand-label" style="color:${a === 2 ? 'var(--primary)' : '#aaa'}">${a === 2 ? 'â–¶ ' : ''}Hand 2</div>
                         <div style="display:flex; flex-wrap:wrap; justify-content:center;">${(data.hand2 || []).map(cardHtml).join('')}</div>
                         <div style="font-size:0.82em; margin-top:4px; color:${done ? labelColor(data.status2) : '#aaa'}">
                             Score: ${data.score2 || ''}${done ? ' — ' + data.status2 : ''}
@@ -8402,7 +8402,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     document.getElementById('bj-controls').classList.add('hidden');
                     document.getElementById('bj-replay').classList.remove('hidden');
                 } else {
-                    resultEl.innerText = a === 1 ? '▶ Playing Hand 1 — Hit or Stand' : '▶ Playing Hand 2 — Hit or Stand';
+                    resultEl.innerText = a === 1 ? 'â–¶ Playing Hand 1 — Hit or Stand' : 'â–¶ Playing Hand 2 — Hit or Stand';
                     resultEl.style.color = '#00d4ff';
                     document.getElementById('bj-controls').classList.remove('hidden');
                     document.getElementById('bj-replay').classList.add('hidden');
@@ -8422,12 +8422,12 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
 
             const terminal = ['BUST', 'WIN', 'LOSE', 'PUSH', 'BLACKJACK', 'CHARLIE_WIN'].includes(data.status);
 
-            if (data.status === 'BUST') { resultEl.innerText = '💥 BUSTED! Dealer wins.'; resultEl.style.color = '#ff3e3e'; }
-            else if (data.status === 'BLACKJACK') { resultEl.innerText = `🃏 BLACKJACK! You win ${data.win} pts (3x)!`; resultEl.style.color = '#ffd700'; }
-            else if (data.status === 'CHARLIE_WIN') { resultEl.innerText = `🎴 5-CARD CHARLIE! You win ${data.win} pts!`; resultEl.style.color = '#00ff99'; }
-            else if (data.status === 'WIN') { resultEl.innerText = `🎉 YOU WIN ${data.win} pts!`; resultEl.style.color = '#00ff55'; }
-            else if (data.status === 'LOSE') { resultEl.innerText = '😞 DEALER WINS!'; resultEl.style.color = '#ff3e3e'; }
-            else if (data.status === 'PUSH') { resultEl.innerText = '🤝 PUSH! Bet returned.'; resultEl.style.color = '#ffcc00'; }
+            if (data.status === 'BUST') { resultEl.innerText = 'ðŸ’¥ BUSTED! Dealer wins.'; resultEl.style.color = '#ff3e3e'; }
+            else if (data.status === 'BLACKJACK') { resultEl.innerText = `ðŸƒ BLACKJACK! You win ${data.win} pts (3x)!`; resultEl.style.color = '#ffd700'; }
+            else if (data.status === 'CHARLIE_WIN') { resultEl.innerText = `ðŸŽ´ 5-CARD CHARLIE! You win ${data.win} pts!`; resultEl.style.color = '#00ff99'; }
+            else if (data.status === 'WIN') { resultEl.innerText = `ðŸŽ‰ YOU WIN ${data.win} pts!`; resultEl.style.color = '#00ff55'; }
+            else if (data.status === 'LOSE') { resultEl.innerText = 'ðŸ˜ž DEALER WINS!'; resultEl.style.color = '#ff3e3e'; }
+            else if (data.status === 'PUSH') { resultEl.innerText = 'ðŸ¤ PUSH! Bet returned.'; resultEl.style.color = '#ffcc00'; }
             else resultEl.innerText = '';
 
             if (terminal) {
@@ -8445,22 +8445,22 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
 
         async function bjHit() {
             try {
-                const data = await api('/api/game/blackjack/hit', 'POST', {});
+                const data = await api('/v1/action/blackjack/hit', 'POST', {});
                 updateBjUI(data);
             } catch (e) { alert(e.message); }
         }
 
         async function bjStand() {
-            try { const data = await api('/api/game/blackjack/stand', 'POST', {}); updateBjUI(data); } catch (e) { alert(e.message); }
+            try { const data = await api('/v1/action/blackjack/stand', 'POST', {}); updateBjUI(data); } catch (e) { alert(e.message); }
         }
 
         async function bjDouble() {
-            try { const data = await api('/api/game/blackjack/double', 'POST', {}); updateBjUI(data); } catch (e) { alert(e.message); }
+            try { const data = await api('/v1/action/blackjack/double', 'POST', {}); updateBjUI(data); } catch (e) { alert(e.message); }
         }
 
         async function bjSplit() {
             try {
-                const data = await api('/api/game/blackjack/split', 'POST', {});
+                const data = await api('/v1/action/blackjack/split', 'POST', {});
                 updateBjUI(data);
             } catch (e) { alert(e.message); }
         }
@@ -8473,7 +8473,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             document.getElementById('bj-result').innerText = '';
         }
 
-        const SLOT_SYMS = ['🍒', '🍋', '🔔', '💎', '7️⃣', '⭐'];
+        const SLOT_SYMS = ['ðŸ’', 'ðŸ‹', '🔔', '💎', '7ï¸âƒ£', 'â­'];
         const SLOT_H = 80; // px per symbol
         let slotsSpinIntervals = [null, null, null];
 
@@ -8619,7 +8619,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     const isActive = activeTheme === tid;
                     const col = rarityColor(def?.rarity);
                     const dc = dupeMap[tid] || 0;
-                    const dupeBubble = dc >= 1 ? `<span style="position:absolute;top:6px;left:6px;background:#00d4ff;color:black;font-size:0.65em;font-weight:bold;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;">×${dc + 1}</span>` : '';
+                    const dupeBubble = dc >= 1 ? `<span style="position:absolute;top:6px;left:6px;background:#00d4ff;color:black;font-size:0.65em;font-weight:bold;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;">Ã—${dc + 1}</span>` : '';
                     return `<div style="position:relative;background:rgba(0,0,0,0.4);border:2px solid ${isActive ? 'var(--primary)' : '#333'};border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;">${dupeBubble}
                       ${def ? `<div style="display:flex;gap:6px;margin-bottom:4px;">
                         <div style="width:18px;height:18px;border-radius:4px;background:${def.bg_color || '#0b0b0b'};border:1px solid #555;"></div>
@@ -8629,7 +8629,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                       <div style="font-weight:bold;color:#fff;">${def ? def.name : tid}</div>
                       <div style="font-size:0.78em;color:${col};">${def ? def.rarity.toUpperCase() : 'BUILT-IN'}</div>
                       <button class="btn${isActive ? ' primary' : ''}" onclick="equipTheme('${tid}')" style="margin-top:4px;font-size:0.85em;">
-                        ${isActive ? '✓ Equipped' : 'Equip'}
+                        ${isActive ? 'âœ“ Equipped' : 'Equip'}
                       </button>
                     </div>`;
                 }).join('');
@@ -8663,7 +8663,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             let particles = [];
 
             if (themeId === 'mythic_matrix') {
-                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ウェエォオ@#$%^&*<>{}[]|/\\';
+                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ã‚¦ã‚§ã‚¨ã‚©ã‚ª@#$%^&*<>{}[]|/\\';
                 const fontSize = 16;
                 const columns = Math.floor(W / fontSize);
                 const drops = Array.from({ length: columns }, () => ({
@@ -9125,7 +9125,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     bg.addColorStop(1, '#1a0008');
                     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
-                    // Diagonal rain (falling right→left at small angle)
+                    // Diagonal rain (falling rightâ†’left at small angle)
                     const rainDX = -0.28; // horizontal drift per speed unit
                     sorrowRain.forEach(r => {
                         r.y += r.speed;
@@ -9181,7 +9181,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     const cx = W / 2;
                     const boatY = sorrowBaseY + bob;
 
-                    // Boat hull (2.5×)
+                    // Boat hull (2.5Ã—)
                     ctx.save();
                     ctx.translate(cx, boatY);
                     ctx.scale(1.25, 1.25);
@@ -9193,7 +9193,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     ctx.fill();
                     ctx.restore();
 
-                    // Person + tilted umbrella (2.5×)
+                    // Person + tilted umbrella (2.5Ã—)
                     ctx.save();
                     ctx.translate(cx, boatY - 10);
                     ctx.rotate(sway);
@@ -9286,7 +9286,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     sunG.addColorStop(0.75, 'rgba(255,180,0,0.08)'); sunG.addColorStop(1, 'transparent');
                     ctx.fillStyle = sunG; ctx.beginPath(); ctx.arc(W * 0.5, H * 0.12, sunPulse, 0, Math.PI * 2); ctx.fill();
 
-                    // Girl in sky (2.5×) – light yellow, center top, levitating + swaying
+                    // Girl in sky (2.5Ã—) – light yellow, center top, levitating + swaying
                     const girlX = W * 0.5;
                     const girlY = H * 0.19 + Math.sin(time * 0.5) * 8;
                     const girlSway = Math.sin(time * 0.4) * 0.05;
@@ -9323,7 +9323,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     ctx.restore();
                     ctx.shadowBlur = 0; ctx.restore();
 
-                    // Diagonal rain (right→left)
+                    // Diagonal rain (rightâ†’left)
                     const rainDX = -0.28;
                     joyRain.forEach(r => {
                         r.y += r.speed;
@@ -9374,7 +9374,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     const sway = Math.sin(time * 0.35) * 0.05;
                     const cx = W / 2;
                     const boatY = joyBaseY + bob;
-                    // Boat hull (2.5×)
+                    // Boat hull (2.5Ã—)
                     ctx.save(); ctx.translate(cx, boatY);
                     ctx.scale(1.25, 1.25);
                     ctx.fillStyle = '#1a0800'; ctx.strokeStyle = '#1a0800'; ctx.lineWidth = 3;
@@ -9382,7 +9382,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     ctx.moveTo(-90, -10); ctx.lineTo(90, -10);
                     ctx.lineTo(72, 22); ctx.lineTo(-72, 22);
                     ctx.closePath(); ctx.fill(); ctx.restore();
-                    // Boy on boat (2.5×, one waving arm toward ghost girl)
+                    // Boy on boat (2.5Ã—, one waving arm toward ghost girl)
                     ctx.save(); ctx.translate(cx, boatY - 10); ctx.rotate(sway);
                     ctx.scale(1.25, 1.25);
                     ctx.fillStyle = '#1a0800'; ctx.strokeStyle = '#1a0800';
@@ -9500,12 +9500,12 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     const col = rarityColor(def?.rarity);
                     const isActive = activeTitle === tid;
                     const dc = titleDupeMap[tid] || 0;
-                    const dupeBubble = dc >= 1 ? `<span style="position:absolute;top:6px;left:6px;background:#00d4ff;color:black;font-size:0.65em;font-weight:bold;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;">×${dc + 1}</span>` : '';
+                    const dupeBubble = dc >= 1 ? `<span style="position:absolute;top:6px;left:6px;background:#00d4ff;color:black;font-size:0.65em;font-weight:bold;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;">Ã—${dc + 1}</span>` : '';
                     return `<div style="position:relative;background:rgba(0,0,0,0.4);border:2px solid ${isActive ? 'var(--primary)' : '#333'};border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;">${dupeBubble}
                       <div style="font-weight:bold;color:${col};font-size:1.05em;">${def ? def.name : tid}</div>
                       <div style="font-size:0.78em;color:${col};">${def ? def.rarity.toUpperCase() : ''}</div>
                       <button class="btn${isActive ? ' primary' : ''}" onclick="equipTitle('${tid}')" style="margin-top:4px;font-size:0.85em;">
-                        ${isActive ? '✓ Equipped' : 'Equip'}
+                        ${isActive ? 'âœ“ Equipped' : 'Equip'}
                       </button>
                     </div>`;
                 }).join('');
@@ -9529,11 +9529,11 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 const lb = invData.inventory.lootboxes || {};
                 const entries = Object.entries(lb).filter(([, q]) => q > 0);
                 const colors = { bronze: '#888', silver: '#4d94ff', gold: '#b366ff', legendary: '#ffd700', mythic: '#ff00aa', legend: '#ffaa00' };
-                const icons = { bronze: '📦', silver: '🎁', gold: '💎', legendary: '⭐', mythic: '🔮', legend: '👑' };
+                const icons = { bronze: 'ðŸ“¦', silver: 'ðŸŽ', gold: '💎', legendary: 'â­', mythic: 'ðŸ”®', legend: 'ðŸ‘‘' };
                 grid.innerHTML = entries.length
                     ? entries.map(([type, qty]) => `
                         <div style="background:rgba(0,0,0,0.4);border:2px solid ${colors[type] || '#333'};border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;box-shadow:0 0 8px ${colors[type] || '#333'}44;">
-                          <div style="font-size:2em;text-align:center;">${icons[type] || '📦'}</div>
+                          <div style="font-size:2em;text-align:center;">${icons[type] || 'ðŸ“¦'}</div>
                           <div style="font-weight:bold;text-align:center;color:${colors[type] || '#fff'};">${type.toUpperCase()} BOX</div>
                           <div style="text-align:center;color:#aaa;">Qty: ${qty}</div>
                           <button class="btn primary" onclick="openBox('${type}')">Open</button>
@@ -9706,7 +9706,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             const board = document.getElementById('rl-board');
             if (!board) return;
 
-            // Row layout: 3 rows × 12 columns (European style, top=3,6,9... mid=2,5,8... bot=1,4,7...)
+            // Row layout: 3 rows Ã— 12 columns (European style, top=3,6,9... mid=2,5,8... bot=1,4,7...)
             const rows = [
                 [3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36],
                 [2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35],
@@ -9987,7 +9987,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             if (!username) return alert('Enter or click a username first.');
             try {
                 await api('/api/admin/action', 'POST', { username, action });
-                alert(`Done: ${action} → ${username}`);
+                alert(`Done: ${action} â†’ ${username}`);
                 loadAdminDashboard();
             } catch (e) { alert(e.message); }
         }
@@ -10090,14 +10090,14 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 div.style.margin = '5px 0 5px 15px';
 
                 if (typeof item === 'object' && item !== null) {
-                    div.innerHTML = `<span style="color:#ffd700; cursor:pointer;" onclick="this.nextElementSibling.classList.toggle('hidden')">📁 ${key}</span>`;
+                    div.innerHTML = `<span style="color:#ffd700; cursor:pointer;" onclick="this.nextElementSibling.classList.toggle('hidden')">ðŸ“ ${key}</span>`;
                     const subContainer = document.createElement('div');
                     subContainer.className = 'hidden';
                     subContainer.style.borderLeft = '1px solid #222';
                     renderExplorerNode(subContainer, item);
                     div.appendChild(subContainer);
                 } else {
-                    div.innerHTML = `<span style="color:#aaa;">📄 ${key}:</span> <span style="color:#fff;">${item}</span>`;
+                    div.innerHTML = `<span style="color:#aaa;">ðŸ“„ ${key}:</span> <span style="color:#fff;">${item}</span>`;
                 }
                 container.appendChild(div);
             }
@@ -10165,7 +10165,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     const div = document.createElement('div');
                     div.style.cssText = `display:flex; flex-direction:column; align-items:center; flex:1;`;
                     div.innerHTML = `
-                        <div style="font-weight:bold; color:${color}; margin-bottom:5px;">${rank === 1 ? '👑' : rank === 2 ? '🥈' : '🥉'}</div>
+                        <div style="font-weight:bold; color:${color}; margin-bottom:5px;">${rank === 1 ? 'ðŸ‘‘' : rank === 2 ? 'ðŸ¥ˆ' : 'ðŸ¥‰'}</div>
                         <div style="font-size:0.9em; margin-bottom:5px; max-width:80px; overflow:hidden; text-overflow:ellipsis;">@${u.username}</div>
                         <div style="width:100%; height:${height}px; background:${color}33; border:2px solid ${color}; border-radius:10px 10px 0 0; display:flex; flex-direction:column; justify-content:center; align-items:center;">
                             <div style="font-size:1.5em; font-weight:bold; color:${color};">${rank}</div>
