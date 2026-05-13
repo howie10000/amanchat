@@ -2665,7 +2665,7 @@
         <!-- Drawing Modal -->
         <div id="modal-draw" class="modal hidden">
             <div class="modal-card">
-                <h3 style="color:var(--primary); margin:0 0 15px;">ðŸŽ¨ Draw a Message</h3>
+                <h3 style="color:var(--primary); margin:0 0 15px;">🎨 Draw a Message</h3>
                 <div class="draw-canvas-container">
                     <canvas id="draw-canvas" width="450" height="300"></canvas>
                 </div>
@@ -2677,7 +2677,7 @@
                         ðŸ–Œï¸ Brush
                     </button>
                     <button class="draw-tool-btn" id="tool-eraser" onclick="setDrawTool('eraser')">
-                        ðŸ§½ Eraser
+                        🧼 Eraser
                     </button>
                     <button class="draw-tool-btn" onclick="clearCanvas()">
                         ðŸ—‘ï¸ Clear
@@ -2711,7 +2711,7 @@
         <!-- Theme Preview Modal -->
         <div id="modal-theme-preview" class="modal hidden">
             <div class="modal-card" style="width: 600px;">
-                <h3 style="color:var(--primary); margin-top:0;">ðŸŽ¨ Live Theme Preview</h3>
+                <h3 style="color:var(--primary); margin-top:0;">🎨 Live Theme Preview</h3>
                 <div id="preview-container" class="preview-pane">
                     <div class="prev-sidebar"># general<br># rules<br><br>Users Online: 2</div>
                     <div class="prev-chat">
@@ -2748,7 +2748,7 @@
                         style="display:none; background:rgba(255,62,62,0.3); color:white;">Unfriend</button>
                     <button class="btn" id="prof-btn-trade"
                         style="background:rgba(0,0,0,0.5); color:var(--primary); border:1px solid var(--primary);"
-                        onclick="openTradeFromProfile()">ðŸ“¦ Trade</button>
+                        onclick="openTradeFromProfile()">📦 Trade</button>
                     <button class="btn" id="prof-btn-report"
                         style="background:rgba(0,0,0,0.5); color:white; border:1px solid red;"
                         onclick="openReportModal()">Report User</button>
@@ -2764,7 +2764,7 @@
         <div id="modal-tos" class="modal hidden" style="z-index:99998;">
             <div class="modal-card"
                 style="max-width:520px; max-height:85vh; display:flex; flex-direction:column; border:2px solid var(--primary);">
-                <h2 style="color:var(--primary); margin:0 0 8px;">ðŸ“œ Terms of Service</h2>
+                <h2 style="color:var(--primary); margin:0 0 8px;">📜 Terms of Service</h2>
                 <p style="color:#aaa; font-size:0.85em; margin:0 0 12px;">You must agree to continue using Aman Chat.
                 </p>
                 <div
@@ -2808,7 +2808,7 @@
         <!-- TOS Preview Modal (from Create Account link) -->
         <div id="modal-tos-preview" class="modal hidden">
             <div class="modal-card" style="max-width:520px; max-height:85vh; display:flex; flex-direction:column;">
-                <h2 style="color:var(--primary); margin:0 0 8px;">ðŸ“œ Terms of Service</h2>
+                <h2 style="color:var(--primary); margin:0 0 8px;">📜 Terms of Service</h2>
                 <div
                     style="flex:1; overflow-y:auto; background:rgba(0,0,0,0.4); padding:14px; border-radius:8px; color:#ddd; font-size:0.85em; line-height:1.5; text-align:left;">
                     <p><strong>1. Acceptance of Terms.</strong> By using Aman Chat, you agree to these Terms of Service.
@@ -2833,7 +2833,7 @@
         <!-- Password Change Modal -->
         <div id="modal-change-pass" class="modal hidden">
             <div class="modal-card" style="max-width:380px;">
-                <h3 style="color:var(--primary); margin-top:0;">ðŸ”‘ Change Password</h3>
+                <h3 style="color:var(--primary); margin-top:0;">🔑 Change Password</h3>
                 <p style="color:#aaa; font-size:0.85em; margin-bottom:14px;">Enter your current password to verify.</p>
                 <input type="password" id="cpw-current" placeholder="Current password"
                     style="width:100%; margin-bottom:10px;">
@@ -2852,7 +2852,7 @@
         <!-- Profile Picture Drawing Modal -->
         <div id="modal-draw-pfp" class="modal hidden">
             <div class="modal-card" style="max-width:400px;">
-                <h3 style="color:var(--primary); margin-top:0;">ðŸŽ¨ Draw Your Profile Picture</h3>
+                <h3 style="color:var(--primary); margin-top:0;">🎨 Draw Your Profile Picture</h3>
                 <p style="color:#aaa; font-size:0.85em; margin:0 0 12px;">Use mouse or touchscreen.</p>
                 <canvas id="pfp-draw-canvas" width="280" height="280"
                     style="border:2px solid var(--primary); background:white; cursor:crosshair; border-radius:10px; touch-action:none; display:block; margin:0 auto;"></canvas>
@@ -2929,8 +2929,8 @@
         <div id="ss-modal" class="modal hidden" style="z-index:9999;">
             <div class="modal-card" style="max-width:860px; width:95vw; padding:20px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <h3 style="margin:0; color:var(--primary);">ðŸ“º Screen Share</h3>
-                    <button class="btn" style="background:#cc2222; color:#fff; padding:5px 16px;" onclick="ssEnd()">âœ• End</button>
+                    <h3 style="margin:0; color:var(--primary);">📺 Screen Share</h3>
+                    <button class="btn" style="background:#cc2222; color:#fff; padding:5px 16px;" onclick="ssEnd()">✖ End</button>
                 </div>
                 <div id="ss-modal-status" style="font-size:0.8em; color:#aaa; text-align:center; margin-bottom:8px;"></div>
                 <video id="ss-local-video" autoplay playsinline muted
@@ -3002,7 +3002,7 @@
             <div class="modal-card" style="min-height:380px; position:relative;">
                 <h3 id="lb-open-title" style="color:var(--primary);">Opening Lootbox...</h3>
                 <div id="lb-opening-phase">
-                    <span id="lb-open-box" class="lb-open-box">ðŸ“¦</span>
+                    <span id="lb-open-box" class="lb-open-box">📦</span>
                     <p style="color:#aaa; margin:5px 0;">Tap the box to open!</p>
                     <button id="lb-tap-btn" class="btn primary" style="width:100%; margin-top:10px;"
                         onclick="shakeLootbox()">🎲 Open It!</button>
@@ -3032,7 +3032,7 @@
 
         <div id="modal-trade-create" class="modal hidden">
             <div class="modal-card" style="width:700px; max-width:96vw;">
-                <h3 style="color:var(--primary);">ðŸ“¦ Create Trade</h3>
+                <h3 style="color:var(--primary);">📦 Create Trade</h3>
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom:15px;">
                     <div style="flex:1; min-width:200px;">
                         <div style="font-size:0.85em; color:#aaa; margin-bottom:5px;">Trade Partner:</div>
@@ -3075,7 +3075,7 @@
 
         <div id="modal-trade-view" class="modal hidden">
             <div class="modal-card" style="width:600px; max-width:95vw;">
-                <h3 style="color:var(--primary);">ðŸ“¦ Trade Offer</h3>
+                <h3 style="color:var(--primary);">📦 Trade Offer</h3>
                 <p id="tv-from-user" style="color:#aaa;"></p>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; margin:15px 0;">
                     <div class="trade-side">
@@ -3126,13 +3126,13 @@
                         <div id="mkt-want-type-tabs" style="display:flex; gap:5px; margin-bottom:8px; flex-wrap:wrap;">
                             <button class="btn"
                                 style="padding:4px 8px; font-size:0.75em; background:var(--primary); color:black;"
-                                id="mkt-want-tab-theme" onclick="setMktWantTab('theme')">ðŸŽ¨ Themes</button>
+                                id="mkt-want-tab-theme" onclick="setMktWantTab('theme')">🎨 Themes</button>
                             <button class="btn"
                                 style="padding:4px 8px; font-size:0.75em; background:rgba(0,0,0,0.5); color:white;"
                                 id="mkt-want-tab-title" onclick="setMktWantTab('title')">ðŸ·ï¸ Titles</button>
                             <button class="btn"
                                 style="padding:4px 8px; font-size:0.75em; background:rgba(0,0,0,0.5); color:white;"
-                                id="mkt-want-tab-lootbox" onclick="setMktWantTab('lootbox')">ðŸ“¦ Boxes</button>
+                                id="mkt-want-tab-lootbox" onclick="setMktWantTab('lootbox')">📦 Boxes</button>
                         </div>
                         <div id="mkt-want-grid"
                             style="display:grid; grid-template-columns:repeat(auto-fill,minmax(90px,1fr)); gap:6px; max-height:180px; overflow-y:auto;">
@@ -3141,7 +3141,7 @@
                             set</div>
                     </div>
                 </div>
-                <button class="btn primary" style="width:100%; margin-bottom:8px;" onclick="submitMarketOffer()">ðŸ“¢ Post
+                <button class="btn primary" style="width:100%; margin-bottom:8px;" onclick="submitMarketOffer()">📢 Post
                     to Market</button>
                 <button class="btn" style="width:100%; background:none; color:#ddd;"
                     onclick="closeM('modal-market-create')">Cancel</button>
@@ -3150,7 +3150,7 @@
         <!-- Poker Invite Modal -->
         <div id="modal-poker-invite" class="modal hidden">
             <div class="modal-card" style="width:420px; max-width:96vw;">
-                <h3 style="color:var(--primary); margin-top:0;">ðŸ“¨ Invite Players</h3>
+                <h3 style="color:var(--primary); margin-top:0;">📨 Invite Players</h3>
                 <p style="color:#aaa; font-size:0.88em; margin-bottom:12px;">Select online users to send a DM invite
                     with your game code.</p>
                 <div id="poker-invite-list" style="max-height:260px; overflow-y:auto; margin-bottom:14px;"></div>
@@ -3176,7 +3176,7 @@
                 <div style="margin-top:14px;">
                     <a href="https://docs.google.com/document/d/14qRI6kciyENO3bdvoFc8yoAZ_wH_Ay_Zda4ZlJsS6Ns/edit?usp=sharing"
                         target="_blank"
-                        style="color:var(--primary); font-size:0.85em; text-decoration:underline; cursor:pointer;">ðŸ“œ
+                        style="color:var(--primary); font-size:0.85em; text-decoration:underline; cursor:pointer;">📜
                         Terms of Service</a>
                 </div>
             </div>
@@ -3193,16 +3193,16 @@
         </div>
 
         <nav id="app-nav" class="hidden">
-            <button id="btn-chat" onclick="tab('chat')" class="active">ðŸ’¬ Chat <span id="nav-dot"
+            <button id="btn-chat" onclick="tab('chat')" class="active">💬 Chat <span id="nav-dot"
                     class="unread-dot hidden" style="position:absolute; top:5px; right:5px;"></span></button>
-            <button id="btn-friends" onclick="tab('friends')">ðŸ‘¥ Friends</button>
+            <button id="btn-friends" onclick="tab('friends')">👥 Friends</button>
             <button id="btn-store" onclick="tab('store'); subTabStore('lootbox');">ðŸª Store</button>
             <button id="btn-games" onclick="tab('games'); subTabGames('plinko');">🎲 Arcade</button>
-            <button id="btn-inventory" onclick="tab('inventory'); loadInventory()">ðŸŽ’ Inventory</button>
-            <button id="btn-prof" onclick="tab('prof')">ðŸ‘¤ Profile</button>
+            <button id="btn-inventory" onclick="tab('inventory'); loadInventory()">🎒 Inventory</button>
+            <button id="btn-prof" onclick="tab('prof')">👤 Profile</button>
             <button id="btn-leaderboard" onclick="tab('leaderboard')">ðŸ† Rich List</button>
             <button id="btn-admin" onclick="tab('admin')" class="hidden" style="color:var(--admin)">âš™ï¸ Admin</button>
-            <button id="btn-thememaker" onclick="tab('thememaker')" class="hidden" style="color:#b366ff">ðŸŽ¨
+            <button id="btn-thememaker" onclick="tab('thememaker')" class="hidden" style="color:#b366ff">🎨
                 Themes</button>
         </nav>
 
@@ -3211,10 +3211,10 @@
             <div id="pane-chat" class="tab-pane">
                 <div id="auction-banner" class="hidden"
                     style="position:absolute; top:0; left:0; right:0; background:linear-gradient(135deg, #ff6600, #ffcc00); color:black; padding:12px 20px; z-index:100; display:flex; align-items:center; justify-content:center; gap:10px; font-weight:bold; box-shadow:0 2px 10px rgba(0,0,0,0.5);">
-                    <span style="font-size:1.3em;">ðŸ“¢</span>
+                    <span style="font-size:1.3em;">📢</span>
                     <span id="auction-banner-message"></span>
                     <button onclick="document.getElementById('auction-banner').classList.add('hidden')"
-                        style="background:rgba(0,0,0,0.2); border:none; color:black; padding:2px 8px; border-radius:4px; cursor:pointer; margin-left:10px;">âœ•</button>
+                        style="background:rgba(0,0,0,0.2); border:none; color:black; padding:2px 8px; border-radius:4px; cursor:pointer; margin-left:10px;">✖</button>
                 </div>
                 <div class="sidebar">
                     <div style="display:flex; padding:5px; background:rgba(0,0,0,0.5);">
@@ -3238,7 +3238,7 @@
                                 onclick="checkServerPermsAndOpen(true)">+ Private Server</button>
                             <button class="btn"
                                 style="font-size:0.8em; border:1px solid var(--primary); color:var(--primary); background:none;"
-                                onclick="openJoinPrivate()">ðŸ”‘ Private Code</button>
+                                onclick="openJoinPrivate()">🔑 Private Code</button>
                         </div>
                         <div class="list-header">Servers</div>
                         <div id="list-pub"></div>
@@ -3255,12 +3255,12 @@
                                 onclick="clearAllMessages()">âš¡ Clear All</button>
                             <button id="spam-clear-btn" class="btn hidden"
                                 style="background:#ff6600; color:white; padding:5px 10px; font-size:0.8em;"
-                                onclick="clearAllMessages()">ðŸ§¹ Clear All</button>
+                                onclick="clearAllMessages()">🧹 Clear All</button>
                             <button id="srv-mod-btn" class="btn hidden"
                                 style="background:var(--admin); color:white; padding:5px 10px; font-size:0.8em;"
                                 onclick="openSrvMod()">ðŸ›¡ï¸ Mod</button>
                             <button id="show-code-btn" class="btn hidden"
-                                style="background:#ffaa00; color:black; padding:5px 10px; font-size:0.8em;">ðŸ”‘
+                                style="background:#ffaa00; color:black; padding:5px 10px; font-size:0.8em;">🔑
                                 Code</button>
                             <select id="channel-select" onchange="switchChannel(this.value)"
                                 style="padding:8px; width:auto;"></select>
@@ -3268,7 +3268,7 @@
                                 onclick="openAddChannel()">+ Chain</button>
                             <button id="ss-btn" class="btn hidden"
                                 style="background:#5865f2; color:#fff; padding:5px 10px; font-size:0.8em;"
-                                onclick="ssStart()">ðŸ“º Share Screen</button>
+                                onclick="ssStart()">📺 Share Screen</button>
                             <button id="del-srv-btn" class="btn hidden"
                                 style="background:#ff3333; color:white; padding:5px 10px; font-size:0.8em;"
                                 onclick="deleteServer()">ðŸ—‘ï¸ Delete</button>
@@ -3283,7 +3283,7 @@
                     </div>
                     <!-- Screen Share In-DM Popup -->
                     <div id="ss-popup" class="hidden" style="display:flex; align-items:center; gap:12px; padding:10px 18px; background:var(--card); border-top:2px solid var(--primary); flex-wrap:wrap;">
-                        <span style="font-size:1.2em;">ðŸ“º</span>
+                        <span style="font-size:1.2em;">📺</span>
                         <span id="ss-popup-text" style="color:#ddd; font-size:0.9em; flex:1; min-width:120px;"></span>
                         <button id="ss-popup-accept"  class="btn primary"  style="padding:5px 16px; font-size:0.85em; display:none;" onclick="ssAccept()">Accept</button>
                         <button id="ss-popup-decline" class="btn"          style="padding:5px 16px; font-size:0.85em; background:#cc2222; color:#fff; display:none;" onclick="ssDecline()">Decline</button>
@@ -3309,7 +3309,7 @@
                         Read Only Channel</div>
                     <div id="spam-bandwidth-overlay" class="hidden"
                         style="padding:10px; background:rgba(255,102,0,0.2); text-align:center; color:#ff9933; font-size:0.85em; border-top:1px solid rgba(255,102,0,0.3);">
-                        ðŸ“¡ Spam Mode: No typing indicators</div>
+                        📡 Spam Mode: No typing indicators</div>
                 </div>
                 <div class="right-sidebar hidden" id="member-sidebar">
                     <div class="list-header">Online Members</div>
@@ -3319,7 +3319,7 @@
 
             <div id="pane-friends" class="tab-pane hidden">
                 <div class="sidebar" style="padding:15px; gap:10px; display:flex; flex-direction:column;">
-                    <h3 style="color:var(--primary); margin:0 0 8px;">ðŸ‘¥ Friends</h3>
+                    <h3 style="color:var(--primary); margin:0 0 8px;">👥 Friends</h3>
                     <button class="btn primary" id="frnd-btn-my" onclick="toggleFriendView('my')">My Friends</button>
                     <button class="btn" id="frnd-btn-find" style="background:rgba(0,0,0,0.5); color:white;"
                         onclick="toggleFriendView('find')">ðŸ” Find Friends</button>
@@ -3361,10 +3361,10 @@
                             id="store-points">0</span> Points</div>
                     <button class="btn" id="sub-store-lootbox"
                         style="width:100%; text-align:left; background:var(--primary); color:black;"
-                        onclick="subTabStore('lootbox')">ðŸ“¦ Lootboxes</button>
+                        onclick="subTabStore('lootbox')">📦 Lootboxes</button>
                     <button class="btn" id="sub-store-index"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabStore('index'); loadIndex();">ðŸ“š Collection Index</button>
+                        onclick="subTabStore('index'); loadIndex();">📚 Collection Index</button>
                     <button class="btn" id="sub-store-altar"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
                         onclick="subTabStore('altar'); loadAltar();">🔥 The Altar</button>
@@ -3373,7 +3373,7 @@
                         onclick="subTabStore('auction'); loadAuction();">🎰 Aman Auction</button>
                     <button class="btn" id="sub-store-trading"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
-                        onclick="subTabStore('trading'); loadTrades();">ðŸ”„ Trading Hub</button>
+                        onclick="subTabStore('trading'); loadTrades();">🔄 Trading Hub</button>
                     <button class="btn" id="sub-store-market"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
                         onclick="subTabStore('market'); loadMarket();">ðŸŒ Open Market</button>
@@ -3384,7 +3384,7 @@
                 <div class="chat-content" style="overflow-y:auto;">
                     <div id="store-view-lootbox"
                         style="display:flex; flex-direction:column; align-items:center; padding:30px;">
-                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">ðŸ“¦ Roll Lootboxes</h2>
+                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">📦 Roll Lootboxes</h2>
                         <p
                             style="color:#ddd; text-align:center; max-width:600px; margin-bottom:25px; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">
                             Roll lootboxes to win exclusive themes and titles! Try the new Mythic tier for legendary
@@ -3403,11 +3403,11 @@
                     <!-- </div> moved down to correctly wrap sub-views -->
                     <div id="store-view-index" class="hidden"
                         style="display:flex; flex-direction:column; align-items:center; padding:25px;">
-                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">ðŸ“š Collection Index</h2>
+                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">📚 Collection Index</h2>
                         <p style="color:#aaa; text-align:center; max-width:600px; margin-bottom:20px;">View all
                             available themes and titles. Items you own are highlighted.</p>
                         <div style="width:100%; max-width:1200px;">
-                            <h3 style="color:var(--primary); margin-bottom:15px;">ðŸŽ¨ Themes</h3>
+                            <h3 style="color:var(--primary); margin-bottom:15px;">🎨 Themes</h3>
                             <div id="index-themes-grid"
                                 style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:15px; margin-bottom:30px;">
                             </div>
@@ -3440,7 +3440,7 @@
 
                             <div
                                 style="background:rgba(0,0,0,0.3); padding:20px; border-radius:10px; border:1px solid #444;">
-                                <h3 style="color:var(--primary); margin-top:0; margin-bottom:15px;">ðŸ“¦ Fuse Shards into
+                                <h3 style="color:var(--primary); margin-top:0; margin-bottom:15px;">📦 Fuse Shards into
                                     Lootboxes</h3>
                                 <p style="color:#aaa; font-size:0.85em; margin-bottom:15px;">Use shards to craft
                                     lootboxes.</p>
@@ -3504,7 +3504,7 @@
                                 <option value="604800000">1 Week</option>
                             </select>
                             <label style="color:#aaa; font-size:0.85em; margin-bottom:10px; display:block;">
-                                <input type="checkbox" id="auction-announce" checked> ðŸ“¢ Announce to all players
+                                <input type="checkbox" id="auction-announce" checked> 📢 Announce to all players
                             </label>
                             <button class="btn primary" style="width:100%;" onclick="createAuction()">🎰 Create
                                 Auction</button>
@@ -3512,7 +3512,7 @@
                     </div>
                     <div id="store-view-trading" class="hidden"
                         style="display:flex; flex-direction:column; align-items:center; padding:25px;">
-                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">ðŸ”„ Player Trading</h2>
+                        <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5); margin-top:0;">🔄 Player Trading</h2>
                         <button class="btn primary" style="margin-bottom:20px;" onclick="openTradeCreate()">+ New
                             Trade</button>
                         <div
@@ -3858,7 +3858,7 @@
                                     onclick="pokerCreate()">ðŸŽ® Create Game</button>
                                 <button class="btn"
                                     style="padding:14px 32px; font-size:1.1em; background:linear-gradient(135deg,#3b82f6,#2563eb); border:2px solid #60a5fa; box-shadow:0 4px 15px rgba(59,130,246,0.3);"
-                                    onclick="pokerShowJoin()">ðŸ”‘ Join with Code</button>
+                                    onclick="pokerShowJoin()">🔑 Join with Code</button>
                             </div>
                             <div id="poker-join-area" class="hidden"
                                 style="display:flex; gap:10px; justify-content:center; margin-bottom:16px;">
@@ -3888,7 +3888,7 @@
                             </div>
                             <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
                                 <button class="btn" id="poker-invite-btn" onclick="pokerInviteModal()"
-                                    style="padding:12px 24px; background:linear-gradient(135deg,#22c55e,#16a34a); border:2px solid #4ade80; box-shadow:0 4px 15px rgba(34,197,94,0.3);">ðŸ“¨
+                                    style="padding:12px 24px; background:linear-gradient(135deg,#22c55e,#16a34a); border:2px solid #4ade80; box-shadow:0 4px 15px rgba(34,197,94,0.3);">📨
                                     Invite Players</button>
                                 <button class="btn" id="poker-start-btn" class="hidden" onclick="pokerStartGame()"
                                     style="padding:12px 24px; background:linear-gradient(135deg,#f59e0b,#d97706); border:2px solid #fbbf24; box-shadow:0 4px 15px rgba(245,158,11,0.3);">â–¶
@@ -3905,7 +3905,7 @@
                                 style="margin-top:18px; background:rgba(0,0,0,0.45); border:1px solid rgba(255,255,255,0.12); border-radius:12px; overflow:hidden;">
                                 <div
                                     style="padding:8px 12px; background:rgba(255,255,255,0.06); font-size:0.78em; color:#aaa; text-transform:uppercase; letter-spacing:2px; font-weight:bold; border-bottom:1px solid rgba(255,255,255,0.08);">
-                                    ðŸ’¬ Lobby Chat</div>
+                                    💬 Lobby Chat</div>
                                 <div id="poker-chat-msgs"
                                     style="height:130px; overflow-y:auto; padding:8px 12px; display:flex; flex-direction:column; gap:4px; scroll-behavior:smooth;">
                                 </div>
@@ -3986,7 +3986,7 @@
                                 style="margin-top:16px; background:rgba(0,0,0,0.45); border:1px solid rgba(255,255,255,0.12); border-radius:12px; overflow:hidden;">
                                 <div
                                     style="padding:8px 12px; background:rgba(255,255,255,0.06); font-size:0.78em; color:#aaa; text-transform:uppercase; letter-spacing:2px; font-weight:bold; border-bottom:1px solid rgba(255,255,255,0.08);">
-                                    ðŸ’¬ Table Chat</div>
+                                    💬 Table Chat</div>
                                 <div id="poker-chat-msgs-table"
                                     style="height:130px; overflow-y:auto; padding:8px 12px; display:flex; flex-direction:column; gap:4px; scroll-behavior:smooth;">
                                 </div>
@@ -4010,7 +4010,7 @@
                             </h3>
                             <div id="poker-showdown-hands" style="margin-bottom:22px;"></div>
                             <button class="btn" id="poker-play-again-btn" onclick="pokerPlayAgain()"
-                                style="padding:14px 36px; font-size:1.1em; background:linear-gradient(135deg,#22c55e,#16a34a); border:2px solid #4ade80; box-shadow:0 4px 15px rgba(34,197,94,0.3);">ðŸ”„
+                                style="padding:14px 36px; font-size:1.1em; background:linear-gradient(135deg,#22c55e,#16a34a); border:2px solid #4ade80; box-shadow:0 4px 15px rgba(34,197,94,0.3);">🔄
                                 Play Again</button>
                             <div id="poker-play-again-status"
                                 style="color:#cfcfcf; margin-top:10px; font-size:0.95em; font-weight:500;"></div>
@@ -4075,11 +4075,11 @@
                 style="flex-direction:column; align-items:center; padding:30px; overflow-y:auto;">
                 <h2 style="text-shadow: 0 2px 4px rgba(0,0,0,0.5);">ðŸŽ’ My Inventory</h2>
                 <div style="display:flex; gap:15px; margin-bottom:20px; flex-wrap:wrap; justify-content:center;">
-                    <button class="btn primary" id="btn-inv-themes" onclick="showInvTab('themes')">ðŸŽ¨ Themes</button>
+                    <button class="btn primary" id="btn-inv-themes" onclick="showInvTab('themes')">🎨 Themes</button>
                     <button class="btn" id="btn-inv-titles" style="background:rgba(0,0,0,0.5); color:white;"
                         onclick="showInvTab('titles')">ðŸ·ï¸ Titles</button>
                     <button class="btn" id="btn-inv-lootboxes" style="background:rgba(0,0,0,0.5); color:white;"
-                        onclick="showInvTab('lootboxes')">ðŸ“¦ Lootboxes</button>
+                        onclick="showInvTab('lootboxes')">📦 Lootboxes</button>
                 </div>
                 <div id="inv-section-themes" style="width:100%; max-width:900px;">
                     <div style="margin-bottom:15px;"><span style="font-size:0.9em; color:#ddd;">Active Theme:
@@ -4169,10 +4169,10 @@
                         onclick="saveProf()">Save Profile</button>
                     <button class="btn"
                         style="padding:12px; background:rgba(0,0,0,0.4); color:#ddd; border:1px solid #555; font-size:0.9em;"
-                        onclick="openChangePasswordModal()">ðŸ”‘ Change Password</button>
+                        onclick="openChangePasswordModal()">🔑 Change Password</button>
                     <a href="https://docs.google.com/document/d/14qRI6kciyENO3bdvoFc8yoAZ_wH_Ay_Zda4ZlJsS6Ns/edit?usp=sharing"
                         target="_blank" class="btn"
-                        style="padding:10px; background:none; color:#888; font-size:0.85em; text-decoration:underline; display:block; text-align:center;">ðŸ“œ
+                        style="padding:10px; background:none; color:#888; font-size:0.85em; text-decoration:underline; display:block; text-align:center;">📜
                         Terms of Service</a>
                 </div>
             </div>
@@ -4237,7 +4237,7 @@
                                 <button class="btn" style="background:rgba(0,0,0,0.6); color:white;"
                                     onclick="admAct('og')">Give OG Title</button>
                                 <button class="btn" style="background:#b366ff; color:white;"
-                                    onclick="admAct('thememaker')">ðŸŽ¨ Give Theme Maker</button>
+                                    onclick="admAct('thememaker')">🎨 Give Theme Maker</button>
                                 <button class="btn" style="background:#ff9900; color:black;"
                                     onclick="admAct('mute')">Mute
                                     (Hours)</button>
@@ -4330,7 +4330,7 @@
                         </div>
 
                         <div class="admin-box full">
-                            <h3 style="margin-top:0;">ðŸŽ¨ Create New Theme</h3>
+                            <h3 style="margin-top:0;">🎨 Create New Theme</h3>
                             <p style="color:#aaa; font-size:0.85em; margin-top:0;">Use linear-gradient(...) or standard
                                 Hex/rgba values. Panels support Glassmorphism naturally.</p>
                             <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
@@ -4447,7 +4447,7 @@
                         style="border-color:#b366ff; border-width:2px; box-shadow:0 0 20px rgba(179,102,255,0.2);">
                         <div
                             style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
-                            <h3 style="margin:0; color:#b366ff; font-size:1.2em;">ðŸŽ¨ Theme Submission Approvals</h3>
+                            <h3 style="margin:0; color:#b366ff; font-size:1.2em;">🎨 Theme Submission Approvals</h3>
                             <span id="submission-badge"
                                 style="background:#b366ff; color:white; border-radius:20px; padding:4px 14px; font-size:0.85em; font-weight:bold; display:none;">0
                                 Pending</span>
@@ -4482,7 +4482,7 @@
 
             <div id="pane-thememaker" class="tab-pane hidden"
                 style="flex-direction:column; align-items:center; padding:30px; overflow-y:auto;">
-                <h2 style="color:#b366ff; margin-bottom:20px; text-shadow: 0 2px 5px rgba(0,0,0,0.5);">ðŸŽ¨ Theme Studio
+                <h2 style="color:#b366ff; margin-bottom:20px; text-shadow: 0 2px 5px rgba(0,0,0,0.5);">🎨 Theme Studio
                 </h2>
                 <div
                     style="width:100%; max-width:800px; background:rgba(0,0,0,0.3); padding:20px; border-radius:10px; border:1px solid #b366ff;">
@@ -4838,7 +4838,7 @@
                 if (data.channel_id === currentChannel) {
                     const container = document.getElementById('msg-history');
                     if (container) container.innerHTML = '';
-                    showToast('ðŸ§¹ Channel cleared by an administrator.');
+                    showToast('🧹 Channel cleared by an administrator.');
                 }
             });
 
@@ -4852,7 +4852,7 @@
             socket.on('announcement', data => {
                 const banner = document.createElement('div');
                 banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#00d4ff,#7b2ff7);color:white;text-align:center;padding:12px 20px;font-weight:bold;font-size:1em;box-shadow:0 2px 12px rgba(0,0,0,0.5);';
-                banner.innerHTML = `ðŸ“¢ <strong>${data.from}:</strong> ${data.message} <span style="float:right;cursor:pointer;opacity:0.7;" onclick="this.parentElement.remove()">âœ•</span>`;
+                banner.innerHTML = `📢 <strong>${data.from}:</strong> ${data.message} <span style="float:right;cursor:pointer;opacity:0.7;" onclick="this.parentElement.remove()">✖</span>`;
                 document.body.prepend(banner);
                 setTimeout(() => { if (banner.parentElement) banner.remove(); }, 10000);
             });
@@ -5137,7 +5137,7 @@
             // Delete button logic
             let deleteBtnHtml = '';
             if (isMe || isAdmin) {
-                deleteBtnHtml = `<span class="del-msg" onclick="deleteMessage('${msg.id}')" title="Delete Message">âœ•</span>`;
+                deleteBtnHtml = `<span class="del-msg" onclick="deleteMessage('${msg.id}')" title="Delete Message">✖</span>`;
             }
 
             const pfpSrc = msg.pfp || generateDefaultPfp(msg.u);
@@ -5544,7 +5544,7 @@
             try {
                 const boxes = await api('/api/lootboxes');
                 grid.innerHTML = '';
-                const icons = { bronze: 'ðŸ“¦', silver: 'ðŸŽ', gold: '💎', legendary: 'â­', mythic: 'ðŸ”®' };
+                const icons = { bronze: '📦', silver: 'ðŸŽ', gold: '💎', legendary: 'â­', mythic: 'ðŸ”®' };
                 for (const type in boxes) {
                     if (type === 'legend') continue; // legend box not listed in store
                     const box = boxes[type];
@@ -5556,7 +5556,7 @@
                     let dropsHtml = box.drops.map(d => `<tr><td style="color:${rarityColor(d.rarity)}">â€¢</td><td>${d.rarity.toUpperCase()}</td><td style="text-align:right;">${d.chance}%</td></tr>`).join('');
 
                     div.innerHTML = `
-                        <div class="lb-icon">${icons[type] || 'ðŸ“¦'}</div>
+                        <div class="lb-icon">${icons[type] || '📦'}</div>
                         <div class="lb-name">${box.name}</div>
                         <div class="lb-rarity-badge" style="background:${box.color}; color:${type === 'bronze' ? 'white' : 'black'}">${type.toUpperCase()}</div>
                         <div class="lb-price">${box.price} Points</div>
@@ -5621,7 +5621,7 @@
             resultPhase.classList.add('hidden');
             document.getElementById('lb-dupe-notice').classList.add('hidden');
             modal.classList.remove('hidden');
-            boxEl.textContent = 'ðŸ“¦';
+            boxEl.textContent = '📦';
             boxEl.style.animation = 'none';
             document.getElementById('lb-tap-btn').disabled = false;
             document.getElementById('lb-tap-btn').onclick = () => doOpenBoxAnim(type);
@@ -5672,7 +5672,7 @@
             const nameEl = document.getElementById('lb-result-name');
             const typeEl = document.getElementById('lb-result-type');
             const dupeEl = document.getElementById('lb-dupe-notice');
-            iconEl.textContent = res.itemType === 'theme' ? 'ðŸŽ¨' : res.itemType === 'title' ? 'ðŸ·ï¸' : 'â“';
+            iconEl.textContent = res.itemType === 'theme' ? '🎨' : res.itemType === 'title' ? 'ðŸ·ï¸' : 'â“';
             rarEl.innerHTML = `<span style="color:${col};font-weight:bold;font-size:1.1em;text-transform:uppercase;letter-spacing:2px;">${res.rarity}</span>`;
             nameEl.textContent = res.itemName;
             nameEl.style.color = col;
@@ -6430,7 +6430,7 @@
                     <div style="display:flex; align-items:center; gap:12px; background:rgba(0,0,0,0.3); padding:12px; border-radius:10px; border:1px solid #333;">
                         <img src="${f.pfp_b64 || generateDefaultPfp(f.username)}" style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:2px solid var(--primary);">
                         <div style="flex:1;"><div style="font-weight:bold;cursor:pointer;" onclick="viewUserProfile('${f.username}')">${f.username}</div><div style="color:#aaa; font-size:0.8em;">${f.rank}</div></div>
-                        <button class="btn primary" style="padding:6px 12px; font-size:0.85em;" onclick="openDM('${f.id}')">ðŸ’¬ DM</button>
+                        <button class="btn primary" style="padding:6px 12px; font-size:0.85em;" onclick="openDM('${f.id}')">💬 DM</button>
                     </div>`).join('');
             } catch (e) { }
         }
@@ -6787,7 +6787,7 @@
                         const shards = ALTAR_SHARD_VALS[it.def.rarity] || 5;
                         const key = `${it.type}::${it.id}`;
                         return `<div style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;background:rgba(0,0,0,0.3);margin-bottom:6px;">
-                            <span style="font-size:1.2em;">${it.type === 'theme' ? 'ðŸŽ¨' : 'ðŸ·ï¸'}</span>
+                            <span style="font-size:1.2em;">${it.type === 'theme' ? '🎨' : 'ðŸ·ï¸'}</span>
                             <div style="flex:1;">
                                 <div style="font-weight:bold;color:${col};">${it.def.name}</div>
                                 <div style="font-size:0.75em;color:#aaa;">${it.def.rarity.toUpperCase()} | Owned: ${it.total}</div>
@@ -6802,7 +6802,7 @@
             }
 
             const FUSE_COSTS = { bronze: 10, silver: 45, gold: 80, legendary: 115, mythic: 150, legend: 400 };
-            const BOX_ICONS = { bronze: 'ðŸ“¦', silver: 'ðŸŽ', gold: '💎', legendary: 'â­', mythic: 'ðŸ”®', legend: 'ðŸ‘‘' };
+            const BOX_ICONS = { bronze: '📦', silver: 'ðŸŽ', gold: '💎', legendary: 'â­', mythic: 'ðŸ”®', legend: 'ðŸ‘‘' };
             const shopDiv = document.getElementById('altar-shop');
             if (!shopDiv) return;
             shopDiv.innerHTML = '';
@@ -6992,7 +6992,7 @@
                 };
                 el.innerHTML = `
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                    <h3 style="margin:0;color:var(--primary);">ðŸ”„ Trading Hub</h3>
+                    <h3 style="margin:0;color:var(--primary);">🔄 Trading Hub</h3>
                     <button class="btn primary" onclick="openTradeCreate()">+ New Trade</button>
                   </div>
                   <div style="margin-bottom:20px;">
@@ -7066,7 +7066,7 @@
                 const col = rarityColor(it.def.rarity);
                 const key = `${it.type}::${it.id}`;
                 return `<div id="tmy-${it.type}-${it.id}" style="background:rgba(0,0,0,0.5);border:2px solid #333;border-radius:8px;padding:8px;text-align:center;font-size:0.78em;">
-                    <div style="font-size:1.3em;">${it.type === 'theme' ? 'ðŸŽ¨' : 'ðŸ·ï¸'}</div>
+                    <div style="font-size:1.3em;">${it.type === 'theme' ? '🎨' : 'ðŸ·ï¸'}</div>
                     <div style="color:${col};font-weight:bold;margin-top:3px;">${it.def.name}</div>
                     <div style="color:#666;font-size:0.75em;">${it.def.rarity} | Owned: ${it.total}</div>
                     <div style="margin-top:5px;">
@@ -7127,7 +7127,7 @@
                     const col = rarityColor(it.def.rarity);
                     const key = `${it.type}::${it.id}`;
                     return `<div style="background:rgba(0,0,0,0.5);border:2px solid #333;border-radius:8px;padding:8px;text-align:center;font-size:0.78em;">
-                        <div style="font-size:1.3em;">${it.type === 'theme' ? 'ðŸŽ¨' : 'ðŸ·ï¸'}</div>
+                        <div style="font-size:1.3em;">${it.type === 'theme' ? '🎨' : 'ðŸ·ï¸'}</div>
                         <div style="color:${col};font-weight:bold;margin-top:3px;">${it.def.name}</div>
                         <div style="color:#666;font-size:0.75em;">${it.def.rarity} | Owned: ${it.total}</div>
                         <div style="margin-top:5px;">
@@ -7219,7 +7219,7 @@
                         return `<div style="background:rgba(0,0,0,0.4);border:1px solid #333;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;">
                           <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                             <div style="flex:1;">
-                              <div style="font-weight:bold;color:var(--primary);margin-bottom:4px;">ðŸ“¦ Offering</div>
+                              <div style="font-weight:bold;color:var(--primary);margin-bottom:4px;">📦 Offering</div>
                               <div style="color:#ddd;font-size:0.9em;margin-bottom:8px;">${giveDesc}</div>
                               <div style="font-weight:bold;color:#ff9900;margin-bottom:4px;">Wants</div>
                               <div style="color:#ddd;font-size:0.9em;">${wantDesc}</div>
@@ -7286,7 +7286,7 @@
                     const qty = selected ? selected.quantity : 0;
                     const isSelected = qty > 0;
                     return `<div id="mkt-card-${it.type}-${it.id}" style="position:relative;cursor:pointer;background:${isSelected ? 'rgba(0,212,255,0.15)' : 'rgba(0,0,0,0.5)'};border:2px solid ${isSelected ? 'var(--primary)' : '#333'};border-radius:8px;padding:8px;text-align:center;font-size:0.78em;" onmouseenter="this.querySelector('.mkt-qty-controls')?.style.opacity==='1' || (this.querySelector('.mkt-qty-controls').style.display='flex')" onmouseleave="setTimeout(() => { const c = document.querySelector('#${it.type}-${it.id} .mkt-qty-controls'); if (c && c.dataset.hovered !== 'true') c.style.display='none'; }, 100)">
-                        <div style="font-size:1.3em;">${it.type === 'theme' ? 'ðŸŽ¨' : 'ðŸ·ï¸'}</div>
+                        <div style="font-size:1.3em;">${it.type === 'theme' ? '🎨' : 'ðŸ·ï¸'}</div>
                         <div style="color:${col};font-weight:bold;margin-top:3px;">${it.def.name}</div>
                         <div style="color:#666;font-size:0.75em;">${it.def.rarity}</div>
                         ${isSelected ? `<div style="color:var(--primary);font-weight:bold;margin-top:4px;font-size:0.9em;">x${qty}</div>` : ''}
@@ -7368,11 +7368,11 @@
             // Build detailed exchange summary
             const youGiveLines = [
                 ...(givePoints > 0 ? [`💰 ${givePoints} points`] : []),
-                ..._mktSelectedGiveItems.map(x => `${x.quantity > 1 ? 'âœ•' + x.quantity + ' ' : 'â€¢ '}${x.name}`)
+                ..._mktSelectedGiveItems.map(x => `${x.quantity > 1 ? '✖' + x.quantity + ' ' : 'â€¢ '}${x.name}`)
             ];
             const theyGiveLines = [
                 ...(wantPoints > 0 ? [`💰 ${wantPoints} points`] : []),
-                ..._mktWantSelectedItems.map(x => `${x.quantity > 1 ? 'âœ•' + x.quantity + ' ' : 'â€¢ '}${x.name}`)
+                ..._mktWantSelectedItems.map(x => `${x.quantity > 1 ? '✖' + x.quantity + ' ' : 'â€¢ '}${x.name}`)
             ];
 
             const summary = `
@@ -7439,7 +7439,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 const qty = selected ? selected.quantity : 0;
                 const isSelected = qty > 0;
                 const col = rarityColor(it.def.rarity || 'common');
-                const emoji = it.type === 'theme' ? 'ðŸŽ¨' : it.type === 'title' ? 'ðŸ·ï¸' : 'ðŸ“¦';
+                const emoji = it.type === 'theme' ? '🎨' : it.type === 'title' ? 'ðŸ·ï¸' : '📦';
                 return `<div id="mkt-want-${it.type}-${it.id}" style="position:relative;cursor:pointer;background:${isSelected ? 'rgba(0,212,255,0.15)' : 'rgba(0,0,0,0.5)'};border:2px solid ${isSelected ? 'var(--primary)' : '#333'};border-radius:8px;padding:8px;text-align:center;font-size:0.78em;" onmouseenter="this.querySelector('.mkt-want-qty-controls')?.style.opacity==='1' || (this.querySelector('.mkt-want-qty-controls').style.display='flex')" onmouseleave="setTimeout(() => { const c = document.querySelector('#${it.type}-${it.id} .mkt-want-qty-controls'); if (c && c.dataset.hovered !== 'true') c.style.display='none'; }, 100)">
                     <div style="font-size:1.3em;">${emoji}</div>
                     <div style="color:${col};font-weight:bold;margin-top:3px;">${it.def.name}</div>
@@ -7601,7 +7601,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     }).join('');
                     historyHtml = `
                       <div style="background:rgba(0,0,0,0.3);border:1px solid #333;border-radius:12px;padding:20px;">
-                        <h3 style="margin:0 0 12px 0;color:var(--primary);">ðŸ“œ Loan History</h3>
+                        <h3 style="margin:0 0 12px 0;color:var(--primary);">📜 Loan History</h3>
                         ${rows}
                       </div>`;
                 }
@@ -7816,7 +7816,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     <span style="font-size:1.2em;">ðŸƒ</span>
                     <span style="font-weight:bold; color:#4ade80;">${p.username}</span>
                     <span style="color:#aaa; font-size:0.85em;">${p.chips} chips</span>
-                    ${p.userId !== currentUser?.id ? `<button class="btn" style="margin-left:auto; padding:3px 10px; font-size:0.75em; background:rgba(34,197,94,0.2); border:1px solid #4ade80; color:#4ade80;" onclick="pokerInviteFriend('${p.userId}')">ðŸ“¨</button>` : ''}
+                    ${p.userId !== currentUser?.id ? `<button class="btn" style="margin-left:auto; padding:3px 10px; font-size:0.75em; background:rgba(34,197,94,0.2); border:1px solid #4ade80; color:#4ade80;" onclick="pokerInviteFriend('${p.userId}')">📨</button>` : ''}
                 </div>`).join('');
             document.getElementById('poker-wait-msg').innerText = `${state.players.length} player(s) in lobby`;
         }
@@ -9529,11 +9529,11 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 const lb = invData.inventory.lootboxes || {};
                 const entries = Object.entries(lb).filter(([, q]) => q > 0);
                 const colors = { bronze: '#888', silver: '#4d94ff', gold: '#b366ff', legendary: '#ffd700', mythic: '#ff00aa', legend: '#ffaa00' };
-                const icons = { bronze: 'ðŸ“¦', silver: 'ðŸŽ', gold: '💎', legendary: 'â­', mythic: 'ðŸ”®', legend: 'ðŸ‘‘' };
+                const icons = { bronze: '📦', silver: 'ðŸŽ', gold: '💎', legendary: 'â­', mythic: 'ðŸ”®', legend: 'ðŸ‘‘' };
                 grid.innerHTML = entries.length
                     ? entries.map(([type, qty]) => `
                         <div style="background:rgba(0,0,0,0.4);border:2px solid ${colors[type] || '#333'};border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;box-shadow:0 0 8px ${colors[type] || '#333'}44;">
-                          <div style="font-size:2em;text-align:center;">${icons[type] || 'ðŸ“¦'}</div>
+                          <div style="font-size:2em;text-align:center;">${icons[type] || '📦'}</div>
                           <div style="font-weight:bold;text-align:center;color:${colors[type] || '#fff'};">${type.toUpperCase()} BOX</div>
                           <div style="text-align:center;color:#aaa;">Qty: ${qty}</div>
                           <button class="btn primary" onclick="openBox('${type}')">Open</button>
