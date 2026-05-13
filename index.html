@@ -4044,7 +4044,7 @@
                                 style="max-width:150px; text-align:center; font-size:1.1em; padding:10px;">
                             <button class="btn"
                                 style="padding:10px 30px; font-size:1.1em; background:#ff3e3e; color:white; border:none; font-weight:bold;"
-                                onclick="runAvia()">🚀 Ascend</button>
+                                onclick="startAvia()">🚀 TAKE OFF</button>
                         </div>
 
                         <div id="avia-arena"
@@ -4167,7 +4167,7 @@
                     <button class="btn primary"
                         style="padding:16px; font-weight:bold; font-size:1.1em; box-shadow:0 4px 15px rgba(0,212,255,0.2);"
                         onclick="saveProf()">Save Profile</button>
-                    <button class="btn" style="padding:12px; background:rgba(0,0,0,0.5); color:white;" onclick="openChangePasswordModal()">🔑 Change Password</button>
+                                    onclick="openChangePasswordModal()">🔑 Change Password</button>
                     <a href="https://docs.google.com/document/d/14qRI6kciyENO3bdvoFc8yoAZ_wH_Ay_Zda4ZlJsS6Ns/edit?usp=sharing"
                         target="_blank" class="btn"
                         style="padding:10px; background:none; color:#888; font-size:0.85em; text-decoration:underline; display:block; text-align:center;">📜
@@ -4639,7 +4639,7 @@
                 }
             } catch (e) {
                 clearTimeout(id);
-                if (e.name === 'AbortError') throw new Error('Request timed out. If this persists, a browser extension like Blocksi may be blocking the request.');
+                if (e.name === 'AbortError') throw new Error('TIMEOUT_SILENT');
                 throw e;
             }
         }
@@ -4676,7 +4676,7 @@
                     alert("Registered! Now login.");
                     goBackToAuth();
                 }
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         function postLogin() {
@@ -4959,7 +4959,7 @@
                 document.getElementById('chat-controls').classList.add('hidden');
                 loadServers();
                 showToast('Server deleted.');
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         // ── Screen Share (server-init signaling → P2P WebRTC) ──
@@ -5191,7 +5191,7 @@
             if (!confirm('Are you sure you want to delete this message? This will erase it from the server.')) return;
             try {
                 await api(`/api/messages/${msgId}`, 'DELETE');
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         // --- CHAT LOGIC ---
@@ -5224,13 +5224,13 @@
                     const isSystemServer = s.name === 'Official Public Hub' || s.name === 'Announcements';
                     btn.innerHTML = isSystemServer ? `<span style="color:var(--primary);">★</span> ${s.name}` : s.name;
 
-                    btn.onclick = () => viewSrv(s.id, s.name, s.owner_id);
+                    btn.onclick = () => openServer(s.id, s.name, s.owner_id);
                     list.appendChild(btn);
                 });
             } catch (e) { console.error(e); }
         }
 
-        async function viewSrv(serverId, serverName, ownerId) {
+        async function openServer(serverId, serverName, ownerId) {
             currentServer = serverId;
             currentServerName = serverName;
             currentChannelIsDM = false;
@@ -5384,7 +5384,7 @@
             try {
                 await api(`/api/channels/${currentChannel}/messages`, 'DELETE');
                 showToast('Channel history cleared.');
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function deleteChannel(channelId) {
@@ -5393,7 +5393,7 @@
                 await api(`/api/channels/${channelId}`, 'DELETE');
                 showToast('Channel deleted.');
                 openServer(currentServer, currentServerName); // reload current server
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         function openAddChannel() {
@@ -5408,7 +5408,7 @@
                 const res = await api(`/api/servers/${currentServer}/channels`, 'POST', { name });
                 showToast('Channel created.');
                 openChannel(res.channelId);
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function loadMoreMessages() {
@@ -5451,7 +5451,7 @@
                     myPoints = res.points;
                     updatePointsUI();
                 }
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         function send() {
@@ -5596,7 +5596,7 @@
                     return true;
                 }
             } catch (e) {
-                if (!silent) alert(e.message);
+                if (!silent) if (e.message !== 'TIMEOUT_SILENT') alert(e.message);
                 throw e;
             }
         }
@@ -5616,7 +5616,7 @@
             const resultPhase = document.getElementById('lb-result-phase');
             const boxEl = document.getElementById('lb-open-box');
             const titleEl = document.getElementById('lb-open-title');
-            if (!modal) { try { const r = await api('/api/lootbox/open', 'POST', { type }); if (r.success) { renderOwnedLootboxes(); } } catch (e) { alert(e.message); } return; }
+            if (!modal) { try { const r = await api('/api/lootbox/open', 'POST', { type }); if (r.success) { renderOwnedLootboxes(); } } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); } return; }
             titleEl.textContent = `Opening ${type.charAt(0).toUpperCase() + type.slice(1)} Box...`;
             openPhase.classList.remove('hidden');
             resultPhase.classList.add('hidden');
@@ -5641,7 +5641,7 @@
             await new Promise(r => setTimeout(r, 900));
             let res;
             try { res = await api('/api/lootbox/open', 'POST', { type }); }
-            catch (e) { alert(e.message); closeM('lootbox-open-modal'); return; }
+            catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); closeM('lootbox-open-modal'); return; }
             boxEl.textContent = '✨';
             await new Promise(r => setTimeout(r, 300));
 
@@ -6406,7 +6406,7 @@
                     win: data.win,
                     newPoints: data.newPoints
                 });
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         // --- STUBS & MISSING FUNCTIONS ---
@@ -6456,7 +6456,7 @@
             try {
                 await api(`/api/friends/${action}`, 'POST', { friendshipId: fid });
                 loadPendingReqs(); loadFriends();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         let _profileViewTarget = null;
@@ -6564,7 +6564,7 @@
                 await api('/api/friends/request', 'POST', { targetUsername: _profileViewTarget });
                 const btn = document.getElementById('prof-btn-add');
                 if (btn) { btn.textContent = '✓ Request Sent'; btn.disabled = true; btn.style.background = '#555'; }
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function profActionRemove() {
@@ -6577,7 +6577,7 @@
                 await api('/api/friends/decline', 'POST', { friendshipId: fid });
                 viewUserProfile(_profileViewTarget);
                 loadFriends();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         function openReportModal() {
@@ -6594,7 +6594,7 @@
                 await api('/api/report', 'POST', { targetUsername: _profileViewTarget, reason });
                 alert("Report submitted. Thank you.");
                 closeM('modal-report');
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function openDM(userId) {
@@ -6616,10 +6616,10 @@
                     if (delSrvBtn) delSrvBtn.classList.add('hidden');
                     openChannel(res.channelId);
                 }
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
-        function viewDM(channelId, otherUserId) {
+        function openDMFromList(channelId, otherUserId) {
             currentChannelIsDM = true;
             currentDMOtherUserId = otherUserId;
             currentServer = null;
@@ -6645,7 +6645,7 @@
                 list.innerHTML = dms.map(d => {
                     const otherId = d.name.split('_dm_').find(id => id !== currentUser.id) || '';
                     return `
-                    <div class="ch-itm" onclick="viewDM('${d.id}','${otherId}')" style="display:flex; align-items:center; gap:10px; border:1px solid #333; background:rgba(255,255,255,0.03); padding:10px; border-radius:8px; margin-bottom:5px; transition:all 0.2s;">
+                    <div class="channel-item" onclick="openDMFromList('${d.id}','${otherId}')" style="display:flex; align-items:center; gap:10px; border:1px solid #333; background:rgba(255,255,255,0.03); padding:10px; border-radius:8px; margin-bottom:5px; transition:all 0.2s;">
                         <img src="${(d.otherPfp && d.otherPfp.length > 50) ? d.otherPfp : generateDefaultPfp(d.otherUsername)}" style="width:30px; height:30px; border-radius:50%; object-fit:cover;">
                         <span style="flex:1; font-weight:500;">${d.otherUsername}</span>
                     </div>`;
@@ -6688,7 +6688,7 @@
             try {
                 await api('/api/friends/request', 'POST', { targetUsername: username });
                 btn.innerText = '✓ Sent'; btn.disabled = true; btn.style.background = '#555';
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
         async function burnSelectedItems() {
             const inputs = document.querySelectorAll('input[id^="burn-qty-"]');
@@ -6714,7 +6714,7 @@
                 if (shardsEl) shardsEl.innerText = myShards;
                 alert(`Burned! Gained ${res.shardsGained} shards.`);
                 loadAltar();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function loadIndex() {
@@ -6830,7 +6830,7 @@
                 myShards = res.newShards;
                 document.getElementById('altar-shards').innerText = myShards;
                 alert(`Fused! Added 1 ${type} box to inventory.`);
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
         // ===================== AMAN AUCTION =====================
         async function loadAuction() {
@@ -6913,7 +6913,7 @@
                 await api('/api/auction/create', 'POST', { title, item_type, item_id, starting_bid, buy_now_price: buy_now_price || null, duration_hours });
                 alert('Auction created!');
                 loadAuction();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function placeBid(auctionId) {
@@ -6924,7 +6924,7 @@
                 myPoints = res.newPoints; updatePointsUI();
                 alert('Bid placed!');
                 loadAuction();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function buyNowAuction(auctionId) {
@@ -6934,7 +6934,7 @@
                 myPoints = res.newPoints; updatePointsUI();
                 alert('Purchased! Check your inventory.');
                 loadAuction();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         // ===================== TRADING HUB =====================
@@ -7171,7 +7171,7 @@
                 closeM('modal-trade-create');
                 alert('Trade proposal sent!');
                 loadTrades();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function acceptTrade(id) {
@@ -7181,15 +7181,15 @@
                 updatePointsUI();
                 alert('Trade accepted! Items swapped.');
                 loadTrades();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
         async function declineTrade(id) {
             try { await api(`/api/trade/${id}/decline`, 'POST', {}); loadTrades(); }
-            catch (e) { alert(e.message); }
+            catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
         async function cancelTrade(id) {
             try { await api(`/api/trade/${id}`, 'DELETE'); loadTrades(); }
-            catch (e) { alert(e.message); }
+            catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         // ===================== OPEN MARKET =====================
@@ -7413,7 +7413,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 closeM('modal-market-create');
                 alert('Listed on the market!');
                 loadMarket();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         function setMktWantTab(tab) {
@@ -7493,7 +7493,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 myPoints = res.newPoints; updatePointsUI();
                 alert('Purchased! Check your inventory.');
                 loadMarket();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function delistMarket(id) {
@@ -7501,7 +7501,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             try {
                 await api(`/api/market/listing/${id}`, 'DELETE');
                 loadMarket();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         // ===================== BANK =====================
@@ -7641,7 +7641,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 myPoints = res.newPoints;
                 updatePointsUI();
                 await loadBank();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function repayLoan(remaining) {
@@ -7655,7 +7655,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 updatePointsUI();
                 alert('Loan repaid!');
                 await loadBank();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         let minesActive = false;
@@ -7685,7 +7685,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     btn.onclick = () => revealMineCell(i, btn);
                     grid.appendChild(btn);
                 }
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         function minesRevealAll(grid, btns, hitIdx) {
@@ -7736,7 +7736,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     const bet = parseInt(document.getElementById('mines-current-bet').innerText);
                     document.getElementById('mines-potential-win').innerText = Math.floor(bet * data.mult);
                 }
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function cashoutMines() {
@@ -7754,7 +7754,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     document.getElementById('mines-game-area').classList.add('hidden');
                     document.getElementById('mines-status').innerText = '';
                 }, 2500);
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
         // --- TEXAS HOLD'EM CLIENT ---
         let pokerGameId = null;
@@ -7784,7 +7784,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 pokerShowSection('poker-waiting');
                 document.getElementById('poker-start-btn').style.display = '';
                 pokerPoll();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         function pokerShowJoin() {
@@ -7805,7 +7805,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 document.getElementById('poker-start-btn').style.display = 'none';
                 pokerUpdateWaiting(state);
                 pokerPoll();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         function pokerUpdateWaiting(state) {
@@ -7833,7 +7833,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             try {
                 await api('/v1/action/poker/invite', 'POST', { gameId: pokerGameId, targetUserId });
                 alert('Invite sent via DM!');
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function pokerStartGame() {
@@ -7841,7 +7841,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 const data = await api('/v1/action/poker/start', 'POST', { gameId: pokerGameId });
                 pokerRenderTable(data.state);
                 pokerShowSection('poker-table');
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         function pokerRenderTable(state) {
@@ -7904,7 +7904,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 const data = await api('/v1/action/poker/action', 'POST', { gameId: pokerGameId, action, amount });
                 pokerRenderTable(data.state);
                 document.getElementById('poker-raise-row').classList.add('hidden');
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         function pokerConfirmRaise() { pokerAction('raise'); }
@@ -8152,7 +8152,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             }, 2500);
         }
 
-        async function runAvia() {
+        async function startAvia() {
             const bet = parseInt(document.getElementById('avia-bet').value);
             if (isNaN(bet) || bet < 1) return alert('Enter bet');
             try {
@@ -8185,7 +8185,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 const canvas = document.getElementById('avia-canvas');
                 canvas.onmousedown = aviaFlap;
                 canvas.ontouchstart = (e) => { e.preventDefault(); aviaFlap(); };
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function cashoutAvia() {
@@ -8197,7 +8197,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 myPoints = data.newPoints; updatePointsUI();
                 document.getElementById('avia-status').innerText = `Early cashout: Win ${data.win} pts (${(aviaMult / 3).toFixed(2)}x effective)`;
                 document.getElementById('avia-status').style.color = '#ffcc00';
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
             document.getElementById('avia-cashout').style.display = 'none';
             setTimeout(() => {
                 document.getElementById('avia-bet-area').classList.remove('hidden');
@@ -8337,7 +8337,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 document.getElementById('rps-points-delta').innerText = delta >= 0 ? `+${delta} points` : `${delta} points`;
                 document.getElementById('rps-points-delta').style.color = delta >= 0 ? '#00ff55' : '#ff5555';
                 resultEl.style.display = 'block';
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
             setTimeout(() => btns.forEach(b => b.disabled = false), 1500);
         }
 
@@ -8350,7 +8350,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 document.getElementById('bj-bet-area').classList.add('hidden');
                 document.getElementById('bj-arena').classList.remove('hidden');
                 updateBjUI(data);
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         function cardHtml(c) {
@@ -8447,22 +8447,22 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             try {
                 const data = await api('/v1/action/blackjack/hit', 'POST', {});
                 updateBjUI(data);
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function bjStand() {
-            try { const data = await api('/v1/action/blackjack/stand', 'POST', {}); updateBjUI(data); } catch (e) { alert(e.message); }
+            try { const data = await api('/v1/action/blackjack/stand', 'POST', {}); updateBjUI(data); } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function bjDouble() {
-            try { const data = await api('/v1/action/blackjack/double', 'POST', {}); updateBjUI(data); } catch (e) { alert(e.message); }
+            try { const data = await api('/v1/action/blackjack/double', 'POST', {}); updateBjUI(data); } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function bjSplit() {
             try {
                 const data = await api('/v1/action/blackjack/split', 'POST', {});
                 updateBjUI(data);
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         function resetBlackjack() {
@@ -8549,7 +8549,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 slotsSpinIntervals.forEach(id => { if (id) clearInterval(id); });
                 slotsSpinIntervals = [null, null, null];
                 for (let r = 0; r < 3; r++) document.getElementById(`slots-r${r}`).classList.remove('spinning');
-                alert(e.message);
+                if (e.message !== 'TIMEOUT_SILENT') if (e.message !== 'TIMEOUT_SILENT') alert(e.message);
                 btn.disabled = false;
                 document.getElementById('slots-status').innerText = '';
             }
@@ -8570,7 +8570,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     if (isPrivate) alert(`Private server created! Join code: ${res.server.join_code}`);
                     loadServers();
                 }
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function openJoinPrivate() {
@@ -8581,7 +8581,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 if (res.success) {
                     openServer(res.server.id, res.server.name);
                 }
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         function showInvTab(tab) {
@@ -9470,7 +9470,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     if (def) applyThemeDef(def);
                 }
                 renderOwnedThemes();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function renderOwnedTitles() {
@@ -9518,7 +9518,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 if (currentUser) currentUser.active_title = titleId;
                 renderOwnedTitles();
                 alert('Title equipped!');
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function renderOwnedLootboxes() {
@@ -9579,7 +9579,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             try {
                 await api('/api/admin/theme/create', 'POST', { id, name, bg_color, panel_color, accent_color, sidebar_color, text_color, msg_bg_color, msg_me_color, is_animated, animation_type, rarity });
                 alert(`Theme "${name}" created! You can now give it to players.`);
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function adminCreateTitle() {
@@ -9590,7 +9590,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             try {
                 await api('/api/admin/title/create', 'POST', { id, name, rarity });
                 alert(`Title "${name}" (${rarity}) created!`);
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function adminGiveItem() {
@@ -9601,7 +9601,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             try {
                 const res = await api('/api/admin/give-item', 'POST', { targetUsername, itemType, itemId });
                 alert(`Gave ${itemType} "${itemId}" to ${res.affected} user(s)!`);
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function populateAdminItemList() {
@@ -9636,7 +9636,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 currentUser.tint_theme = tint_theme ? 1 : 0;
                 document.body.classList.toggle('no-theme-tint', currentUser.tint_theme === 0);
                 alert('Profile saved!');
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         let drawing = false;
@@ -9920,7 +9920,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                     }
                 }
                 requestAnimationFrame(animate);
-            } catch (e) { alert(e.message); rlIsSpinning = false; myPoints += Object.values(rlBets).reduce((a, b) => a + b, 0); updatePointsUI(); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') if (e.message !== 'TIMEOUT_SILENT') alert(e.message); rlIsSpinning = false; myPoints += Object.values(rlBets).reduce((a, b) => a + b, 0); updatePointsUI(); }
         }
 
         function showAdminTab(t) {
@@ -9974,7 +9974,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             try {
                 await api('/api/admin/reports/' + reportId, 'DELETE');
                 loadAdminDashboard();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         function selectAdmUser(username) {
@@ -9989,7 +9989,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 await api('/api/admin/action', 'POST', { username, action });
                 alert(`Done: ${action} → ${username}`);
                 loadAdminDashboard();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function admBanUsername() {
@@ -9999,7 +9999,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 await api('/api/admin/action', 'POST', { username: u, action: 'ban' });
                 alert(`${u} permanently banned.`);
                 loadAdminDashboard();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function admUnbanUsername() {
@@ -10009,7 +10009,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 await api('/api/admin/action', 'POST', { username: u, action: 'unban' });
                 alert(`${u} unbanned.`);
                 loadAdminDashboard();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function adminSetPoints() {
@@ -10025,7 +10025,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 await api('/api/admin/set-points', 'POST', { targetUsername, points, all });
                 alert('Points updated!');
                 loadAdminDashboard();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function admLbBan() {
@@ -10035,7 +10035,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 await api('/api/admin/action', 'POST', { username: u, action: 'lb_ban' });
                 document.getElementById('adm-lb-status').innerText = `${u} hidden from leaderboard.`;
                 loadAdminLbBanned();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function admLbUnban() {
@@ -10045,7 +10045,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 await api('/api/admin/action', 'POST', { username: u, action: 'lb_unban' });
                 document.getElementById('adm-lb-status').innerText = `${u} restored to leaderboard.`;
                 loadAdminLbBanned();
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function loadAdminLbBanned() {
@@ -10070,7 +10070,7 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 await api('/api/admin/announce', 'POST', { message: msg });
                 if (msgEl) msgEl.value = '';
                 alert('Announcement sent to all users!');
-            } catch (e) { alert(e.message); }
+            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
         }
 
         async function loadExplorer() {
