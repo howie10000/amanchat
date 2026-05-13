@@ -4613,34 +4613,37 @@
         let myInventory = {};
 
         // --- CORE API ---
-        async function api(path, method = 'GET', body = null) {
-            const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), 15000);
-            const headers = { 'Content-Type': 'application/json' };
-            if (token) headers['Authorization'] = token;
-            try {
-                const res = await fetch(SERVER_URL + path, { 
-                    method, 
-                    headers, 
-                    body: body ? JSON.stringify(body) : null,
-                    signal: controller.signal
-                });
-                clearTimeout(id);
+        async function api(path, method = 'GET', body = null, retries = 2) {
+            for (let attempt = 0; attempt <= retries; attempt++) {
+                const controller = new AbortController();
+                const id = setTimeout(() => controller.abort(), 30000);
+                const headers = { 'Content-Type': 'application/json' };
+                if (token) headers['Authorization'] = token;
+                try {
+                    const res = await fetch(SERVER_URL + path, { 
+                        method, 
+                        headers, 
+                        body: body ? JSON.stringify(body) : null,
+                        signal: controller.signal
+                    });
+                    clearTimeout(id);
 
-                const contentType = res.headers.get("content-type");
-                if (contentType && contentType.indexOf("application/json") !== -1) {
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.error || `Error ${res.status}: ${res.statusText}`);
-                    return data;
-                } else {
-                    const text = await res.text();
-                    if (!res.ok) throw new Error(`Server Error ${res.status}: ${text.substring(0, 100)}`);
-                    return text;
+                    const contentType = res.headers.get("content-type");
+                    if (contentType && contentType.indexOf("application/json") !== -1) {
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || `Error ${res.status}: ${res.statusText}`);
+                        return data;
+                    } else {
+                        const text = await res.text();
+                        if (!res.ok) throw new Error(`Server Error ${res.status}: ${text.substring(0, 100)}`);
+                        return text;
+                    }
+                } catch (e) {
+                    clearTimeout(id);
+                    if (e.name === 'AbortError' && attempt < retries) continue; // retry on timeout
+                    if (e.name === 'AbortError') throw new Error('TIMEOUT_SILENT');
+                    throw e;
                 }
-            } catch (e) {
-                clearTimeout(id);
-                if (e.name === 'AbortError') throw new Error('TIMEOUT_SILENT');
-                throw e;
             }
         }
 
@@ -4803,8 +4806,8 @@
 
             console.log('Attempting to connect to:', SERVER_URL);
             socket = io(SERVER_URL, {
-                transports: ['websocket', 'polling'],
-                timeout: 10000,
+                transports: ['polling'],
+                timeout: 30000,
                 forceNew: true
             });
 
