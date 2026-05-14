@@ -4806,9 +4806,13 @@
 
             console.log('Attempting to connect to:', SERVER_URL);
             socket = io(SERVER_URL, {
-                transports: ['polling'],
+                transports: ['websocket'],
                 timeout: 30000,
-                forceNew: true
+                forceNew: true,
+                reconnection: true,
+                reconnectionAttempts: 10,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000
             });
 
             socket.on('connect', () => {
@@ -4818,9 +4822,26 @@
 
             socket.on('connect_error', (error) => {
                 console.error('Socket connection error:', error);
-                console.error('Error details:', error.message, error.description, error.context, error.type);
+                console.error('Error details:', error?.message, error?.description, error?.context, error?.type);
+                if (error && typeof error.message === 'string' && error.message.toLowerCase().includes('poll')) {
+                    console.warn('WebSocket transport failed; retrying with polling fallback.');
+                    socket = io(SERVER_URL, {
+                        transports: ['polling'],
+                        timeout: 30000,
+                        forceNew: true,
+                        reconnection: true,
+                        reconnectionAttempts: 5,
+                        reconnectionDelay: 1000,
+                        reconnectionDelayMax: 3000
+                    });
+                    initSocketEvents(socket);
+                }
             });
 
+            initSocketEvents(socket);
+        }
+
+        function initSocketEvents(socket) {
             socket.on('disconnect', (reason) => {
                 console.log('Socket disconnected:', reason);
             });
@@ -4889,7 +4910,6 @@
                     showToast('This channel has been deleted.');
                     openServer(currentServer, currentServerName);
                 } else if (data.server_id === currentServer) {
-                    // Update dropdown only
                     api(`/api/servers/${currentServer}/channels`).then(channels => {
                         const select = document.getElementById('channel-select');
                         if (select) {
@@ -4936,6 +4956,7 @@
             socket.on('ss_ice',     ssOnIce);
             socket.on('ss_end',     ssOnEnd);
             socket.on('ss_error',   ssOnError);
+
             socket.on('user_typing', data => {
                 if (data.channelId === currentChannel && data.username !== currentUser.username) {
                     const indicator = document.getElementById('typing-indicator');
