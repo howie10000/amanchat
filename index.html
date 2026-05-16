@@ -19,6 +19,12 @@
             --msg-me: rgba(0, 75, 90, 0.85);
         }
 
+        /* Low-performance mode: reduce animations and effects for slow machines */
+        body.low-perf .click-fx { display: none !important; }
+        body.low-perf .btn, body.low-perf button { transition-duration: 0.05s !important; }
+        body.low-perf * { animation-duration: 0.001s !important; animation-iteration-count: 1 !important; }
+        body.low-perf .msg, body.low-perf .lootbox-card, body.low-perf .item-card { box-shadow: none !important; }
+
         ::-webkit-scrollbar {
             width: 8px;
             height: 8px;
@@ -943,6 +949,33 @@
         nav button.active {
             background: var(--primary);
             color: #000;
+        }
+
+        /* Nav-like buttons usable outside of the top nav
+           Inverted behavior for roulette: idle = red, spinning (active) = transparent */
+        .navlike-btn {
+            padding: 10px 8px;
+            background: #cc0000; /* red when idle */
+            border: none;
+            color: white;
+            cursor: pointer;
+            border-radius: 6px;
+            font-weight: bold;
+            transition: 0.15s;
+            position: relative;
+            font-size: 0.95em;
+            box-shadow: none;
+        }
+
+        .navlike-btn.active {
+            background: transparent; /* transparent when spinning */
+            color: #888;
+        }
+
+        /* Explicit spinning state to avoid conflicts with other .active uses */
+        .navlike-btn.spinning {
+            background: transparent !important;
+            color: #888 !important;
         }
 
         #main-view-area {
@@ -3656,7 +3689,7 @@
                         <div style="display:flex; justify-content:center; gap:15px; margin-top:15px;">
                             <button class="btn" style="background:rgba(255,0,0,0.5); color:white;"
                                 onclick="clearRlBets()">Clear Bets</button>
-                            <button class="btn primary" style="padding:10px 30px; font-size:1.1em;" id="btn-rl-start"
+                            <button class="navlike-btn" style="padding:10px 18px; font-size:1.05em;" id="btn-rl-start"
                                 onclick="spinRoulette()">⚙️ Launch Wheel</button>
                         </div>
                     </div>
@@ -4611,12 +4644,49 @@
         let socket = null;
         let myPoints = 0;
         let myInventory = {};
+        // Performance helpers
+        let lowPerfMode = false;
+        function detectLowPerfMode(samples = 8, thresholdMs = 40) {
+            const deltas = [];
+            let last = performance.now();
+            function step(ts) {
+                deltas.push(ts - last);
+                last = ts;
+                if (deltas.length < samples) return requestAnimationFrame(step);
+                // drop the first delta (warm-up)
+                const use = deltas.slice(1);
+                const avg = use.reduce((a, b) => a + b, 0) / use.length;
+                if (avg > thresholdMs) {
+                    lowPerfMode = true;
+                    document.body.classList.add('low-perf');
+                    try { MAX_SLOT_SPIN_MS = 15000; } catch (e) { }
+                }
+            }
+            try { requestAnimationFrame(step); } catch (e) { }
+        }
+
+        // When lowPerfMode is active, block rapid repeated clicks on the same element
+        document.addEventListener('click', function (e) {
+            if (!lowPerfMode) return;
+            const el = e.target.closest('button, .btn, [onclick], .rps-btn, .list-item');
+            if (!el) return;
+            const now = Date.now();
+            if (!el._lastClick || now - el._lastClick > 350) {
+                el._lastClick = now;
+            } else {
+                e.stopImmediatePropagation();
+                e.preventDefault();
+            }
+        }, true);
+
+        // Run a quick perf detection and initialize slots shortly after load
+        window.addEventListener('load', () => setTimeout(() => { detectLowPerfMode(); try { initSlotsReels(); } catch (e) { } }, 400));
 
         // --- CORE API ---
-        async function api(path, method = 'GET', body = null, retries = 2) {
+        async function api(path, method = 'GET', body = null, retries = 2, timeoutMs = 30000) {
             for (let attempt = 0; attempt <= retries; attempt++) {
                 const controller = new AbortController();
-                const id = setTimeout(() => controller.abort(), 30000);
+                const id = setTimeout(() => controller.abort(), timeoutMs);
                 const headers = { 'Content-Type': 'application/json' };
                 if (token) headers['Authorization'] = token;
                 try {
@@ -4806,13 +4876,14 @@
 
             console.log('Attempting to connect to:', SERVER_URL);
             socket = io(SERVER_URL, {
-                transports: ['websocket'],
-                timeout: 30000,
+                transports: ['websocket','polling'],
+                timeout: 20000,
                 forceNew: true,
                 reconnection: true,
-                reconnectionAttempts: 10,
+                reconnectionAttempts: Infinity,
                 reconnectionDelay: 1000,
-                reconnectionDelayMax: 5000
+                reconnectionDelayMax: 10000,
+                randomizationFactor: 0.5
             });
 
             socket.on('connect', () => {
@@ -4827,12 +4898,13 @@
                     console.warn('WebSocket transport failed; retrying with polling fallback.');
                     socket = io(SERVER_URL, {
                         transports: ['polling'],
-                        timeout: 30000,
+                        timeout: 20000,
                         forceNew: true,
                         reconnection: true,
-                        reconnectionAttempts: 5,
+                        reconnectionAttempts: Infinity,
                         reconnectionDelay: 1000,
-                        reconnectionDelayMax: 3000
+                        reconnectionDelayMax: 5000,
+                        randomizationFactor: 0.5
                     });
                     initSocketEvents(socket);
                 }
@@ -5609,6 +5681,16 @@
                 el.style.opacity = '0';
                 setTimeout(() => el.remove(), 400);
             }, duration);
+        }
+
+        // Safe alert: uses native alert if available, otherwise falls back to in-app toast
+        function safeAlert(msg) {
+            try {
+                // Some embed contexts disallow modal dialogs (sandboxed). Try native alert first.
+                window.alert(msg);
+            } catch (e) {
+                try { showToast(String(msg), 4000); } catch (e2) { /* swallow */ }
+            }
         }
         async function buyLootbox(type, silent = false) {
             try {
@@ -8500,6 +8582,9 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
         const SLOT_SYMS = ['🍒', '🍋', '🔔', '💎', '7️⃣', '⭐'];
         const SLOT_H = 80; // px per symbol
         let slotsSpinIntervals = [null, null, null];
+        let slotsStopTimeouts = [null, null, null];
+        let slotsSpinTimeoutId = null;
+        let MAX_SLOT_SPIN_MS = 15000; // safety: force-stop reels after this many ms. Raised for slow machines.
 
         function initSlotsReels() {
             for (let r = 0; r < 3; r++) {
@@ -8525,6 +8610,10 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             if (btn) btn.disabled = true;
             document.getElementById('slots-status').innerText = 'Spinning...';
             initSlotsReels();
+            // force layout so the strips are ready before intervals start (prevents first-spin lag)
+            try {
+                void document.getElementById('slots-strip-0').offsetHeight;
+            } catch (e) { }
 
             for (let r = 0; r < 3; r++) {
                 const strip = document.getElementById(`slots-strip-${r}`);
@@ -8538,40 +8627,74 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 }, 80);
             }
 
-            try {
-                const data = await api('/v1/action/sl-run', 'POST', { bet });
+            // safety: force-stop if server takes too long
+            if (slotsSpinTimeoutId) clearTimeout(slotsSpinTimeoutId);
+            slotsSpinTimeoutId = setTimeout(() => {
+                // clear any ongoing spin intervals
+                for (let i = 0; i < 3; i++) {
+                    if (slotsSpinIntervals[i]) {
+                        clearInterval(slotsSpinIntervals[i]);
+                        slotsSpinIntervals[i] = null;
+                    }
+                    if (slotsStopTimeouts[i]) {
+                        clearTimeout(slotsStopTimeouts[i]);
+                        slotsStopTimeouts[i] = null;
+                    }
+                    const reel = document.getElementById(`slots-r${i}`);
+                    if (reel) reel.classList.remove('spinning');
+                }
+                if (btn) btn.disabled = false;
+                document.getElementById('slots-status').innerText = 'Server timeout — spin aborted.';
+                slotsSpinTimeoutId = null;
+            }, MAX_SLOT_SPIN_MS);
 
+            try {
+                const data = await api('/v1/action/sl-run', 'POST', { bet }, 2, 20000);
+
+                // stop reels in sequence; track stop timeouts so we can cancel if forced
                 data.result.forEach((sym, r) => {
-                    setTimeout(() => {
-                        clearInterval(slotsSpinIntervals[r]);
-                        slotsSpinIntervals[r] = null;
+                    const stopDelay = 1000 + (r * 500);
+                    slotsStopTimeouts[r] = setTimeout(() => {
+                        slotsStopTimeouts[r] = null;
+                        if (slotsSpinIntervals[r]) {
+                            clearInterval(slotsSpinIntervals[r]);
+                            slotsSpinIntervals[r] = null;
+                        }
                         const reel = document.getElementById(`slots-r${r}`);
-                        reel.classList.remove('spinning');
-                        reel.classList.add('winner');
+                        if (reel) {
+                            reel.classList.remove('spinning');
+                            reel.classList.add('winner');
+                        }
 
                         const strip = document.getElementById(`slots-strip-${r}`);
-                        strip.children[0].textContent = sym;
-                        const nearEnd = (strip.children.length - 2) * SLOT_H;
-                        strip.style.transition = 'none';
-                        strip.style.transform = `translateY(-${nearEnd}px)`;
+                        if (strip) {
+                            strip.children[0].textContent = sym;
+                            const nearEnd = (strip.children.length - 2) * SLOT_H;
+                            strip.style.transition = 'none';
+                            strip.style.transform = `translateY(-${nearEnd}px)`;
 
-                        setTimeout(() => {
-                            strip.style.transition = 'transform 0.5s cubic-bezier(0.1, 0.8, 0.2, 1)';
-                            strip.style.transform = 'translateY(0)';
-                        }, 50);
+                            setTimeout(() => {
+                                strip.style.transition = 'transform 0.5s cubic-bezier(0.1, 0.8, 0.2, 1)';
+                                strip.style.transform = 'translateY(0)';
+                            }, 50);
+                        }
 
                         if (r === 2) {
+                            if (slotsSpinTimeoutId) { clearTimeout(slotsSpinTimeoutId); slotsSpinTimeoutId = null; }
                             btn.disabled = false;
                             myPoints = data.newPoints;
                             updatePointsUI();
                             const winMsg = data.win > 0 ? `<span style="color:#ffd700;">🎰 ${data.mult}x — Win: ${data.win} pts!</span>` : 'No match — better luck next time!';
                             document.getElementById('slots-status').innerHTML = winMsg;
                         }
-                    }, 1000 + (r * 500));
+                    }, stopDelay);
                 });
             } catch (e) {
                 slotsSpinIntervals.forEach(id => { if (id) clearInterval(id); });
                 slotsSpinIntervals = [null, null, null];
+                slotsStopTimeouts.forEach(id => { if (id) clearTimeout(id); });
+                slotsStopTimeouts = [null, null, null];
+                if (slotsSpinTimeoutId) { clearTimeout(slotsSpinTimeoutId); slotsSpinTimeoutId = null; }
                 for (let r = 0; r < 3; r++) document.getElementById(`slots-r${r}`).classList.remove('spinning');
                 if (e.message !== 'TIMEOUT_SILENT') if (e.message !== 'TIMEOUT_SILENT') alert(e.message);
                 btn.disabled = false;
@@ -9723,6 +9846,8 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
 
         let rlChip = 10;
         let rlBets = {};
+        let rlAcceptBets = true;
+        let rlPendingRequest = false;
 
         const RL_RED = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 
@@ -9776,13 +9901,15 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
         }
 
         function placeRlBet(spot, amount) {
-            const amt = amount !== undefined ? amount : rlChip;
-            rlBets[spot] = (rlBets[spot] || 0) + amt;
-            const chipDiv = document.getElementById('rl-chip-' + spot);
-            if (chipDiv) {
-                chipDiv.classList.remove('hidden');
-                chipDiv.innerText = rlBets[spot];
-            }
+                    // Prevent placing bets while a spin request or animation is in progress
+                    if (!rlAcceptBets || rlIsSpinning) return;
+                    const amt = amount !== undefined ? amount : rlChip;
+                    rlBets[spot] = (rlBets[spot] || 0) + amt;
+                    const chipDiv = document.getElementById('rl-chip-' + spot);
+                    if (chipDiv) {
+                        chipDiv.classList.remove('hidden');
+                        chipDiv.innerText = rlBets[spot];
+                    }
         }
 
         function clearRlBets() {
@@ -9797,6 +9924,22 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
         let rlBallAngle = 0;
         let rlBallRadius = 140;
         let rlIsSpinning = false;
+        let rlPreSpinRAF = null;
+        function startPreSpin() {
+            if (rlPreSpinRAF) return;
+            function step(t) {
+                rlAngle += 0.45; // visual spin speed
+                rlBallAngle -= 0.25;
+                drawRoulette();
+                rlPreSpinRAF = requestAnimationFrame(step);
+            }
+            rlPreSpinRAF = requestAnimationFrame(step);
+        }
+        function stopPreSpin() {
+            if (!rlPreSpinRAF) return;
+            cancelAnimationFrame(rlPreSpinRAF);
+            rlPreSpinRAF = null;
+        }
 
         function drawRoulette() {
             const canvas = document.getElementById('rl-wheel-surface');
@@ -9877,19 +10020,29 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
         }
 
         async function spinRoulette() {
-            if (rlIsSpinning) return;
-            if (Object.keys(rlBets).length === 0) return alert('Place some bets!');
+            if (rlIsSpinning || rlPendingRequest) return;
+            if (Object.keys(rlBets).length === 0) return safeAlert('Place some bets!');
+            // Immediately mark spinning/lock UI to avoid duplicate requests on slow machines
+            rlIsSpinning = true;
+            rlAcceptBets = false;
+            const startBtn = document.getElementById('btn-rl-start');
+            if (startBtn) { startBtn.disabled = true; startBtn.style.pointerEvents = 'none'; startBtn.classList.add('spinning'); }
+            rlPendingRequest = true;
             try {
                 // Visually deduct bet immediately before API call
                 const totalBet = Object.values(rlBets).reduce((a, b) => a + b, 0);
                 myPoints -= totalBet;
                 updatePointsUI();
-
-                const res = await api('/v1/action/rl-run', 'POST', { bets: rlBets });
-
-                rlIsSpinning = true;
                 const status = document.getElementById('rl-status');
-                status.innerText = 'Spinning...';
+                if (status) status.innerText = 'Waiting for server...';
+
+                // start a lightweight pre-spin animation to provide immediate feedback
+                startPreSpin();
+                if (status) status.innerText = 'Spinning...';
+
+                const res = await api('/v1/action/rl-run', 'POST', { bets: rlBets }, 2, 20000);
+                // server responded — stop the pre-spin and proceed with final animation
+                stopPreSpin();
 
                 const numbers = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
                 const redNumbers = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
@@ -9928,7 +10081,12 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                         rlBallAngle = finalBallAngle;
                         rlBallRadius = 110;
                         drawRoulette();
-                        rlIsSpinning = false;
+                            // ensure any lightweight pre-spin is stopped and re-enable UI immediately
+                            try { stopPreSpin(); } catch (e) { }
+                            rlIsSpinning = false;
+                            rlAcceptBets = true;
+                            if (startBtn) { startBtn.disabled = false; startBtn.style.pointerEvents = ''; startBtn.classList.remove('spinning'); startBtn.focus && startBtn.focus(); }
+                            rlPendingRequest = false;
                         // Now apply final points from server
                         myPoints = res.newPoints;
                         updatePointsUI();
@@ -9940,11 +10098,24 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                         document.querySelectorAll('[id^="rl-cell-"]').forEach(c => c.style.filter = 'brightness(0.5)');
                         const winCell = document.getElementById('rl-cell-' + res.winningNumber);
                         if (winCell) { winCell.style.filter = 'brightness(2) drop-shadow(0 0 8px gold)'; setTimeout(() => document.querySelectorAll('[id^="rl-cell-"]').forEach(c => c.style.filter = ''), 3000); }
-                        clearRlBets();
+                                clearRlBets();
                     }
                 }
                 requestAnimationFrame(animate);
-            } catch (e) { if (e.message !== 'TIMEOUT_SILENT') if (e.message !== 'TIMEOUT_SILENT') alert(e.message); rlIsSpinning = false; myPoints += Object.values(rlBets).reduce((a, b) => a + b, 0); updatePointsUI(); }
+            } catch (e) {
+                if (e.message !== 'TIMEOUT_SILENT') safeAlert(e.message);
+                // stop any pre-spin and re-enable UI immediately, refund bets
+                try { stopPreSpin(); } catch (ee) { }
+                rlIsSpinning = false;
+                rlAcceptBets = true;
+                const startBtn = document.getElementById('btn-rl-start');
+                if (startBtn) { startBtn.disabled = false; startBtn.style.pointerEvents = ''; startBtn.classList.remove('spinning'); startBtn.focus && startBtn.focus(); }
+                rlPendingRequest = false;
+                myPoints += Object.values(rlBets).reduce((a, b) => a + b, 0);
+                updatePointsUI();
+                const status = document.getElementById('rl-status');
+                if (status) status.innerText = '';
+            }
         }
 
         function showAdminTab(t) {
