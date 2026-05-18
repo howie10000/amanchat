@@ -4132,8 +4132,19 @@
                         <div id="vault-lobby">
                             <p style="color:#cfcfcf; margin-bottom:20px; line-height:1.6;">Take turns cracking a 5×5 vault with up to 8 players. Each chest hides <span style="color:#4ade80;">treasure</span>, a <span style="color:#ef4444;">🚨 alarm</span>, or the rare <span style="color:#ffd700;">🏆 Golden Vault</span>. Hit an alarm and lose everything — or <strong style="color:#ffd700;">ESCAPE</strong> to bank your loot before it's too late. Last one standing sweeps the pot.</p>
                             <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-bottom:20px;">
-                                <button class="btn" style="padding:14px 32px; font-size:1.1em; background:linear-gradient(135deg,#b8860b,#8b6508); border:2px solid #ffd700; box-shadow:0 4px 15px rgba(255,215,0,0.25);" onclick="vaultCreate()">🏗️ Create Vault</button>
+                                <button class="btn" style="padding:14px 32px; font-size:1.1em; background:linear-gradient(135deg,#b8860b,#8b6508); border:2px solid #ffd700; box-shadow:0 4px 15px rgba(255,215,0,0.25);" onclick="vaultShowCreate()">🏗️ Create Vault</button>
                                 <button class="btn" style="padding:14px 32px; font-size:1.1em; background:linear-gradient(135deg,#3b82f6,#2563eb); border:2px solid #60a5fa; box-shadow:0 4px 15px rgba(59,130,246,0.25);" onclick="vaultShowJoin()">🔑 Join with Code</button>
+                            </div>
+                            <div id="vault-create-area" class="hidden" style="background:rgba(0,0,0,0.4); border:1px solid rgba(255,215,0,0.3); border-radius:12px; padding:16px; margin-bottom:16px; display:flex; flex-direction:column; gap:12px; max-width:320px; margin-left:auto; margin-right:auto;">
+                                <div style="display:flex; flex-direction:column; text-align:left; gap:4px;">
+                                    <label style="color:#ffd700; font-size:0.85em; font-weight:bold;">💰 BUY-IN (50–5,000 pts)</label>
+                                    <input type="number" id="vault-buyin-input" value="200" min="50" max="5000" style="padding:8px; background:rgba(0,0,0,0.6); border:1px solid #ffd700; border-radius:8px; color:#fff; font-weight:bold; font-size:1.1em; text-align:center;">
+                                </div>
+                                <div style="display:flex; flex-direction:column; text-align:left; gap:4px;">
+                                    <label style="color:#ffd700; font-size:0.85em; font-weight:bold;">👥 MAX PLAYERS (2–8)</label>
+                                    <input type="number" id="vault-maxplayers-input" value="6" min="2" max="8" style="padding:8px; background:rgba(0,0,0,0.6); border:1px solid #ffd700; border-radius:8px; color:#fff; font-weight:bold; font-size:1.1em; text-align:center;">
+                                </div>
+                                <button class="btn" style="padding:10px; background:linear-gradient(135deg,#ffd700,#b8860b); border:2px solid #ffd700; font-weight:bold; color:#000;" onclick="vaultSubmitCreate()">🏗️ Launch Heist</button>
                             </div>
                             <div id="vault-join-area" class="hidden" style="display:flex; gap:10px; justify-content:center; margin-bottom:16px;">
                                 <input id="vault-code-in" placeholder="Enter code..." maxlength="6" style="text-transform:uppercase; width:160px; text-align:center; font-size:1.2em; padding:10px; background:rgba(0,0,0,0.6); border:2px solid #ffd700; border-radius:10px; color:#fff; font-weight:bold; letter-spacing:2px;">
@@ -8166,11 +8177,19 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             if (target) target.classList.remove('hidden');
         }
 
-        async function vaultCreate() {
-            const buyIn = parseInt(prompt('Buy-in per player (50–5000, default 200):') || '200');
+        function vaultShowCreate() {
+            document.getElementById('vault-create-area').classList.toggle('hidden');
+            if (!document.getElementById('vault-join-area').classList.contains('hidden')) {
+                document.getElementById('vault-join-area').classList.add('hidden');
+            }
+        }
+
+        async function vaultSubmitCreate() {
+            const buyIn = parseInt(document.getElementById('vault-buyin-input').value) || 200;
             if (isNaN(buyIn) || buyIn < 50 || buyIn > 5000) return alert('Invalid buy-in (50–5000)');
             if (buyIn > myPoints) return alert(`You only have ${myPoints} points`);
-            const maxPlayers = parseInt(prompt('Max players (2–8, default 6):') || '6');
+            const maxPlayers = parseInt(document.getElementById('vault-maxplayers-input').value) || 6;
+            if (isNaN(maxPlayers) || maxPlayers < 2 || maxPlayers > 8) return alert('Invalid max players (2–8)');
             try {
                 const data = await api('/v1/action/vaultrush/create', 'POST', { buyIn, maxPlayers });
                 myPoints = data.newPoints; updatePointsUI();
@@ -8189,6 +8208,9 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
 
         function vaultShowJoin() {
             document.getElementById('vault-join-area').classList.toggle('hidden');
+            if (!document.getElementById('vault-create-area').classList.contains('hidden')) {
+                document.getElementById('vault-create-area').classList.add('hidden');
+            }
         }
 
         async function vaultJoin() {
