@@ -3611,6 +3611,10 @@
                     <button class="btn" id="sub-games-avia"
                         style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
                         onclick="subTabGames('avia')">✈️ Avia Masters</button>
+                    <button class="btn" id="sub-games-vault"
+                        style="width:100%; text-align:left; background:rgba(0,0,0,0.5); color:white;"
+                        onclick="subTabGames('vault')">🗝️ Vault Rush</button>
+
                 </div>
                 <div class="chat-content">
 
@@ -4100,6 +4104,83 @@
                                 CASHOUT</button>
                         </div>
                     </div>
+
+                    <!-- Vault Rush -->
+                    <div id="app-view-vault" class="game-card hidden" style="width:100%; max-width:900px; background:linear-gradient(135deg,rgba(40,25,0,0.85),rgba(20,12,0,0.95)); border:2px solid #b8860b; box-shadow:0 0 24px rgba(255,180,0,0.15);">
+                        <style>
+                            .vault-cell { width:54px; height:54px; border-radius:10px; border:2px solid #6b4c00; background:linear-gradient(135deg,#2a1800,#3d2600); color:#ffd700; font-size:1.4em; cursor:pointer; transition:all 0.15s; display:flex; align-items:center; justify-content:center; }
+                            .vault-cell:hover:not(:disabled) { border-color:#ffd700; box-shadow:0 0 12px rgba(255,215,0,0.4); transform:scale(1.08); }
+                            .vault-cell:disabled { cursor:default; }
+                            .vault-cell.revealed-treasure { background:linear-gradient(135deg,#1a3a00,#0d2000); border-color:#4ade80; color:#4ade80; }
+                            .vault-cell.revealed-alarm { background:linear-gradient(135deg,#3a0000,#200000); border-color:#ef4444; color:#ef4444; animation:vault-shake 0.4s; }
+                            .vault-cell.revealed-jackpot { background:linear-gradient(135deg,#3a2e00,#1f1800); border-color:#ffd700; color:#ffd700; box-shadow:0 0 20px rgba(255,215,0,0.7); }
+                            .vault-player-card { background:rgba(0,0,0,0.4); padding:10px 14px; border-radius:10px; border:2px solid #6b4c00; min-width:130px; text-align:center; }
+                            .vault-player-card.active-turn { border-color:#ffd700; box-shadow:0 0 10px rgba(255,215,0,0.4); }
+                            .vault-player-card.escaped { opacity:0.5; border-color:#4ade80; }
+                            .vault-player-card.eliminated { opacity:0.35; border-color:#ef4444; }
+                            @keyframes vault-shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
+                            @keyframes vault-jackpot { 0%{box-shadow:0 0 0 rgba(255,215,0,0)} 50%{box-shadow:0 0 40px rgba(255,215,0,0.9)} 100%{box-shadow:0 0 0 rgba(255,215,0,0)} }
+                            #vault-jackpot-flash { display:none; position:fixed; inset:0; background:rgba(255,215,0,0.18); z-index:9998; pointer-events:none; animation:vault-jackpot 0.7s ease-out; }
+                        </style>
+                        <div id="vault-jackpot-flash"></div>
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid rgba(255,180,0,0.2);">
+                            <h2 style="margin:0; color:#ffd700; text-shadow:0 0 12px rgba(255,215,0,0.5); font-size:1.4em;">🗝️ Vault Rush</h2>
+                            <div id="vault-pts-badge" style="font-size:1em; color:#ffd700; font-weight:bold;"></div>
+                        </div>
+
+                        <!-- Lobby -->
+                        <div id="vault-lobby">
+                            <p style="color:#cfcfcf; margin-bottom:20px; line-height:1.6;">Take turns cracking a 5×5 vault with up to 8 players. Each chest hides <span style="color:#4ade80;">treasure</span>, a <span style="color:#ef4444;">🚨 alarm</span>, or the rare <span style="color:#ffd700;">🏆 Golden Vault</span>. Hit an alarm and lose everything — or <strong style="color:#ffd700;">ESCAPE</strong> to bank your loot before it's too late. Last one standing sweeps the pot.</p>
+                            <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-bottom:20px;">
+                                <button class="btn" style="padding:14px 32px; font-size:1.1em; background:linear-gradient(135deg,#b8860b,#8b6508); border:2px solid #ffd700; box-shadow:0 4px 15px rgba(255,215,0,0.25);" onclick="vaultCreate()">🏗️ Create Vault</button>
+                                <button class="btn" style="padding:14px 32px; font-size:1.1em; background:linear-gradient(135deg,#3b82f6,#2563eb); border:2px solid #60a5fa; box-shadow:0 4px 15px rgba(59,130,246,0.25);" onclick="vaultShowJoin()">🔑 Join with Code</button>
+                            </div>
+                            <div id="vault-join-area" class="hidden" style="display:flex; gap:10px; justify-content:center; margin-bottom:16px;">
+                                <input id="vault-code-in" placeholder="Enter code..." maxlength="6" style="text-transform:uppercase; width:160px; text-align:center; font-size:1.2em; padding:10px; background:rgba(0,0,0,0.6); border:2px solid #ffd700; border-radius:10px; color:#fff; font-weight:bold; letter-spacing:2px;">
+                                <button class="btn" style="padding:10px 24px; background:linear-gradient(135deg,#b8860b,#8b6508); border:2px solid #ffd700;" onclick="vaultJoin()">Join</button>
+                            </div>
+                            <div id="vault-lobby-msg" style="color:#cfcfcf; text-align:center; font-size:0.95em;"></div>
+                        </div>
+
+                        <!-- Waiting Room -->
+                        <div id="vault-waiting" class="hidden">
+                            <div style="text-align:center; margin-bottom:18px; padding:16px; background:rgba(0,0,0,0.3); border-radius:12px; border:1px solid rgba(255,215,0,0.2);">
+                                <div style="font-size:1.2em; color:#ffd700; margin-bottom:6px; font-weight:bold;">Vault Code: <strong id="vault-display-code" style="font-size:1.6em; letter-spacing:6px; text-shadow:0 0 10px rgba(255,215,0,0.5);"></strong></div>
+                                <div style="color:#cfcfcf; font-size:0.95em;">Share this code · Min 2, max 8 players · Buy-in: <strong id="vault-buyin-display" style="color:#ffd700;"></strong> pts each</div>
+                            </div>
+                            <div id="vault-waiting-players" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin-bottom:18px;"></div>
+                            <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
+                                <button class="btn" onclick="vaultInviteModal()" style="padding:12px 24px; background:linear-gradient(135deg,#b8860b,#8b6508); border:2px solid #ffd700;">📨 Invite Players</button>
+                                <button class="btn" id="vault-start-btn" onclick="vaultStart()" style="padding:12px 24px; background:linear-gradient(135deg,#f59e0b,#d97706); border:2px solid #fbbf24;">▶ Start Heist</button>
+                                <button class="btn" onclick="vaultLeave()" style="padding:12px 24px; background:linear-gradient(135deg,#ef4444,#dc2626); border:2px solid #f87171;">✖ Leave</button>
+                            </div>
+                            <div id="vault-wait-msg" style="color:#cfcfcf; text-align:center; margin-top:12px; font-size:0.95em;"></div>
+                        </div>
+
+                        <!-- Game Table -->
+                        <div id="vault-table" class="hidden">
+                            <div style="text-align:center; margin-bottom:14px; padding:12px; background:rgba(0,0,0,0.4); border-radius:10px; border:1px solid rgba(255,215,0,0.2); display:flex; justify-content:center; gap:30px; flex-wrap:wrap;">
+                                <span style="color:#ffd700; font-size:1.1em; font-weight:bold;">💰 Pot: <strong id="vault-pot-display">0</strong></span>
+                                <span id="vault-turn-label" style="color:#cfcfcf; font-size:1em;"></span>
+                            </div>
+                            <div id="vault-players-area" style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin-bottom:18px;"></div>
+                            <div id="vault-grid" style="display:grid; grid-template-columns:repeat(5,54px); gap:8px; justify-content:center; margin-bottom:18px;"></div>
+                            <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
+                                <button class="btn" id="vault-escape-btn" onclick="vaultEscape()" style="padding:12px 28px; font-size:1.1em; background:linear-gradient(135deg,#22c55e,#16a34a); border:2px solid #4ade80; box-shadow:0 4px 15px rgba(34,197,94,0.3); display:none;">🏃 ESCAPE</button>
+                                <button class="btn" onclick="vaultLeave()" style="padding:10px 20px; background:linear-gradient(135deg,#ef4444,#dc2626); border:2px solid #f87171; font-size:0.9em;">Leave</button>
+                            </div>
+                            <div id="vault-status-msg" style="text-align:center; color:#cfcfcf; font-size:0.95em; min-height:24px; margin-top:10px;"></div>
+                        </div>
+
+                        <!-- Done -->
+                        <div id="vault-done" class="hidden" style="text-align:center; padding:24px;">
+                            <h3 id="vault-winner-msg" style="color:#ffd700; margin-bottom:16px; font-size:1.5em; text-shadow:0 0 15px rgba(255,215,0,0.5);"></h3>
+                            <div id="vault-done-results" style="margin-bottom:22px; display:flex; flex-wrap:wrap; gap:10px; justify-content:center;"></div>
+                            <button class="btn" onclick="vaultLeave()" style="padding:14px 36px; font-size:1.1em; background:linear-gradient(135deg,#b8860b,#8b6508); border:2px solid #ffd700;">Leave Vault</button>
+                        </div>
+                    </div>
+
+
 
                 </div>
             </div>
@@ -4850,6 +4931,10 @@
 
             if (g === 'plinko') initPlinko();
             if (g === 'roulette' && typeof drawRoulette === 'function') drawRoulette();
+            if (g === 'vault') {
+                document.getElementById('vault-pts-badge').innerText = `✨ ${myPoints} pts`;
+            }
+
 
             document.querySelectorAll('#pane-games .sidebar button').forEach(b => {
                 if (b.id !== 'sub-games-' + g) { b.style.background = 'rgba(0,0,0,0.5)'; b.style.color = 'white'; }
@@ -4968,6 +5053,12 @@
                             pokerRenderTable(state);
                         }
                     }
+                }
+            });
+
+            socket.on('vaultrush_update', data => {
+                if (data.gameId === vaultGameId) {
+                    renderVault(data.state);
                 }
             });
 
@@ -7879,10 +7970,14 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
         }
 
         async function pokerCreate() {
-            const buyIn = parseInt(prompt('Buy-in amount (default 500):') || '500');
-            if (isNaN(buyIn) || buyIn < 10) return alert('Invalid buy-in');
+            const maxBuyIn = parseInt(prompt('Table max buy-in (default 500):') || '500');
+            if (isNaN(maxBuyIn) || maxBuyIn < 10) return alert('Invalid max buy-in');
+            const stakeInput = parseInt(prompt(`Your starting stack (1–${maxBuyIn}, default ${Math.min(maxBuyIn, myPoints)}):`) || String(Math.min(maxBuyIn, myPoints)));
+            const stake = isNaN(stakeInput) ? Math.min(maxBuyIn, myPoints) : stakeInput;
+            if (stake < 1 || stake > myPoints) return alert('Invalid stake (you don\'t have enough points)');
+            if (stake > maxBuyIn) return alert('Stake cannot exceed max buy-in');
             try {
-                const data = await api('/v1/action/poker/create', 'POST', { buyIn, maxPlayers: 6 });
+                const data = await api('/v1/action/poker/create', 'POST', { maxBuyIn, stake, maxPlayers: 6 });
                 myPoints = data.newPoints; updatePointsUI();
                 pokerGameId = data.gameId;
                 document.getElementById('poker-display-code').innerText = data.inviteCode;
@@ -7900,8 +7995,11 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
         async function pokerJoin() {
             const code = document.getElementById('poker-code-in').value.trim().toUpperCase();
             if (!code) return;
+            const stakeInput = parseInt(prompt(`How many points to bring to the table?\n(You have ${myPoints} — enter up to the table's max buy-in)`) || String(myPoints));
+            const stake = isNaN(stakeInput) ? myPoints : stakeInput;
+            if (stake < 1 || stake > myPoints) return alert('Invalid stake — must be between 1 and your available points');
             try {
-                const data = await api('/v1/action/poker/join', 'POST', { code });
+                const data = await api('/v1/action/poker/join', 'POST', { code, stake });
                 myPoints = data.newPoints; updatePointsUI();
                 pokerGameId = data.gameId;
                 const state = await api(`/v1/action/poker/${pokerGameId}`);
@@ -7967,12 +8065,15 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
             // Players
             const playersEl = document.getElementById('poker-players-area');
             const curPlayer = state.players[state.currentPlayerIdx];
-            playersEl.innerHTML = state.players.map(p => `
-                <div style="background:rgba(0,0,0,0.4); padding:10px 14px; border-radius:10px; border:2px solid ${p.userId === curPlayer?.userId ? '#ffd700' : '#2d5a27'}; min-width:130px; text-align:center; opacity:${p.folded ? '0.4' : '1'}">
-                    <div style="font-weight:bold; color:${p.userId === currentUser?.id ? '#60a5fa' : '#4ade80'}; font-size:0.9em; margin-bottom:4px;">${p.username}${p.folded ? ' (folded)' : ''}</div>
-                    <div style="color:#ffd700; font-size:0.85em;">💰 ${p.chips}</div>
+            playersEl.innerHTML = state.players.map(p => {
+                const net = p.stake != null ? p.chips - p.stake : null;
+                const netStr = net != null ? (net >= 0 ? `<span style="color:#4ade80; font-size:0.75em;">+${net}</span>` : `<span style="color:#ef4444; font-size:0.75em;">${net}</span>`) : '';
+                return `<div style="background:rgba(0,0,0,0.4); padding:10px 14px; border-radius:10px; border:2px solid ${p.userId === curPlayer?.userId ? '#ffd700' : '#2d5a27'}; min-width:130px; text-align:center; opacity:${p.folded ? '0.4' : '1'}">
+                    <div style="font-weight:bold; color:${p.userId === currentUser?.id ? '#60a5fa' : '#4ade80'}; font-size:0.9em; margin-bottom:4px;">${p.username}${p.folded ? ' (folded)' : p.allIn ? ' (all-in)' : ''}</div>
+                    <div style="color:#ffd700; font-size:0.85em;">💰 ${p.chips} ${netStr}</div>
                     ${p.bet ? `<div style="color:#aaa; font-size:0.78em;">Bet: ${p.bet}</div>` : ''}
-                </div>`).join('');
+                </div>`;
+            }).join('');
 
             // Actions
             const actionsEl = document.getElementById('poker-actions');
@@ -8017,7 +8118,10 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
 
         async function pokerLeave() {
             try {
-                if (pokerGameId) await api('/v1/action/poker/leave', 'POST', { gameId: pokerGameId });
+                if (pokerGameId) {
+                    const data = await api('/v1/action/poker/leave', 'POST', { gameId: pokerGameId });
+                    if (data.newPoints !== undefined) { myPoints = data.newPoints; updatePointsUI(); }
+                }
             } catch (e) { }
             pokerGameId = null;
             clearInterval(pokerPollTimer);
@@ -8047,6 +8151,208 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
 
         function pokerPlayAgain() {
             pokerShowSection('poker-waiting');
+        }
+
+        // --- VAULT RUSH ---
+        let vaultGameId = null;
+        let vaultBuyIn = 0;
+
+        function vaultShowSection(id) {
+            ['vault-lobby','vault-waiting','vault-table','vault-done'].forEach(s => {
+                const el = document.getElementById(s);
+                if (el) el.classList.add('hidden');
+            });
+            const target = document.getElementById(id);
+            if (target) target.classList.remove('hidden');
+        }
+
+        async function vaultCreate() {
+            const buyIn = parseInt(prompt('Buy-in per player (50–5000, default 200):') || '200');
+            if (isNaN(buyIn) || buyIn < 50 || buyIn > 5000) return alert('Invalid buy-in (50–5000)');
+            if (buyIn > myPoints) return alert(`You only have ${myPoints} points`);
+            const maxPlayers = parseInt(prompt('Max players (2–8, default 6):') || '6');
+            try {
+                const data = await api('/v1/action/vaultrush/create', 'POST', { buyIn, maxPlayers });
+                myPoints = data.newPoints; updatePointsUI();
+                vaultGameId = data.gameId;
+                vaultBuyIn = buyIn;
+                document.getElementById('vault-display-code').innerText = data.inviteCode;
+                document.getElementById('vault-buyin-display').innerText = buyIn;
+                document.getElementById('vault-pts-badge').innerText = `✨ ${myPoints} pts`;
+                document.getElementById('vault-start-btn').style.display = '';
+                document.getElementById('vault-wait-msg').innerText = '1 player in vault';
+                const state = await api(`/v1/action/vaultrush/${vaultGameId}`);
+                vaultRenderWaiting(state);
+                vaultShowSection('vault-waiting');
+            } catch(e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
+        }
+
+        function vaultShowJoin() {
+            document.getElementById('vault-join-area').classList.toggle('hidden');
+        }
+
+        async function vaultJoin() {
+            const code = document.getElementById('vault-code-in').value.trim().toUpperCase();
+            if (!code) return;
+            try {
+                const data = await api('/v1/action/vaultrush/join', 'POST', { code });
+                myPoints = data.newPoints; updatePointsUI();
+                vaultGameId = data.gameId;
+                vaultBuyIn = data.buyIn;
+                const state = await api(`/v1/action/vaultrush/${vaultGameId}`);
+                document.getElementById('vault-display-code').innerText = state.inviteCode;
+                document.getElementById('vault-buyin-display').innerText = state.buyIn;
+                document.getElementById('vault-pts-badge').innerText = `✨ ${myPoints} pts`;
+                document.getElementById('vault-start-btn').style.display = 'none';
+                vaultRenderWaiting(state);
+                vaultShowSection('vault-waiting');
+            } catch(e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
+        }
+
+        function vaultRenderWaiting(state) {
+            const el = document.getElementById('vault-waiting-players');
+            el.innerHTML = (state.players || []).map(p => `
+                <div style="background:rgba(0,0,0,0.3); padding:8px 14px; border-radius:8px; border:1px solid #6b4c00; display:flex; align-items:center; gap:8px;">
+                    <span>🗝️</span>
+                    <span style="font-weight:bold; color:#ffd700;">${p.username}</span>
+                    <span style="color:#aaa; font-size:0.85em;">${p.stake} pts</span>
+                    ${p.userId !== currentUser?.id ? `<button class="btn" style="margin-left:auto; padding:3px 10px; font-size:0.75em; background:rgba(184,134,11,0.2); border:1px solid #ffd700; color:#ffd700;" onclick="vaultInviteFriend('${p.userId}')">📨</button>` : ''}
+                </div>`).join('');
+            const playerCount = (state.players || []).length;
+            const maxPot = state.maxPot || (state.buyIn * playerCount);
+            document.getElementById('vault-wait-msg').innerHTML =
+                `${playerCount} player(s) ready &nbsp;|&nbsp; <span style="color:#ffd700; font-weight:bold;">🏆 Prize Pool: ${maxPot} pts</span> <span style="color:#aaa; font-size:0.85em;">(${state.buyIn} × ${playerCount} players)</span>`;
+        }
+
+        async function vaultInviteModal() {
+            const friends = await api('/api/friends').catch(() => []);
+            if (!friends.length) return alert('No friends yet. Add friends first!');
+            const names = friends.map((f,i) => `${i+1}. ${f.username}`).join('\n');
+            const idx = parseInt(prompt(`Pick friend to invite:\n${names}`)) - 1;
+            if (isNaN(idx) || !friends[idx]) return;
+            await vaultInviteFriend(friends[idx].id);
+        }
+
+        async function vaultInviteFriend(targetUserId) {
+            try {
+                await api('/v1/action/vaultrush/invite', 'POST', { gameId: vaultGameId, targetUserId });
+                alert('Invite sent via DM!');
+            } catch(e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
+        }
+
+        async function vaultStart() {
+            try {
+                const data = await api('/v1/action/vaultrush/start', 'POST', { gameId: vaultGameId });
+                renderVault(data.state);
+                vaultShowSection('vault-table');
+            } catch(e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
+        }
+
+        async function vaultOpen(idx) {
+            try {
+                const data = await api('/v1/action/vaultrush/open', 'POST', { gameId: vaultGameId, cellIndex: idx });
+                if (data.newPoints !== undefined) { myPoints = data.newPoints; updatePointsUI(); }
+                renderVault(data.state);
+            } catch(e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
+        }
+
+        async function vaultEscape() {
+            try {
+                const data = await api('/v1/action/vaultrush/escape', 'POST', { gameId: vaultGameId });
+                if (data.newPoints !== undefined) { myPoints = data.newPoints; updatePointsUI(); }
+                renderVault(data.state);
+            } catch(e) { if (e.message !== 'TIMEOUT_SILENT') alert(e.message); }
+        }
+
+        async function vaultLeave() {
+            try {
+                if (vaultGameId) {
+                    const data = await api('/v1/action/vaultrush/leave', 'POST', { gameId: vaultGameId });
+                    if (data.newPoints !== undefined) { myPoints = data.newPoints; updatePointsUI(); }
+                }
+            } catch(e) {}
+            vaultGameId = null;
+            vaultBuyIn = 0;
+            document.getElementById('vault-lobby-msg').innerText = '';
+            vaultShowSection('vault-lobby');
+        }
+
+        function renderVault(state) {
+            if (!state) return;
+
+            if (state.phase === 'WAITING') { vaultRenderWaiting(state); return; }
+
+            if (state.phase === 'DONE') {
+                vaultShowSection('vault-done');
+                const winners = state.winnersInfo || [];
+                document.getElementById('vault-winner-msg').innerText = winners.length
+                    ? winners.map(w => `🏆 ${w.username} walked away with ${w.amount} pts`).join('\n')
+                    : 'Vault cleared!';
+                document.getElementById('vault-done-results').innerHTML = (state.players || []).map(p => `
+                    <div class="vault-player-card ${p.eliminated ? 'eliminated' : 'escaped'}" style="min-width:120px;">
+                        <div style="font-weight:bold; color:${p.userId === currentUser?.id ? '#60a5fa' : '#ffd700'}; font-size:0.9em;">${p.username}</div>
+                        <div style="color:${p.eliminated ? '#ef4444' : '#4ade80'}; font-size:0.85em; margin-top:4px;">${p.eliminated ? '🚨 Eliminated' : '🏃 Escaped'}</div>
+                        <div style="color:#ffd700; font-size:0.85em;">Loot: ${p.lootBag}</div>
+                    </div>`).join('');
+                return;
+            }
+
+            // PLAYING phase
+            if (document.getElementById('vault-table').classList.contains('hidden')) {
+                vaultShowSection('vault-table');
+            }
+
+            document.getElementById('vault-pot-display').innerText = state.pot;
+
+            const activePlayers = (state.players || []).filter(p => !p.escaped && !p.eliminated);
+            const currentPlayer = activePlayers[state.currentPlayerIdx % Math.max(activePlayers.length, 1)];
+            const isMyTurn = currentPlayer && currentPlayer.userId === currentUser?.id;
+
+            document.getElementById('vault-turn-label').innerText = currentPlayer
+                ? (isMyTurn ? '⭐ Your turn!' : `Waiting for ${currentPlayer.username}…`)
+                : '';
+
+            // Player roster
+            document.getElementById('vault-players-area').innerHTML = (state.players || []).map(p => {
+                const isCurrent = currentPlayer && p.userId === currentPlayer.userId;
+                let cls = 'vault-player-card';
+                if (isCurrent) cls += ' active-turn';
+                if (p.escaped) cls += ' escaped';
+                if (p.eliminated) cls += ' eliminated';
+                return `<div class="${cls}">
+                    <div style="font-weight:bold; color:${p.userId === currentUser?.id ? '#60a5fa' : '#ffd700'}; font-size:0.9em; margin-bottom:4px;">${p.username}${p.escaped ? ' 🏃' : p.eliminated ? ' 💀' : ''}</div>
+                    <div style="color:#4ade80; font-size:0.85em;">Loot: ${p.lootBag}</div>
+                </div>`;
+            }).join('');
+
+            // Grid
+            const gridEl = document.getElementById('vault-grid');
+            gridEl.innerHTML = (state.grid || []).map((cell, i) => {
+                if (cell.revealed) {
+                    if (cell.type === 'ALARM') return `<button class="vault-cell revealed-alarm" disabled title="ALARM">🚨</button>`;
+                    if (cell.type === 'JACKPOT') return `<button class="vault-cell revealed-jackpot" disabled title="Golden Vault +${cell.value}">🏆</button>`;
+                    return `<button class="vault-cell revealed-treasure" disabled title="+${cell.value}">+${cell.value}</button>`;
+                }
+                const clickable = isMyTurn;
+                return `<button class="vault-cell" ${clickable ? `onclick="vaultOpen(${i})"` : 'disabled'} title="${clickable ? 'Click to open' : 'Not your turn'}">📦</button>`;
+            }).join('');
+
+            // ESCAPE button — only shown on your turn
+            const escBtn = document.getElementById('vault-escape-btn');
+            escBtn.style.display = isMyTurn ? '' : 'none';
+
+            document.getElementById('vault-status-msg').innerText = isMyTurn
+                ? 'Open a chest or ESCAPE to bank your loot!'
+                : (currentPlayer ? `Waiting for ${currentPlayer.username}…` : '');
+
+            document.getElementById('vault-pts-badge').innerText = `✨ ${myPoints} pts`;
+
+            // Jackpot flash
+            if (state.grid && state.grid.some(c => c.revealed && c.type === 'JACKPOT')) {
+                const flash = document.getElementById('vault-jackpot-flash');
+                flash.style.display = 'block';
+                setTimeout(() => { flash.style.display = 'none'; }, 700);
+            }
         }
         // --- AVIA MASTERS (Flappy Bird style) ---
         let aviaActive = false;
@@ -8311,6 +8617,8 @@ ${theyGiveLines.length > 0 ? theyGiveLines.join('\n') : '(any applicable items)'
                 document.getElementById('avia-multiplier').style.color = '#00ff55';
             }, 2000);
         }
+
+
         let drawCanvas, drawCtx, isDrawing = false, drawTool = 'brush';
 
         function initDrawCanvas() {
