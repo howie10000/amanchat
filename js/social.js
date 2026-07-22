@@ -161,10 +161,11 @@ window.challengeDuel = async (target) => {
   if (!stake || stake < 10) return;
   if (state.data.money < stake) { toast("Not enough money."); return; }
   await fbPost(`inbox/${target}`, { kind: "duel", from: state.user, stake, ts: Date.now() });
-  toast(`Duel challenge sent to ${target}.`);
-  // Pre-emptively put us in duel mode waiting? — we'll start when both show up.
-  // Initialize challenger duel
-  startDuel(target, stake, true);
+  toast(`Duel challenge sent to ${target}. Waiting for them to accept...`);
+  // Don't enter the duel screen yet — that used to drop the challenger into
+  // an empty arena alone. combat.js's NET.on("duel") listener brings both
+  // sides in together the moment the target accepts (which is what actually
+  // creates the duels/<id> doc).
 };
 
 window.inviteCoop = async (target) => {

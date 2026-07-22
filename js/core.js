@@ -4,6 +4,13 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
+// Interiors/dungeon/duel content is laid out in the original 1024x640 frame;
+// we center it in the (now bigger) canvas rather than rescale every hardcoded
+// position. Neighborhood mode ignores this — its camera already adapts to
+// canvas size dynamically.
+const VIEW_OX = (canvas.width - 1024) / 2;
+const VIEW_OY = (canvas.height - 640) / 2;
+
 const state = {
   area: "interior_home",
   user: null, data: null, isMayor: false,
@@ -43,8 +50,14 @@ document.addEventListener("keydown", e => {
 document.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
 canvas.addEventListener("mousemove", e => {
   const r = canvas.getBoundingClientRect();
-  state.mouse.x = (e.clientX - r.left) * (canvas.width / r.width);
-  state.mouse.y = (e.clientY - r.top) * (canvas.height / r.height);
+  let mx = (e.clientX - r.left) * (canvas.width / r.width);
+  let my = (e.clientY - r.top) * (canvas.height / r.height);
+  // Interiors/dungeon/duel are drawn translated by VIEW_OX/VIEW_OY (see draw
+  // functions) — bring the mouse back into that same local space so aiming
+  // and furniture placement line up with what's rendered.
+  if (state.area !== "neighborhood") { mx -= VIEW_OX; my -= VIEW_OY; }
+  state.mouse.x = mx;
+  state.mouse.y = my;
   if (state.buildMode && state.selectedFurn >= 0 && state.mouse.down) {
     const f = state.interiorFurniture[state.selectedFurn];
     if (f) {
@@ -215,17 +228,38 @@ async function pushPresence() {
 }
 function startPresenceLoop() {
   pushPresence();
-  setInterval(pushPresence, 150); // 6.6Hz client push; server broadcasts at 10Hz
+  setInterval(pushPresence, 100); // 10Hz client push, matching server broadcast rate
   // Server pushes `presence` event — wire it up
   NET.on("presence", (m) => {
     const users = m.users || {};
     const out = {};
     for (const [u, p] of Object.entries(users)) {
       if (u === state.user) continue;
-      out[u] = p;
+      // Keep the smoothed display position running across updates — only
+      // the raw target (p.x/p.y) changes; interpolateOthers() eases toward it
+      // each frame so other players glide instead of teleporting between
+      // presence ticks.
+      const prev = state.others[u];
+      out[u] = Object.assign({}, p);
+      if (prev && typeof prev.dispX === "number") {
+        out[u].dispX = prev.dispX;
+        out[u].dispY = prev.dispY;
+      }
     }
     state.others = out;
   });
+}
+
+// Eases each other-player's displayed position toward their latest reported
+// (x,y) every frame, so movement looks continuous between presence ticks
+// instead of snapping. Draw code should read p.dispX/p.dispY, not p.x/p.y.
+function interpolateOthers() {
+  const EASE = 0.28;
+  for (const p of Object.values(state.others)) {
+    if (typeof p.dispX !== "number") { p.dispX = p.x; p.dispY = p.y; continue; }
+    p.dispX += (p.x - p.dispX) * EASE;
+    p.dispY += (p.y - p.dispY) * EASE;
+  }
 }
 
 // NOTIFICATIONS — server pushes; we still pull once on connect to load any pending.
@@ -277,6 +311,10 @@ function renderNotifications() {
 }
 async function handleNotification(n, act) {
   await fbDelete(`inbox/${state.user}/${n._id}`);
+  // Remove locally and re-render immediately — the server doesn't push an
+  // event for deletes, so without this the card just sat there forever.
+  state.notifications = state.notifications.filter(x => x._id !== n._id);
+  renderNotifications();
   if (act === "dismiss") return;
   if (n.kind === "friend_req") {
     state.friends[n.from] = true;
@@ -306,6 +344,7 @@ async function refreshUserCache() {
 // MAIN LOOP DISPATCH
 function loop() {
   update();
+  interpolateOthers();
   draw();
   requestAnimationFrame(loop);
 }

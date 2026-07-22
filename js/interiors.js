@@ -164,6 +164,8 @@ function drawInterior() {
   if (!def) return;
   ctx.fillStyle = "#0a0a0a";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(VIEW_OX, VIEW_OY);
   const room = interiorRoom();
   // wall
   ctx.fillStyle = def.wall;
@@ -188,7 +190,7 @@ function drawInterior() {
   // Title
   ctx.fillStyle = def.trim;
   ctx.font = "bold 18px sans-serif";
-  ctx.fillText(buildingTitle(state.area), canvas.width/2, room.y - 12);
+  ctx.fillText(buildingTitle(state.area), room.x + room.w/2, room.y - 12);
 
   // Special: home — draw furniture
   if (state.area === "interior_home") drawHomeContents();
@@ -201,13 +203,15 @@ function drawInterior() {
     for (const h of def.hotspots) drawHotspot(h);
   }
 
-  // Other players in this interior
+  // Other players in this interior (dispX/dispY = eased position; see interpolateOthers)
   for (const [u, p] of Object.entries(state.others)) {
     let myArea = state.area;
     if (state.area === "interior_home") myArea = `inside:${state.interiorOf}`;
     if (p.area === myArea) {
-      GFX.drawCharacter(ctx, p.x, p.y, p.appearance, { facing: p.facing });
-      GFX.drawNameAndBubble(ctx, p.x, p.y, u, p.msg, false);
+      const px = typeof p.dispX === "number" ? p.dispX : p.x;
+      const py = typeof p.dispY === "number" ? p.dispY : p.y;
+      GFX.drawCharacter(ctx, px, py, p.appearance, { facing: p.facing });
+      GFX.drawNameAndBubble(ctx, px, py, u, p.msg, false);
     }
   }
   // You
@@ -226,7 +230,9 @@ function drawInterior() {
     }
   }
 
-  // Hotspot prompt
+  ctx.restore(); // end VIEW_OX/VIEW_OY translate — room content is done
+
+  // Hotspot prompt (screen-anchored, not part of the room content above)
   const hs = hotspotAtPlayer();
   if (hs) {
     ctx.fillStyle = "rgba(0,0,0,.85)";

@@ -15,8 +15,25 @@ const CELL_W = 160, CELL_H = 140;
 const MAZE_OFFSET_X = 32, MAZE_OFFSET_Y = 56;
 const WALL_THICK = 8;
 
+// Hash a string to a numeric seed for mulberry32 (defined in world.js).
+function strToSeed(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
+  return h >>> 0;
+}
+// Co-op partners must generate byte-identical mazes/enemies/keys per floor.
+// Seeding purely from (party pair, tier, floor) — not wall-clock time — means
+// both clients independently reconstruct the same layout for a given floor
+// whenever they call setupFloor(), regardless of when each of them gets there.
+function partyPairKey() {
+  if (!state.party) return state.user;
+  const other = state.party.leader === state.user ? state.party.partnerId : state.party.leader;
+  if (!other) return state.user;
+  return [state.user, other].sort().join("__");
+}
+
 // Generate maze using recursive backtracking
-function generateMaze() {
+function generateMaze(rng) {
   const cells = [];
   for (let r = 0; r < MAZE_ROWS; r++) {
     cells[r] = [];
@@ -39,7 +56,7 @@ function generateMaze() {
     const cur = stack[stack.length - 1];
     const ns = neighbors(cur.r, cur.c);
     if (!ns.length) { stack.pop(); continue; }
-    const n = ns[Math.floor(Math.random() * ns.length)];
+    const n = ns[Math.floor(rng() * ns.length)];
     cells[cur.r][cur.c].walls[n.dir] = false;
     cells[n.r][n.c].walls[n.opp] = false;
     cells[n.r][n.c].visited = true;
@@ -47,14 +64,14 @@ function generateMaze() {
   }
   // Knock out a few extra walls to make rooms feel less linear
   for (let i = 0; i < 6; i++) {
-    const r = Math.floor(Math.random() * MAZE_ROWS);
-    const c = Math.floor(Math.random() * MAZE_COLS);
+    const r = Math.floor(rng() * MAZE_ROWS);
+    const c = Math.floor(rng() * MAZE_COLS);
     const dirs = [];
     if (r > 0) dirs.push("n");
     if (c < MAZE_COLS-1) dirs.push("e");
     if (r < MAZE_ROWS-1) dirs.push("s");
     if (c > 0) dirs.push("w");
-    const d = dirs[Math.floor(Math.random() * dirs.length)];
+    const d = dirs[Math.floor(rng() * dirs.length)];
     cells[r][c].walls[d] = false;
     if (d === "n") cells[r-1][c].walls.s = false;
     if (d === "s") cells[r+1][c].walls.n = false;
@@ -105,6 +122,9 @@ function startDungeon(tier) {
     tier, cfg, floor: 0,
     cleared: false, keyPickedUp: false,
     maze: null, walls: null, doorCell: null, keyCell: null,
+    // Same seedBase for both co-op partners (see partyPairKey) -> identical
+    // maze/enemies/key per floor on both clients, with no server round-trip.
+    seedBase: partyPairKey() + "|" + tier,
   };
   state.hp = 100;
   state.questReward = cfg.reward;
@@ -116,7 +136,11 @@ function startDungeon(tier) {
 }
 
 function setupFloor() {
-  const maze = generateMaze();
+  // Fresh seeded RNG per floor, derived from (party pair, tier, floor) — both
+  // co-op partners compute this independently and get the identical stream.
+  const rng = mulberry32(strToSeed(state.dungeon.seedBase + "|" + state.dungeon.floor));
+  state.dungeon.rng = rng;
+  const maze = generateMaze(rng);
   const walls = buildWallSegments(maze);
   state.dungeon.maze = maze;
   state.dungeon.walls = walls;
@@ -128,11 +152,11 @@ function setupFloor() {
   const allCells = [];
   for (let r = 0; r < MAZE_ROWS; r++) for (let c = 0; c < MAZE_COLS; c++) allCells.push({r,c});
   const candKey = allCells.filter(({r,c}) => !(r===0 && c===0));
-  state.dungeon.keyCell = candKey[Math.floor(Math.random() * candKey.length)];
+  state.dungeon.keyCell = candKey[Math.floor(rng() * candKey.length)];
   // Door at bottom-right cell (visible regardless)
   state.dungeon.doorCell = { r: MAZE_ROWS - 1, c: MAZE_COLS - 1 };
   // Spawn enemies
-  spawnDungeonEnemies();
+  spawnDungeonEnemies(rng);
   state.bullets = []; state.enemyBullets = []; state.particles = [];
   state.dungeon.cleared = false;
   state.dungeon.keyPickedUp = false;
@@ -146,7 +170,7 @@ const ENEMY_TYPES = {
   boss:   { color: "#7f1d1d", size: 30, speed: 0.85,hp: 320, dmg: 18, ai: "boss",   name: "BOSS", shootCd: 80,  projSpeed: 5 },
 };
 
-function spawnDungeonEnemies() {
+function spawnDungeonEnemies(rng) {
   const cfg = state.dungeon.cfg;
   const floor = state.dungeon.floor;
   const isFinal = (floor === cfg.floors - 1);
@@ -157,8 +181,8 @@ function spawnDungeonEnemies() {
     pushEnemy("boss", center.x, center.y - 10, cfg);
     // 4 minions in adjacent cells
     for (let i = 0; i < 4; i++) {
-      const r = Math.floor(Math.random() * MAZE_ROWS);
-      const c = Math.floor(Math.random() * MAZE_COLS);
+      const r = Math.floor(rng() * MAZE_ROWS);
+      const c = Math.floor(rng() * MAZE_COLS);
       if (r === 0 && c === 0) continue;
       const cc = cellCenter(r, c);
       const t = ["melee","fast","ranged"][i % 3];
@@ -167,22 +191,22 @@ function spawnDungeonEnemies() {
     return;
   }
   // Otherwise random mix in random non-spawn cells
-  const count = cfg.enemyMin + Math.floor(Math.random() * (cfg.enemyMax - cfg.enemyMin + 1)) + floor;
+  const count = cfg.enemyMin + Math.floor(rng() * (cfg.enemyMax - cfg.enemyMin + 1)) + floor;
   const used = new Set(["0,0"]);
   const types = ["melee","melee","fast","ranged"];
   if (cfg !== QUEST_TIERS.easy) types.push("tank");
   for (let i = 0; i < count; i++) {
     let r, c, key, tries = 0;
     do {
-      r = Math.floor(Math.random() * MAZE_ROWS);
-      c = Math.floor(Math.random() * MAZE_COLS);
+      r = Math.floor(rng() * MAZE_ROWS);
+      c = Math.floor(rng() * MAZE_COLS);
       key = `${r},${c}`;
       tries++;
     } while (used.has(key) && tries < 20);
     used.add(key);
     const cc = cellCenter(r, c);
-    const t = types[Math.floor(Math.random() * types.length)];
-    pushEnemy(t, cc.x + (Math.random()-0.5)*40, cc.y + (Math.random()-0.5)*30, cfg);
+    const t = types[Math.floor(rng() * types.length)];
+    pushEnemy(t, cc.x + (rng()-0.5)*40, cc.y + (rng()-0.5)*30, cfg);
   }
 }
 
@@ -225,7 +249,7 @@ function updateDungeon() {
   if (keys["d"] || keys["arrowright"]) dx += 1;
   const m = Math.hypot(dx, dy) || 1;
   if (dx || dy) {
-    const speed = 3.5;
+    const speed = 2.625; // 25% slower than the original 3.5
     const nx = state.pos.x + (dx/m) * speed;
     const ny = state.pos.y + (dy/m) * speed;
     moveWithWalls(state.pos, nx, ny, 12);
@@ -429,8 +453,12 @@ function doAttack() {
 }
 
 function drawDungeon() {
-  // Floor
+  // Floor (full-canvas background, unshifted)
   ctx.fillStyle = "#1c1917"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // Maze/gameplay content is laid out in the original 1024x640 frame; center
+  // it in the (possibly bigger) canvas. HUD overlay below stays unshifted.
+  ctx.save();
+  ctx.translate(VIEW_OX, VIEW_OY);
   for (let gy = MAZE_OFFSET_Y; gy < MAZE_OFFSET_Y + MAZE_ROWS * CELL_H; gy += 32) {
     for (let gx = MAZE_OFFSET_X; gx < MAZE_OFFSET_X + MAZE_COLS * CELL_W; gx += 32) {
       ctx.fillStyle = ((gx + gy) / 32) % 2 === 0 ? "#292524" : "#1c1917";
@@ -559,15 +587,29 @@ function drawDungeon() {
     ctx.stroke(); ctx.setLineDash([]);
   }
 
-  // HUD overlay
+  // Co-op partner if any (dispX/dispY = eased position; still local-space, must be inside the translate)
+  if (state.party && state.party.partnerId) {
+    const p = state.others[state.party.partnerId];
+    if (p && p.area === "dungeon") {
+      const px = typeof p.dispX === "number" ? p.dispX : p.x;
+      const py = typeof p.dispY === "number" ? p.dispY : p.y;
+      GFX.drawCharacter(ctx, px, py, p.appearance, { facing: p.facing });
+      GFX.drawNameAndBubble(ctx, px, py, state.party.partnerId, p.msg, false);
+    }
+  }
+
+  ctx.restore(); // end VIEW_OX/VIEW_OY translate — maze content is done
+
+  // HUD overlay (screen-anchored: left side bottom-anchored via canvas.height,
+  // right side already used canvas.width so it was fine unshifted)
   ctx.fillStyle = "rgba(0,0,0,.7)";
-  GFX.roundFill(ctx, 12, 540, 280, 90, 8, "rgba(0,0,0,.7)");
+  GFX.roundFill(ctx, 12, canvas.height - 100, 280, 90, 8, "rgba(0,0,0,.7)");
   ctx.fillStyle = "#fff"; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "left";
-  ctx.fillText(`${state.dungeon ? state.dungeon.cfg.name : "Dungeon"}`, 22, 562);
-  ctx.fillText(`Floor ${state.dungeon ? state.dungeon.floor + 1 : 1} / ${state.dungeon ? state.dungeon.cfg.floors : 1}`, 22, 580);
-  ctx.fillText(`Reward: $${state.questReward}`, 22, 598);
+  ctx.fillText(`${state.dungeon ? state.dungeon.cfg.name : "Dungeon"}`, 22, canvas.height - 78);
+  ctx.fillText(`Floor ${state.dungeon ? state.dungeon.floor + 1 : 1} / ${state.dungeon ? state.dungeon.cfg.floors : 1}`, 22, canvas.height - 60);
+  ctx.fillText(`Reward: $${state.questReward}`, 22, canvas.height - 42);
   ctx.fillStyle = "#fcd34d";
-  ctx.fillText(`Weapon: ${state.weapon.toUpperCase()} (1=sword, 2=pistol)`, 22, 618);
+  ctx.fillText(`Weapon: ${state.weapon.toUpperCase()} (1=sword, 2=pistol)`, 22, canvas.height - 22);
   // HP bar
   ctx.fillStyle = "#000"; ctx.fillRect(canvas.width - 232, 12, 220, 22);
   ctx.fillStyle = "#10b981"; ctx.fillRect(canvas.width - 232, 12, 220 * Math.max(0, state.hp/100), 22);
@@ -575,18 +617,9 @@ function drawDungeon() {
   ctx.fillText("HP " + Math.max(0, Math.floor(state.hp)), canvas.width - 122, 28);
   // ESC hint
   ctx.fillStyle = "rgba(0,0,0,.7)";
-  GFX.roundFill(ctx, canvas.width - 200, 540, 188, 24, 6, "rgba(0,0,0,.7)");
+  GFX.roundFill(ctx, canvas.width - 200, canvas.height - 100, 188, 24, 6, "rgba(0,0,0,.7)");
   ctx.fillStyle = "#9ca3af"; ctx.font = "11px sans-serif";
-  ctx.fillText("ESC to abandon quest", canvas.width - 106, 556);
-
-  // Co-op partner if any
-  if (state.party && state.party.partnerId) {
-    const p = state.others[state.party.partnerId];
-    if (p && p.area === "dungeon") {
-      GFX.drawCharacter(ctx, p.x, p.y, p.appearance, { facing: p.facing });
-      GFX.drawNameAndBubble(ctx, p.x, p.y, state.party.partnerId, p.msg, false);
-    }
-  }
+  ctx.fillText("ESC to abandon quest", canvas.width - 106, canvas.height - 84);
 }
 
 // ---------- DUEL ----------
@@ -594,7 +627,7 @@ function startDuel(opponent, stake, isChallenger) {
   state.area = "duel";
   state.duel = { opponent, stake, isChallenger, status: "fight" };
   state.hp = 100;
-  state.pos.x = isChallenger ? 200 : 824; state.pos.y = 320;
+  state.pos.x = isChallenger ? 200 : canvas.width - 200; state.pos.y = canvas.height / 2;
   state.facing = isChallenger ? "right" : "left";
   state.enemies = []; state.bullets = []; state.enemyBullets = []; state.particles = [];
   const id = duelId(state.user, opponent);
@@ -622,6 +655,17 @@ if (window.NET) NET.on("duel", (m) => {
   if (parts.length === 2 && m.data && typeof m.data === "object") {
     Object.assign(state._duelCache[m.duelId], m.data);
   }
+  // The challenger used to force themselves into the duel screen the instant
+  // they sent the challenge — alone, before the other side had even seen it.
+  // Instead, whoever created the duel doc (the accepting side, via startDuel)
+  // triggers this same event for BOTH participants, so the challenger enters
+  // here, right as the opponent does — that's what actually shows "the
+  // request" resolving, instead of a silent toast and an empty arena.
+  const cache = state._duelCache[m.duelId];
+  if (cache.status === "fight" && (cache.p1 === state.user || cache.p2 === state.user) && state.area !== "duel") {
+    const opponent = cache.p1 === state.user ? cache.p2 : cache.p1;
+    startDuel(opponent, cache.stake, cache.p1 === state.user);
+  }
 });
 
 function updateDuel() {
@@ -632,11 +676,12 @@ function updateDuel() {
   if (keys["d"] || keys["arrowright"]) dx += 1;
   const m = Math.hypot(dx, dy) || 1;
   if (m > 0 && (dx || dy)) {
-    state.pos.x += (dx/m) * 3.5; state.pos.y += (dy/m) * 3.5;
+    const speed = 2.625; // 25% slower than the original 3.5
+    state.pos.x += (dx/m) * speed; state.pos.y += (dy/m) * speed;
     state.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
   }
-  state.pos.x = Math.max(40, Math.min(984, state.pos.x));
-  state.pos.y = Math.max(60, Math.min(600, state.pos.y));
+  state.pos.x = Math.max(40, Math.min(canvas.width - 40, state.pos.x));
+  state.pos.y = Math.max(60, Math.min(canvas.height - 40, state.pos.y));
 
   if (state.attackCooldown > 0) state.attackCooldown--;
   if (state.swingT > 0) state.swingT--;
@@ -663,7 +708,7 @@ function updateDuel() {
       }
     }
   }
-  state.bullets = state.bullets.filter(b => b.life > 0 && b.x > 0 && b.x < 1024 && b.y > 0 && b.y < 640);
+  state.bullets = state.bullets.filter(b => b.life > 0 && b.x > 0 && b.x < canvas.width && b.y > 0 && b.y < canvas.height);
   state.particles = state.particles.filter(p => p.life > 0);
   state.particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life--; });
 
@@ -725,8 +770,12 @@ function drawDuel() {
   }
   const opp = state.others[state.duel.opponent];
   if (opp) {
-    GFX.drawCharacter(ctx, opp.x, opp.y, opp.appearance, { facing: opp.facing });
-    GFX.drawNameAndBubble(ctx, opp.x, opp.y, state.duel.opponent, opp.msg, false);
+    // Rendered position is eased (dispX/dispY); hit-testing in updateDuel
+    // still uses the raw opp.x/opp.y so combat stays fair/accurate.
+    const ox = typeof opp.dispX === "number" ? opp.dispX : opp.x;
+    const oy = typeof opp.dispY === "number" ? opp.dispY : opp.y;
+    GFX.drawCharacter(ctx, ox, oy, opp.appearance, { facing: opp.facing });
+    GFX.drawNameAndBubble(ctx, ox, oy, state.duel.opponent, opp.msg, false);
   }
   GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance,
                      { facing: state.facing, walking: state.walking });

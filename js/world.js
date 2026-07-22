@@ -84,6 +84,18 @@ function houseRect(i) {
 
 function mulberry32(a){return function(){var t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296;}}
 
+// Only show/collide with houses belonging to players who are actually online
+// right now (self, or present in state.others via presence) — a registered
+// user who isn't connected shouldn't have a visible/solid house.
+function onlineHouseUsers() {
+  const users = state._userCache || {};
+  const out = {};
+  for (const [u, info] of Object.entries(users)) {
+    if (u === state.user || state.others[u]) out[u] = info;
+  }
+  return out;
+}
+
 // TREES — only in green spaces (avoid roads, buildings, park interior, mayor's ave)
 const TREES = [];
 (function genTrees(){
@@ -119,8 +131,8 @@ function inBuilding(x, y) {
   return false;
 }
 function inHouse(x, y) {
-  // Only count occupied houses for collisions (so vacant lots aren't blocking)
-  const users = state._userCache || {};
+  // Only count online players' houses for collisions (so vacant/offline lots aren't blocking)
+  const users = onlineHouseUsers();
   for (const info of Object.values(users)) {
     const r = houseRect(info.houseIndex); if (!r) continue;
     if (x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h + 24) return true;
@@ -161,8 +173,8 @@ function collidesNeighborhood(nx, ny) {
       if (!(nx > dxL && nx < dxR && ny > b.y + b.h - 30)) return true;
     }
   }
-  // Houses (only occupied)
-  const users = state._userCache || {};
+  // Houses (only online players' houses collide)
+  const users = onlineHouseUsers();
   for (const info of Object.values(users)) {
     const r = houseRect(info.houseIndex); if (!r) continue;
     if (nx > r.x && nx < r.x + r.w && ny > r.y + 30 && ny < r.y + r.h - 8) {
@@ -193,7 +205,7 @@ function buildingAtPlayer() {
   return null;
 }
 function houseAtPlayer() {
-  const users = state._userCache || {};
+  const users = onlineHouseUsers();
   for (const [u, info] of Object.entries(users)) {
     const r = houseRect(info.houseIndex); if (!r) continue;
     const dxL = r.x + r.w/2 - 22, dxR = r.x + r.w/2 + 22;
@@ -225,18 +237,20 @@ function drawNeighborhood() {
   // Buildings
   for (const b of BUILDINGS) GFX.drawBuildingBox(ctx, b);
 
-  // Houses (only occupied)
-  const users = state._userCache || {};
+  // Houses (only online players' houses are visible)
+  const users = onlineHouseUsers();
   for (const [u, info] of Object.entries(users)) {
     const r = houseRect(info.houseIndex); if (!r) continue;
     GFX.drawHouse(ctx, r, u, u === state.user);
   }
 
-  // Other players in this area
+  // Other players in this area (dispX/dispY = eased position; see interpolateOthers)
   for (const [u, p] of Object.entries(state.others)) {
     if (p.area !== "neighborhood") continue;
-    GFX.drawCharacter(ctx, p.x, p.y, p.appearance, { facing: p.facing });
-    GFX.drawNameAndBubble(ctx, p.x, p.y, u, p.msg, false);
+    const px = typeof p.dispX === "number" ? p.dispX : p.x;
+    const py = typeof p.dispY === "number" ? p.dispY : p.y;
+    GFX.drawCharacter(ctx, px, py, p.appearance, { facing: p.facing });
+    GFX.drawNameAndBubble(ctx, px, py, u, p.msg, false);
   }
   GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance,
                     { facing: state.facing, walking: state.walking });

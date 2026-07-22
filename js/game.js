@@ -623,7 +623,7 @@ function update() {
     if (keys["a"] || keys["arrowleft"]) dx -= 1;
     if (keys["d"] || keys["arrowright"]) dx += 1;
     const m = Math.hypot(dx, dy) || 1;
-    const speed = 3.4;
+    const speed = 2.55; // 25% slower than the original 3.4
     if (m > 0.001 && (dx || dy)) {
       const nx = state.pos.x + (dx/m) * speed;
       const ny = state.pos.y + (dy/m) * speed;
