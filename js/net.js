@@ -4,7 +4,15 @@
 */
 
 (function () {
-  const WS_URL = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
+  // Client is hosted on GitHub Pages; the realtime backend always lives at
+  // northpvp.net regardless of what origin served this page. Same-origin
+  // (location.host) only works when the backend itself serves the client,
+  // e.g. local dev via `node server.js` with STATIC_DIR pointing at the game.
+  const BACKEND_HOST = "northpvp.net";
+  const isLocal = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+  const WS_URL = isLocal
+    ? (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws"
+    : "wss://" + BACKEND_HOST + "/ws";
 
   let ws = null;
   let connected = false;
