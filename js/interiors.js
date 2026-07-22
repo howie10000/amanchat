@@ -82,10 +82,18 @@ async function enterOwnHome(initial) {
 }
 
 async function enterOtherHome(user) {
+  // Respect the owner's lock: only the owner, key-holders, or the mayor may
+  // enter a locked house. (Owner grants keys from the Friends panel; the flag
+  // and keyholder list live on the owner's own user record.)
+  const owner = (await fbGet(`users/${user}`)) || {};
+  const hasKey = owner.keys && owner.keys[state.user];
+  if (owner.locked && !hasKey && !state.isMayor) {
+    toast(`🔒 ${user}'s door is locked. Ask them for a key.`);
+    return;
+  }
   state.area = "interior_home";
   state.interiorOf = user;
-  const fr = await fbGet(`users/${user}/furniture`);
-  state.interiorFurniture = arrayify(fr);
+  state.interiorFurniture = arrayify(owner.furniture);
   state.pos.x = 512; state.pos.y = 540;
   state.facing = "up";
   toast(`Visiting ${user}'s house. ESC to leave.`);
@@ -186,6 +194,14 @@ function drawInterior() {
   ctx.fillStyle = "#fcd34d";
   ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
   ctx.fillText("DOOR (ESC)", room.x + room.w/2, room.y + room.h + 22);
+  // Lock status (own home only) — press L to toggle
+  if (state.area === "interior_home" && state.interiorOf === state.user) {
+    const locked = !!(state.data && state.data.locked);
+    ctx.fillStyle = locked ? "#ef4444" : "#22c55e";
+    ctx.font = "bold 12px sans-serif";
+    ctx.fillText(locked ? "🔒 LOCKED — press L to unlock" : "🔓 UNLOCKED — press L to lock",
+                 room.x + room.w/2, room.y + room.h + 40);
+  }
 
   // Title
   ctx.fillStyle = def.trim;

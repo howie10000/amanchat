@@ -36,10 +36,12 @@ async function renderFriendsList() {
     return;
   }
   // Online check via presence
+  const keys = (state.data && state.data.keys) || {};
   let html = "";
   for (const f of friends) {
     const p = state.others[f];
     const online = !!p;
+    const hasKey = !!keys[f];
     html += `<div class="friendItem">
       <div class="info">
         <span class="statusDot ${online ? "online" : ""}"></span>
@@ -49,11 +51,28 @@ async function renderFriendsList() {
         <button class="menuBtn" onclick="openDMThread('${f}')">Chat</button>
         <button class="menuBtn gold" onclick="challengeDuel('${f}')">Duel</button>
         <button class="menuBtn green" onclick="inviteCoop('${f}')">Quest</button>
+        <button class="menuBtn ${hasKey ? "" : "gray"}" onclick="toggleKey('${f}')"
+          title="${hasKey ? "Revoke your house key" : "Give your house key"}">${hasKey ? "🔑 Has Key" : "🔑 Give Key"}</button>
       </div>
     </div>`;
   }
   list.innerHTML = html;
 }
+// Give/revoke this friend a key to MY house. Stored on my own record
+// (users/<me>/keys/<friend>), which enterOtherHome reads when they visit.
+window.toggleKey = async (friend) => {
+  state.data.keys = state.data.keys || {};
+  if (state.data.keys[friend]) {
+    delete state.data.keys[friend];
+    await fbDelete(`users/${state.user}/keys/${friend}`);
+    toast(`Took back ${friend}'s key.`);
+  } else {
+    state.data.keys[friend] = true;
+    await fbPatch(`users/${state.user}/keys`, { [friend]: true });
+    toast(`Gave ${friend} a key to your house.`);
+  }
+  renderFriendsList();
+};
 window.sendFriendRequest = async () => {
   const target = document.getElementById("addFriendInput").value.trim().toLowerCase();
   if (!target || target === state.user) return;

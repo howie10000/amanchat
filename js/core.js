@@ -102,12 +102,22 @@ async function doAuth(register) {
     const res = await fbAuth(user, pass, register);
     let data = res?.data;
     if (register) {
-      // brand-new user — create the game record now
+      // brand-new user — create the game record now.
+      // Pick a random FREE house lot rather than "count of users" (which
+      // collided after deletions and always filled slots in registration
+      // order). Falls back to a hash-based slot if every lot is somehow taken.
       const allUsers = (await fbGet("users")) || {};
-      const houseIndex = Object.keys(allUsers).length;
+      const taken = new Set(Object.values(allUsers).map(u => u && u.houseIndex).filter(i => i != null));
+      const total = (window.gameWorld && gameWorld.HOUSE_COUNT) || 60;
+      const free = [];
+      for (let i = 0; i < total; i++) if (!taken.has(i)) free.push(i);
+      const houseIndex = free.length
+        ? free[Math.floor(Math.random() * free.length)]
+        : (Object.keys(allUsers).length % total);
       data = {
         money: 300, houseIndex,
         inventory: {}, furniture: [], friends: {},
+        keys: {}, locked: false,
         appearance: GFX.DEFAULT_APPEARANCE,
         seenTutorial: false,
         createdAt: Date.now(),
@@ -228,7 +238,7 @@ async function pushPresence() {
 }
 function startPresenceLoop() {
   pushPresence();
-  setInterval(pushPresence, 100); // 10Hz client push, matching server broadcast rate
+  setInterval(pushPresence, 66); // ~15Hz client push (server also broadcasts ~15Hz)
   // Server pushes `presence` event — wire it up
   NET.on("presence", (m) => {
     const users = m.users || {};
@@ -254,7 +264,7 @@ function startPresenceLoop() {
 // (x,y) every frame, so movement looks continuous between presence ticks
 // instead of snapping. Draw code should read p.dispX/p.dispY, not p.x/p.y.
 function interpolateOthers() {
-  const EASE = 0.28;
+  const EASE = 0.35; // slightly snappier to keep up with the faster presence rate
   for (const p of Object.values(state.others)) {
     if (typeof p.dispX !== "number") { p.dispX = p.x; p.dispY = p.y; continue; }
     p.dispX += (p.x - p.dispX) * EASE;

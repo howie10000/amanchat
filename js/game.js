@@ -38,8 +38,12 @@ function openHelp() {
     <h3 class="section">AT HOME</h3>
     <div>Build Mode: drag furniture to move • right-click to pick up</div>
     <div>Inventory: pick an item then click in your room to place</div>
+    <div>L — lock / unlock your front door</div>
+    <h3 class="section">OUTDOORS</h3>
+    <div>🎣 Fishing Pond &amp; 🏀 Basketball Court — walk up and press E</div>
+    <div>★ Notice Board — leaderboard of the richest neighbors</div>
     <h3 class="section">SOCIAL</h3>
-    <div>Friends panel — add friends, start chats, invite to quests, challenge to duel</div>
+    <div>Friends panel — chat, quest, duel, and give a house key (🔑)</div>
     <div>Messenger — instant DMs (live updates)</div>
   `);
 }
@@ -78,6 +82,8 @@ function handleKey(e) {
     openInventory();
   } else if (k === "b" && state.area === "interior_home" && state.interiorOf === state.user) {
     toggleBuildMode();
+  } else if (k === "l" && state.area === "interior_home" && state.interiorOf === state.user) {
+    toggleDoorLock();
   } else if (k === "e") {
     tryInteract();
   } else if (k === "escape") {
@@ -161,6 +167,16 @@ function toggleBuildBanner(on) {
   document.getElementById("buildBanner").classList.toggle("hidden", !on);
 }
 
+// ---------- Door lock (key system) ----------
+async function toggleDoorLock() {
+  state.data.locked = !state.data.locked;
+  await fbPatch(`users/${state.user}`, { locked: state.data.locked });
+  toast(state.data.locked
+    ? "Door LOCKED. Only key-holders can enter. (Give keys in the Friends panel.)"
+    : "Door UNLOCKED. Anyone can visit.");
+}
+window.toggleDoorLock = toggleDoorLock;
+
 // ---------- Place furniture from inventory ----------
 function placeFurnitureAtMouse() {
   if (!state.placeMode) return;
@@ -193,6 +209,8 @@ function tryInteract() {
       else gameInteriors.enterOtherHome(u);
       return;
     }
+    const act = gameWorld.activityAtPlayer();
+    if (act) return triggerActivity(act.type);
   } else if (state.area.startsWith("interior_")) {
     const hs = gameInteriors.hotspotAtPlayer();
     if (hs) return triggerHotspotAction(hs.action);
@@ -200,6 +218,13 @@ function tryInteract() {
     const room = gameInteriors.interiorRoom();
     if (state.pos.y > room.y + room.h - 30) gameInteriors.leaveInterior();
   }
+}
+
+// ---------- Outdoor activity dispatch (fishing / basketball / notice board) ----------
+function triggerActivity(type) {
+  if (type === "fishing")     gameOutdoor.openFishing();
+  else if (type === "basketball") gameOutdoor.openBasketball();
+  else if (type === "leaderboard") gameOutdoor.openLeaderboard();
 }
 
 // ---------- Hotspot action dispatch ----------
@@ -623,7 +648,7 @@ function update() {
     if (keys["a"] || keys["arrowleft"]) dx -= 1;
     if (keys["d"] || keys["arrowright"]) dx += 1;
     const m = Math.hypot(dx, dy) || 1;
-    const speed = 2.55; // 25% slower than the original 3.4
+    const speed = 1.9; // another 25% slower (was 2.55; original 3.4)
     if (m > 0.001 && (dx || dy)) {
       const nx = state.pos.x + (dx/m) * speed;
       const ny = state.pos.y + (dy/m) * speed;
