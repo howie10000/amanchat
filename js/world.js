@@ -159,6 +159,10 @@ function inPondWater(x, y) {
 function inCourt(x, y) { return x > COURT.x && x < COURT.x + COURT.w && y > COURT.y && y < COURT.y + COURT.h; }
 
 // TREES — only in green spaces (avoid roads, buildings, park, zones, houses)
+// Placement keeps a minimum spacing between trees so a run of unlucky rolls
+// can't wall off a walkable lane (see inGreenSpace/inAnyHouseLot for the
+// zone exclusions that keep doorways and the main walkway clear).
+const TREE_MIN_SPACING = 50;
 const TREES = [];
 (function genTrees(){
   const rng = mulberry32(987);
@@ -167,28 +171,39 @@ const TREES = [];
     while (!ok && tries < 90) {
       x = 30 + rng() * (WORLD_W - 60);
       y = 30 + rng() * (WORLD_H - 60);
-      ok = inGreenSpace(x, y);
+      ok = inGreenSpace(x, y) && !tooCloseToTree(x, y);
       tries++;
     }
     if (ok) TREES.push({ x, y, size: 18 + rng() * 8, type: rng() < 0.6 ? "round" : "pine" });
   }
 })();
+function tooCloseToTree(x, y) {
+  for (const t of TREES) if (Math.hypot(x - t.x, y - t.y) < TREE_MIN_SPACING) return true;
+  return false;
+}
 function inAnyHouseLot(x, y) {
   for (let i = 0; i < HOUSE_COUNT; i++) {
     const r = houseRect(i); if (!r) continue;
-    if (x > r.x - 16 && x < r.x + r.w + 16 && y > r.y - 16 && y < r.y + r.h + 32) return true;
+    // Bottom margin extended to fully cover the dooryard gap between a
+    // house row and the road in front of it (was +32, leaving an ~8-16px
+    // sliver where trees could spawn right in front of a front door).
+    if (x > r.x - 16 && x < r.x + r.w + 16 && y > r.y - 16 && y < r.y + r.h + 72) return true;
   }
   return false;
 }
 function inGreenSpace(x, y) {
   if (inBuilding(x, y) || onRoad(x, y) || inPark(x, y) || inMayorAvenue(x, y) || inAnyHouseLot(x, y)) return false;
-  // activity band clearances
-  if (inEllipse(x, y, POND.x, POND.y, POND.rx + 40, POND.ry + 40)) return false;
-  if (x > COURT.x - 40 && x < COURT.x + COURT.w + 40 && y > COURT.y - 40 && y < COURT.y + COURT.h + 40) return false;
-  if (Math.hypot(x - STAGE.x, y - STAGE.y) < 320) return false;
+  // activity band clearances (widened so trees don't crowd the walkable rim)
+  if (inEllipse(x, y, POND.x, POND.y, POND.rx + 56, POND.ry + 56)) return false;
+  if (x > COURT.x - 56 && x < COURT.x + COURT.w + 56 && y > COURT.y - 56 && y < COURT.y + COURT.h + 56) return false;
+  if (Math.hypot(x - STAGE.x, y - STAGE.y) < 336) return false;
   for (const b of BUILDINGS) {
     if (x > b.x - 30 && x < b.x + b.w + 30 && y > b.y - 30 && y < b.y + b.h + 50) return false;
   }
+  // Main north-south walkway from the park down through the activity band
+  // (park ends y=1280, activity band starts y=1360 — this strip used to be
+  // wide open and trees could cluster across it with nothing to stop them).
+  if (x > MAYOR_AVE.x - 60 && x < MAYOR_AVE.x + MAYOR_AVE.w + 60 && y > 1260 && y < 1900) return false;
   return true;
 }
 function inBuilding(x, y) {

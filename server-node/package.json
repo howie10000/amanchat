@@ -1,0 +1,16 @@
+{
+  "name": "neighborhood-server",
+  "version": "1.0.0",
+  "description": "Neighborhood game backend (Node) — same stack as Amanchat 2 (express + better-sqlite3 + bcryptjs), speaks the ws RPC protocol expected by js/net.js",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.22.2",
+    "ws": "^8.18.0"
+  }
+}

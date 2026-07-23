@@ -120,15 +120,17 @@ async function doAuth(register) {
         keys: {}, locked: false,
         appearance: GFX.DEFAULT_APPEARANCE,
         seenTutorial: false,
+        fishInventory: {},
         createdAt: Date.now(),
       };
       await fbPut(`users/${user}`, data);
     }
     if (!data) {
       // shouldn't happen for login, but recover gracefully
-      data = { money: 300, houseIndex: 0, inventory: {}, furniture: [], friends: {}, appearance: GFX.DEFAULT_APPEARANCE };
+      data = { money: 300, houseIndex: 0, inventory: {}, furniture: [], friends: {}, appearance: GFX.DEFAULT_APPEARANCE, fishInventory: {} };
       await fbPut(`users/${user}`, data);
     }
+    if (!data.fishInventory) data.fishInventory = {};
     msg.textContent = "";
     enterGame(user, data);
   } catch (e) {
@@ -308,6 +310,7 @@ function renderNotifications() {
     else if (n.kind === "duel")   body = `<b>${n.from}</b> challenges you to a duel for $${n.stake}.`;
     else if (n.kind === "quest")  body = `<b>${n.from}</b> invites you to a co-op quest.`;
     else if (n.kind === "dm")     body = `<b>${n.from}:</b> ${escapeHtml(n.preview).slice(0,60)}`;
+    else if (n.kind === "team_match") body = `<b>${n.teamA}</b> (captain ${n.from}) challenges your team <b>${n.teamB}</b> to a $${n.stakePerPlayer}/player match.`;
     card.innerHTML = `<div>${body}</div>
       <div class="row">
         <button class="yes" data-id="${n._id}" data-act="accept">Accept</button>
@@ -343,6 +346,8 @@ async function handleNotification(n, act) {
     startCoopQuest(n.from, n.tier);
   } else if (n.kind === "dm") {
     openDMThread(n.from);
+  } else if (n.kind === "team_match") {
+    gameOutdoor.acceptTeamMatch(n.teamA, n.teamB, n.stakePerPlayer);
   }
 }
 

@@ -1,0 +1,27 @@
+# SQLite databases (server-only, never push these)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Compiled Go binaries
+/server/northpvp
+/server/northpvp.exe
+/server/*.exe
+
+# Local dev / OS junk
+.DS_Store
+Thumbs.db
+*.log
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Optional: don't accidentally publish your local Go module cache, vendor, or build output
+/server/vendor/
+
+# Node dependencies (server-node)
+node_modules/
