@@ -18,6 +18,9 @@ const state = {
   facing: "down", walking: 0,
   hp: 100,
   msg: "", msgTs: 0,
+  msgs: [],           // stacked chat bubbles: [{text, ts}], newest first
+  waypoint: null,     // { x, y, label } — active "guide me there" route
+  casinoFloor: 0,     // which floor of the VEGAS tower you are on
   others: {},
   cam: { x: 0, y: 0 },
   interiorOf: null,
@@ -177,9 +180,10 @@ const TUT = [
   "Welcome to NEIGHBORHOOD! This is your house. Use WASD or arrow keys to walk around.",
   "Press <b>I</b> for inventory — buy furniture from the store, then place it here.",
   "Press <b>Build Mode</b> (top-right) to drag furniture around. Right-click to pick up.",
-  "Press <b>ESC</b> to leave your house. Walk around the town and press <b>E</b> at any building to enter it.",
-  "Buildings: Casino (slots/roulette/blackjack), Bank (interest), Furniture Store, Mystery Boxes, Adventurers Guild (combat quests), Jobs Center (mini-games), Trim & Style (customize look), Town Plaza, Town Hall.",
-  "Press <b>T</b> to chat with a bubble. Open <b>Messenger</b> for instant DMs. Add friends to invite them to quests or duel them for money!",
+  "Press <b>ESC</b> to leave your house. Walk around town and press <b>E</b> at any building, doorway or glowing pad to enter or use it.",
+  "Lost? Press <b>M</b> for the town map. Pick your house, a friend's house or any shop and hit <b>Guide me</b> — a gold arrow and a dotted trail lead you there. The minimap sits bottom-right.",
+  "Buildings: <b>VEGAS</b> — the big neon tower, four floors and eleven games — plus the Bank (interest), Furniture Store, Mystery Boxes, Adventurers Guild (combat quests), Jobs Center (mini-games), Trim &amp; Style, Town Plaza and Town Hall.",
+  "Press <b>T</b> to chat. Up to three of your lines stack above your head — keep talking and the old ones slide up. Open <b>Messenger</b> for instant DMs, and add friends to quest or duel with them.",
   "Have fun. Build the dopest house in town."
 ];
 let tutI = 0;
@@ -205,7 +209,7 @@ function updateHUD() {
   document.getElementById("hudHp").textContent = state.hp;
   const labels = {
     neighborhood: "Town", interior_home: "Home",
-    interior_casino: "Casino", interior_bank: "Bank",
+    interior_casino: "VEGAS", interior_bank: "Bank",
     interior_furniture: "Furniture Store", interior_lootbox: "Mystery Boxes",
     interior_quest: "Adventurers Guild", interior_job: "Jobs Center",
     interior_barber: "Trim & Style", interior_plaza: "Town Plaza",
@@ -229,10 +233,14 @@ async function pushPresence() {
   if (!state.user) return;
   let area = state.area;
   if (state.area === "interior_home") area = `inside:${state.interiorOf || state.user}`;
+  // Trim expired bubbles before every push so dead lines never go out.
+  const now = Date.now();
+  state.msgs = state.msgs.filter(m => now - m.ts < GFX.CHAT_TTL).slice(0, GFX.CHAT_STACK_MAX);
   netPresence({
     x: state.pos.x, y: state.pos.y,
     area,
-    msg: (Date.now() - state.msgTs < 4000) ? state.msg : "",
+    msgs: state.msgs,
+    msg: state.msgs.length ? state.msgs[0].text : "",
     appearance: state.appearance,
     facing: state.facing,
     hp: state.hp,
@@ -364,6 +372,18 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
+// Adds a chat line to the local stack (newest first, capped). Draw code and
+// presence both read state.msgs; state.msg/msgTs stay in sync for anything
+// still reading the old single-message fields.
+function pushChatMessage(text) {
+  text = (text || "").slice(0, 80);
+  if (!text) return;
+  state.msgs.unshift({ text, ts: Date.now() });
+  state.msgs = state.msgs.slice(0, GFX.CHAT_STACK_MAX);
+  state.msg = text;
+  state.msgTs = Date.now();
+}
+
 function escapeHtml(s){return (s+"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 
-window.gameCore = { state, ctx, canvas, keys, toast, updateHUD, escapeHtml };
+window.gameCore = { state, ctx, canvas, keys, toast, updateHUD, escapeHtml, pushChatMessage };

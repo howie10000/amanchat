@@ -249,7 +249,7 @@ function updateDungeon() {
   if (keys["d"] || keys["arrowright"]) dx += 1;
   const m = Math.hypot(dx, dy) || 1;
   if (dx || dy) {
-    const speed = 2.625; // 25% slower than the original 3.5
+    const speed = 6.5; // matches the 2.5x overworld speed bump
     const nx = state.pos.x + (dx/m) * speed;
     const ny = state.pos.y + (dy/m) * speed;
     moveWithWalls(state.pos, nx, ny, 12);
@@ -390,7 +390,10 @@ function addParticles(x, y, color, count) {
   }
 }
 
+let _endingDungeon = false;
 async function endDungeon(victory) {
+  if (_endingDungeon) return;
+  _endingDungeon = true;
   if (victory) {
     state.data.money += state.questReward;
     await fbPatch(`users/${state.user}`, { money: state.data.money });
@@ -400,12 +403,14 @@ async function endDungeon(victory) {
   }
   state.hp = 100;
   state.dungeon = null;
+  state.party = null;   // otherwise the next solo run reuses the co-op seed
   state.enemies = []; state.bullets = []; state.enemyBullets = []; state.particles = [];
   const qh = gameWorld.BUILDINGS.find(b => b.type === "quest");
   state.area = "neighborhood";
   state.pos.x = qh.x + qh.w/2; state.pos.y = qh.y + qh.h + 40;
   state.facing = "down";
   updateHUD();
+  _endingDungeon = false;   // released only once we're safely back in town
 }
 
 function doAttack() {
@@ -676,7 +681,7 @@ function updateDuel() {
   if (keys["d"] || keys["arrowright"]) dx += 1;
   const m = Math.hypot(dx, dy) || 1;
   if (m > 0 && (dx || dy)) {
-    const speed = 2.625; // 25% slower than the original 3.5
+    const speed = 6.5; // matches the 2.5x overworld speed bump
     state.pos.x += (dx/m) * speed; state.pos.y += (dy/m) * speed;
     state.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
   }
@@ -722,7 +727,8 @@ function updateDuel() {
 }
 
 async function endDuel(won, alreadyEnded) {
-  if (!state.duel) return;
+  if (!state.duel || state.duel.settling) return;
+  state.duel.settling = true;   // latch synchronously, before any await
   const stake = state.duel.stake;
   const opp = state.duel.opponent;
   const id = duelId(state.user, opp);

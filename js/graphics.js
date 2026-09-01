@@ -124,7 +124,90 @@ function drawCharacter(ctx, x, y, appearance, opts = {}) {
   }
 }
 
-function drawNameAndBubble(ctx, x, y, name, msg, isYou) {
+// ---------- CHAT BUBBLE STACK ----------
+// Up to CHAT_STACK_MAX bubbles float above a character's head, newest at the
+// bottom. When a new line arrives the older ones slide up fast, then the new
+// one pops in underneath them. Everything is derived from message timestamps,
+// so remote players animate identically without syncing any animation state.
+const CHAT_STACK_MAX = 3;
+const CHAT_TTL   = 9000; // ms a bubble stays up
+const CHAT_SLIDE = 170;  // ms the older bubbles take to slide up
+const CHAT_POP   = 130;  // ms the new bubble takes to pop in
+const CHAT_ROW_H = 26;   // vertical gap between stacked bubbles
+const CHAT_BASE_Y = -52; // offset of the bottom (newest) bubble from feet
+
+function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeOutBack(t) { const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); }
+
+// Normalizes whatever presence gave us into [{text, ts}], newest first,
+// dropping expired lines. Accepts a bare string for backwards compatibility
+// with any client still sending the old single-message field.
+function normalizeMsgs(msgs) {
+  const now = Date.now();
+  let list;
+  if (!msgs) return [];
+  if (typeof msgs === "string") list = msgs ? [{ text: msgs, ts: now }] : [];
+  else if (Array.isArray(msgs)) list = msgs.map(m => (typeof m === "string" ? { text: m, ts: now } : { text: m.text || m.t || "", ts: m.ts || 0 }));
+  else return [];
+  return list
+    .filter(m => m.text && now - m.ts < CHAT_TTL)
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, CHAT_STACK_MAX);
+}
+
+function drawChatStack(ctx, x, y, msgs) {
+  const list = normalizeMsgs(msgs);
+  if (!list.length) return;
+  const now = Date.now();
+  const slideAge = now - list[0].ts;
+  const slide = easeOutCubic(clamp01(slideAge / CHAT_SLIDE));
+
+  // Draw oldest first so the newest bubble lands on top of the stack.
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i];
+    let rowY, scale = 1;
+    if (i === 0) {
+      // Newest: waits for the slide to finish, then pops in.
+      if (slideAge < CHAT_SLIDE) continue;
+      scale = easeOutBack(clamp01((slideAge - CHAT_SLIDE) / CHAT_POP));
+      rowY = CHAT_BASE_Y;
+    } else {
+      // Older: glide from the slot it used to occupy up to its new one.
+      rowY = CHAT_BASE_Y - (i - 1 + slide) * CHAT_ROW_H;
+    }
+    // Fade the last moments of a bubble's life instead of blinking it away.
+    const life = now - m.ts;
+    const alpha = life > CHAT_TTL - 500 ? clamp01((CHAT_TTL - life) / 500) : 1;
+    drawBubble(ctx, x, y + rowY, m.text, alpha, scale, i === 0);
+  }
+}
+
+function drawBubble(ctx, x, by, text, alpha, scale, isNewest) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = "12px sans-serif";
+  ctx.textAlign = "center";
+  const w = Math.min(230, ctx.measureText(text).width + 18);
+  const h = 22;
+  if (scale !== 1) { ctx.translate(x, by + h); ctx.scale(scale, scale); ctx.translate(-x, -(by + h)); }
+  ctx.fillStyle = "rgba(0,0,0,.85)";
+  roundRect(ctx, x - w/2, by, w, h, 6, true, false);
+  ctx.strokeStyle = isNewest ? "#fbbf24" : "rgba(251,191,36,.45)";
+  ctx.lineWidth = 1;
+  roundRect(ctx, x - w/2, by, w, h, 6, false, true);
+  ctx.fillStyle = "#fff";
+  ctx.fillText(text, x, by + 15);
+  if (isNewest) {
+    ctx.fillStyle = "rgba(0,0,0,.85)";
+    ctx.beginPath();
+    ctx.moveTo(x - 4, by + h); ctx.lineTo(x + 4, by + h); ctx.lineTo(x, by + h + 5);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawNameAndBubble(ctx, x, y, name, msgs, isYou) {
   ctx.font = "bold 11px sans-serif";
   ctx.textAlign = "center";
   ctx.fillStyle = isYou ? "#fbbf24" : "#fff";
@@ -132,25 +215,115 @@ function drawNameAndBubble(ctx, x, y, name, msg, isYou) {
   ctx.lineWidth = 3;
   ctx.strokeText(name, x, y - 26);
   ctx.fillText(name, x, y - 26);
-  if (msg) {
-    ctx.font = "12px sans-serif";
-    const w = Math.min(220, ctx.measureText(msg).width + 16);
-    ctx.fillStyle = "rgba(0,0,0,.85)";
-    roundRect(ctx, x - w/2, y - 56, w, 22, 6, true, false);
-    ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 1;
-    roundRect(ctx, x - w/2, y - 56, w, 22, 6, false, true);
-    ctx.fillStyle = "#fff";
-    ctx.fillText(msg, x, y - 41);
-    // tail
-    ctx.fillStyle = "rgba(0,0,0,.85)";
-    ctx.beginPath();
-    ctx.moveTo(x - 4, y - 35); ctx.lineTo(x + 4, y - 35); ctx.lineTo(x, y - 30); ctx.closePath();
-    ctx.fill();
-  }
+  drawChatStack(ctx, x, y, msgs);
 }
 
 // ---------- BUILDING ----------
+// VEGAS. A four-storey neon tower rather than the usual shop box: lit window
+// grid, a marquee, a rooftop sign and a spotlight sweep. Drawn from the ground
+// up so the ground-floor doorway still lines up with the door hitbox.
+function drawTower(ctx, b) {
+  const t = Date.now();
+  const storeys = b.storeys || 4;
+  const bodyTop = b.y + 46;
+  const bodyH = b.h - 46;
+
+  // Ground shadow
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.fillRect(b.x + 6, b.y + b.h - 8, b.w, 12);
+
+  // Tower body, tapering slightly toward the top
+  ctx.fillStyle = "#111827";
+  ctx.beginPath();
+  ctx.moveTo(b.x, b.y + b.h);
+  ctx.lineTo(b.x + 16, bodyTop);
+  ctx.lineTo(b.x + b.w - 16, bodyTop);
+  ctx.lineTo(b.x + b.w, b.y + b.h);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#0a0a0a"; ctx.lineWidth = 2; ctx.stroke();
+
+  // Lit window grid — each pane flickers on its own slow cycle
+  const cols = 7;
+  const rowH = (bodyH - 70) / storeys;
+  for (let row = 0; row < storeys; row++) {
+    const inset = 16 * (1 - row / storeys);
+    const rowY = bodyTop + 14 + row * rowH;
+    for (let col = 0; col < cols; col++) {
+      const cw = (b.w - inset * 2 - 24) / cols;
+      const wx = b.x + inset + 12 + col * cw;
+      const lit = Math.sin(t / 900 + row * 2.1 + col * 1.7) > -0.35;
+      ctx.fillStyle = lit ? ["#fcd34d", "#f472b6", "#38bdf8", "#a78bfa"][(row + col) % 4] : "#1f2937";
+      ctx.fillRect(wx, rowY, cw - 6, rowH * 0.52);
+      ctx.strokeStyle = "rgba(0,0,0,.55)"; ctx.lineWidth = 1;
+      ctx.strokeRect(wx, rowY, cw - 6, rowH * 0.52);
+    }
+    // Floor band
+    ctx.fillStyle = "rgba(251,191,36,.35)";
+    ctx.fillRect(b.x + inset + 8, rowY + rowH * 0.62, b.w - inset * 2 - 16, 2);
+  }
+
+  // Marquee over the entrance
+  const mw = b.w - 40;
+  ctx.fillStyle = "#7f1d1d";
+  ctx.fillRect(b.x + 20, b.y + b.h - 74, mw, 30);
+  ctx.strokeStyle = "#fcd34d"; ctx.lineWidth = 3;
+  ctx.strokeRect(b.x + 20, b.y + b.h - 74, mw, 30);
+  for (let i = 0; i < 14; i++) {
+    const on = ((t / 180 | 0) + i) % 3 !== 0;
+    ctx.fillStyle = on ? "#fde047" : "#78350f";
+    ctx.beginPath(); ctx.arc(b.x + 28 + i * (mw - 16) / 13, b.y + b.h - 78, 2.6, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = "#fcd34d"; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("SLOTS · TABLES · JACKPOTS", b.x + b.w / 2, b.y + b.h - 54);
+
+  // Grand doorway (matches doorHalf on the building record)
+  const half = b.doorHalf || 46;
+  ctx.fillStyle = "#0a0a0a";
+  ctx.fillRect(b.x + b.w / 2 - half, b.y + b.h - 44, half * 2, 44);
+  ctx.fillStyle = "rgba(252,211,77,.30)";
+  ctx.fillRect(b.x + b.w / 2 - half + 6, b.y + b.h - 38, half * 2 - 12, 38);
+  ctx.strokeStyle = "#fcd34d"; ctx.lineWidth = 3;
+  ctx.strokeRect(b.x + b.w / 2 - half, b.y + b.h - 44, half * 2, 44);
+  // Red carpet out the front
+  ctx.fillStyle = "#991b1b";
+  ctx.fillRect(b.x + b.w / 2 - half + 8, b.y + b.h, half * 2 - 16, 34);
+  ctx.fillStyle = "#fcd34d";
+  ctx.fillRect(b.x + b.w / 2 - half + 8, b.y + b.h, 3, 34);
+  ctx.fillRect(b.x + b.w / 2 + half - 11, b.y + b.h, 3, 34);
+
+  // Rooftop crown + big neon sign
+  ctx.fillStyle = "#1f2937";
+  ctx.fillRect(b.x + 30, b.y + 30, b.w - 60, 18);
+  const glow = 0.55 + 0.45 * Math.abs(Math.sin(t / 420));
+  ctx.save();
+  ctx.shadowColor = `rgba(251,191,36,${glow})`;
+  ctx.shadowBlur = 26;
+  ctx.fillStyle = "#fde047";
+  ctx.font = "bold 40px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText(b.label, b.x + b.w / 2, b.y + 26);
+  ctx.restore();
+  ctx.strokeStyle = "rgba(0,0,0,.8)"; ctx.lineWidth = 1.5;
+  ctx.strokeText(b.label, b.x + b.w / 2, b.y + 26);
+
+  // Spotlight beams sweeping the sky
+  for (let i = 0; i < 2; i++) {
+    const a = Math.sin(t / 1600 + i * 2.2) * 0.55 + (i ? 0.5 : -0.5);
+    ctx.save();
+    ctx.translate(b.x + (i ? b.w - 26 : 26), b.y + 34);
+    ctx.rotate(a);
+    const g = ctx.createLinearGradient(0, 0, 0, -180);
+    g.addColorStop(0, "rgba(253,224,71,.35)");
+    g.addColorStop(1, "rgba(253,224,71,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(-5, 0); ctx.lineTo(5, 0); ctx.lineTo(34, -180); ctx.lineTo(-34, -180);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+}
+
 function drawBuildingBox(ctx, b) {
+  if (b.tower) return drawTower(ctx, b);
   // Drop shadow
   ctx.fillStyle = "rgba(0,0,0,0.3)";
   ctx.fillRect(b.x + 4, b.y + b.h - 6, b.w, 8);
@@ -924,7 +1097,8 @@ function shadeColor(hex, amt) {
 }
 
 window.GFX = {
-  drawCharacter, drawNameAndBubble, drawBuildingBox, drawHouse,
+  drawCharacter, drawNameAndBubble, drawChatStack, drawBuildingBox, drawTower, drawHouse,
+  CHAT_STACK_MAX, CHAT_TTL,
   drawFurniture, roundRect, roundFill, roundStroke, shadeColor,
   DEFAULT_APPEARANCE,
 };

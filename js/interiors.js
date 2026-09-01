@@ -4,12 +4,34 @@
 // Hotspots = { x, y, label, action }
 const INTERIORS = {
   interior_home: { w: 1024, h: 640, floor: "#a16207", wall: "#fef3c7", trim: "#7c2d12" },
+  // VEGAS — the tower. One area, four floors; hotspots come from the floor
+  // you're standing on (see currentHotspots). The elevator is on every floor.
   interior_casino: {
     w: 1024, h: 640, floor: "#7f1d1d", wall: "#1f2937", trim: "#fcd34d",
-    hotspots: [
-      { x: 200, y: 240, label: "SLOT MACHINES", action: "casino_slots", icon: "slot" },
-      { x: 512, y: 240, label: "ROULETTE", action: "casino_roulette", icon: "roulette" },
-      { x: 824, y: 240, label: "BLACKJACK", action: "casino_blackjack", icon: "card" },
+    floors: [
+      { name: "GROUND FLOOR — SLOTS & QUICK BETS", floor: "#7f1d1d", wall: "#1f2937", trim: "#fcd34d",
+        hotspots: [
+          { x: 200, y: 220, label: "SLOT MACHINES", action: "casino_slots" },
+          { x: 470, y: 220, label: "COIN FLIP", action: "casino_coinflip" },
+          { x: 740, y: 220, label: "WHEEL OF FORTUNE", action: "casino_wheel" },
+        ] },
+      { name: "2F — TABLE GAMES", floor: "#14532d", wall: "#052e16", trim: "#fcd34d",
+        hotspots: [
+          { x: 200, y: 220, label: "BLACKJACK", action: "casino_blackjack" },
+          { x: 470, y: 220, label: "ROULETTE", action: "casino_roulette" },
+          { x: 740, y: 220, label: "DICE — OVER/UNDER", action: "casino_dice" },
+        ] },
+      { name: "3F — HIGH ROLLER LOUNGE", floor: "#3b0764", wall: "#1e1b4b", trim: "#c084fc",
+        hotspots: [
+          { x: 200, y: 220, label: "CRASH", action: "casino_crash" },
+          { x: 470, y: 220, label: "PLINKO", action: "casino_plinko" },
+          { x: 740, y: 220, label: "HIGHER OR LOWER", action: "casino_highlow" },
+        ] },
+      { name: "SKY DECK — THE BIG ONES", floor: "#0c4a6e", wall: "#082f49", trim: "#38bdf8",
+        hotspots: [
+          { x: 260, y: 220, label: "HORSE RACING", action: "casino_horses" },
+          { x: 640, y: 220, label: "MEGA JACKPOT SLOTS", action: "casino_jackpot" },
+        ] },
     ],
   },
   interior_bank: {
@@ -106,6 +128,7 @@ async function enterBuilding(b) {
   const area = "interior_" + b.type;
   if (!INTERIORS[area]) return;
   state.area = area;
+  state.casinoFloor = 0;
   state.pos.x = 512; state.pos.y = 540;
   state.facing = "up";
   updateHUD();
@@ -156,20 +179,48 @@ function interiorRoom() {
   return { x: 80, y: 80, w: 864, h: 480 };
 }
 
-// HOTSPOT detection
-function hotspotAtPlayer() {
+// The set of stations active right now. Multi-floor interiors (the Vegas
+// tower) swap their hotspots per floor and always keep an elevator.
+// Sits well clear of the door-side spawn point (512, 540) so arriving on a
+// floor doesn't immediately park you on the elevator pad.
+const ELEVATOR = { x: 900, y: 380, label: "ELEVATOR", action: "casino_elevator" };
+function currentHotspots() {
   const def = INTERIORS[state.area];
-  if (!def || !def.hotspots) return null;
-  for (const h of def.hotspots) {
-    if (Math.hypot(state.pos.x - h.x, state.pos.y - h.y) < 50) return h;
+  if (!def) return [];
+  if (def.floors) {
+    const f = def.floors[state.casinoFloor || 0] || def.floors[0];
+    return f.hotspots.concat([ELEVATOR]);
   }
-  return null;
+  return def.hotspots || [];
+}
+function currentFloorStyle() {
+  const def = INTERIORS[state.area];
+  if (def && def.floors) return def.floors[state.casinoFloor || 0] || def.floors[0];
+  return def;
+}
+
+// HOTSPOT detection.
+// The glowing pad is drawn centred at (h.x, h.y + HOTSPOT_PAD_DY) — detection
+// used to measure from (h.x, h.y) with a radius of 50, so standing dead-centre
+// in the visible circle put you exactly 50px away and E did nothing. Measure
+// from the pad the player can actually see, with room to spare, and pick the
+// nearest station when two pads overlap.
+const HOTSPOT_PAD_DY = 50;
+const HOTSPOT_RADIUS = 78;
+function hotspotAtPlayer() {
+  let best = null, bestD = Infinity;
+  for (const h of currentHotspots()) {
+    const d = Math.hypot(state.pos.x - h.x, state.pos.y - (h.y + HOTSPOT_PAD_DY));
+    if (d < HOTSPOT_RADIUS && d < bestD) { best = h; bestD = d; }
+  }
+  return best;
 }
 
 // DRAW INTERIOR (generic)
 function drawInterior() {
-  const def = INTERIORS[state.area];
-  if (!def) return;
+  const base = INTERIORS[state.area];
+  if (!base) return;
+  const def = Object.assign({}, base, currentFloorStyle());
   ctx.fillStyle = "#0a0a0a";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.save();
@@ -215,9 +266,7 @@ function drawInterior() {
   drawInteriorDecor(state.area);
 
   // Hotspots
-  if (def.hotspots) {
-    for (const h of def.hotspots) drawHotspot(h);
-  }
+  for (const h of currentHotspots()) drawHotspot(h);
 
   // Other players in this interior (dispX/dispY = eased position; see interpolateOthers)
   for (const [u, p] of Object.entries(state.others)) {
@@ -227,14 +276,13 @@ function drawInterior() {
       const px = typeof p.dispX === "number" ? p.dispX : p.x;
       const py = typeof p.dispY === "number" ? p.dispY : p.y;
       GFX.drawCharacter(ctx, px, py, p.appearance, { facing: p.facing });
-      GFX.drawNameAndBubble(ctx, px, py, u, p.msg, false);
+      GFX.drawNameAndBubble(ctx, px, py, u, p.msgs || p.msg, false);
     }
   }
   // You
   GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance,
                     { facing: state.facing, walking: state.walking });
-  GFX.drawNameAndBubble(ctx, state.pos.x, state.pos.y, state.user,
-                         (Date.now()-state.msgTs<4000)?state.msg:"", true);
+  GFX.drawNameAndBubble(ctx, state.pos.x, state.pos.y, state.user, state.msgs, true);
 
   // Build mode preview
   if (state.area === "interior_home" && state.placeMode) {
@@ -263,7 +311,7 @@ function drawInterior() {
 function buildingTitle(area) {
   const map = {
     interior_home: state.interiorOf === state.user ? `${state.user}'s Home` : `${state.interiorOf}'s Home (visiting)`,
-    interior_casino: "LUCKY'S CASINO",
+    interior_casino: "🎰 VEGAS — " + ((INTERIORS.interior_casino.floors[state.casinoFloor || 0] || {}).name || ""),
     interior_bank: "FIRST BANK",
     interior_furniture: "FURNITURELAND",
     interior_lootbox: "MYSTERY BOXES",
@@ -292,15 +340,7 @@ function drawHomeContents() {
 function drawInteriorDecor(area) {
   const room = interiorRoom();
   if (area === "interior_casino") {
-    // Slot machines (left), roulette table (center), blackjack table (right)
-    drawCasinoSlots(220, 240);
-    drawCasinoRoulette(512, 240);
-    drawCasinoBlackjack(820, 240);
-    // Carpet
-    ctx.fillStyle = "#7f1d1d";
-    ctx.fillRect(room.x + 40, room.y + 380, room.w - 80, 60);
-    ctx.fillStyle = "#fcd34d";
-    ctx.fillRect(room.x + 40, room.y + 380, room.w - 80, 6);
+    drawVegasFloor(state.casinoFloor || 0, room);
   } else if (area === "interior_bank") {
     // Vault on left, teller window center, ATM right
     drawBankVault(300, 240);
@@ -366,18 +406,155 @@ function drawInteriorDecor(area) {
 }
 
 function drawHotspot(h) {
-  // glowing circle marker
+  // Glowing pad. Its radius is drawn to match HOTSPOT_RADIUS so what you see
+  // is what E actually reaches.
   const t = Date.now() / 400;
-  ctx.fillStyle = `rgba(251,191,36,${0.2 + Math.sin(t) * 0.1})`;
-  ctx.beginPath(); ctx.arc(h.x, h.y + 50, 28 + Math.sin(t) * 4, 0, Math.PI*2); ctx.fill();
-  ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(h.x, h.y + 50, 28, 0, Math.PI*2); ctx.stroke();
+  const active = hotspotAtPlayer() === h;
+  ctx.fillStyle = `rgba(251,191,36,${(active ? 0.3 : 0.14) + Math.sin(t) * 0.06})`;
+  ctx.beginPath(); ctx.ellipse(h.x, h.y + HOTSPOT_PAD_DY, HOTSPOT_RADIUS, HOTSPOT_RADIUS * 0.62, 0, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = active ? "#fde047" : "#fbbf24"; ctx.lineWidth = active ? 3 : 2;
+  ctx.beginPath(); ctx.ellipse(h.x, h.y + HOTSPOT_PAD_DY, HOTSPOT_RADIUS, HOTSPOT_RADIUS * 0.62, 0, 0, Math.PI*2); ctx.stroke();
   // Label below
   ctx.fillStyle = "rgba(0,0,0,.75)";
   GFX.roundFill(ctx, h.x - 80, h.y + 80, 160, 22, 6, "rgba(0,0,0,.75)");
   ctx.fillStyle = "#fbbf24"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
   ctx.fillText(h.label, h.x, h.y + 95);
 }
+
+// ---- VEGAS tower decor, one branch per floor ----
+function drawVegasFloor(floor, room) {
+  // Neon strip along the back wall, tinted per floor
+  const neon = ["#fcd34d", "#22c55e", "#c084fc", "#38bdf8"][floor] || "#fcd34d";
+  const t = Date.now() / 300;
+  for (let i = 0; i < 22; i++) {
+    ctx.fillStyle = `rgba(${floor===1?"34,197,94":floor===2?"192,132,252":floor===3?"56,189,248":"252,211,77"},${0.35 + 0.35 * Math.sin(t + i * 0.5)})`;
+    ctx.fillRect(room.x + 16 + i * 38, room.y + 8, 26, 6);
+  }
+  if (floor === 0) {
+    drawCasinoSlots(200, 200);
+    drawCoinFlipStand(470, 200);
+    drawWheelStand(740, 200);
+  } else if (floor === 1) {
+    drawCasinoBlackjack(200, 210);
+    drawCasinoRoulette(470, 200);
+    drawDiceStand(740, 200);
+  } else if (floor === 2) {
+    drawCrashScreen(200, 200);
+    drawPlinkoBoard(470, 190);
+    drawHighLowStand(740, 200);
+  } else {
+    drawHorseTrack(260, 200);
+    drawJackpotSlots(640, 195);
+  }
+  drawElevator(ELEVATOR.x, ELEVATOR.y + 26, neon, floor);
+  // Carpet runner
+  ctx.fillStyle = "rgba(0,0,0,.22)";
+  ctx.fillRect(room.x + 40, room.y + 400, room.w - 80, 54);
+  ctx.fillStyle = neon;
+  ctx.fillRect(room.x + 40, room.y + 400, room.w - 80, 4);
+}
+function drawElevator(x, y, neon, floor) {
+  ctx.fillStyle = "#27272a"; ctx.fillRect(x - 46, y - 74, 92, 88);
+  ctx.strokeStyle = neon; ctx.lineWidth = 3; ctx.strokeRect(x - 46, y - 74, 92, 88);
+  ctx.fillStyle = "#0a0a0a"; ctx.fillRect(x - 36, y - 62, 72, 76);
+  ctx.strokeStyle = "#52525b"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x, y - 62); ctx.lineTo(x, y + 14); ctx.stroke();
+  ctx.fillStyle = neon; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText(["G","2","3","SKY"][floor] || "G", x, y - 80);
+  ctx.font = "bold 10px sans-serif";
+  ctx.fillText("ELEVATOR", x, y - 92);
+}
+function drawCoinFlipStand(x, y) {
+  ctx.fillStyle = "#7c2d12"; ctx.fillRect(x - 46, y - 10, 92, 56);
+  ctx.fillStyle = "#0a0a0a"; ctx.fillRect(x - 46, y - 10, 92, 6);
+  const spin = Math.abs(Math.cos(Date.now() / 400));
+  ctx.fillStyle = "#fcd34d";
+  ctx.beginPath(); ctx.ellipse(x, y - 34, 20 * spin + 3, 20, 0, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = "#a16207"; ctx.lineWidth = 2; ctx.stroke();
+}
+function drawWheelStand(x, y) {
+  const t = Date.now() / 900;
+  ctx.save(); ctx.translate(x, y - 10); ctx.rotate(t);
+  for (let i = 0; i < 12; i++) {
+    ctx.fillStyle = ["#dc2626","#fcd34d","#16a34a","#3b82f6"][i % 4];
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0, 0, 52, i * Math.PI/6, (i+1) * Math.PI/6); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+  ctx.fillStyle = "#e5e7eb"; ctx.beginPath(); ctx.arc(x, y - 10, 12, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = "#fafafa";
+  ctx.beginPath(); ctx.moveTo(x - 7, y - 70); ctx.lineTo(x + 7, y - 70); ctx.lineTo(x, y - 54); ctx.closePath(); ctx.fill();
+}
+function drawDiceStand(x, y) {
+  ctx.fillStyle = "#14532d"; roundFillLocal(x - 60, y - 24, 120, 60, 10, "#14532d");
+  ctx.strokeStyle = "#7c4a18"; ctx.lineWidth = 4; ctx.strokeRect(x - 60, y - 24, 120, 60);
+  for (const [dx, n] of [[-26, 5], [26, 3]]) {
+    ctx.fillStyle = "#fafafa"; roundFillLocal(x + dx - 16, y - 12, 32, 32, 6, "#fafafa");
+    ctx.fillStyle = "#0a0a0a";
+    const pips = [[0,0],[-8,-8],[8,8],[-8,8],[8,-8]].slice(0, n);
+    for (const [px, py] of pips) { ctx.beginPath(); ctx.arc(x + dx + px, y + 4 + py, 3, 0, Math.PI*2); ctx.fill(); }
+  }
+}
+function drawCrashScreen(x, y) {
+  ctx.fillStyle = "#0a0a0a"; ctx.fillRect(x - 60, y - 50, 120, 90);
+  ctx.strokeStyle = "#c084fc"; ctx.lineWidth = 3; ctx.strokeRect(x - 60, y - 50, 120, 90);
+  ctx.strokeStyle = "#22c55e"; ctx.lineWidth = 2; ctx.beginPath();
+  for (let i = 0; i <= 40; i++) {
+    const p = i / 40;
+    const yy = y + 32 - Math.pow(p, 2.2) * 74;
+    if (i === 0) ctx.moveTo(x - 52, yy); else ctx.lineTo(x - 52 + p * 104, yy);
+  }
+  ctx.stroke();
+  ctx.fillStyle = "#c084fc"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("CRASH", x, y - 58);
+}
+function drawPlinkoBoard(x, y) {
+  ctx.fillStyle = "#1e1b4b"; ctx.fillRect(x - 70, y - 40, 140, 110);
+  ctx.strokeStyle = "#c084fc"; ctx.lineWidth = 3; ctx.strokeRect(x - 70, y - 40, 140, 110);
+  ctx.fillStyle = "#e5e7eb";
+  for (let r = 0; r < 5; r++)
+    for (let c = 0; c <= r; c++) {
+      ctx.beginPath(); ctx.arc(x - r * 11 + c * 22, y - 26 + r * 17, 3, 0, Math.PI*2); ctx.fill();
+    }
+  for (let i = 0; i < 6; i++) {
+    ctx.fillStyle = i === 0 || i === 5 ? "#fbbf24" : "#475569";
+    ctx.fillRect(x - 66 + i * 22, y + 56, 20, 12);
+  }
+}
+function drawHighLowStand(x, y) {
+  ctx.fillStyle = "#3b0764"; ctx.fillRect(x - 56, y - 20, 112, 60);
+  for (const [dx, r] of [[-24, "7"], [24, "?"]]) {
+    ctx.fillStyle = "#fafafa"; roundFillLocal(x + dx - 18, y - 34, 36, 50, 5, "#fafafa");
+    ctx.fillStyle = dx < 0 ? "#dc2626" : "#0a0a0a";
+    ctx.font = "bold 20px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(r, x + dx, y - 2);
+  }
+}
+function drawHorseTrack(x, y) {
+  ctx.fillStyle = "#166534"; ctx.fillRect(x - 100, y - 46, 200, 100);
+  ctx.strokeStyle = "#fafafa"; ctx.lineWidth = 2;
+  for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo(x - 100, y - 46 + i * 25); ctx.lineTo(x + 100, y - 46 + i * 25); ctx.stroke(); }
+  const t = Date.now() / 700;
+  for (let i = 0; i < 4; i++) {
+    const hx = x - 90 + ((t * (30 + i * 7)) % 180);
+    ctx.fillStyle = ["#dc2626","#3b82f6","#fcd34d","#a855f7"][i];
+    ctx.fillRect(hx, y - 40 + i * 25, 18, 10);
+  }
+  ctx.fillStyle = "#38bdf8"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("🐎 RACE", x, y - 56);
+}
+function drawJackpotSlots(x, y) {
+  ctx.fillStyle = "#7f1d1d"; ctx.fillRect(x - 80, y - 60, 160, 130);
+  ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 4; ctx.strokeRect(x - 80, y - 60, 160, 130);
+  ctx.fillStyle = "#0a0a0a"; ctx.fillRect(x - 66, y - 24, 132, 54);
+  ctx.fillStyle = "#fcd34d"; ctx.font = "bold 26px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("777", x, y + 14);
+  const glow = 0.4 + 0.5 * Math.abs(Math.sin(Date.now() / 350));
+  ctx.fillStyle = `rgba(251,191,36,${glow})`;
+  ctx.fillRect(x - 80, y - 76, 160, 14);
+  ctx.fillStyle = "#7c2d12"; ctx.font = "bold 11px sans-serif";
+  ctx.fillText("MEGA JACKPOT", x, y - 65);
+}
+function roundFillLocal(x, y, w, h, r, color) { GFX.roundFill(ctx, x, y, w, h, r, color); }
 
 // Decor helpers
 function drawCasinoSlots(x,y) {
@@ -497,5 +674,5 @@ function drawWhackSign(x,y) {
 
 window.gameInteriors = {
   INTERIORS, enterOwnHome, enterOtherHome, enterBuilding, leaveInterior,
-  collidesInterior, interiorRoom, hotspotAtPlayer, drawInterior,
+  collidesInterior, interiorRoom, hotspotAtPlayer, currentHotspots, drawInterior,
 };
