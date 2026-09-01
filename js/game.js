@@ -50,8 +50,8 @@ function openHelp() {
     <div>🎣 Fishing Pond • 🏀 Basketball Court — walk up and press E</div>
     <div>★ Notice Board — leaderboard of the richest neighbors</div>
     <h3 class="section">VEGAS</h3>
-    <div>The tower on the west side. Four floors, eleven games — ride the
-        elevator inside to change floor.</div>
+    <div>The tower on the west side. Four floors, fourteen games — ride the
+        elevator inside to change floor. The sky deck is all glass.</div>
     <h3 class="section">SOCIAL</h3>
     <div>Friends panel — chat, quest, duel, and give a house key (🔑)</div>
     <div>Messenger — instant DMs</div>
@@ -246,16 +246,18 @@ function triggerActivity(type) {
 function triggerHotspotAction(action) {
   switch (action) {
     case "casino_slots":     gameCasino.openSlots(); break;
-    case "casino_roulette":  gameCasino.openRoulette(); break;
-    case "casino_blackjack": gameCasino.openBlackjack(); break;
     case "casino_coinflip":  gameCasino.openCoinFlip(); break;
-    case "casino_wheel":     gameCasino.openWheel(); break;
+    case "casino_scratch":   gameCasino.openScratch(); break;
+    case "casino_blackjack": gameCasino.openBlackjack(); break;
+    case "casino_roulette":  gameCasino.openRoulette(); break;
     case "casino_dice":      gameCasino.openDice(); break;
     case "casino_crash":     gameCasino.openCrash(); break;
     case "casino_plinko":    gameCasino.openPlinko(); break;
     case "casino_highlow":   gameCasino.openHighLow(); break;
+    case "casino_videopoker":gameCasino.openVideoPoker(); break;
     case "casino_horses":    gameCasino.openHorses(); break;
     case "casino_jackpot":   gameCasino.openJackpot(); break;
+    case "casino_wheel":     gameCasino.openWheel(); break;
     case "casino_elevator":  gameCasino.openElevator(); break;
     case "bank_main":        openBankMain(); break;
     case "bank_interest":    claimInterest(); break;
@@ -751,7 +753,7 @@ function update() {
     if (keys["a"] || keys["arrowleft"]) dx -= 1;
     if (keys["d"] || keys["arrowright"]) dx += 1;
     const m = Math.hypot(dx, dy) || 1;
-    const speed = 4.75; // 2.5x the old 1.9
+    const speed = 2.65; // player walking speed (matches the duel/dungeon value)
     if (m > 0.001 && (dx || dy)) {
       const nx = state.pos.x + (dx/m) * speed;
       const ny = state.pos.y + (dy/m) * speed;

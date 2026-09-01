@@ -236,6 +236,9 @@ async function pushPresence() {
   // Trim expired bubbles before every push so dead lines never go out.
   const now = Date.now();
   state.msgs = state.msgs.filter(m => now - m.ts < GFX.CHAT_TTL).slice(0, GFX.CHAT_STACK_MAX);
+  // Presence is fire-and-forget at 15Hz. A push that lands while the socket is
+  // reconnecting is expected and harmless, so swallow it rather than spraying
+  // unhandled rejections across the console.
   netPresence({
     x: state.pos.x, y: state.pos.y,
     area,
@@ -244,7 +247,7 @@ async function pushPresence() {
     appearance: state.appearance,
     facing: state.facing,
     hp: state.hp,
-  });
+  }).catch(() => {});
 }
 function startPresenceLoop() {
   pushPresence();

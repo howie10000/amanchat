@@ -142,7 +142,7 @@ html, body {
   font-size: 22px; cursor: pointer; line-height: 1;
 }
 .closeBtn:hover { color: #ef4444; }
-#menuBody { padding: 18px 22px; overflow-y: auto; }
+#menuBody { padding: 18px 22px; overflow-y: auto; overflow-x: hidden; }
 
 /* Shop / list items */
 .shopItem, .invItem, .friendItem {
@@ -423,3 +423,154 @@ h3.section { margin: 14px 0 8px; font-size: 14px; color: #fbbf24; letter-spacing
 .enemyLegend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: middle; border: 1px solid #0a0a0a; }
 .weaponInfo { padding: 10px 14px; background: #0a0e15; border: 1px solid #2a3344; border-radius: 8px; font-size: 13px; }
 .weaponInfo > div { margin: 4px 0; }
+
+
+/* ============ CASINO GAME UI ============ */
+#menuBody canvas { max-width: 100%; border-radius: 10px; }
+
+.betBar {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  margin: 12px 0; flex-wrap: wrap;
+}
+.betBar label { font-size: 11px; letter-spacing: 1px; color: #8aa0bf; font-weight: 700; }
+.betBar input {
+  width: 108px; padding: 8px 10px; background: #06090f; color: #fcd34d;
+  border: 1px solid #fcd34d; border-radius: 6px; font-size: 15px;
+  font-weight: 700; text-align: center;
+}
+.betBar .chip {
+  padding: 6px 10px; background: #1b2434; color: #cbd5e1; font-weight: 700;
+  border: 1px solid #2a3344; border-radius: 6px; cursor: pointer; font-size: 12px;
+}
+.betBar .chip:hover { border-color: #fbbf24; color: #fbbf24; }
+
+.bigBtn { padding: 12px 26px !important; font-size: 15px !important; letter-spacing: .5px; }
+.btnRow { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 6px; }
+
+.gameResult {
+  min-height: 30px; margin: 12px 0 4px; font-size: 18px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  /* A long win breakdown has to wrap, not stretch the dialog sideways. */
+  flex-wrap: wrap; max-width: 100%;
+}
+.gameResult .winDetail {
+  flex-basis: 100%; font-size: 12px; font-weight: 600; margin-top: 4px;
+  color: #8aa0bf; line-height: 1.7; word-break: break-word;
+}
+.gameResult.big { font-size: 22px; }
+.cWin  { color: #22c55e; }
+.cLose { color: #ef4444; }
+.cSpin { color: #fbbf24; }
+
+.payTable { margin-top: 14px; text-align: left; }
+.payRow {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 5px 10px; border-bottom: 1px solid #1c2432; font-size: 13px;
+}
+.payRow b { color: #fbbf24; }
+
+/* ---- slots ---- */
+.slotWrap { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+/* Pinned to the canvas width: otherwise the win breakdown's max-content
+   width stretches this column and pushes the paytable off the row. */
+.slotMain { flex: 0 0 340px; width: 340px; max-width: 100%; text-align: center; }
+.slotSide { flex: 1 1 260px; min-width: 0; }
+.lineGrid { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+
+/* ---- roulette ---- */
+.roulWrap { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.roulWheelSide { flex: 0 0 auto; text-align: center; }
+.roulBetSide { flex: 1; min-width: 0; }
+.rlTable { display: flex; gap: 3px; margin: 8px 0; }
+.rlZero {
+  width: 30px; display: flex; align-items: center; justify-content: center;
+  background: #15803d; color: #fff; font-weight: 700; border-radius: 4px;
+  cursor: pointer; border: 2px solid transparent;
+}
+.rlNums { flex: 1; display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; }
+.rlNum {
+  aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #fff; border-radius: 3px;
+  cursor: pointer; border: 2px solid transparent;
+}
+.rlNum.red, .rlChip.red   { background: #b91c1c; }
+.rlNum.black, .rlChip.black { background: #18181b; }
+.rlChip.green, .rlZero    { background: #15803d; }
+.rlOutsideRow { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.rlOutside {
+  padding: 9px 4px; text-align: center; font-size: 11px; font-weight: 700;
+  background: #1b2434; border: 2px solid #2a3344; border-radius: 4px; cursor: pointer;
+  color: #cbd5e1;
+}
+.rlOutside.red { background: #7f1d1d; color: #fff; }
+.rlOutside.black { background: #18181b; color: #fff; }
+.rlNum:hover, .rlOutside:hover, .rlZero:hover { border-color: #fbbf24; }
+.rlNum.selected, .rlOutside.selected, .rlZero.selected {
+  border-color: #fbbf24; box-shadow: 0 0 8px rgba(251,191,36,.7);
+}
+.rlBets { margin: 8px 0; font-size: 12px; }
+.rlHistory { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+.rlChip {
+  min-width: 24px; padding: 3px 6px; border-radius: 4px; font-size: 11px;
+  font-weight: 700; color: #fff; text-align: center; background: #334155;
+}
+.rlChip.big { font-size: 20px; padding: 6px 14px; }
+
+/* ---- dice ---- */
+.diceTotal {
+  background: #fbbf24; color: #1a1a1a; border-radius: 6px;
+  padding: 2px 12px; font-size: 20px;
+}
+
+/* ---- plinko ---- */
+.plinkoSlots { display: flex; gap: 3px; max-width: 460px; margin: 8px auto 0; }
+.plinkoSlot {
+  flex: 1; text-align: center; padding: 6px 0; border-radius: 4px;
+  font-size: 11px; font-weight: 700; color: #fff;
+  border: 2px solid transparent; transition: transform .15s;
+}
+.plinkoSlot.hit { border-color: #fbbf24; transform: translateY(-4px); box-shadow: 0 0 10px rgba(251,191,36,.8); }
+
+/* ---- cards (higher/lower + video poker) ---- */
+.pCard {
+  width: 62px; height: 88px; background: #fafafa; border-radius: 8px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 6px 8px; color: #18181b; font-weight: 800;
+  box-shadow: 0 3px 10px rgba(0,0,0,.5); border: 1px solid #cbd5e1;
+}
+.pCard.red { color: #dc2626; }
+.pCard .r { font-size: 20px; line-height: 1; }
+.pCard .s { font-size: 22px; text-align: right; line-height: 1; }
+.pCard.back {
+  background: repeating-linear-gradient(45deg, #1e3a8a, #1e3a8a 6px, #1e40af 6px, #1e40af 12px);
+  color: #93c5fd; align-items: center; justify-content: center; font-size: 26px;
+}
+.hlRow { display: flex; gap: 18px; justify-content: center; align-items: center; margin: 16px 0; }
+.hlArrow { font-size: 26px; color: #64748b; }
+.vpHand { display: flex; gap: 10px; justify-content: center; margin: 16px 0; }
+.vpSlot { display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; }
+.holdTag {
+  font-size: 10px; font-weight: 800; letter-spacing: 1px; padding: 4px 8px;
+  border-radius: 4px; background: #1b2434; color: #64748b; border: 1px solid #2a3344;
+}
+.holdTag.on { background: #fbbf24; color: #1a1a1a; border-color: #fbbf24; }
+.vpPay { max-height: 210px; overflow-y: auto; }
+
+/* ---- scratch cards ---- */
+.scratchGrid {
+  display: grid; grid-template-columns: repeat(3, 76px); gap: 8px;
+  justify-content: center; margin: 16px 0;
+}
+.scratchCell {
+  height: 76px; display: flex; align-items: center; justify-content: center;
+  font-size: 30px; border-radius: 8px; cursor: pointer;
+  background: linear-gradient(135deg, #94a3b8, #64748b);
+  color: #e2e8f0; border: 2px solid #475569; user-select: none;
+}
+.scratchCell.locked { cursor: default; opacity: .5; }
+.scratchCell:hover:not(.locked):not(.open) { filter: brightness(1.2); }
+.scratchCell.open { background: #0a0e15; border-color: #2a3344; }
+.scratchCell.hit { border-color: #fbbf24; box-shadow: 0 0 12px rgba(251,191,36,.8); }
+
+/* ---- horses ---- */
+.raceRow .info small { color: #8aa0bf; }
