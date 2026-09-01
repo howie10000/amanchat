@@ -20,31 +20,41 @@ document.querySelectorAll(".actBtn").forEach(b => {
     else if (a === "dms") gameSocial.openSidePanelDMs();
     else if (a === "inv") openInventory();
     else if (a === "build") toggleBuildMode();
+    else if (a === "map") openTownMap();
     else if (a === "help") openHelp();
   };
 });
 
 function openHelp() {
-  openMenu("CONTROLS", `
+  openMenu("CONTROLS & GUIDE", `
     <h3 class="section">MOVEMENT</h3>
     <div>WASD or Arrow keys — walk around</div>
     <div>E — interact / enter / use station</div>
-    <div>ESC — close menu / leave building</div>
-    <div>T — open chat bubble (Enter to send)</div>
+    <div>M — town map &amp; directions (guides you to any place or person)</div>
+    <div>ESC — close menu / clear route / leave building</div>
+    <div>T — chat bubble (up to 3 stack above your head)</div>
     <div>I — inventory (toggle)</div>
+    <h3 class="section">GETTING AROUND</h3>
+    <div>Lost? Press <b>M</b>, pick a destination, hit <b>Guide me</b>. A gold arrow
+        and a dotted trail point the way and the minimap marks it.</div>
+    <div>Your own house has a gold nameplate. The minimap (bottom-right) shows
+        your house in gold and friends' houses in green.</div>
     <h3 class="section">COMBAT</h3>
     <div>1 — sword • 2 — pistol</div>
     <div>Left click — attack toward mouse</div>
     <h3 class="section">AT HOME</h3>
-    <div>Build Mode: drag furniture to move • right-click to pick up</div>
+    <div>Build Mode: drag furniture to move • right-click to pick it back up</div>
     <div>Inventory: pick an item then click in your room to place</div>
     <div>L — lock / unlock your front door</div>
     <h3 class="section">OUTDOORS</h3>
-    <div>🎣 Fishing Pond &amp; 🏀 Basketball Court — walk up and press E</div>
+    <div>🎣 Fishing Pond • 🏀 Basketball Court — walk up and press E</div>
     <div>★ Notice Board — leaderboard of the richest neighbors</div>
+    <h3 class="section">VEGAS</h3>
+    <div>The tower on the west side. Four floors, eleven games — ride the
+        elevator inside to change floor.</div>
     <h3 class="section">SOCIAL</h3>
     <div>Friends panel — chat, quest, duel, and give a house key (🔑)</div>
-    <div>Messenger — instant DMs (live updates)</div>
+    <div>Messenger — instant DMs</div>
   `);
 }
 
@@ -55,7 +65,7 @@ function handleKey(e) {
   if (document.activeElement === document.getElementById("chatBox")) {
     if (k === "enter") {
       const v = document.getElementById("chatBox").value.trim();
-      if (v) { state.msg = v.slice(0, 80); state.msgTs = Date.now(); pushPresence(); }
+      if (v) { pushChatMessage(v); pushPresence(); }
       document.getElementById("chatBox").value = "";
       document.getElementById("chatInput").classList.add("hidden");
       document.getElementById("chatBox").blur();
@@ -79,7 +89,11 @@ function handleKey(e) {
   } else if (k === "q") {
     gameSocial.openSidePanelDMs();
   } else if (k === "i") {
-    openInventory();
+    // Toggle, not just open — the help text always claimed I toggled.
+    if (!document.getElementById("menu").classList.contains("hidden")) closeMenu();
+    else openInventory();
+  } else if (k === "m") {
+    openTownMap();
   } else if (k === "b" && state.area === "interior_home" && state.interiorOf === state.user) {
     toggleBuildMode();
   } else if (k === "l" && state.area === "interior_home" && state.interiorOf === state.user) {
@@ -88,6 +102,7 @@ function handleKey(e) {
     tryInteract();
   } else if (k === "escape") {
     if (state.buildMode) { toggleBuildMode(); return; }
+    if (state.waypoint) { clearWaypoint(); return; }
     if (state.area.startsWith("interior_")) gameInteriors.leaveInterior();
     else if (state.area === "dungeon") {
       if (confirm("Abandon the quest? You'll forfeit the reward.")) gameCombat.endDungeon(false);
@@ -233,6 +248,15 @@ function triggerHotspotAction(action) {
     case "casino_slots":     gameCasino.openSlots(); break;
     case "casino_roulette":  gameCasino.openRoulette(); break;
     case "casino_blackjack": gameCasino.openBlackjack(); break;
+    case "casino_coinflip":  gameCasino.openCoinFlip(); break;
+    case "casino_wheel":     gameCasino.openWheel(); break;
+    case "casino_dice":      gameCasino.openDice(); break;
+    case "casino_crash":     gameCasino.openCrash(); break;
+    case "casino_plinko":    gameCasino.openPlinko(); break;
+    case "casino_highlow":   gameCasino.openHighLow(); break;
+    case "casino_horses":    gameCasino.openHorses(); break;
+    case "casino_jackpot":   gameCasino.openJackpot(); break;
+    case "casino_elevator":  gameCasino.openElevator(); break;
     case "bank_main":        openBankMain(); break;
     case "bank_interest":    claimInterest(); break;
     case "furniture_catalog":openFurnitureCatalog(); break;
@@ -250,6 +274,85 @@ function triggerHotspotAction(action) {
     case "mayor_desk":       openMayorDesk(); break;
   }
 }
+
+
+// ---------- TOWN MAP & DIRECTIONS ----------
+// Everything a player might want to walk to, resolved to a world coordinate
+// just in front of its door. setWaypoint() then drives the on-screen arrow,
+// the dotted trail, and the minimap marker until you arrive.
+function mapDestinations() {
+  const out = [];
+  for (const b of gameWorld.BUILDINGS) {
+    out.push({ group: "Places in town", label: b.label, x: b.x + b.w / 2, y: b.y + b.h + 30 });
+  }
+  out.push({ group: "Places in town", label: "\ud83c\udf33 Central Park Fountain", x: gameWorld.FOUNTAIN.x, y: gameWorld.FOUNTAIN.y + 90 });
+  out.push({ group: "Places in town", label: "\ud83c\udfa3 Fishing Pond", x: gameWorld.FISH_SPOT.x, y: gameWorld.FISH_SPOT.y });
+  out.push({ group: "Places in town", label: "\ud83c\udfc0 Basketball Court", x: gameWorld.BALL_SPOT.x, y: gameWorld.BALL_SPOT.y });
+  out.push({ group: "Places in town", label: "\ud83c\udfaa Amphitheater Stage", x: gameWorld.STAGE.x, y: gameWorld.STAGE.y + 150 });
+  out.push({ group: "Places in town", label: "\u2605 Notice Board", x: gameWorld.NOTICE_SPOT.x, y: gameWorld.NOTICE_SPOT.y });
+
+  const users = state._userCache || {};
+  const me = users[state.user];
+  if (me && me.houseIndex != null) {
+    const r = gameWorld.houseRect(me.houseIndex);
+    if (r) out.push({ group: "Homes", label: "\ud83c\udfe0 YOUR HOUSE", x: r.x + r.w / 2, y: r.y + r.h + 26,
+                      addr: gameWorld.houseAddress(me.houseIndex), mine: true });
+  }
+  for (const f of Object.keys(state.friends || {})) {
+    const u = users[f];
+    if (!u || u.houseIndex == null) continue;
+    const r = gameWorld.houseRect(u.houseIndex);
+    if (r) out.push({ group: "Homes", label: `\ud83d\udc65 ${f}'s house`, x: r.x + r.w / 2, y: r.y + r.h + 26,
+                      addr: gameWorld.houseAddress(u.houseIndex), online: !!state.others[f] });
+  }
+  return out;
+}
+
+function openTownMap() {
+  const dests = mapDestinations();
+  const groups = ["Homes", "Places in town"];
+  let html = `<p class="muted">Pick a destination and a gold arrow will point you there the whole way.
+    Press <b>M</b> any time, <b>ESC</b> to clear the route.</p>`;
+  if (state.waypoint) {
+    html += `<div class="shopItem" style="border-color:#fbbf24;">
+      <div class="info">Currently guiding you to <b>${escapeHtml(state.waypoint.label)}</b></div>
+      <button class="menuBtn red" onclick="clearWaypoint(); closeMenu();">Clear route</button>
+    </div>`;
+  }
+  for (const g of groups) {
+    const rows = dests.filter(d => d.group === g);
+    if (!rows.length) continue;
+    html += `<h3 class="section">${g.toUpperCase()}</h3>`;
+    if (g === "Homes" && rows.length === 1) {
+      html += `<p class="muted"><i>Add friends to see their houses listed here.</i></p>`;
+    }
+    for (const d of rows) {
+      const dist = Math.round(Math.hypot(state.pos.x - d.x, state.pos.y - d.y));
+      html += `<div class="shopItem">
+        <div class="info"><b${d.mine ? ' style="color:#fbbf24"' : ""}>${d.label}</b>
+          ${d.online ? '<span class="statusDot online"></span>' : ""}
+          <br/><small>${d.addr ? escapeHtml(d.addr) + " · " : ""}${dist} steps away</small></div>
+        <button class="menuBtn gold" onclick="guideMeTo(${Math.round(d.x)},${Math.round(d.y)},'${d.label.replace(/'/g, "\\'")}')">Guide me</button>
+      </div>`;
+    }
+  }
+  openMenu("\ud83d\uddfa\ufe0f TOWN MAP & DIRECTIONS", html, true);
+}
+window.openTownMap = openTownMap;
+
+window.guideMeTo = (x, y, label) => {
+  state.waypoint = { x, y, label };
+  closeMenu();
+  if (state.area !== "neighborhood") {
+    toast(`Route set to <b>${label}</b> \u2014 head outside (ESC) and follow the gold arrow.`, 3500);
+  } else {
+    toast(`Following the gold arrow to <b>${label}</b>. ESC to clear.`, 3000);
+  }
+};
+window.clearWaypoint = () => {
+  state.waypoint = null;
+  toast("Route cleared.");
+};
 
 // ---------- INVENTORY ----------
 function openInventory() {
@@ -648,7 +751,7 @@ function update() {
     if (keys["a"] || keys["arrowleft"]) dx -= 1;
     if (keys["d"] || keys["arrowright"]) dx += 1;
     const m = Math.hypot(dx, dy) || 1;
-    const speed = 1.9; // another 25% slower (was 2.55; original 3.4)
+    const speed = 4.75; // 2.5x the old 1.9
     if (m > 0.001 && (dx || dy)) {
       const nx = state.pos.x + (dx/m) * speed;
       const ny = state.pos.y + (dy/m) * speed;
@@ -660,25 +763,28 @@ function update() {
         if (gameInteriors.collidesInterior(nx, ny)) blocked = true;
       }
       if (!blocked) {
-        // try axis-separated
         state.pos.x = nx; state.pos.y = ny;
       } else {
-        // try axis individually
-        const nx2 = state.pos.x + (dx/m) * speed;
-        const ny2 = state.pos.y + (dy/m) * speed;
-        if (state.area === "neighborhood") {
-          if (!gameWorld.collidesNeighborhood(nx2, state.pos.y)) state.pos.x = nx2;
-          if (!gameWorld.collidesNeighborhood(state.pos.x, ny2)) state.pos.y = ny2;
-        } else {
-          if (!gameInteriors.collidesInterior(nx2, state.pos.y)) state.pos.x = nx2;
-          if (!gameInteriors.collidesInterior(state.pos.x, ny2)) state.pos.y = ny2;
-        }
+        // Slide along whichever axis is still free (wall-hugging instead of
+        // dead-stopping). nx/ny are already the candidate positions.
+        const hits = state.area === "neighborhood"
+          ? gameWorld.collidesNeighborhood
+          : gameInteriors.collidesInterior;
+        if (!hits(nx, state.pos.y)) state.pos.x = nx;
+        if (!hits(state.pos.x, ny)) state.pos.y = ny;
       }
       state.walking++;
       state.facing = Math.abs(dx) > Math.abs(dy)
         ? (dx > 0 ? "right" : "left")
         : (dy > 0 ? "down" : "up");
     }
+  }
+
+  // Arrived? Drop the route so the arrow stops nagging.
+  if (state.waypoint && state.area === "neighborhood" &&
+      Math.hypot(state.pos.x - state.waypoint.x, state.pos.y - state.waypoint.y) < 70) {
+    toast(`Arrived at <b>${state.waypoint.label}</b>.`);
+    state.waypoint = null;
   }
 
   // bounds (final clamp)

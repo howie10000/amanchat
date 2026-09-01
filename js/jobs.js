@@ -2,10 +2,11 @@
 
 function openPizzaJob() {
   openMenu("PIZZA DELIVERY", `
-    <p>Drive the pizza from left to right. Avoid the cars. Delivery pays $80, +$5 for each second remaining.</p>
+    <p>Survive the traffic to reach the drop-off. Delivery pays $80, plus $5 for every second left on the clock.</p>
     <canvas id="pizzaCanvas" class="miniCanvas" width="540" height="280"></canvas>
     <div class="center">
       <span id="pizzaTime">Time: 30s</span>
+      <span style="margin-left:20px;" id="pizzaProgress">Drop-off in 20s</span>
       <span style="margin-left:20px;" id="pizzaResult"></span>
     </div>
     <p class="muted center">Up/Down arrows or W/S to move</p>
@@ -15,15 +16,16 @@ function openPizzaJob() {
 function runPizzaGame() {
   const cv = document.getElementById("pizzaCanvas"); if (!cv) return;
   const c = cv.getContext("2d");
-  let py = 140, vy = 0;
+  let py = 140;
   let cars = [];
-  let t = 30, score = 0;
+  // The delivery lands at DELIVER_AT seconds; the clock runs to LIMIT. The
+  // bonus used to be unreachable because the run only ended when the clock hit
+  // zero, so "seconds remaining" was always zero.
+  const DELIVER_AT = 20, LIMIT = 30;
+  let t = LIMIT, elapsed = 0;
   let dead = false, won = false;
   const start = Date.now();
   let raf;
-  const onkey = e => {
-    if (state.area.startsWith("interior_")) {} // allow
-  };
   function spawn() {
     cars.push({ x: 540, y: 40 + Math.random() * 200, w: 60, h: 28, speed: 2.5 + Math.random() * 2 });
   }
@@ -32,16 +34,19 @@ function runPizzaGame() {
     if (!document.getElementById("pizzaCanvas")) return;
     if (dead || won) return;
     spawnT++;
-    if (spawnT > 50 - Math.min(30, score)) { spawn(); spawnT = 0; }
+    if (spawnT > 50 - Math.min(30, elapsed)) { spawn(); spawnT = 0; }
     // input
     const k = window.gameCore.keys;
     if (k["w"] || k["arrowup"]) py -= 4;
     if (k["s"] || k["arrowdown"]) py += 4;
     py = Math.max(20, Math.min(260, py));
-    score = Math.floor((Date.now() - start) / 1000);
-    t = 30 - score;
+    elapsed = Math.floor((Date.now() - start) / 1000);
+    t = LIMIT - elapsed;
     document.getElementById("pizzaTime").textContent = `Time: ${Math.max(0, t)}s`;
-    if (t <= 0) { won = true; finish(); return; }
+    const left = Math.max(0, DELIVER_AT - elapsed);
+    document.getElementById("pizzaProgress").textContent =
+      left > 0 ? `Drop-off in ${left}s` : "Drop-off reached!";
+    if (elapsed >= DELIVER_AT) { won = true; finish(); return; }
 
     cars.forEach(c => c.x -= c.speed);
     cars = cars.filter(c => c.x > -80);
@@ -111,8 +116,13 @@ function openTypingJob() {
   const inp = document.getElementById("typingInput");
   setTimeout(() => inp.focus(), 50);
   let timer = setInterval(() => {
+    // The countdown outlived its own menu: closing the test left this interval
+    // running forever, throwing on the removed element once a second (and
+    // stacking a fresh one every time the job was reopened).
+    const el = document.getElementById("typingTime");
+    if (!el) { clearInterval(timer); return; }
     time--;
-    document.getElementById("typingTime").textContent = time + "s";
+    el.textContent = time + "s";
     if (time <= 0) { clearInterval(timer); finishTyping(); }
   }, 1000);
   inp.addEventListener("input", () => {
@@ -134,12 +144,14 @@ function openTypingJob() {
     }
   });
   function finishTyping() {
+    const resultEl = document.getElementById("typingResult");
+    if (!resultEl) return;   // menu already closed — nothing to score
     inp.disabled = true;
     const pay = correct * 4;
     state.data.money += pay;
     fbPatch(`users/${state.user}`, { money: state.data.money });
     updateHUD();
-    document.getElementById("typingResult").innerHTML =
+    resultEl.innerHTML =
       `<span style="color:#10b981">+$${pay}</span> earned (${correct} words).
        <div style="margin-top:8px;"><button class="menuBtn" onclick="openTypingJob()">Play again</button></div>`;
   }

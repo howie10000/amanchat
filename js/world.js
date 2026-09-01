@@ -19,8 +19,14 @@ const BUILDINGS = [
   { x: 2080, y: 60, w: 240, h: 200, type: "mayor", label: "TOWN HALL",
     color: "#fef3c7", roofColor: "#fbbf24", signColor: "#7c2d12", grand: true },
 
+  // VEGAS — the tower. Its own oversized lot on the west end, four storeys
+  // of neon that you can see from most of the map. `tower` swaps the drawing
+  // routine; `doorHalf` widens the entrance to match the grand doorway.
+  { x: 240, y: 150, w: 320, h: 350, type: "casino", label: "VEGAS",
+    color: "#7f1d1d", roofColor: "#0a0a0a", signColor: "#fcd34d",
+    tower: true, storeys: 4, doorHalf: 46 },
+
   // West side shops (left of mayor avenue)
-  { x: 380,  y: 320, w: 220, h: 180, type: "casino",    label: "LUCKY'S CASINO",    color: "#7f1d1d", roofColor: "#1f2937", signColor: "#fcd34d" },
   { x: 700,  y: 320, w: 220, h: 180, type: "bank",      label: "FIRST BANK",        color: "#14532d", roofColor: "#1e293b", signColor: "#fcd34d" },
   { x: 1020, y: 320, w: 220, h: 180, type: "furniture", label: "FURNITURELAND",     color: "#5b21b6", roofColor: "#1e293b", signColor: "#fcd34d" },
   { x: 1340, y: 320, w: 220, h: 180, type: "lootbox",   label: "MYSTERY BOXES",     color: "#9d174d", roofColor: "#1e293b", signColor: "#fcd34d" },
@@ -72,17 +78,22 @@ const PARK_BENCHES = [];
 // Fishing pond (west) — solo activity
 const POND = { x: 620, y: 1600, rx: 300, ry: 190 };
 const POND_DOCK = { x: POND.x, y: POND.y + POND.ry - 6, w: 90, h: 120 }; // dock reaching into water from south
-const FISH_SPOT = { x: POND.x, y: POND.y + POND.ry + 70, r: 46 };
+const FISH_SPOT = { x: POND.x, y: POND.y + POND.ry + 70, r: 78 };
 // Basketball court (east) — solo activity
 const COURT = { x: 3300, y: 1420, w: 760, h: 380 };
 const HOOPS = [
   { x: COURT.x + 24, y: COURT.y + COURT.h/2 },
   { x: COURT.x + COURT.w - 24, y: COURT.y + COURT.h/2 },
 ];
-const BALL_SPOT = { x: COURT.x + COURT.w/2, y: COURT.y + COURT.h/2, r: 60 };
+const BALL_SPOT = { x: COURT.x + COURT.w/2, y: COURT.y + COURT.h/2, r: 90 };
 // Town notice board (center) — leaderboard / who's online
 const NOTICE = { x: 2170, y: 1330, w: 60, h: 70 };
-const NOTICE_SPOT = { x: NOTICE.x + NOTICE.w/2, y: NOTICE.y + NOTICE.h + 30, r: 44 };
+const NOTICE_SPOT = { x: NOTICE.x + NOTICE.w/2, y: NOTICE.y + NOTICE.h + 30, r: 74 };
+const ACTIVITY_SPOTS = [
+  { spot: FISH_SPOT,   type: "fishing",     label: "GO FISHING" },
+  { spot: BALL_SPOT,   type: "basketball",  label: "SHOOT HOOPS" },
+  { spot: NOTICE_SPOT, type: "leaderboard", label: "READ NOTICE BOARD" },
+];
 // Amphitheater (center) — social hangout, stage + curved seating
 const STAGE = { x: 2200, y: 1720, r: 90 };
 const AMPHI_BENCHES = [];
@@ -123,6 +134,13 @@ const FLOWERS = [];
 
 // HOUSES — 5 rows of 12 below the activity band
 const HOUSE_ROW_Y = [2000, 2280, 2560, 2840, 3120];
+// Each residential row is a named street. Houses are numbered along it, so
+// "12 Maple Row" is a thing you can tell a friend and they can actually find.
+const STREET_NAMES = ["MAPLE ROW", "OAK LANE", "CEDAR WAY", "BIRCH DRIVE", "WILLOW COURT"];
+function houseAddress(i) {
+  const row = Math.floor(i / HOUSES_PER_ROW);
+  return `${(i % HOUSES_PER_ROW) + 1} ${STREET_NAMES[row] || "UNKNOWN ST"}`;
+}
 const HOUSES_PER_ROW = 12;
 const HOUSE_W = 240, HOUSE_H = 200, HOUSE_GAP_X = 100;
 const HOUSE_COUNT = HOUSES_PER_ROW * HOUSE_ROW_Y.length;
@@ -134,14 +152,84 @@ function houseRect(i) {
   return { x: HOUSES_START_X + col * (HOUSE_W + HOUSE_GAP_X), y: HOUSE_ROW_Y[row], w: HOUSE_W, h: HOUSE_H };
 }
 
-// Only show/collide with houses belonging to players who are actually online.
-function onlineHouseUsers() {
+// Houses that exist on the map right now: your own, anyone currently online,
+// and every friend. Friends used to vanish the moment they logged off, which
+// made "walk to my friend's house" impossible to plan — and left the map
+// full of empty lots.
+function visibleHouseUsers() {
   const users = state._userCache || {};
+  const friends = state.friends || {};
   const out = {};
   for (const [u, info] of Object.entries(users)) {
-    if (u === state.user || state.others[u]) out[u] = info;
+    if (!info || info.houseIndex == null) continue;
+    if (u === state.user || state.others[u] || friends[u]) out[u] = info;
   }
   return out;
+}
+// Kept as an alias: older call sites (and the mayor tools) still use this name.
+const onlineHouseUsers = visibleHouseUsers;
+
+// Wooden signposts at the junctions people actually stand at when they're
+// lost. Each arm points along +1 (east) or -1 (west), or straight up/down.
+const SIGNPOSTS = [
+  // In the gap between the west shop row and Mayor's Avenue.
+  { x: 1830, y: 495, arms: [
+      { text: "← VEGAS & SHOPS", dir: -1 },
+      { text: "TOWN HALL ↑", dir: 0 },
+      { text: "PARK & HOMES ↓", dir: 0 } ] },
+  // East end of Main Street, past Town Plaza.
+  { x: 3720, y: 495, arms: [
+      { text: "← GUILD · JOBS · PLAZA", dir: 0 },
+      { text: "PARK & HOMES ↓", dir: 0 } ] },
+  // Where the park meets the activity band.
+  { x: PARK.x + PARK.w / 2, y: PARK.y + PARK.h + 40, arms: [
+      { text: "↑ MAIN STREET", dir: 0 },
+      { text: "FISHING · BALL · STAGE ↓", dir: 0 } ] },
+  // Just north of the residential road.
+  { x: MAYOR_AVE.x + 110, y: 1870, arms: [
+      { text: "↑ TOWN CENTRE", dir: 0 },
+      { text: "RESIDENTIAL — 5 STREETS ↓", dir: 0 } ] },
+];
+
+function drawSignpost(sp) {
+  ctx.fillStyle = "rgba(0,0,0,.3)";
+  ctx.beginPath(); ctx.ellipse(sp.x, sp.y + 4, 14, 5, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = "#7c4a18";
+  ctx.fillRect(sp.x - 4, sp.y - 78, 8, 82);
+  ctx.fillStyle = "#5b3210";
+  ctx.fillRect(sp.x - 4, sp.y - 78, 3, 82);
+  sp.arms.forEach((arm, i) => {
+    const ay = sp.y - 70 + i * 22;
+    ctx.font = "bold 11px sans-serif";
+    const w = ctx.measureText(arm.text).width + 18;
+    const ax = arm.dir === 0 ? sp.x - w / 2 : arm.dir < 0 ? sp.x - w + 4 : sp.x - 4;
+    ctx.fillStyle = "#a16207";
+    ctx.fillRect(ax, ay, w, 18);
+    ctx.strokeStyle = "#5b3210"; ctx.lineWidth = 2;
+    ctx.strokeRect(ax, ay, w, 18);
+    ctx.fillStyle = "#fef3c7"; ctx.textAlign = "center";
+    ctx.fillText(arm.text, ax + w / 2, ay + 13);
+  });
+}
+
+// Street-name blade at the head of each residential row.
+function drawStreetSigns() {
+  for (let row = 0; row < HOUSE_ROW_Y.length; row++) {
+    const y = HOUSE_ROW_Y[row] - 46;
+    for (const x of [HOUSES_START_X - 70, HOUSES_START_X + HOUSES_PER_ROW * (HOUSE_W + HOUSE_GAP_X) - 30]) {
+      ctx.fillStyle = "#3f3f46";
+      ctx.fillRect(x - 2, y, 4, 46);
+      ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
+      const label = STREET_NAMES[row];
+      const w = ctx.measureText(label).width + 26;
+      ctx.fillStyle = "#15803d";
+      GFX.roundFill(ctx, x - w / 2, y - 20, w, 22, 4, "#15803d");
+      ctx.strokeStyle = "#fafafa"; ctx.lineWidth = 1.5;
+      GFX.roundStroke(ctx, x - w / 2, y - 20, w, 22, 4);
+      ctx.fillStyle = "#fafafa";
+      ctx.fillText(label, x, y - 5);
+    }
+  }
 }
 
 // ---- zone predicates ----
@@ -200,6 +288,14 @@ function inGreenSpace(x, y) {
   for (const b of BUILDINGS) {
     if (x > b.x - 30 && x < b.x + b.w + 30 && y > b.y - 30 && y < b.y + b.h + 50) return false;
   }
+  // Keep the outdoor activity pads walkable and visible.
+  for (const a of ACTIVITY_SPOTS) {
+    if (Math.hypot(x - a.spot.x, y - a.spot.y) < a.spot.r + 30) return false;
+  }
+  // Same for the signposts — a sign you can't read is no help.
+  for (const sp of SIGNPOSTS) {
+    if (Math.abs(x - sp.x) < 130 && y > sp.y - 110 && y < sp.y + 40) return false;
+  }
   // Main north-south walkway from the park down through the activity band
   // (park ends y=1280, activity band starts y=1360 — this strip used to be
   // wide open and trees could cluster across it with nothing to stop them).
@@ -233,7 +329,8 @@ function collidesNeighborhood(nx, ny) {
   for (let i = 1; i < BUILDINGS.length; i++) {
     const b = BUILDINGS[i];
     if (nx > b.x && nx < b.x + b.w && ny > b.y + 24 && ny < b.y + b.h - 4) {
-      const dxL = b.x + b.w/2 - 22, dxR = b.x + b.w/2 + 22;
+      const half = b.doorHalf || 22;
+      const dxL = b.x + b.w/2 - half, dxR = b.x + b.w/2 + half;
       if (!(nx > dxL && nx < dxR && ny > b.y + b.h - 30)) return true;
     }
   }
@@ -251,6 +348,7 @@ function collidesNeighborhood(nx, ny) {
   if (Math.hypot(nx - STAGE.x, ny - STAGE.y) < STAGE.r * 0.5) return true; // stage core
   if (nx > NOTICE.x - 6 && nx < NOTICE.x + NOTICE.w + 6 && ny > NOTICE.y && ny < NOTICE.y + NOTICE.h) return true;
   for (const t of TREES) if (Math.hypot(nx - t.x, ny - t.y + 6) < 12) return true;
+  for (const sp of SIGNPOSTS) if (Math.abs(nx - sp.x) < 8 && Math.abs(ny - sp.y) < 8) return true;
   for (const b of allBenches()) {
     if (nx > b.x - 22 && nx < b.x + 22 && ny > b.y - 6 && ny < b.y + 8) return true;
   }
@@ -258,12 +356,16 @@ function collidesNeighborhood(nx, ny) {
 }
 
 // Find building/house near player (door zone)
+// Door zones are deliberately roomier than the doorway art: the old band was
+// only 60px tall and stopped exactly where leaveInterior() drops you, so
+// stepping out of a building left you one pixel outside its own "press E"
+// zone. Both zones now overlap the spawn-out point comfortably.
 function buildingAtPlayer() {
   for (const b of BUILDINGS) {
-    const halfW = b.grand ? 60 : 22;
+    const halfW = (b.doorHalf || (b.grand ? 60 : 22)) + 8;
     const dxL = b.x + b.w/2 - halfW, dxR = b.x + b.w/2 + halfW;
     if (state.pos.x > dxL && state.pos.x < dxR &&
-        state.pos.y > b.y + b.h - 24 && state.pos.y < b.y + b.h + 36) return b;
+        state.pos.y > b.y + b.h - 30 && state.pos.y < b.y + b.h + 50) return b;
   }
   return null;
 }
@@ -271,19 +373,39 @@ function houseAtPlayer() {
   const users = onlineHouseUsers();
   for (const [u, info] of Object.entries(users)) {
     const r = houseRect(info.houseIndex); if (!r) continue;
-    const dxL = r.x + r.w/2 - 22, dxR = r.x + r.w/2 + 22;
+    const dxL = r.x + r.w/2 - 30, dxR = r.x + r.w/2 + 30;
     if (state.pos.x > dxL && state.pos.x < dxR &&
-        state.pos.y > r.y + r.h - 8 && state.pos.y < r.y + r.h + 32) return u;
+        state.pos.y > r.y + r.h - 14 && state.pos.y < r.y + r.h + 46) return u;
   }
   return null;
 }
 // Outdoor activity near player (fishing / basketball / notice board)
 function activityAtPlayer() {
   const px = state.pos.x, py = state.pos.y;
-  if (Math.hypot(px - FISH_SPOT.x, py - FISH_SPOT.y) < FISH_SPOT.r) return { type: "fishing", label: "GO FISHING" };
-  if (Math.hypot(px - BALL_SPOT.x, py - BALL_SPOT.y) < BALL_SPOT.r) return { type: "basketball", label: "SHOOT HOOPS" };
-  if (Math.hypot(px - NOTICE_SPOT.x, py - NOTICE_SPOT.y) < NOTICE_SPOT.r) return { type: "leaderboard", label: "READ NOTICE BOARD" };
-  return null;
+  let best = null, bestD = Infinity;
+  for (const a of ACTIVITY_SPOTS) {
+    const d = Math.hypot(px - a.spot.x, py - a.spot.y);
+    if (d < a.spot.r && d < bestD) { best = a; bestD = d; }
+  }
+  return best;
+}
+// Draws the stand-here ring for each outdoor activity so the E zone is visible
+// rather than something you have to find by walking into it.
+function drawActivityRings() {
+  const t = Date.now() / 500;
+  const active = activityAtPlayer();
+  for (const a of ACTIVITY_SPOTS) {
+    const on = active && active.type === a.type;
+    ctx.fillStyle = `rgba(251,191,36,${(on ? 0.22 : 0.09) + Math.sin(t) * 0.04})`;
+    ctx.beginPath();
+    ctx.ellipse(a.spot.x, a.spot.y, a.spot.r, a.spot.r * 0.55, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = on ? "#fde047" : "rgba(251,191,36,.6)";
+    ctx.lineWidth = on ? 3 : 2;
+    ctx.beginPath();
+    ctx.ellipse(a.spot.x, a.spot.y, a.spot.r, a.spot.r * 0.55, 0, 0, Math.PI*2);
+    ctx.stroke();
+  }
 }
 
 // ----- DRAW -----
@@ -301,6 +423,9 @@ function drawNeighborhood() {
   drawCourt();
   drawAmphitheater();
   drawNoticeBoard();
+  drawActivityRings();
+  drawStreetSigns();
+  for (const sp of SIGNPOSTS) drawSignpost(sp);
   for (const t of TREES) drawTree(t);
   for (let x = 80; x < WORLD_W; x += 240) { drawLamp(x, 510); drawLamp(x, 600); }
 
@@ -310,6 +435,11 @@ function drawNeighborhood() {
   for (const [u, info] of Object.entries(users)) {
     const r = houseRect(info.houseIndex); if (!r) continue;
     GFX.drawHouse(ctx, r, u, u === state.user);
+    // Street address under the nameplate — so "come to 4 Oak Lane" works.
+    ctx.fillStyle = "rgba(0,0,0,.6)";
+    GFX.roundFill(ctx, r.x + r.w/2 - 46, r.y - 42, 92, 16, 4, "rgba(0,0,0,.6)");
+    ctx.fillStyle = "#cbd5e1"; ctx.font = "10px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(houseAddress(info.houseIndex), r.x + r.w/2, r.y - 31);
     // little lock badge on locked houses
     if (info.locked) {
       ctx.fillStyle = "rgba(0,0,0,.6)";
@@ -324,15 +454,141 @@ function drawNeighborhood() {
     const px = typeof p.dispX === "number" ? p.dispX : p.x;
     const py = typeof p.dispY === "number" ? p.dispY : p.y;
     GFX.drawCharacter(ctx, px, py, p.appearance, { facing: p.facing });
-    GFX.drawNameAndBubble(ctx, px, py, u, p.msg, false);
+    GFX.drawNameAndBubble(ctx, px, py, u, p.msgs || p.msg, false);
   }
   GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance,
                     { facing: state.facing, walking: state.walking });
-  GFX.drawNameAndBubble(ctx, state.pos.x, state.pos.y, state.user,
-                         (Date.now()-state.msgTs<4000)?state.msg:"", true);
+  GFX.drawNameAndBubble(ctx, state.pos.x, state.pos.y, state.user, state.msgs, true);
+
+  drawRouteTrail();
 
   ctx.restore();
   drawInteractionPrompt();
+  drawWaypointArrow();
+  drawMinimap();
+}
+
+// ---- Route guidance: a dotted trail on the ground toward the waypoint ----
+function drawRouteTrail() {
+  const wp = state.waypoint;
+  if (!wp) return;
+  ctx.save();
+  ctx.setLineDash([14, 12]);
+  ctx.lineDashOffset = -(Date.now() / 26) % 26;
+  ctx.strokeStyle = "rgba(251,191,36,.7)";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(state.pos.x, state.pos.y + 8);
+  ctx.lineTo(wp.x, wp.y);
+  ctx.stroke();
+  ctx.restore();
+  // Destination pin
+  const bob = Math.sin(Date.now() / 300) * 5;
+  ctx.fillStyle = "rgba(0,0,0,.3)";
+  ctx.beginPath(); ctx.ellipse(wp.x, wp.y, 16, 6, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = "#fbbf24";
+  ctx.beginPath();
+  ctx.arc(wp.x, wp.y - 34 + bob, 12, Math.PI * 0.15, Math.PI * 0.85, true);
+  ctx.lineTo(wp.x, wp.y - 8 + bob);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#7c2d12";
+  ctx.beginPath(); ctx.arc(wp.x, wp.y - 36 + bob, 5, 0, Math.PI*2); ctx.fill();
+}
+
+// ---- Route guidance: screen-anchored arrow + distance readout ----
+function drawWaypointArrow() {
+  const wp = state.waypoint;
+  if (!wp) return;
+  const dx = wp.x - state.pos.x, dy = wp.y - state.pos.y;
+  const dist = Math.round(Math.hypot(dx, dy));
+  const ang = Math.atan2(dy, dx);
+  const cx = canvas.width / 2, cy = 92;
+  ctx.save();
+  GFX.roundFill(ctx, cx - 170, cy - 30, 340, 54, 10, "rgba(0,0,0,.82)");
+  ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 2;
+  GFX.roundStroke(ctx, cx - 170, cy - 30, 340, 54, 10);
+  // arrow
+  ctx.save();
+  ctx.translate(cx - 132, cy - 3);
+  ctx.rotate(ang);
+  ctx.fillStyle = "#fbbf24";
+  ctx.beginPath();
+  ctx.moveTo(16, 0); ctx.lineTo(-10, -11); ctx.lineTo(-4, 0); ctx.lineTo(-10, 11);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = "#fbbf24"; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "left";
+  ctx.fillText(wp.label, cx - 106, cy - 6);
+  ctx.fillStyle = "#94a3b8"; ctx.font = "11px sans-serif";
+  ctx.fillText(`${dist} steps away  —  ESC or M to clear`, cx - 106, cy + 12);
+  ctx.restore();
+}
+
+// ---- Minimap: the whole town, scaled into the bottom-right corner ----
+const MINIMAP = { w: 190, h: 148, pad: 12 };
+function drawMinimap() {
+  const mw = MINIMAP.w, mh = MINIMAP.h;
+  const ox = canvas.width - mw - MINIMAP.pad;
+  const oy = canvas.height - mh - MINIMAP.pad - 46;
+  const sx = mw / WORLD_W, sy = mh / WORLD_H;
+  const M = (x, y) => ({ x: ox + x * sx, y: oy + y * sy });
+
+  ctx.save();
+  GFX.roundFill(ctx, ox - 4, oy - 4, mw + 8, mh + 8, 8, "rgba(6,10,16,.82)");
+  ctx.strokeStyle = "#2a3344"; ctx.lineWidth = 2;
+  GFX.roundStroke(ctx, ox - 4, oy - 4, mw + 8, mh + 8, 8);
+  ctx.fillStyle = "#33511a"; ctx.fillRect(ox, oy, mw, mh);
+
+  // roads
+  ctx.fillStyle = "#3f3f46";
+  ctx.fillRect(ox, oy + 520 * sy, mw, Math.max(1, 80 * sy));
+  ctx.fillRect(ox, oy + 1900 * sy, mw, Math.max(1, 40 * sy));
+  for (const ry of [2240, 2520, 2800, 3080]) ctx.fillRect(ox, oy + ry * sy, mw, Math.max(1, 40 * sy));
+  // park + pond + court
+  ctx.fillStyle = "#4d7c0f";
+  ctx.fillRect(ox + PARK.x * sx, oy + PARK.y * sy, PARK.w * sx, PARK.h * sy);
+  ctx.fillStyle = "#0e7490";
+  ctx.beginPath(); ctx.ellipse(ox + POND.x * sx, oy + POND.y * sy, POND.rx * sx, POND.ry * sy, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = "#b45309";
+  ctx.fillRect(ox + COURT.x * sx, oy + COURT.y * sy, COURT.w * sx, COURT.h * sy);
+
+  // buildings — Vegas gets a bigger, brighter dot
+  for (const b of BUILDINGS) {
+    ctx.fillStyle = b.tower ? "#f43f5e" : b.grand ? "#fbbf24" : "#e2e8f0";
+    const s2 = b.tower ? 5 : 3;
+    const q = M(b.x + b.w/2, b.y + b.h/2);
+    ctx.fillRect(q.x - s2/2, q.y - s2/2, s2, s2);
+  }
+  // houses
+  const users = visibleHouseUsers();
+  const friends = state.friends || {};
+  for (const [u, info] of Object.entries(users)) {
+    const r = houseRect(info.houseIndex); if (!r) continue;
+    const q = M(r.x + r.w/2, r.y + r.h/2);
+    ctx.fillStyle = u === state.user ? "#fbbf24" : friends[u] ? "#22c55e" : "#94a3b8";
+    ctx.fillRect(q.x - 1.5, q.y - 1.5, 3, 3);
+  }
+  // other players
+  for (const p of Object.values(state.others)) {
+    if (p.area !== "neighborhood") continue;
+    const q = M(typeof p.dispX === "number" ? p.dispX : p.x, typeof p.dispY === "number" ? p.dispY : p.y);
+    ctx.fillStyle = "#38bdf8";
+    ctx.beginPath(); ctx.arc(q.x, q.y, 2, 0, Math.PI*2); ctx.fill();
+  }
+  // waypoint
+  if (state.waypoint) {
+    const q = M(state.waypoint.x, state.waypoint.y);
+    ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(q.x, q.y, 4 + Math.sin(Date.now()/250) * 1.5, 0, Math.PI*2); ctx.stroke();
+  }
+  // you
+  const me = M(state.pos.x, state.pos.y);
+  ctx.fillStyle = "#fafafa";
+  ctx.beginPath(); ctx.arc(me.x, me.y, 3, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = "#0a0a0a"; ctx.lineWidth = 1; ctx.stroke();
+
+  ctx.fillStyle = "#64748b"; ctx.font = "9px sans-serif"; ctx.textAlign = "right";
+  ctx.fillText("M — map & directions", ox + mw, oy - 8);
+  ctx.restore();
 }
 
 function drawGrassPattern() {
@@ -655,5 +911,6 @@ function drawInteractionPrompt() {
 window.gameWorld = {
   WORLD_W, WORLD_H, BUILDINGS, HOUSES_PER_ROW, HOUSE_ROW_Y, HOUSE_COUNT,
   houseRect, drawNeighborhood, collidesNeighborhood, buildingAtPlayer, houseAtPlayer,
-  activityAtPlayer, PARK, FOUNTAIN, POND, COURT,
+  activityAtPlayer, visibleHouseUsers, houseAddress, STREET_NAMES,
+  PARK, FOUNTAIN, POND, COURT, STAGE, NOTICE, FISH_SPOT, BALL_SPOT, NOTICE_SPOT,
 };

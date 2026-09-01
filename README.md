@@ -9,13 +9,27 @@ A multiplayer browser game built on the idea you sent your friend:
 - **Live multiplayer** — see other players walk around (server pushes presence at 10 Hz over WebSocket)
 - **In-person chat bubbles** (press `T`) + **saved DMs** (press `Q`)
 - **City center buildings**:
-  - 🎰 **Casino** — Slots, Coin Flip, High-Roller Roulette
+  - 🎰 **VEGAS** — a four-storey neon tower with eleven games:
+    - *Ground floor* — Slots, Coin Flip, Wheel of Fortune
+    - *2F Table Games* — Blackjack (naturals pay 3:2), Roulette, Dice Over/Under
+    - *3F High Roller Lounge* — Crash, Plinko, Higher or Lower
+    - *Sky Deck* — Horse Racing, Mega Jackpot Slots ($250 minimum, 500× top prize)
+
+    Ride the elevator inside to change floor.
   - 🏦 **Bank** — Earn 5% interest every 2 minutes
   - 🛋️ **Furniture Store** — Buy furniture (catalog stored server-side)
   - 🎁 **Lootbox Shop** — Gacha for random furniture (incl. legendary Gold Statue)
   - ⚔️ **Quest House** — Top-down combat for money
-  - 💼 **Workplace** — Safe job, $60 per shift
+  - 💼 **Workplace** — Pizza delivery, typing test, whack-a-mole
   - 💬 **Social Plaza** — Hangout / mayor announcements
+- **Wayfinding** — press `M` for the town map. Pick your house, a friend's
+  house, or any shop and hit **Guide me**: a gold arrow, a dotted ground trail
+  and a minimap marker lead you there. Every residential row is a named street
+  (Maple Row, Oak Lane, Cedar Way, Birch Drive, Willow Court) and every house
+  shows its number, so "come to 4 Oak Lane" is directions a friend can follow.
+  Wooden signposts stand at the junctions, and a minimap sits bottom-right.
+- **Stacked chat** — up to 3 of your chat lines float above your head at once.
+  Each new line slides the older ones up and pops in underneath.
 - **🏛️ Mayor's House** — at top of neighborhood. Log in as `mayor` for admin panel
   (post announcements, give money, reset HP, delete accounts)
 - **Top-down combat mode** — aim with mouse, `1` = sword, `2` = pistol, left-click to attack
@@ -107,11 +121,13 @@ Update the live game by pushing to `main` — GitHub Pages redeploys automatical
 | Key | Action |
 | --- | --- |
 | WASD / Arrows | Move |
-| E | Enter building / house |
-| T | Chat bubble |
+| E | Enter building / house / use a glowing station |
+| M | Town map & directions |
+| T | Chat bubble (up to 3 stack above your head) |
 | Q | Direct messages |
-| I | Inventory & place furniture (inside your house) |
-| ESC | Close menu / leave building |
+| I | Inventory & place furniture (toggle) |
+| L | Lock / unlock your front door (at home) |
+| ESC | Close menu / clear route / leave building |
 | 1 / 2 | Sword / Pistol (in combat) |
 | Left Click | Attack (combat) or place furniture (interior) |
 
