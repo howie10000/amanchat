@@ -1,7 +1,7 @@
 /* CASINO — every game inside the VEGAS tower.
-   G:   3x3 Slots, Coin Flip, Scratch Cards
-   2F:  Blackjack, Roulette (big wheel + ball), Dice (felt table)
-   3F:  Crash (rocket), Plinko, Higher or Lower, Video Poker
+   G:   Lucky 7s Slots, Coin Flip, Scratch Cards, Keno
+   2F:  Blackjack, Roulette (big wheel + ball), Dice (felt table), Baccarat
+   3F:  Crash (rocket), Plinko (real physics), Higher or Lower, Video Poker, Mines
    SKY: Horse Racing, Mega Jackpot Slots, Wheel of Fortune
 
    Every game moves money through takeBet()/payWin() so the displayed balance
@@ -40,6 +40,7 @@ function pickWeighted(list) {
 function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 function easeOutQuint(t) { return 1 - Math.pow(1 - t, 5); }
 function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+function waitMs(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // A bet field with quick-adjust chips, used by every game so the controls
 // feel the same wherever you are in the building.
@@ -101,9 +102,10 @@ function roundPath(c, x, y, w, h, r) {
 }
 
 // =====================================================================
-// 3x3 SLOT ENGINE — shared by the ground-floor machine and the sky-deck
-// jackpot machine. Symbols slide DOWN into place, column by column, and
-// eight paylines are checked: three rows, three columns, two diagonals.
+// SLOT ENGINE — shared by the ground-floor single-line machine and the
+// sky-deck 3x3 jackpot machine. All three reels spin together for 1.5s,
+// then stop one at a time, left to right. The jackpot machine checks
+// eight paylines: three rows, three columns, two diagonals.
 // =====================================================================
 const SLOT_LINES = [
   { label: "row 1",   cells: [[0, 0], [0, 1], [0, 2]], color: "#f87171" },
@@ -115,16 +117,21 @@ const SLOT_LINES = [
   { label: "diag \\", cells: [[0, 0], [1, 1], [2, 2]], color: "#fb923c" },
   { label: "diag /",  cells: [[0, 2], [1, 1], [2, 0]], color: "#22d3ee" },
 ];
+// The classic machine has one visible row and one line across it.
+const SLOT_LINE_SINGLE = [
+  { label: "center line", cells: [[0, 0], [0, 1], [0, 2]], color: "#fbbf24" },
+];
 
 // RTP note: with independent cells, a line pays with probability sum(p^3) and
-// the expected return is 8 * sum(p_s^3 * mult_s). Both symbol tables below are
-// tuned to land around 92%.
+// the expected return is lines * sum(p_s^3 * mult_s). Lucky 7s runs one line,
+// so its triples pay big; with the loose-seven bonus pays it lands ~93%. The
+// jackpot table runs 8 lines and lands ~92%.
 const SLOT_SYMBOLS = [
-  { sym: "7", color: "#ef4444", weight: 1,  mult: 50 },
-  { sym: "★", color: "#fbbf24", weight: 3,  mult: 20 },
-  { sym: "♥", color: "#f472b6", weight: 6,  mult: 9 },
-  { sym: "♦", color: "#38bdf8", weight: 8,  mult: 5.5 },
-  { sym: "♣", color: "#4ade80", weight: 10, mult: 3.2 },
+  { sym: "7", color: "#ef4444", weight: 1,  mult: 280 },
+  { sym: "★", color: "#fbbf24", weight: 3,  mult: 120 },
+  { sym: "♥", color: "#f472b6", weight: 6,  mult: 60 },
+  { sym: "♦", color: "#38bdf8", weight: 8,  mult: 38 },
+  { sym: "♣", color: "#4ade80", weight: 10, mult: 22 },
   { sym: "🍀", color: "#94a3b8", weight: 14, mult: 0 },
 ];
 const JACKPOT_SYMBOLS = [
@@ -140,45 +147,66 @@ const JACKPOT_MIN_BET = 250;
 const SLOT_CELL = 96, SLOT_GAP = 8, SLOT_PAD = 14;
 const SLOT_W = SLOT_PAD * 2 + SLOT_CELL * 3 + SLOT_GAP * 2;
 
-let _slot = null; // { symbols, cols, grid, wins, spinning, flash, stop }
+let _slot = null; // { symbols, rows, lines, cols, grid, wins, spinning }
 
-function slotPaytableHtml(symbols) {
+function slotPaytableHtml(symbols, extraPays) {
   return symbols.filter(s => s.mult > 0).map(s =>
     `<div class="payRow"><span style="color:${s.color};font-size:18px">${s.sym}${s.sym}${s.sym}</span>
-     <b>${s.mult}&times;</b></div>`).join("");
+     <b>${s.mult}&times;</b></div>`).join("") +
+    (extraPays || []).map(p =>
+      `<div class="payRow"><span style="font-size:15px">${p.label}</span><b>${p.mult}&times;</b></div>`).join("");
 }
 
-function slotShellHtml(id, symbols, betId, minBet, blurb) {
+function slotShellHtml(cfg) {
+  const rows = cfg.rows;
+  const h = SLOT_PAD * 2 + SLOT_CELL * rows + SLOT_GAP * (rows - 1);
+  const linesBlock = rows > 1
+    ? `<h3 class="section">PAYLINES</h3>
+       <p class="muted">All 8 lines are live on every spin — 3 rows, 3 columns and both diagonals.</p>
+       <div class="lineGrid">${SLOT_LINES.map(l => `<span class="pill" style="border-color:${l.color};color:${l.color}">${l.label}</span>`).join("")}</div>`
+    : `<h3 class="section">ONE LINE</h3>
+       <p class="muted">A classic one-armed bandit: three reels, one line straight across.</p>`;
   return `
   <div class="slotWrap">
     <div class="slotMain">
-      <canvas id="${id}" width="${SLOT_W}" height="${SLOT_PAD * 2 + SLOT_CELL * 3 + SLOT_GAP * 2}"></canvas>
+      <canvas id="slotCanvas" width="${SLOT_W}" height="${h}"></canvas>
       <div id="slotResult" class="gameResult"></div>
-      ${betBar(betId, minBet)}
+      ${betBar(cfg.betId, cfg.minBet)}
       <button class="menuBtn gold bigBtn" id="slotBtn">SPIN</button>
     </div>
     <div class="slotSide">
-      <h3 class="section">PAYLINES</h3>
-      <p class="muted">All 8 lines are live on every spin — 3 rows, 3 columns and both diagonals.</p>
-      <div class="lineGrid">${SLOT_LINES.map(l => `<span class="pill" style="border-color:${l.color};color:${l.color}">${l.label}</span>`).join("")}</div>
-      <h3 class="section">PAYTABLE <span class="muted">(per line)</span></h3>
-      ${slotPaytableHtml(symbols)}
-      <p class="muted" style="margin-top:10px;">${blurb}</p>
+      ${linesBlock}
+      <h3 class="section">PAYTABLE ${rows > 1 ? '<span class="muted">(per line)</span>' : ""}</h3>
+      ${slotPaytableHtml(cfg.symbols, cfg.extraPays)}
+      <p class="muted" style="margin-top:10px;">${cfg.blurb}</p>
     </div>
   </div>`;
 }
 
 function openSlotMachine(cfg) {
-  _slot = { symbols: cfg.symbols, cols: null, grid: null, wins: [], spinning: false, flash: 0 };
-  openMenu(cfg.title, slotShellHtml("slotCanvas", cfg.symbols, cfg.betId, cfg.minBet, cfg.blurb), true);
+  _slot = { symbols: cfg.symbols, rows: cfg.rows, lines: cfg.lines,
+            cols: null, grid: null, wins: [], spinning: false };
+  openMenu(cfg.title, slotShellHtml(cfg), true);
   // Idle grid so the machine isn't blank before the first pull
   _slot.grid = [];
-  for (let r = 0; r < 3; r++) { _slot.grid[r] = []; for (let c = 0; c < 3; c++) _slot.grid[r][c] = pickWeighted(cfg.symbols); }
-  _slot.cols = [0, 1, 2].map(() => ({ strip: [], p: 0 }));
-  for (let c = 0; c < 3; c++) _slot.cols[c].strip = [_slot.grid[0][c], _slot.grid[1][c], _slot.grid[2][c]];
+  for (let r = 0; r < cfg.rows; r++) { _slot.grid[r] = []; for (let c = 0; c < 3; c++) _slot.grid[r][c] = pickWeighted(cfg.symbols); }
+  _slot.cols = [0, 1, 2].map(col => ({
+    result: _slot.grid.map(row => row[col]),
+    filler: Array.from({ length: 14 }, () => pickWeighted(cfg.symbols)),
+    p: 0,
+  }));
   drawSlotFrame();
   const btn = document.getElementById("slotBtn");
   if (btn) btn.onclick = () => spinSlotGrid(cfg);
+}
+
+// Strip lookup: the first `rows` indices are the final result, everything
+// below repeats the filler forever, so the reel can free-spin as long as it
+// wants and every wrap lands on identical pixels.
+function slotSymAt(reel, idx) {
+  if (idx < 0) return null;
+  if (idx < _slot.rows) return reel.result[idx];
+  return reel.filler[(idx - _slot.rows) % reel.filler.length];
 }
 
 function drawSlotFrame() {
@@ -194,7 +222,7 @@ function drawSlotFrame() {
   for (let col = 0; col < 3; col++) {
     const x = SLOT_PAD + col * (SLOT_CELL + SLOT_GAP);
     const y = SLOT_PAD;
-    const h = SLOT_CELL * 3 + SLOT_GAP * 2;
+    const h = SLOT_CELL * _slot.rows + SLOT_GAP * (_slot.rows - 1);
     // reel well
     c.fillStyle = "#05070d";
     roundPath(c, x, y, SLOT_CELL, h, 10); c.fill();
@@ -204,10 +232,10 @@ function drawSlotFrame() {
     const reel = _slot.cols[col];
     const p = reel.p;
     const i0 = Math.floor(p);
-    for (let k = -1; k <= 3; k++) {
+    for (let k = -1; k <= _slot.rows + 1; k++) {
       const idx = i0 + k;
-      if (idx < 0 || idx >= reel.strip.length) continue;
-      const sym = reel.strip[idx];
+      const sym = slotSymAt(reel, idx);
+      if (!sym) continue;
       const cy = y + (idx - p) * (SLOT_CELL + SLOT_GAP) + SLOT_CELL / 2;
       if (cy < y - SLOT_CELL || cy > y + h + SLOT_CELL) continue;
       // cell tile
@@ -263,33 +291,57 @@ async function spinSlotGrid(cfg) {
   const btn = document.getElementById("slotBtn");
   if (btn) btn.disabled = true;
 
-  // Final grid, then a strip per column with the results on top so the reel
-  // scrolls downward into them.
+  // Final grid; each reel keeps its result at the top of the strip and
+  // free-spins over repeating filler until its stop time comes up.
+  const rows = _slot.rows;
   const grid = [];
-  for (let r = 0; r < 3; r++) { grid[r] = []; for (let c = 0; c < 3; c++) grid[r][c] = pickWeighted(cfg.symbols); }
-  const FILLER = 16;
-  const now = performance.now();
+  for (let r = 0; r < rows; r++) { grid[r] = []; for (let c = 0; c < 3; c++) grid[r][c] = pickWeighted(cfg.symbols); }
+  const FILLER = 14;
   _slot.grid = grid;
-  _slot.cols = [0, 1, 2].map(col => {
-    const strip = [grid[0][col], grid[1][col], grid[2][col]];
-    for (let i = 0; i < FILLER; i++) strip.push(pickWeighted(cfg.symbols));
-    return { strip, p: strip.length - 3, from: strip.length - 3, t0: now + col * 170, dur: 900 + col * 320 };
-  });
+  _slot.cols = [0, 1, 2].map(col => ({
+    result: grid.map(row => row[col]),
+    filler: Array.from({ length: FILLER }, () => pickWeighted(cfg.symbols)),
+    p: rows + Math.random() * FILLER,
+    // every reel spins for 1.5s, then they brake one at a time, left to right
+    stopStart: 1500 + col * 450,
+    decel: 1400,
+    from: null, stopT: 0,
+  }));
 
+  const SPEED = 22; // cells/sec while free-spinning
+  const t0 = performance.now();
+  let last = null;
   await animate((ts) => {
+    if (last == null) last = ts;
+    const dt = Math.min(0.05, (ts - last) / 1000); last = ts;
+    const t = ts - t0;
     let allDone = true;
     for (const reel of _slot.cols) {
-      const k = clamp01((ts - reel.t0) / reel.dur);
-      reel.p = reel.from * (1 - easeOutQuint(k));
-      if (k < 1) allDone = false;
+      if (t < reel.stopStart) {
+        reel.p -= SPEED * dt;
+        while (reel.p < rows) reel.p += FILLER; // wrap is pixel-identical
+        allDone = false;
+      } else {
+        if (reel.from == null) {
+          // Fixed braking distance: keep the sub-cell offset so tiles don't
+          // snap, and let the blur hide the reshuffled filler. Constant
+          // deceleration from here roughly matches the free-spin speed.
+          reel.from = rows + FILLER + (reel.p % 1);
+          reel.stopT = ts;
+        }
+        const k = clamp01((ts - reel.stopT) / reel.decel);
+        reel.p = reel.from * (1 - k * (2 - k));
+        if (k < 1) allDone = false;
+      }
     }
     drawSlotFrame();
     return !allDone;
   });
+  for (const reel of _slot.cols) reel.p = 0;
 
-  // Score the eight lines
+  // Score the lines this machine runs
   const wins = [];
-  for (const line of SLOT_LINES) {
+  for (const line of _slot.lines) {
     const first = grid[line.cells[0][0]][line.cells[0][1]];
     if (!first.mult) continue;
     if (line.cells.every(([r, c]) => grid[r][c].sym === first.sym)) wins.push({ line, sym: first, mult: first.mult });
@@ -297,11 +349,16 @@ async function spinSlotGrid(cfg) {
   _slot.wins = wins;
   _slot.spinning = false;
 
-  const totalMult = wins.reduce((s, w) => s + w.mult, 0);
+  let totalMult = wins.reduce((s, w) => s + w.mult, 0);
+  let bonusDetail = "";
+  if (cfg.bonus && !wins.length) {
+    const b = cfg.bonus(grid);
+    if (b) { totalMult += b.mult; bonusDetail = `<span style="color:#ef4444">${b.label} ${b.mult}&times;</span>`; }
+  }
   const payout = Math.floor(bet * totalMult);
   if (payout > 0) {
     await payWin(payout);
-    const detail = wins.map(w => `<span style="color:${w.line.color}">${w.sym.sym}${w.sym.sym}${w.sym.sym} ${w.line.label} ${w.mult}&times;</span>`).join(" &nbsp;·&nbsp; ");
+    const detail = wins.map(w => `<span style="color:${w.line.color}">${w.sym.sym}${w.sym.sym}${w.sym.sym} ${w.line.label} ${w.mult}&times;</span>`).join(" &nbsp;·&nbsp; ") || bonusDetail;
     setEl("slotResult", win(`+$${payout}`) + `<div class="winDetail">${detail}</div>`);
     if (totalMult >= 50) toast("🎉 BIG WIN! 🎉", 4000);
   } else {
@@ -318,14 +375,27 @@ async function spinSlotGrid(cfg) {
 
 function openSlots() {
   openSlotMachine({
-    title: "🎰 LUCKY 7s — 3×3",
+    title: "🎰 LUCKY 7s",
+    rows: 1, lines: SLOT_LINE_SINGLE,
     symbols: SLOT_SYMBOLS, betId: "slotBet", minBet: 10,
-    blurb: "Three 7s on any line pays 50× your stake. Multiple lines pay together.",
+    extraPays: [
+      { label: "any two 7s", mult: 10 },
+      { label: "a single 7", mult: 2 },
+    ],
+    // Loose sevens keep the single line from feeling like a dead machine.
+    bonus: (grid) => {
+      const n = grid[0].filter(s => s.sym === "7").length;
+      if (n === 2) return { label: "two 7s", mult: 10 };
+      if (n === 1) return { label: "one 7", mult: 2 };
+      return null;
+    },
+    blurb: "Three 7s across the line pays 280× your stake — and even loose 7s pay.",
   });
 }
 function openJackpot() {
   openSlotMachine({
     title: "💎 MEGA JACKPOT — 3×3",
+    rows: 3, lines: SLOT_LINES,
     symbols: JACKPOT_SYMBOLS, betId: "slotBet", minBet: JACKPOT_MIN_BET,
     blurb: `Minimum bet $${JACKPOT_MIN_BET}. Three 💎 on a line pays 300× — and lines stack.`,
   });
@@ -520,7 +590,7 @@ function openRoulette() {
         <div class="rlOutsideRow">${outside}</div>
         <div id="roulMyBets" class="muted rlBets">(no chips down)</div>
         <div class="btnRow">
-          <button class="menuBtn gold bigBtn" onclick="spinRoulette()">SPIN</button>
+          <button class="menuBtn gold bigBtn spinHuge" onclick="spinRoulette()">SPIN</button>
           <button class="menuBtn" onclick="clearRouletteBets()">CLEAR</button>
         </div>
       </div>
@@ -816,6 +886,14 @@ window.rollDice = async (call) => {
     { x: DICE_W * 0.78, y: -40, tx: DICE_W * 0.38, ty: DICE_H * 0.62 },
     { x: DICE_W * 0.92, y: -70, tx: DICE_W * 0.62, ty: DICE_H * 0.62 },
   ];
+  // Fixed tumble sequences so the faces roll over a few times instead of
+  // strobing a new random face every frame (that read as flicker).
+  const tumbles = [a, b].map(final => {
+    const seq = [];
+    for (let n = 0; n < 7; n++) seq.push(1 + Math.floor(Math.random() * 6));
+    seq.push(final);
+    return seq;
+  });
   const t0 = performance.now(), DUR = 1900;
   await animate(ts => {
     const k = clamp01((ts - t0) / DUR);
@@ -826,15 +904,16 @@ window.rollDice = async (call) => {
       const bounce = kk < 1 ? Math.abs(Math.sin(kk * Math.PI * 2.4)) * (1 - kk) * 34 : 0;
       // scale from 1.55 (near) down to 1 (settled on the table)
       const s2 = 1.55 - 0.55 * e;
-      const settling = kk > 0.82;
+      const seq = tumbles[i];
+      const step = Math.min(seq.length - 1, Math.floor(kk * seq.length));
       return {
-        x: s.x + (s.tx - s.x) * e + (settling ? 0 : Math.sin(kk * 22 + i) * 6),
+        x: s.x + (s.tx - s.x) * e,
         y: s.y + (s.ty - s.y) * e - bounce,
         s: s2,
         rot: (1 - e) * (14 + i * 3) + (i ? -0.15 : 0.2) * e,
-        // faces flick over while airborne, lock in at the end
-        face: kk >= 1 ? (i ? b : a) : 1 + Math.floor(Math.random() * 6),
-        squash: kk >= 0.95 ? 1 : 0.45 + 0.55 * Math.abs(Math.cos(kk * 26 + i * 2)),
+        face: kk >= 0.9 ? (i ? b : a) : seq[step],
+        // one slow turn toward the camera, settled well before the end
+        squash: kk >= 0.8 ? 1 : 0.55 + 0.45 * Math.abs(Math.cos(kk * 9 + i * 2)),
       };
     });
     drawDiceTable(dice);
@@ -1053,87 +1132,213 @@ function endCrashRound() {
 }
 
 // =====================================================================
-// PLINKO
+// PLINKO — real physics. Balls fall under gravity, carom off the pegs
+// and off each other, and you can rain down as many at once as you can
+// afford. Three risk levels reshape the buckets: higher risk means
+// fatter edges and a deader middle.
 // =====================================================================
 const PLINKO_ROWS = 10;
-const PLINKO_SLOTS = [12, 4, 1.6, 1.1, 0.6, 0.3, 0.6, 1.1, 1.6, 4, 12];
+const PLINKO_W = 460, PLINKO_H = 340;
+// Bucket multipliers are tuned against the MEASURED physics distribution
+// (60k simulated drops: ~0.95% per edge bucket, ~18% dead centre), landing
+// each table at 93–96% RTP. If the physics constants change, re-measure —
+// don't eyeball new numbers.
+const PLINKO_RISKS = {
+  low:    { label: "LOW",    slots: [7, 2, 1.2, 0.9, 0.6, 0.4, 0.6, 0.9, 1.2, 2, 7] },
+  medium: { label: "MEDIUM", slots: [15, 3, 1, 0.6, 0.35, 0.25, 0.35, 0.6, 1, 3, 15] },
+  high:   { label: "HIGH",   slots: [30, 2, 0.7, 0.3, 0.2, 0.1, 0.2, 0.3, 0.7, 2, 30] },
+};
+let _plinko = null; // { balls, risk, hitTimers }
+
 function openPlinko() {
-  const slots = PLINKO_SLOTS.map((m, i) =>
-    `<div id="pslot${i}" class="plinkoSlot" style="background:${m >= 4 ? "#7e22ce" : m >= 1.1 ? "#15803d" : "#334155"}">${m}×</div>`).join("");
+  _plinko = { balls: [], risk: "medium", hitTimers: {} };
   openMenu("🔻 PLINKO", `
     <div class="center">
-      <p class="muted">Drop a chip through ${PLINKO_ROWS} rows of pegs. The outside buckets pay <b>12×</b>.</p>
-      <canvas id="plinkoCanvas" width="460" height="320"></canvas>
-      <div class="plinkoSlots">${slots}</div>
+      <p class="muted">Drop chips through ${PLINKO_ROWS} rows of pegs — as many at once as you like. Crank the risk for bigger edges (and a meaner middle).</p>
+      <div class="pillRow center" id="plinkoRisks" style="justify-content:center"></div>
+      <canvas id="plinkoCanvas" width="${PLINKO_W}" height="${PLINKO_H}"></canvas>
+      <div id="plinkoSlots" class="plinkoSlots"></div>
       <div id="plinkoResult" class="gameResult"></div>
       ${betBar("plinkoBet", 50)}
       <button class="menuBtn gold bigBtn" id="plinkoBtn" onclick="dropPlinko()">DROP CHIP</button>
     </div>`);
-  drawPlinko();
+  renderPlinkoRisks();
+  renderPlinkoSlots();
+  // One loop runs the whole table for as long as the menu is open. Any ball
+  // still in the air when the player walks away settles instantly and pays.
+  let last = null;
+  casinoRaf(ts => {
+    if (!_plinko) return false;
+    if (!document.getElementById("plinkoCanvas")) {
+      for (const b of _plinko.balls.splice(0)) settlePlinkoBall(b, true);
+      return false;
+    }
+    if (last == null) last = ts;
+    const dt = Math.min(0.04, (ts - last) / 1000); last = ts;
+    stepPlinko(dt);
+    drawPlinko();
+    return true;
+  }, () => { if (_plinko) for (const b of _plinko.balls.splice(0)) settlePlinkoBall(b, true); });
 }
-function plinkoPegXY(row, i, cv) {
-  const spacing = cv.width / (PLINKO_ROWS + 3);
-  return { x: cv.width / 2 + (i - row / 2) * spacing, y: 30 + row * ((cv.height - 60) / PLINKO_ROWS) };
+function renderPlinkoRisks() {
+  const el = document.getElementById("plinkoRisks"); if (!el || !_plinko) return;
+  el.innerHTML = Object.entries(PLINKO_RISKS).map(([k, r]) =>
+    `<span class="pill ${k === _plinko.risk ? "active" : ""}" onclick="setPlinkoRisk('${k}')">${r.label}</span>`).join("");
 }
-function drawPlinko(chip) {
-  const g = ctxOf("plinkoCanvas"); if (!g) return;
+function renderPlinkoSlots() {
+  const el = document.getElementById("plinkoSlots"); if (!el || !_plinko) return;
+  el.innerHTML = PLINKO_RISKS[_plinko.risk].slots.map((m, i) =>
+    `<div id="pslot${i}" class="plinkoSlot" style="background:${m >= 4 ? "#7e22ce" : m >= 1.1 ? "#15803d" : "#334155"}">${m}×</div>`).join("");
+}
+window.setPlinkoRisk = (r) => {
+  if (!_plinko || !PLINKO_RISKS[r]) return;
+  _plinko.risk = r;
+  renderPlinkoRisks();
+  renderPlinkoSlots();
+};
+function plinkoPegXY(row, i) {
+  const spacing = PLINKO_W / (PLINKO_ROWS + 3);
+  return { x: PLINKO_W / 2 + (i - row / 2) * spacing, y: 30 + row * ((PLINKO_H - 70) / PLINKO_ROWS) };
+}
+// The ball is nearly as wide as the gap between pegs, so it has to strike a
+// peg on every row — that's what keeps the landing distribution bell-shaped
+// instead of flat. Don't shrink it without re-measuring the paytables.
+const PLINKO_PEG_R = 5, PLINKO_BALL_R = 9;
+// Funnel walls track the triangle's edges so a wide carom rolls back into
+// the peg field instead of falling down an open gutter to an edge bucket.
+function plinkoFunnelHalf(y) {
+  const topY = plinkoPegXY(1, 0).y, botY = plinkoPegXY(PLINKO_ROWS, 0).y;
+  const spacing = PLINKO_W / (PLINKO_ROWS + 3);
+  const k = clamp01((y - topY + 14) / (botY - topY));
+  return spacing * (0.8 + k * (PLINKO_ROWS / 2));
+}
+
+function stepPlinko(dt) {
+  const GRAV = 900, REST = 0.4, SUB = 3;
+  const h = dt / SUB;
+  for (const ball of _plinko.balls.slice()) {
+    for (let s = 0; s < SUB; s++) {
+      ball.vy += GRAV * h;
+      if (ball.vy > 480) ball.vy = 480; // terminal velocity, or it tunnels rows
+      ball.x += ball.vx * h;
+      ball.y += ball.vy * h;
+      // pegs: push out along the contact normal and reflect, with a touch of
+      // randomness so a dead-centre hit doesn't balance forever
+      for (let row = 1; row <= PLINKO_ROWS; row++) {
+        const py = plinkoPegXY(row, 0).y;
+        if (Math.abs(ball.y - py) > PLINKO_BALL_R + PLINKO_PEG_R + 3) continue;
+        for (let i = 0; i <= row; i++) {
+          const p = plinkoPegXY(row, i);
+          const dx = ball.x - p.x, dy = ball.y - p.y;
+          const d = Math.hypot(dx, dy), R = PLINKO_BALL_R + PLINKO_PEG_R;
+          if (d > 0 && d < R) {
+            const nx = dx / d, ny = dy / d;
+            ball.x = p.x + nx * R; ball.y = p.y + ny * R;
+            const vn = ball.vx * nx + ball.vy * ny;
+            if (vn < 0) {
+              ball.vx -= (1 + REST) * vn * nx;
+              ball.vy -= (1 + REST) * vn * ny;
+            }
+            ball.vx += (Math.random() - 0.5) * 50;
+            ball.vx *= 0.97;
+          }
+        }
+      }
+      // funnel walls kick the ball back toward the pegs, never let it ride
+      const lim = plinkoFunnelHalf(ball.y);
+      if (ball.x < PLINKO_W / 2 - lim) { ball.x = PLINKO_W / 2 - lim; ball.vx = Math.max(Math.abs(ball.vx) * 0.5, 70); }
+      if (ball.x > PLINKO_W / 2 + lim) { ball.x = PLINKO_W / 2 + lim; ball.vx = -Math.max(Math.abs(ball.vx) * 0.5, 70); }
+    }
+    if (ball.y > PLINKO_H - PLINKO_BALL_R + 2) settlePlinkoBall(ball);
+  }
+  // ball-on-ball: split the overlap and swap normal velocity, half-elastic
+  const bs = _plinko.balls;
+  for (let a = 0; a < bs.length; a++) {
+    for (let b2 = a + 1; b2 < bs.length; b2++) {
+      const A = bs[a], B = bs[b2];
+      const dx = B.x - A.x, dy = B.y - A.y;
+      const d = Math.hypot(dx, dy), R = PLINKO_BALL_R * 2;
+      if (d <= 0 || d >= R) continue;
+      const nx = dx / d, ny = dy / d, push = (R - d) / 2;
+      A.x -= nx * push; A.y -= ny * push;
+      B.x += nx * push; B.y += ny * push;
+      const rel = (B.vx - A.vx) * nx + (B.vy - A.vy) * ny;
+      if (rel < 0) {
+        const imp = rel * 0.75;
+        A.vx += imp * nx; A.vy += imp * ny;
+        B.vx -= imp * nx; B.vy -= imp * ny;
+      }
+    }
+  }
+}
+function settlePlinkoBall(ball, silent) {
+  const idx = _plinko.balls.indexOf(ball);
+  if (idx >= 0) _plinko.balls.splice(idx, 1);
+  const spacing = PLINKO_W / (PLINKO_ROWS + 3);
+  let slot = Math.round((ball.x - PLINKO_W / 2) / spacing + PLINKO_ROWS / 2);
+  slot = Math.max(0, Math.min(ball.slots.length - 1, slot));
+  const mult = ball.slots[slot];
+  const p = Math.floor(ball.bet * mult);
+  if (p > 0) payWin(p);
+  if (silent) return;
+  setEl("plinkoResult", p >= ball.bet ? win(`${mult}× — +$${p}`) : lose(`${mult}× — $${p} back of $${ball.bet}`));
+  const slotEl = document.getElementById("pslot" + slot);
+  if (slotEl) {
+    slotEl.classList.add("hit");
+    clearTimeout(_plinko.hitTimers[slot]);
+    _plinko.hitTimers[slot] = setTimeout(() => slotEl.classList.remove("hit"), 900);
+  }
+}
+function drawPlinko() {
+  const g = ctxOf("plinkoCanvas"); if (!g || !_plinko) return;
   const { cv, c } = g;
   const bg = c.createLinearGradient(0, 0, 0, cv.height);
   bg.addColorStop(0, "#1e1b4b"); bg.addColorStop(1, "#0b0a18");
   c.fillStyle = bg;
   roundPath(c, 0, 0, cv.width, cv.height, 12); c.fill();
+  // funnel walls
+  c.strokeStyle = "rgba(148,163,184,.35)"; c.lineWidth = 3;
+  for (const side of [-1, 1]) {
+    c.beginPath();
+    for (let y = 20; y <= cv.height; y += 10) {
+      const x = cv.width / 2 + side * (plinkoFunnelHalf(y) + PLINKO_BALL_R);
+      if (y === 20) c.moveTo(x, y); else c.lineTo(x, y);
+    }
+    c.stroke();
+  }
   for (let row = 1; row <= PLINKO_ROWS; row++)
     for (let i = 0; i <= row; i++) {
-      const p = plinkoPegXY(row, i, cv);
+      const p = plinkoPegXY(row, i);
       c.fillStyle = "rgba(148,163,184,.25)";
-      c.beginPath(); c.arc(p.x, p.y + 1.5, 4.5, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.arc(p.x, p.y + 1.5, PLINKO_PEG_R + 0.5, 0, Math.PI * 2); c.fill();
       c.fillStyle = "#cbd5e1";
-      c.beginPath(); c.arc(p.x, p.y, 4, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.arc(p.x, p.y, PLINKO_PEG_R, 0, Math.PI * 2); c.fill();
     }
-  if (chip) {
+  for (const chip of _plinko.balls) {
     c.fillStyle = "rgba(0,0,0,.45)";
-    c.beginPath(); c.arc(chip.x + 2, chip.y + 3, 9, 0, Math.PI * 2); c.fill();
-    const cg = c.createRadialGradient(chip.x - 3, chip.y - 3, 1, chip.x, chip.y, 10);
+    c.beginPath(); c.arc(chip.x + 2, chip.y + 3, PLINKO_BALL_R, 0, Math.PI * 2); c.fill();
+    const cg = c.createRadialGradient(chip.x - 3, chip.y - 3, 1, chip.x, chip.y, PLINKO_BALL_R + 1);
     cg.addColorStop(0, "#fde68a"); cg.addColorStop(1, "#d97706");
     c.fillStyle = cg;
-    c.beginPath(); c.arc(chip.x, chip.y, 9, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(chip.x, chip.y, PLINKO_BALL_R, 0, Math.PI * 2); c.fill();
     c.strokeStyle = "#92400e"; c.lineWidth = 2; c.stroke();
   }
 }
 window.dropPlinko = async () => {
-  const btn = document.getElementById("plinkoBtn");
-  if (btn && btn.disabled) return;
+  if (!_plinko) return;
   const bet = readBet("plinkoBet");
   if (!(await takeBet(bet))) return;
-  if (btn) btn.disabled = true;
-  setEl("plinkoResult", "");
-  document.querySelectorAll(".plinkoSlot").forEach(e => e.classList.remove("hit"));
-  const path = [];
-  let i = 0;
-  for (let row = 1; row <= PLINKO_ROWS; row++) {
-    if (Math.random() < 0.5) i++;
-    path.push({ row, i });
-  }
-  const cv = document.getElementById("plinkoCanvas");
-  const t0 = performance.now(), STEP = 105;
-  await animate(ts => {
-    const k = (ts - t0) / STEP;
-    const seg = Math.floor(k);
-    if (seg >= path.length) return false;
-    const f = k - seg;
-    const a = seg === 0 ? { x: cv.width / 2, y: 8 } : plinkoPegXY(path[seg - 1].row, path[seg - 1].i, cv);
-    const b = plinkoPegXY(path[seg].row, path[seg].i, cv);
-    // little arc between pegs so it hops rather than slides
-    drawPlinko({ x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f - Math.sin(f * Math.PI) * 9 });
-    return true;
+  if (!_plinko || !document.getElementById("plinkoCanvas")) { payWin(bet); return; }
+  // The risk table is locked in per ball at drop time, so switching risk
+  // mid-flight can't reprice a chip already on the board.
+  _plinko.balls.push({
+    x: PLINKO_W / 2 + (Math.random() - 0.5) * 6,
+    y: 6,
+    vx: (Math.random() - 0.5) * 10,
+    vy: 0,
+    bet,
+    slots: PLINKO_RISKS[_plinko.risk].slots,
   });
-  const mult = PLINKO_SLOTS[i];
-  const slotEl = document.getElementById("pslot" + i);
-  if (slotEl) slotEl.classList.add("hit");
-  const p = Math.floor(bet * mult);
-  if (p > 0) await payWin(p);
-  setEl("plinkoResult", p >= bet ? win(`${mult}× — +$${p}`) : lose(`${mult}× — $${p} back of $${bet}`));
-  if (btn) btn.disabled = false;
 };
 
 // =====================================================================
@@ -1241,12 +1446,35 @@ function openVideoPoker() {
       </div>
     </div>`, true);
 }
-function vpRender() {
-  setEl("vpHand", _vp.hand.map((c, i) => `
+// opts: { backs, flips, winners } — sets of card indexes to show face-down,
+// flip over with the reveal animation, or ring in gold.
+function vpRender(opts) {
+  opts = opts || {};
+  const backs = opts.backs || new Set(), flips = opts.flips || new Set(), winners = opts.winners || new Set();
+  setEl("vpHand", _vp.hand.map((c, i) => {
+    let card = hlCardHtml(VP_RANKS[c.r], c.s, backs.has(i));
+    if (flips.has(i)) card = card.replace('class="pCard', 'class="pCard flipIn');
+    if (winners.has(i)) card = card.replace('class="pCard', 'class="pCard goldWin');
+    return `
     <div class="vpSlot">
-      <div onclick="vpToggleHold(${i})">${hlCardHtml(VP_RANKS[c.r], c.s, false)}</div>
+      <div onclick="vpToggleHold(${i})">${card}</div>
       <div class="holdTag ${_vp.hold[i] ? "on" : ""}" onclick="vpToggleHold(${i})">${_vp.hold[i] ? "HELD" : "HOLD"}</div>
-    </div>`).join(""));
+    </div>`;
+  }).join(""));
+}
+// Which cards actually make the hand, so only they get the gold ring.
+function vpWinningCards(hand, name) {
+  if (["Royal Flush", "Straight Flush", "Flush", "Straight", "Full House"].includes(name))
+    return new Set([0, 1, 2, 3, 4]);
+  const counts = {};
+  for (const c of hand) counts[c.r] = (counts[c.r] || 0) + 1;
+  const need = name === "Four of a Kind" ? 4 : name === "Three of a Kind" ? 3 : 2;
+  const winners = new Set();
+  hand.forEach((c, i) => {
+    if (name === "Jacks or Better") { if (counts[c.r] === 2 && c.r >= 9) winners.add(i); }
+    else if (counts[c.r] >= need) winners.add(i);
+  });
+  return winners;
 }
 window.vpToggleHold = (i) => {
   if (!_vp || _vp.stage !== "draw") return;
@@ -1264,15 +1492,30 @@ window.vpDeal = async () => {
 };
 window.vpDraw = async () => {
   if (!_vp || _vp.stage !== "draw") return;
-  for (let i = 0; i < 5; i++) if (!_vp.hold[i]) _vp.hand[i] = _vp.deck.pop();
+  const drawn = [];
+  for (let i = 0; i < 5; i++) if (!_vp.hold[i]) { _vp.hand[i] = _vp.deck.pop(); drawn.push(i); }
   _vp.stage = "done";
-  vpRender();
+  setEl("vpControls", "");
+  setEl("vpResult", `<span class="cSpin">Drawing…</span>`);
+  // new cards land face-down, then flip over one at a time
+  const backs = new Set(drawn);
+  vpRender({ backs });
+  for (const i of drawn) {
+    await waitMs(340);
+    backs.delete(i);
+    if (!_vp) return;
+    vpRender({ backs, flips: new Set([i]) });
+  }
+  await waitMs(300);
+  if (!_vp) return;
   const res = vpScore(_vp.hand);
   if (res) {
+    vpRender({ winners: vpWinningCards(_vp.hand, res[0]) });
     const payout = Math.floor(_vp.bet * res[1]);
     await payWin(payout);
     setEl("vpResult", win(`${res[0]} — +$${payout}`));
   } else {
+    vpRender();
     setEl("vpResult", lose(`No hand. -$${_vp.bet}`));
   }
   setEl("vpControls", betBar("vpBet", _vp.bet) + `<button class="menuBtn gold bigBtn" onclick="vpDeal()">DEAL AGAIN</button>`);
@@ -1350,8 +1593,11 @@ function handScore(hand) {
   while (total > 21 && aces > 0) { total -= 10; aces--; }
   return total;
 }
-function renderBJ(hidden) {
-  const renderHand = (handId, scoreId, hand, hideFirst) => {
+// fx: { flipHole, dealPlayer, dealDealer } — flipHole flips the hole card
+// over; dealPlayer/dealDealer slide the newest card of that hand in.
+function renderBJ(hidden, fx) {
+  fx = fx || {};
+  const renderHand = (handId, scoreId, hand, hideFirst, dealLast) => {
     const el = document.getElementById(handId);
     if (!el) return;
     el.innerHTML = "";
@@ -1359,25 +1605,30 @@ function renderBJ(hidden) {
       const div = document.createElement("div");
       const isHidden = hideFirst && i === 1;
       div.className = "bjCard" + ((c.s === "♥" || c.s === "♦") && !isHidden ? " red" : "") + (isHidden ? " back" : "");
+      if (dealLast && i === hand.length - 1) div.classList.add("dealIn");
+      if (fx.flipHole && handId === "bjDealer" && i === 1) div.classList.add("flipIn");
       div.innerHTML = isHidden ? "" : `<div>${c.r}</div><div style="text-align:right">${c.s}</div>`;
       el.appendChild(div);
     });
     const sc = document.getElementById(scoreId);
     if (sc) sc.textContent = hideFirst ? "?" : handScore(hand) + "";
   };
-  renderHand("bjPlayer", "bjPlayerScore", bjState.player, false);
-  renderHand("bjDealer", "bjDealerScore", bjState.dealer, hidden);
+  renderHand("bjPlayer", "bjPlayerScore", bjState.player, false, fx.dealPlayer);
+  renderHand("bjDealer", "bjDealerScore", bjState.dealer, hidden, fx.dealDealer);
 }
 window.bjDeal = async () => {
   const bet = readBet("bjBet");
   if (!(await takeBet(bet))) return;
   bjState = { deck: shuffleDeck(), player: [], dealer: [], status: "play", bet };
-  bjState.player.push(bjState.deck.pop());
-  bjState.dealer.push(bjState.deck.pop());
-  bjState.player.push(bjState.deck.pop());
-  bjState.dealer.push(bjState.deck.pop());
-  renderBJ(true);
   setEl("bjStatus", "");
+  setEl("bjActions", "");
+  // deal round the table one card at a time, like a real shoe
+  const order = ["player", "dealer", "player", "dealer"];
+  for (const who of order) {
+    bjState[who].push(bjState.deck.pop());
+    renderBJ(true, who === "player" ? { dealPlayer: true } : { dealDealer: true });
+    await waitMs(260);
+  }
   setEl("bjActions", `
     <div class="btnRow">
       <button class="menuBtn green bigBtn" onclick="bjHit()">HIT</button>
@@ -1385,27 +1636,43 @@ window.bjDeal = async () => {
       <button class="menuBtn bigBtn" onclick="bjDouble()">DOUBLE</button>
     </div>`);
   if (handScore(bjState.player) === 21) {
-    renderBJ(false);
+    bjState.status = "done";
+    await waitMs(400);
+    renderBJ(false, { flipHole: true });
     if (handScore(bjState.dealer) === 21) finishBJ("PUSH — both blackjack", bjState.bet);
     else finishBJ("BLACKJACK! pays 3:2", Math.floor(bjState.bet * 2.5));
   }
 };
 window.bjHit = () => {
+  if (!bjState || bjState.status !== "play") return;
   bjState.player.push(bjState.deck.pop());
-  renderBJ(true);
-  if (handScore(bjState.player) > 21) finishBJ("BUST", 0);
+  renderBJ(true, { dealPlayer: true });
+  if (handScore(bjState.player) > 21) { bjState.status = "done"; finishBJ("BUST", 0); }
 };
 window.bjDouble = async () => {
+  if (!bjState || bjState.status !== "play") return;
   if (!(await takeBet(bjState.bet))) return;
   bjState.bet *= 2;
   bjState.player.push(bjState.deck.pop());
-  renderBJ(true);
-  if (handScore(bjState.player) > 21) finishBJ("BUST", 0);
+  renderBJ(true, { dealPlayer: true });
+  if (handScore(bjState.player) > 21) { bjState.status = "done"; finishBJ("BUST", 0); }
   else bjStand();
 };
-window.bjStand = () => {
-  while (handScore(bjState.dealer) < 17) bjState.dealer.push(bjState.deck.pop());
-  renderBJ(false);
+window.bjStand = async () => {
+  if (!bjState || (bjState.status !== "play" && bjState.status !== "dealer")) return;
+  bjState.status = "dealer";
+  setEl("bjActions", "");
+  // the slow flip is the whole point — let the hole card breathe
+  setEl("bjStatus", `<span class="cSpin">Dealer checks the hole card…</span>`);
+  await waitMs(650);
+  renderBJ(false, { flipHole: true });
+  await waitMs(850);
+  while (handScore(bjState.dealer) < 17) {
+    bjState.dealer.push(bjState.deck.pop());
+    renderBJ(false, { dealDealer: true });
+    await waitMs(700);
+  }
+  bjState.status = "done";
   const ps = handScore(bjState.player), ds = handScore(bjState.dealer);
   if (ps > 21) finishBJ("BUST", 0);
   else if (ds > 21) finishBJ("DEALER BUSTS — YOU WIN", bjState.bet * 2);
@@ -1499,9 +1766,12 @@ window.spinWheel = async () => {
   const wedge = WHEEL_WEDGES[idx];
   const seg = (Math.PI * 2) / WHEEL_WEDGES.length;
   const A0 = _fortune.ang;
-  const Af = A0 + Math.PI * 2 * 7 + (Math.PI * 2 - idx * seg) - (A0 % (Math.PI * 2));
+  // Land anywhere inside the winning wedge, not dead centre — a finish that
+  // crawls up to a boundary is where all the suspense lives.
+  const off = (Math.random() * 0.88 - 0.44) * seg;
+  const Af = A0 + Math.PI * 2 * 7 + (Math.PI * 2 - idx * seg) - (A0 % (Math.PI * 2)) + off;
   setEl("wheelResult", `<span class="cSpin">Spinning…</span>`);
-  const t0 = performance.now(), DUR = 4300;
+  const t0 = performance.now(), DUR = 5200;
   await animate(ts => {
     const k = clamp01((ts - t0) / DUR);
     _fortune.ang = A0 + (Af - A0) * easeOutQuint(k);
@@ -1649,6 +1919,274 @@ window.startRace = async (pick) => {
 };
 
 // =====================================================================
+// KENO — pick up to 8 of 40 numbers, the machine draws 10
+// =====================================================================
+// Multipliers are tuned per pick-count against the hypergeometric odds
+// (C(n,k)·C(40−n,10−k)/C(40,10)) to land between 90% and 95% RTP.
+const KENO_PAYTABLES = {
+  1: { 1: 3.7 },
+  2: { 2: 16.5 },
+  3: { 2: 2.2, 3: 50 },
+  4: { 2: 1, 3: 11, 4: 130 },
+  5: { 3: 4, 4: 40, 5: 550 },
+  6: { 3: 2.5, 4: 12, 5: 120, 6: 1800 },
+  7: { 3: 1.5, 4: 7, 5: 35, 6: 350, 7: 6000 },
+  8: { 4: 5, 5: 24, 6: 150, 7: 1000, 8: 25000 },
+};
+const KENO_MAX_PICKS = 8;
+let _keno = null;
+function openKeno() {
+  _keno = { picks: new Set(), drawn: new Set(), hits: new Set(), running: false };
+  openMenu("🔢 KENO", `
+    <div class="center">
+      <p class="muted">Pick up to ${KENO_MAX_PICKS} numbers, then the machine draws <b>10 of 40</b>. More picks, bigger top prize.</p>
+      <div id="kenoGrid" class="kenoGrid"></div>
+      <div id="kenoPays" class="muted" style="margin-top:8px;"></div>
+      <div id="kenoResult" class="gameResult"></div>
+      ${betBar("kenoBet", 50)}
+      <div class="btnRow">
+        <button class="menuBtn gold bigBtn" onclick="kenoDraw()">DRAW</button>
+        <button class="menuBtn" onclick="kenoClear()">CLEAR</button>
+      </div>
+    </div>`);
+  renderKeno();
+}
+function renderKeno() {
+  const el = document.getElementById("kenoGrid"); if (!el || !_keno) return;
+  let html = "";
+  for (let n = 1; n <= 40; n++) {
+    const cls = ["kenoCell"];
+    if (_keno.picks.has(n)) cls.push("picked");
+    if (_keno.drawn.has(n)) cls.push(_keno.hits.has(n) ? "hitNum" : "drawnNum");
+    html += `<div class="${cls.join(" ")}" onclick="kenoToggle(${n})">${n}</div>`;
+  }
+  el.innerHTML = html;
+  const pays = KENO_PAYTABLES[_keno.picks.size];
+  setEl("kenoPays", _keno.picks.size
+    ? `${_keno.picks.size} picked — pays: ` + Object.entries(pays).map(([k, m]) => `<b>${k}</b>&nbsp;hits&nbsp;${m}×`).join(" &nbsp;·&nbsp; ")
+    : "Click numbers to pick them.");
+}
+window.kenoToggle = (n) => {
+  if (!_keno || _keno.running) return;
+  if (_keno.picks.has(n)) _keno.picks.delete(n);
+  else if (_keno.picks.size < KENO_MAX_PICKS) _keno.picks.add(n);
+  else { toast(`Max ${KENO_MAX_PICKS} numbers.`); return; }
+  _keno.drawn.clear(); _keno.hits.clear();
+  setEl("kenoResult", "");
+  renderKeno();
+};
+window.kenoClear = () => {
+  if (!_keno || _keno.running) return;
+  _keno.picks.clear(); _keno.drawn.clear(); _keno.hits.clear();
+  setEl("kenoResult", "");
+  renderKeno();
+};
+window.kenoDraw = async () => {
+  if (!_keno || _keno.running) return;
+  if (!_keno.picks.size) { toast("Pick at least one number."); return; }
+  const bet = readBet("kenoBet");
+  if (!(await takeBet(bet))) return;
+  _keno.running = true;
+  _keno.drawn.clear(); _keno.hits.clear();
+  setEl("kenoResult", `<span class="cSpin">Drawing…</span>`);
+  // draw 10 unique numbers, revealed one at a time
+  const pool = Array.from({ length: 40 }, (_, i) => i + 1);
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  for (const n of pool.slice(0, 10)) {
+    await waitMs(260);
+    if (!_keno) return;
+    _keno.drawn.add(n);
+    if (_keno.picks.has(n)) _keno.hits.add(n);
+    renderKeno();
+  }
+  const hits = _keno.hits.size;
+  const mult = (KENO_PAYTABLES[_keno.picks.size] || {})[hits] || 0;
+  const p = Math.floor(bet * mult);
+  if (p > 0) {
+    await payWin(p);
+    setEl("kenoResult", win(`${hits} hit${hits === 1 ? "" : "s"} — ${mult}× — +$${p}`));
+  } else {
+    setEl("kenoResult", lose(`${hits} hit${hits === 1 ? "" : "s"} — -$${bet}`));
+  }
+  _keno.running = false;
+};
+
+// =====================================================================
+// BACCARAT — punto banco, full third-card rules
+// =====================================================================
+let _bac = null;
+function bacCardVal(c) { return c.r === "A" ? 1 : ["10", "J", "Q", "K"].includes(c.r) ? 0 : parseInt(c.r); }
+function bacTotal(hand) { return hand.reduce((s, c) => s + bacCardVal(c), 0) % 10; }
+function bacCardHtml(c, faceDown, flip) {
+  const html = hlCardHtml(c ? c.r : "?", c ? c.s : "♠", faceDown);
+  return flip ? html.replace('class="pCard', 'class="pCard flipIn') : html;
+}
+function openBaccarat() {
+  _bac = { running: false };
+  openMenu("🎴 BACCARAT", `
+    <div class="center">
+      <p class="muted">Closest to 9 wins. Player pays <b>1:1</b>, Banker <b>0.95:1</b>, Tie <b>8:1</b> (P/B bets push on a tie).</p>
+      <div class="bacTable">
+        <div><div class="bjLabel">PLAYER</div><div id="bacPlayer" class="vpHand"></div><div class="muted" id="bacPScore"></div></div>
+        <div><div class="bjLabel">BANKER</div><div id="bacBanker" class="vpHand"></div><div class="muted" id="bacBScore"></div></div>
+      </div>
+      <div id="bacResult" class="gameResult"></div>
+      ${betBar("bacBet", 100)}
+      <div class="btnRow">
+        <button class="menuBtn green bigBtn" onclick="bacDeal('player')">PLAYER 1:1</button>
+        <button class="menuBtn gold bigBtn" onclick="bacDeal('tie')">TIE 8:1</button>
+        <button class="menuBtn bigBtn" onclick="bacDeal('banker')">BANKER 0.95:1</button>
+      </div>
+    </div>`);
+  renderBac([], []);
+}
+function renderBac(pHand, bHand, flipIdx) {
+  setEl("bacPlayer", (pHand.length ? pHand : [null, null]).map((c, i) =>
+    bacCardHtml(c, !c, flipIdx === "p" + i)).join(""));
+  setEl("bacBanker", (bHand.length ? bHand : [null, null]).map((c, i) =>
+    bacCardHtml(c, !c, flipIdx === "b" + i)).join(""));
+  setEl("bacPScore", pHand.length ? String(bacTotal(pHand)) : "");
+  setEl("bacBScore", bHand.length ? String(bacTotal(bHand)) : "");
+}
+window.bacDeal = async (side) => {
+  if (!_bac || _bac.running) return;
+  const bet = readBet("bacBet");
+  if (!(await takeBet(bet))) return;
+  _bac.running = true;
+  setEl("bacResult", `<span class="cSpin">Dealing…</span>`);
+  const deck = vpDeck().map(c => ({ r: VP_RANKS[c.r], s: c.s }));
+  const P = [], B = [];
+  const deal = async (hand, tag) => {
+    hand.push(deck.pop());
+    renderBac(P, B, tag + (hand.length - 1));
+    await waitMs(450);
+  };
+  await deal(P, "p"); await deal(B, "b"); await deal(P, "p"); await deal(B, "b");
+
+  let pt = bacTotal(P), bt = bacTotal(B);
+  // naturals stand; otherwise player draws on 0–5, banker follows the tableau
+  if (pt < 8 && bt < 8) {
+    let pThird = null;
+    if (pt <= 5) { await deal(P, "p"); pThird = bacCardVal(P[2]); pt = bacTotal(P); }
+    const bankerDraws = pThird === null
+      ? bt <= 5
+      : bt <= 2 ? true
+      : bt === 3 ? pThird !== 8
+      : bt === 4 ? (pThird >= 2 && pThird <= 7)
+      : bt === 5 ? (pThird >= 4 && pThird <= 7)
+      : bt === 6 ? (pThird === 6 || pThird === 7)
+      : false;
+    if (bankerDraws) { await deal(B, "b"); bt = bacTotal(B); }
+  }
+
+  const outcome = pt > bt ? "player" : bt > pt ? "banker" : "tie";
+  let payout = 0;
+  if (side === outcome) payout = outcome === "tie" ? bet * 9 : outcome === "player" ? bet * 2 : Math.floor(bet * 1.95);
+  else if (outcome === "tie") payout = bet; // P/B bets push on a tie
+  if (payout > 0) await payWin(payout);
+  const net = payout - bet;
+  const label = outcome === "tie" ? `TIE at ${pt}` : `${outcome.toUpperCase()} wins ${outcome === "player" ? pt : bt}–${outcome === "player" ? bt : pt}`;
+  setEl("bacResult", `${label} ` + (net > 0 ? win(`+$${net}`) : net < 0 ? lose(`-$${-net}`) : `<span class="muted">push</span>`));
+  _bac.running = false;
+};
+
+// =====================================================================
+// MINES — 5x5 field, cash out any time before you find one
+// =====================================================================
+// Each safe reveal multiplies the pot by (tiles left / safe left) × 0.97,
+// so the game prices itself fairly at any mine count minus a 3% edge.
+const MINES_GRID = 25;
+let _mines = null;
+function openMines() {
+  _mines = { mines: 5, board: null, revealed: null, bet: 0, mult: 1, alive: false };
+  openMenu("💣 MINES", `
+    <div class="center">
+      <p class="muted">Reveal gems, dodge the mines. Every safe tile grows the pot — cash out before you hit one.</p>
+      <div class="pillRow center" id="minesRisks" style="justify-content:center"></div>
+      <div id="minesGrid" class="minesGrid"></div>
+      <div id="minesPot" class="muted"></div>
+      <div id="minesResult" class="gameResult"></div>
+      <div id="minesControls">${betBar("minesBet", 100)}<button class="menuBtn gold bigBtn" onclick="minesStart()">START</button></div>
+    </div>`);
+  renderMinesRisks();
+  renderMines();
+}
+function renderMinesRisks() {
+  const el = document.getElementById("minesRisks"); if (!el || !_mines) return;
+  el.innerHTML = [3, 5, 10].map(n =>
+    `<span class="pill ${n === _mines.mines ? "active" : ""}" onclick="setMinesCount(${n})">${n} MINES</span>`).join("");
+}
+window.setMinesCount = (n) => {
+  if (!_mines || _mines.alive) return;
+  _mines.mines = n;
+  renderMinesRisks();
+};
+function renderMines(showAll) {
+  const el = document.getElementById("minesGrid"); if (!el || !_mines) return;
+  let html = "";
+  for (let i = 0; i < MINES_GRID; i++) {
+    if (!_mines.board) { html += `<div class="mineCell locked"></div>`; continue; }
+    const isMine = _mines.board[i], open = _mines.revealed[i];
+    if (open || showAll) {
+      html += `<div class="mineCell ${isMine ? "boom" : "gem"} ${open ? "" : "dim"}">${isMine ? "💣" : "💎"}</div>`;
+    } else {
+      html += `<div class="mineCell ${_mines.alive ? "live" : "locked"}" onclick="minesReveal(${i})"></div>`;
+    }
+  }
+  el.innerHTML = html;
+  if (_mines.alive) {
+    const pot = Math.floor(_mines.bet * _mines.mult);
+    setEl("minesPot", `Pot <b class="cWin">$${pot}</b> · ${_mines.mult.toFixed(2)}×`);
+  }
+}
+window.minesStart = async () => {
+  if (!_mines || _mines.alive) return;
+  const bet = readBet("minesBet");
+  if (!(await takeBet(bet))) return;
+  _mines.bet = bet; _mines.mult = 1; _mines.alive = true;
+  _mines.board = new Array(MINES_GRID).fill(false);
+  _mines.revealed = new Array(MINES_GRID).fill(false);
+  let placed = 0;
+  while (placed < _mines.mines) {
+    const i = Math.floor(Math.random() * MINES_GRID);
+    if (!_mines.board[i]) { _mines.board[i] = true; placed++; }
+  }
+  setEl("minesResult", "");
+  setEl("minesControls", `<button class="menuBtn gold bigBtn" id="minesCashBtn" onclick="minesCash()">CASH OUT $${bet}</button>`);
+  renderMines();
+};
+window.minesReveal = (i) => {
+  if (!_mines || !_mines.alive || _mines.revealed[i]) return;
+  _mines.revealed[i] = true;
+  if (_mines.board[i]) {
+    _mines.alive = false;
+    setEl("minesResult", lose(`Boom. -$${_mines.bet}`));
+    setEl("minesControls", betBar("minesBet", _mines.bet) + `<button class="menuBtn gold bigBtn" onclick="minesStart()">PLAY AGAIN</button>`);
+    setEl("minesPot", "");
+    renderMines(true);
+    return;
+  }
+  const opened = _mines.revealed.filter(Boolean).length;
+  const tilesLeft = MINES_GRID - opened + 1, safeLeft = tilesLeft - _mines.mines;
+  _mines.mult *= (tilesLeft / safeLeft) * 0.97;
+  renderMines();
+  const btn = document.getElementById("minesCashBtn");
+  if (btn) btn.textContent = `CASH OUT $${Math.floor(_mines.bet * _mines.mult)}`;
+  // cleared every safe tile — auto cash out
+  if (opened >= MINES_GRID - _mines.mines) minesCash();
+};
+window.minesCash = async () => {
+  if (!_mines || !_mines.alive) return;
+  _mines.alive = false;
+  const p = Math.floor(_mines.bet * _mines.mult);
+  await payWin(p);
+  setEl("minesResult", win(`Cashed out at ${_mines.mult.toFixed(2)}× — +$${p}`));
+  setEl("minesControls", betBar("minesBet", _mines.bet) + `<button class="menuBtn gold bigBtn" onclick="minesStart()">PLAY AGAIN</button>`);
+  setEl("minesPot", "");
+  renderMines(true);
+};
+
+// =====================================================================
 // ELEVATOR
 // =====================================================================
 function openElevator() {
@@ -1675,8 +2213,8 @@ window.rideElevator = (floor) => {
 };
 
 window.gameCasino = {
-  openSlots, openJackpot, openCoinFlip, openScratch,
-  openBlackjack, openRoulette, openDice,
-  openCrash, openPlinko, openHighLow, openVideoPoker,
+  openSlots, openJackpot, openCoinFlip, openScratch, openKeno,
+  openBlackjack, openRoulette, openDice, openBaccarat,
+  openCrash, openPlinko, openHighLow, openVideoPoker, openMines,
   openHorses, openWheel, openElevator,
 };

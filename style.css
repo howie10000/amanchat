@@ -334,7 +334,7 @@ html, body {
 }
 .bjRow { margin: 14px 0; }
 .bjLabel { font-weight: 700; color: #fcd34d; margin-bottom: 6px; }
-.bjCards { display: flex; gap: 6px; min-height: 90px; }
+.bjCards { display: flex; gap: 6px; min-height: 90px; justify-content: center; }
 .bjCard {
   width: 60px; height: 84px;
   background: white; color: #1a1a1a;
@@ -574,3 +574,64 @@ h3.section { margin: 14px 0 8px; font-size: 14px; color: #fbbf24; letter-spacing
 
 /* ---- horses ---- */
 .raceRow .info small { color: #8aa0bf; }
+
+/* ---- card animations (blackjack, video poker, baccarat) ---- */
+@keyframes cardDealIn {
+  from { transform: translateY(-26px) scale(.7); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+@keyframes cardFlipIn {
+  0%   { transform: rotateY(90deg); }
+  100% { transform: rotateY(0deg); }
+}
+.bjCard.dealIn { animation: cardDealIn .35s ease; }
+.bjCard.flipIn, .pCard.flipIn { animation: cardFlipIn .5s ease; }
+.pCard.goldWin {
+  border: 2px solid #fbbf24;
+  box-shadow: 0 0 14px rgba(251,191,36,.85);
+}
+
+/* ---- roulette spin ---- */
+.spinHuge { flex: 1; padding: 16px 30px !important; font-size: 19px !important; letter-spacing: 2px; }
+
+/* ---- keno ---- */
+.kenoGrid {
+  display: grid; grid-template-columns: repeat(8, 44px); gap: 5px;
+  justify-content: center; margin: 12px 0 4px;
+}
+.kenoCell {
+  height: 40px; display: flex; align-items: center; justify-content: center;
+  background: #0a0e15; border: 2px solid #2a3344; border-radius: 6px;
+  font-size: 14px; font-weight: 700; cursor: pointer; user-select: none;
+}
+.kenoCell:hover { border-color: #fbbf24; }
+.kenoCell.picked { border-color: #3b82f6; background: #1e3a8a; }
+.kenoCell.drawnNum { border-color: #64748b; background: #1f2735; color: #94a3b8; }
+.kenoCell.picked.hitNum {
+  border-color: #fbbf24; background: #15803d; color: #fff;
+  box-shadow: 0 0 10px rgba(251,191,36,.7);
+}
+
+/* ---- baccarat ---- */
+.bacTable {
+  display: flex; gap: 30px; justify-content: center; align-items: flex-start;
+  margin: 14px 0; flex-wrap: wrap;
+}
+.bacTable .vpHand { margin: 8px 0 4px; min-height: 92px; }
+
+/* ---- mines ---- */
+.minesGrid {
+  display: grid; grid-template-columns: repeat(5, 56px); gap: 6px;
+  justify-content: center; margin: 14px 0 8px;
+}
+.mineCell {
+  height: 56px; display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; font-size: 24px; user-select: none;
+  background: linear-gradient(180deg, #1b2434, #131a27); border: 2px solid #2a3344;
+}
+.mineCell.locked { opacity: .45; }
+.mineCell.live { cursor: pointer; }
+.mineCell.live:hover { border-color: #fbbf24; filter: brightness(1.25); }
+.mineCell.gem { background: #052e16; border-color: #15803d; }
+.mineCell.boom { background: #450a0a; border-color: #ef4444; }
+.mineCell.dim { opacity: .4; }

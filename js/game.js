@@ -251,6 +251,9 @@ function triggerHotspotAction(action) {
     case "casino_blackjack": gameCasino.openBlackjack(); break;
     case "casino_roulette":  gameCasino.openRoulette(); break;
     case "casino_dice":      gameCasino.openDice(); break;
+    case "casino_keno":      gameCasino.openKeno(); break;
+    case "casino_baccarat":  gameCasino.openBaccarat(); break;
+    case "casino_mines":     gameCasino.openMines(); break;
     case "casino_crash":     gameCasino.openCrash(); break;
     case "casino_plinko":    gameCasino.openPlinko(); break;
     case "casino_highlow":   gameCasino.openHighLow(); break;
@@ -408,20 +411,39 @@ function drawCatalogPreviews() {
 }
 
 // ---------- FURNITURE STORE ----------
-let furnFilter = "all";
+// The market carries a rotating shelf, not the whole warehouse. The stock is
+// a seeded shuffle keyed to the current hour, so every player sees the same
+// shelf, it restocks on the hour with no server writes, and legendaries are
+// only sometimes in.
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function marketStock() {
+  const hour = Math.floor(Date.now() / 3600000);
+  const rng = mulberry32((hour * 2654435761) % 2147483647);
+  const pickFrom = (tier, n) => {
+    const pool = FURNITURE_LIST.filter(f => f.tier === tier).slice();
+    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    return pool.slice(0, n);
+  };
+  // legendaries rotate in and out: sometimes 2, usually 1, sometimes none
+  const roll = rng();
+  const nLegend = roll < 0.15 ? 2 : roll < 0.6 ? 1 : 0;
+  return [...pickFrom("legendary", nLegend), ...pickFrom("rare", 8), ...pickFrom("common", 12)];
+}
 function openFurnitureCatalog() {
-  let html = `<div class="pillRow">
-    ${["all","sofa","armchair","chair","officechair","bed","canopybed","table","desk","lamp","plant","rug","tv","painting","bookshelf","fridge","stove","sink","interactable"].map(t =>
-      `<span class="pill ${t === furnFilter ? "active":""}" onclick="setFurnFilter('${t}')">${t}</span>`).join("")}
-  </div><div class="furnGrid">`;
-  for (const def of FURNITURE_LIST) {
-    if (furnFilter !== "all") {
-      if (furnFilter === "lamp") {
-        if (!["floorlamp","tablelamp","chandelier"].includes(def.kind)) continue;
-      } else if (furnFilter === "interactable") {
-        if (!def.interactable) continue;
-      } else if (def.kind !== furnFilter) continue;
-    }
+  const stock = marketStock();
+  const minsLeft = Math.max(1, 60 - Math.floor((Date.now() % 3600000) / 60000));
+  const nLegend = stock.filter(f => f.tier === "legendary").length;
+  let html = `<p class="muted">The shelf restocks <b>every hour</b> — ${
+    nLegend ? `${nLegend === 2 ? "two legendaries are" : "a legendary is"} in stock right now.` : "no legendaries this hour, check back later."
+  } New stock in <b>${minsLeft} min</b>.</p><div class="furnGrid">`;
+  for (const def of stock) {
     const owned = (state.data.inventory && state.data.inventory[def.id]) || 0;
     const canBuy = state.data.money >= def.price;
     html += `<div class="furnCard ${!canBuy ? "disabled":""}" onclick="${canBuy ? `buyFurn('${def.id}')` : ""}">
@@ -433,10 +455,9 @@ function openFurnitureCatalog() {
     </div>`;
   }
   html += `</div>`;
-  openMenu("FURNITURELAND — " + FURNITURE_LIST.length + " items", html, true);
+  openMenu(`FURNITURELAND — MARKET (restocks in ${minsLeft}m)`, html, true);
   drawCatalogPreviews();
 }
-window.setFurnFilter = (t) => { furnFilter = t; openFurnitureCatalog(); };
 window.buyFurn = async (id) => {
   const def = FURNITURE_CATALOG[id]; if (!def) return;
   if (state.data.money < def.price) { toast("Not enough money."); return; }
