@@ -12,25 +12,28 @@ const INTERIORS = {
     floors: [
       { name: "GROUND FLOOR — SLOTS & QUICK BETS", floor: "#6d1a1a", wall: "#241018", trim: "#fcd34d", neon: "#fcd34d",
         hotspots: [
-          { x: 160, y: 210, label: "LUCKY 7s SLOTS", action: "casino_slots" },
-          { x: 395, y: 210, label: "COIN FLIP", action: "casino_coinflip" },
-          { x: 630, y: 210, label: "SCRATCH CARDS", action: "casino_scratch" },
-          { x: 865, y: 210, label: "KENO", action: "casino_keno" },
+          { x: 210, y: 210, label: "LUCKY 7s SLOTS", action: "casino_slots" },
+          { x: 470, y: 210, label: "COIN FLIP", action: "casino_coinflip" },
+          { x: 730, y: 210, label: "SCRATCH CARDS", action: "casino_scratch" },
         ] },
       { name: "2F — TABLE GAMES", floor: "#14532d", wall: "#052e16", trim: "#fcd34d", neon: "#4ade80",
         hotspots: [
-          { x: 160, y: 210, label: "BLACKJACK", action: "casino_blackjack" },
-          { x: 395, y: 210, label: "ROULETTE", action: "casino_roulette" },
-          { x: 630, y: 210, label: "DICE TABLE", action: "casino_dice" },
-          { x: 865, y: 210, label: "BACCARAT", action: "casino_baccarat" },
+          { x: 210, y: 210, label: "BLACKJACK", action: "casino_blackjack" },
+          { x: 470, y: 210, label: "ROULETTE", action: "casino_roulette" },
+          { x: 730, y: 210, label: "DICE TABLE", action: "casino_dice" },
         ] },
       { name: "3F — HIGH ROLLER LOUNGE", floor: "#3b0764", wall: "#1e1b4b", trim: "#c084fc", neon: "#c084fc",
         hotspots: [
-          { x: 130, y: 200, label: "CRASH", action: "casino_crash" },
-          { x: 320, y: 200, label: "PLINKO", action: "casino_plinko" },
-          { x: 510, y: 200, label: "HIGHER OR LOWER", action: "casino_highlow" },
-          { x: 700, y: 200, label: "VIDEO POKER", action: "casino_videopoker" },
-          { x: 890, y: 200, label: "MINES", action: "casino_mines" },
+          { x: 180, y: 200, label: "CRASH", action: "casino_crash" },
+          { x: 390, y: 200, label: "PLINKO", action: "casino_plinko" },
+          { x: 600, y: 200, label: "HIGHER OR LOWER", action: "casino_highlow" },
+          { x: 810, y: 200, label: "VIDEO POKER", action: "casino_videopoker" },
+        ] },
+      { name: "MEZZANINE — NEW GAMES", floor: "#831843", wall: "#2a0a1a", trim: "#f472b6", neon: "#f472b6",
+        hotspots: [
+          { x: 260, y: 210, label: "KENO", action: "casino_keno" },
+          { x: 510, y: 210, label: "BACCARAT", action: "casino_baccarat" },
+          { x: 760, y: 210, label: "MINES", action: "casino_mines" },
         ] },
       { name: "SKY DECK — THE BIG ONES", floor: "#0c4a6e", wall: "#082f49", trim: "#38bdf8", neon: "#38bdf8",
         glass: true,
@@ -471,6 +474,13 @@ function drawVegasFloor(floor, room) {
     drawHighLowStand(600, 195);
     drawPokerCab(810, 195);
     drawLoungeSeats(room, "#c084fc");
+  } else if (floor === 3) {
+    // Mezzanine — the new games. Reuse the closest-looking cabinets so the
+    // pads always sit on a machine.
+    drawPokerCab(260, 195);
+    drawBlackjackTable(510, 210);
+    drawScratchKiosk(760, 200);
+    drawVelvetRope(room.x + 40, room.y + 330, room.w - 80);
   } else {
     drawHorseTrack(220, 300);
     drawJackpotSlots(500, 296);
@@ -641,7 +651,7 @@ function drawElevator(x, y, neon, floor) {
   // floor indicator
   ctx.fillStyle = "#0a0a0a"; ctx.fillRect(x - 26, y - 100, 52, 16);
   ctx.fillStyle = neon; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
-  ctx.fillText(["G", "2F", "3F", "SKY"][floor] || "G", x, y - 88);
+  ctx.fillText(["G", "2F", "3F", "MEZZ", "SKY"][floor] || "G", x, y - 88);
   ctx.font = "bold 10px sans-serif";
   ctx.fillText("ELEVATOR", x, y - 106);
   // call button

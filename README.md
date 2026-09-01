@@ -9,10 +9,11 @@ A multiplayer browser game built on the idea you sent your friend:
 - **Live multiplayer** — see other players walk around (server pushes presence at 10 Hz over WebSocket)
 - **In-person chat bubbles** (press `T`) + **saved DMs** (press `Q`)
 - **City center buildings**:
-  - 🎰 **VEGAS** — a four-storey neon tower with sixteen games:
-    - *Ground floor* — Lucky 7s Slots (classic single line), Coin Flip, Scratch Cards, Keno
-    - *2F Table Games* — Blackjack (naturals pay 3:2), Roulette, Dice Over/Under, Baccarat
-    - *3F High Roller Lounge* — Crash, Plinko (real physics, multi-ball, three risk levels), Higher or Lower, Video Poker, Mines
+  - 🎰 **VEGAS** — a five-storey neon tower with sixteen games:
+    - *Ground floor* — Lucky 7s Slots (classic single line), Coin Flip, Scratch Cards
+    - *2F Table Games* — Blackjack (naturals pay 3:2), Roulette, Dice Over/Under
+    - *3F High Roller Lounge* — Crash, Plinko (real physics, multi-ball, three risk levels), Higher or Lower, Video Poker
+    - *Mezzanine* — Keno, Baccarat, Mines
     - *Sky Deck* — Horse Racing, Mega Jackpot Slots ($250 minimum, 300× top line), Wheel of Fortune
 
     Ride the elevator inside to change floor.

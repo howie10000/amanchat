@@ -1,8 +1,9 @@
 /* CASINO — every game inside the VEGAS tower.
-   G:   Lucky 7s Slots, Coin Flip, Scratch Cards, Keno
-   2F:  Blackjack, Roulette (big wheel + ball), Dice (felt table), Baccarat
-   3F:  Crash (rocket), Plinko (real physics), Higher or Lower, Video Poker, Mines
-   SKY: Horse Racing, Mega Jackpot Slots, Wheel of Fortune
+   G:    Lucky 7s Slots, Coin Flip, Scratch Cards
+   2F:   Blackjack, Roulette (big wheel + ball), Dice (felt table)
+   3F:   Crash (rocket), Plinko (real physics), Higher or Lower, Video Poker
+   MEZZ: Keno, Baccarat, Mines
+   SKY:  Horse Racing, Mega Jackpot Slots, Wheel of Fortune
 
    Every game moves money through takeBet()/payWin() so the displayed balance
    and the server record can't drift apart, and every animation is driven by
@@ -2192,7 +2193,7 @@ window.minesCash = async () => {
 function openElevator() {
   const floors = gameInteriors.INTERIORS.interior_casino.floors;
   const cur = state.casinoFloor || 0;
-  const names = ["G", "2F", "3F", "SKY"];
+  const names = ["G", "2F", "3F", "MEZZ", "SKY"];
   const rows = floors.map((f, i) => `
     <div class="shopItem" ${i === cur ? 'style="border-color:#fbbf24;"' : ""}>
       <div class="info"><b>${names[i]}</b> — ${f.name}${i === cur ? " <span class='muted'>(you are here)</span>" : ""}
@@ -2200,7 +2201,7 @@ function openElevator() {
       <button class="menuBtn ${i === cur ? "gray" : "gold"}" ${i === cur ? "disabled" : ""}
         onclick="rideElevator(${i})">GO</button>
     </div>`).join("");
-  openMenu("🛗 VEGAS ELEVATOR", `<p class="muted">Four floors of neon. The sky deck is all glass — you can see the whole town from up there.</p>${rows}`);
+  openMenu("🛗 VEGAS ELEVATOR", `<p class="muted">Five floors of neon. The sky deck is all glass — you can see the whole town from up there.</p>${rows}`);
 }
 window.rideElevator = (floor) => {
   state.casinoFloor = floor;
