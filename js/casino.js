@@ -43,6 +43,62 @@ function easeOutQuint(t) { return 1 - Math.pow(1 - t, 5); }
 function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 function waitMs(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// ---------- sound ----------
+// Tiny synth so the building has a voice without shipping audio files.
+let _ac = null;
+function sfx(kind) {
+  if (localStorage.getItem("sfxMuted") === "1") return;
+  try {
+    _ac = _ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (_ac.state === "suspended") _ac.resume();
+    const t = _ac.currentTime;
+    const note = (f, start, dur, type = "square", vol = 0.06) => {
+      const o = _ac.createOscillator(), g = _ac.createGain();
+      o.type = type; o.frequency.value = f;
+      g.gain.setValueAtTime(vol, t + start);
+      g.gain.exponentialRampToValueAtTime(0.001, t + start + dur);
+      o.connect(g); g.connect(_ac.destination);
+      o.start(t + start); o.stop(t + start + dur);
+    };
+    if (kind === "click") note(600, 0, 0.05, "triangle");
+    else if (kind === "reveal") { note(740, 0, 0.07, "triangle"); note(1100, 0.05, 0.09, "triangle"); }
+    else if (kind === "win") { note(523, 0, 0.12); note(659, 0.09, 0.12); note(784, 0.18, 0.2); }
+    else if (kind === "bigwin") [523, 659, 784, 1047, 784, 1319].forEach((f, i) => note(f, i * 0.09, 0.22));
+    else if (kind === "lose") note(170, 0, 0.22, "sawtooth", 0.05);
+    else if (kind === "boom") { note(90, 0, 0.35, "sawtooth", 0.12); note(55, 0.04, 0.5, "sawtooth", 0.12); }
+  } catch (e) { /* audio blocked — play on */ }
+}
+window.toggleSfx = () => {
+  const muted = localStorage.getItem("sfxMuted") === "1";
+  localStorage.setItem("sfxMuted", muted ? "0" : "1");
+  const b = document.getElementById("sfxBtn");
+  if (b) b.textContent = muted ? "🔊" : "🔇";
+  if (muted) sfx("click");
+};
+// set the icon to match the saved preference on load
+document.addEventListener("DOMContentLoaded", () => {
+  const b = document.getElementById("sfxBtn");
+  if (b && localStorage.getItem("sfxMuted") === "1") b.textContent = "🔇";
+});
+
+// ---------- confetti ----------
+// A burst over the menu for the wins worth shouting about.
+function celebrate() {
+  sfx("bigwin");
+  const box = document.querySelector(".menuBox"); if (!box) return;
+  const colors = ["#fbbf24", "#ef4444", "#22c55e", "#38bdf8", "#a855f7", "#f472b6"];
+  for (let i = 0; i < 40; i++) {
+    const s = document.createElement("div");
+    s.className = "confetti";
+    s.style.left = Math.random() * 100 + "%";
+    s.style.background = colors[i % colors.length];
+    s.style.animationDelay = (Math.random() * 0.5) + "s";
+    s.style.animationDuration = (1.2 + Math.random() * 1) + "s";
+    box.appendChild(s);
+    setTimeout(() => s.remove(), 3000);
+  }
+}
+
 // A bet field with quick-adjust chips, used by every game so the controls
 // feel the same wherever you are in the building.
 function betBar(id, def, extraBtnHtml) {
@@ -361,8 +417,10 @@ async function spinSlotGrid(cfg) {
     await payWin(payout);
     const detail = wins.map(w => `<span style="color:${w.line.color}">${w.sym.sym}${w.sym.sym}${w.sym.sym} ${w.line.label} ${w.mult}&times;</span>`).join(" &nbsp;·&nbsp; ") || bonusDetail;
     setEl("slotResult", win(`+$${payout}`) + `<div class="winDetail">${detail}</div>`);
-    if (totalMult >= 50) toast("🎉 BIG WIN! 🎉", 4000);
+    if (totalMult >= 50) { toast("🎉 BIG WIN! 🎉", 4000); celebrate(); }
+    else sfx("win");
   } else {
+    sfx("lose");
     setEl("slotResult", lose(`No line. -$${bet}`));
   }
   if (btn) btn.disabled = false;
@@ -463,8 +521,10 @@ window.flipCoin = async (call) => {
   if (result === call) {
     const p = Math.floor(bet * 1.95);
     await payWin(p);
+    sfx("win");
     setEl("cfResult", win(`${result.toUpperCase()} — +$${p}`));
   } else {
+    sfx("lose");
     setEl("cfResult", lose(`${result.toUpperCase()} — -$${bet}`));
   }
 };
@@ -524,6 +584,7 @@ window.scratchCell = (i) => {
   const cell = _scratch.cells[i];
   if (cell.revealed) return;
   cell.revealed = true;
+  sfx("reveal");
   renderScratch();
   if (_scratch.cells.every(c => c.revealed)) finishScratch();
 };
@@ -539,8 +600,10 @@ async function finishScratch() {
     for (const c of _scratch.cells) if (c.sym.sym === best.sym) c.winner = true;
     const payout = Math.floor(_scratch.bet * best.mult);
     await payWin(payout);
+    if (best.mult >= 12) celebrate(); else sfx("win");
     setEl("scratchResult", win(`Three ${best.sym} — +$${payout}!`));
   } else {
+    sfx("lose");
     setEl("scratchResult", lose(`No match. -$${_scratch.bet}`));
   }
   renderScratch();
@@ -779,6 +842,10 @@ window.spinRoulette = async () => {
     if (won) winnings += b.amt * b.payout;
   }
   if (winnings > 0) await payWin(winnings);
+  const hitStraight = _roul.bets.some(b => b.bet === "num:" + winNum);
+  if (hitStraight) celebrate();
+  else if (winnings > 0) sfx("win");
+  else sfx("lose");
   _roul.history = [winNum].concat(_roul.history || []).slice(0, 12);
   setEl("roulResult", `<span class="rlChip big ${col}">${winNum}</span> ` +
     (winnings > 0 ? win(`+$${winnings}`) : lose("no payout")));
@@ -931,8 +998,10 @@ window.rollDice = async (call) => {
   else { if (total > 7) payout = bet * 2; else if (total === 7) { payout = bet; note = " (push)"; } }
   if (payout > 0) {
     await payWin(payout);
+    sfx("win");
     setEl("diceResult", `<b class="diceTotal">${total}</b> ` + win(`+$${payout}${note}`));
   } else {
+    sfx("lose");
     setEl("diceResult", `<b class="diceTotal">${total}</b> ` + lose(`-$${bet}`));
   }
   _dice.rolling = false;
@@ -1108,6 +1177,7 @@ async function cashOutCrash() {
   if (_crash.stop) _crash.stop();
   const p = Math.floor(_crash.bet * _crash.mult);
   await payWin(p);
+  if (_crash.mult >= 5) celebrate(); else sfx("win");
   setEl("crashResult", win(`Cashed out at ${_crash.mult.toFixed(2)}× — +$${p}`));
   drawCrash(_crash.mult, false, 0);
   endCrashRound();
@@ -1115,6 +1185,7 @@ async function cashOutCrash() {
 function bustCrash() {
   if (!_crash) return;
   _crash.running = false;
+  sfx("boom");
   setEl("crashResult", lose(`Blew up at ${_crash.crashAt.toFixed(2)}× — lost $${_crash.bet}.`));
   const t0 = performance.now();
   casinoRaf(ts => {
@@ -1282,6 +1353,9 @@ function settlePlinkoBall(ball, silent) {
   const p = Math.floor(ball.bet * mult);
   if (p > 0) payWin(p);
   if (silent) return;
+  if (mult >= 7) celebrate();
+  else if (p >= ball.bet) sfx("win");
+  else sfx("lose");
   setEl("plinkoResult", p >= ball.bet ? win(`${mult}× — +$${p}`) : lose(`${mult}× — $${p} back of $${ball.bet}`));
   const slotEl = document.getElementById("pslot" + slot);
   if (slotEl) {
@@ -1397,6 +1471,7 @@ window.hlGuess = (dir) => {
   const next = hlDraw();
   setEl("hlNext", hlCardHtml(HL_RANKS[next.r], next.s, false));
   const correct = dir === "higher" ? next.r > _hl.card.r : next.r < _hl.card.r;
+  sfx(correct ? "reveal" : "lose");
   if (!correct) {
     setEl("hlResult", lose(next.r === _hl.card.r
       ? `Tie on ${HL_RANKS[next.r]} — house takes it. Lost $${_hl.pot}.`
@@ -1414,6 +1489,7 @@ window.hlBank = async () => {
   if (!_hl) return;
   const p = _hl.pot, streak = _hl.streak, bet = _hl.bet;
   await payWin(p);
+  if (streak >= 5) celebrate(); else sfx("win");
   setEl("hlResult", win(`Banked $${p} after a ${streak} streak.`));
   hlReset(bet);
 };
@@ -1505,6 +1581,7 @@ window.vpDraw = async () => {
     await waitMs(340);
     backs.delete(i);
     if (!_vp) return;
+    sfx("click");
     vpRender({ backs, flips: new Set([i]) });
   }
   await waitMs(300);
@@ -1514,9 +1591,11 @@ window.vpDraw = async () => {
     vpRender({ winners: vpWinningCards(_vp.hand, res[0]) });
     const payout = Math.floor(_vp.bet * res[1]);
     await payWin(payout);
+    if (res[1] >= 25) celebrate(); else sfx("win");
     setEl("vpResult", win(`${res[0]} — +$${payout}`));
   } else {
     vpRender();
+    sfx("lose");
     setEl("vpResult", lose(`No hand. -$${_vp.bet}`));
   }
   setEl("vpControls", betBar("vpBet", _vp.bet) + `<button class="menuBtn gold bigBtn" onclick="vpDeal()">DEAL AGAIN</button>`);
@@ -1606,8 +1685,8 @@ function renderBJ(hidden, fx) {
       const div = document.createElement("div");
       const isHidden = hideFirst && i === 1;
       div.className = "bjCard" + ((c.s === "♥" || c.s === "♦") && !isHidden ? " red" : "") + (isHidden ? " back" : "");
-      if (dealLast && i === hand.length - 1) div.classList.add("dealIn");
-      if (fx.flipHole && handId === "bjDealer" && i === 1) div.classList.add("flipIn");
+      if (dealLast && i === hand.length - 1) { div.classList.add("dealIn"); sfx("click"); }
+      if (fx.flipHole && handId === "bjDealer" && i === 1) { div.classList.add("flipIn"); sfx("reveal"); }
       div.innerHTML = isHidden ? "" : `<div>${c.r}</div><div style="text-align:right">${c.s}</div>`;
       el.appendChild(div);
     });
@@ -1684,6 +1763,9 @@ window.bjStand = async () => {
 async function finishBJ(msg, payout) {
   await payWin(payout);
   const net = payout - bjState.bet;
+  if (msg.startsWith("BLACKJACK")) celebrate();
+  else if (net > 0) sfx("win");
+  else if (net < 0) sfx("lose");
   setEl("bjStatus", `${msg} ` + (net > 0 ? win(`+$${net}`) : net < 0 ? lose(`-$${-net}`) : `<span class="muted">even</span>`));
   setEl("bjActions", betBar("bjBet", bjState.bet) + `<button class="menuBtn gold bigBtn" onclick="bjDeal()">DEAL AGAIN</button>`);
 }
@@ -1783,8 +1865,10 @@ window.spinWheel = async () => {
   if (wedge.mult > 0) {
     const p = Math.floor(bet * wedge.mult);
     await payWin(p);
+    if (wedge.mult >= 20) celebrate(); else sfx("win");
     setEl("wheelResult", win(`${wedge.label} — +$${p}!`));
   } else {
+    sfx("lose");
     setEl("wheelResult", lose(`BUST — -$${bet}`));
   }
 };
@@ -1913,8 +1997,10 @@ window.startRace = async (pick) => {
   if (winner === pick) {
     const p = Math.floor(bet * HORSES[pick].odds);
     await payWin(p);
+    if (HORSES[pick].odds >= 9) celebrate(); else sfx("win");
     setEl("raceResult", win(`${HORSES[winner].name} takes it — +$${p}!`));
   } else {
+    sfx("lose");
     setEl("raceResult", lose(`${HORSES[winner].name} takes it. -$${bet}`));
   }
 };
@@ -1947,6 +2033,7 @@ function openKeno() {
       ${betBar("kenoBet", 50)}
       <div class="btnRow">
         <button class="menuBtn gold bigBtn" onclick="kenoDraw()">DRAW</button>
+        <button class="menuBtn green" onclick="kenoQuickPick()">QUICK PICK</button>
         <button class="menuBtn" onclick="kenoClear()">CLEAR</button>
       </div>
     </div>`);
@@ -1976,6 +2063,14 @@ window.kenoToggle = (n) => {
   setEl("kenoResult", "");
   renderKeno();
 };
+window.kenoQuickPick = () => {
+  if (!_keno || _keno.running) return;
+  _keno.picks.clear(); _keno.drawn.clear(); _keno.hits.clear();
+  while (_keno.picks.size < KENO_MAX_PICKS) _keno.picks.add(1 + Math.floor(Math.random() * 40));
+  sfx("click");
+  setEl("kenoResult", "");
+  renderKeno();
+};
 window.kenoClear = () => {
   if (!_keno || _keno.running) return;
   _keno.picks.clear(); _keno.drawn.clear(); _keno.hits.clear();
@@ -1997,7 +2092,7 @@ window.kenoDraw = async () => {
     await waitMs(260);
     if (!_keno) return;
     _keno.drawn.add(n);
-    if (_keno.picks.has(n)) _keno.hits.add(n);
+    if (_keno.picks.has(n)) { _keno.hits.add(n); sfx("reveal"); } else sfx("click");
     renderKeno();
   }
   const hits = _keno.hits.size;
@@ -2005,8 +2100,10 @@ window.kenoDraw = async () => {
   const p = Math.floor(bet * mult);
   if (p > 0) {
     await payWin(p);
+    if (mult >= 20) celebrate(); else sfx("win");
     setEl("kenoResult", win(`${hits} hit${hits === 1 ? "" : "s"} — ${mult}× — +$${p}`));
   } else {
+    sfx("lose");
     setEl("kenoResult", lose(`${hits} hit${hits === 1 ? "" : "s"} — -$${bet}`));
   }
   _keno.running = false;
@@ -2059,6 +2156,7 @@ window.bacDeal = async (side) => {
   const P = [], B = [];
   const deal = async (hand, tag) => {
     hand.push(deck.pop());
+    sfx("click");
     renderBac(P, B, tag + (hand.length - 1));
     await waitMs(450);
   };
@@ -2086,6 +2184,9 @@ window.bacDeal = async (side) => {
   else if (outcome === "tie") payout = bet; // P/B bets push on a tie
   if (payout > 0) await payWin(payout);
   const net = payout - bet;
+  if (side === "tie" && outcome === "tie") celebrate();
+  else if (net > 0) sfx("win");
+  else if (net < 0) sfx("lose");
   const label = outcome === "tie" ? `TIE at ${pt}` : `${outcome.toUpperCase()} wins ${outcome === "player" ? pt : bt}–${outcome === "player" ? bt : pt}`;
   setEl("bacResult", `${label} ` + (net > 0 ? win(`+$${net}`) : net < 0 ? lose(`-$${-net}`) : `<span class="muted">push</span>`));
   _bac.running = false;
@@ -2122,14 +2223,17 @@ window.setMinesCount = (n) => {
   _mines.mines = n;
   renderMinesRisks();
 };
-function renderMines(showAll) {
+// lastHit: the tile just clicked — it gets the pop (gem) or blast (mine)
+// animation while everything else stays put.
+function renderMines(showAll, lastHit) {
   const el = document.getElementById("minesGrid"); if (!el || !_mines) return;
   let html = "";
   for (let i = 0; i < MINES_GRID; i++) {
     if (!_mines.board) { html += `<div class="mineCell locked"></div>`; continue; }
     const isMine = _mines.board[i], open = _mines.revealed[i];
     if (open || showAll) {
-      html += `<div class="mineCell ${isMine ? "boom" : "gem"} ${open ? "" : "dim"}">${isMine ? "💣" : "💎"}</div>`;
+      const anim = i === lastHit ? (isMine ? " blastAnim" : " popAnim") : "";
+      html += `<div class="mineCell ${isMine ? "boom" : "gem"} ${open ? "" : "dim"}${anim}">${isMine ? "💣" : "💎"}</div>`;
     } else {
       html += `<div class="mineCell ${_mines.alive ? "live" : "locked"}" onclick="minesReveal(${i})"></div>`;
     }
@@ -2137,7 +2241,9 @@ function renderMines(showAll) {
   el.innerHTML = html;
   if (_mines.alive) {
     const pot = Math.floor(_mines.bet * _mines.mult);
-    setEl("minesPot", `Pot <b class="cWin">$${pot}</b> · ${_mines.mult.toFixed(2)}×`);
+    const found = _mines.revealed.filter(Boolean).length;
+    const gemsLeft = MINES_GRID - _mines.mines - found;
+    setEl("minesPot", `Pot <b class="cWin">$${pot}</b> · ${_mines.mult.toFixed(2)}× &nbsp;·&nbsp; 💎 ${found} found, ${gemsLeft} left · 💣 ${_mines.mines}`);
   }
 }
 window.minesStart = async () => {
@@ -2161,16 +2267,20 @@ window.minesReveal = (i) => {
   _mines.revealed[i] = true;
   if (_mines.board[i]) {
     _mines.alive = false;
+    sfx("boom");
     setEl("minesResult", lose(`Boom. -$${_mines.bet}`));
     setEl("minesControls", betBar("minesBet", _mines.bet) + `<button class="menuBtn gold bigBtn" onclick="minesStart()">PLAY AGAIN</button>`);
     setEl("minesPot", "");
-    renderMines(true);
+    // let the blast land before the rest of the board turns over
+    renderMines(false, i);
+    setTimeout(() => { if (_mines && !_mines.alive) renderMines(true, i); }, 550);
     return;
   }
+  sfx("reveal");
   const opened = _mines.revealed.filter(Boolean).length;
   const tilesLeft = MINES_GRID - opened + 1, safeLeft = tilesLeft - _mines.mines;
   _mines.mult *= (tilesLeft / safeLeft) * 0.97;
-  renderMines();
+  renderMines(false, i);
   const btn = document.getElementById("minesCashBtn");
   if (btn) btn.textContent = `CASH OUT $${Math.floor(_mines.bet * _mines.mult)}`;
   // cleared every safe tile — auto cash out
@@ -2181,6 +2291,7 @@ window.minesCash = async () => {
   _mines.alive = false;
   const p = Math.floor(_mines.bet * _mines.mult);
   await payWin(p);
+  if (_mines.mult >= 3) celebrate(); else sfx("win");
   setEl("minesResult", win(`Cashed out at ${_mines.mult.toFixed(2)}× — +$${p}`));
   setEl("minesControls", betBar("minesBet", _mines.bet) + `<button class="menuBtn gold bigBtn" onclick="minesStart()">PLAY AGAIN</button>`);
   setEl("minesPot", "");

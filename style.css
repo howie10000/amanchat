@@ -635,3 +635,34 @@ h3.section { margin: 14px 0 8px; font-size: 14px; color: #fbbf24; letter-spacing
 .mineCell.gem { background: #052e16; border-color: #15803d; }
 .mineCell.boom { background: #450a0a; border-color: #ef4444; }
 .mineCell.dim { opacity: .4; }
+@keyframes minePop {
+  0%   { transform: scale(.3) rotate(-14deg); }
+  55%  { transform: scale(1.25) rotate(5deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+@keyframes mineBlast {
+  0%, 100% { transform: none; }
+  15% { transform: translate(-5px, 2px) scale(1.25); background: #ef4444; }
+  30% { transform: translate(5px, -3px) scale(1.2); }
+  45% { transform: translate(-4px, -2px) scale(1.15); background: #ef4444; }
+  60% { transform: translate(4px, 3px) scale(1.1); }
+  75% { transform: translate(-2px, 1px); }
+}
+.mineCell.popAnim { animation: minePop .35s ease; }
+.mineCell.blastAnim { animation: mineBlast .55s ease; }
+
+/* ---- sound toggle + confetti ---- */
+.sfxBtn {
+  background: transparent; border: 0; cursor: pointer;
+  font-size: 16px; margin-right: 4px; vertical-align: middle;
+}
+.menuBox { position: relative; }
+@keyframes confettiFall {
+  from { top: -12px; opacity: 1; transform: rotate(0deg); }
+  to   { top: 100%;  opacity: .5; transform: rotate(540deg); }
+}
+.confetti {
+  position: absolute; top: -12px; width: 8px; height: 13px;
+  border-radius: 2px; z-index: 5; pointer-events: none;
+  animation: confettiFall linear forwards;
+}
