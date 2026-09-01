@@ -108,6 +108,13 @@ as long as the backend is up, the page works from anywhere.
 
 Update the live game by pushing to `main` — GitHub Pages redeploys automatically.
 
+**When you ship a change, bump the `?v=` version in `index.html`.** Pages serves
+assets with `Cache-Control: max-age=600`, so without a new version string
+players keep running the previous build for up to ten minutes — and longer from
+the browser's own disk cache. One find-and-replace of the version string on the
+13 asset tags is enough; players then pick up the update on their next refresh
+instead of needing Ctrl+Shift+R.
+
 ### Stack summary
 
 - **Go** (`gorilla/websocket`) — WS hub on northpvp.net

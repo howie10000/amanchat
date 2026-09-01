@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <title>Neighborhood — Social Gambling House Game</title>
-<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="style.css?v=20260901a" />
 </head>
 <body>
   <!-- LOGIN SCREEN -->
@@ -87,17 +87,21 @@
     </div>
   </div>
 
-  <script src="js/net.js"></script>
-  <script src="js/furniture.js"></script>
-  <script src="js/graphics.js"></script>
-  <script src="js/core.js"></script>
-  <script src="js/world.js"></script>
-  <script src="js/interiors.js"></script>
-  <script src="js/casino.js"></script>
-  <script src="js/jobs.js"></script>
-  <script src="js/combat.js"></script>
-  <script src="js/social.js"></script>
-  <script src="js/outdoor.js"></script>
-  <script src="js/game.js"></script>
+  <!-- ?v= is a cache buster. GitHub Pages serves these with
+       Cache-Control: max-age=600, so without a version string players keep
+       running the previous build for up to ten minutes after a deploy (and
+       longer from the browser's own disk cache). Bump VER on every release. -->
+  <script src="js/net.js?v=20260901a"></script>
+  <script src="js/furniture.js?v=20260901a"></script>
+  <script src="js/graphics.js?v=20260901a"></script>
+  <script src="js/core.js?v=20260901a"></script>
+  <script src="js/world.js?v=20260901a"></script>
+  <script src="js/interiors.js?v=20260901a"></script>
+  <script src="js/casino.js?v=20260901a"></script>
+  <script src="js/jobs.js?v=20260901a"></script>
+  <script src="js/combat.js?v=20260901a"></script>
+  <script src="js/social.js?v=20260901a"></script>
+  <script src="js/outdoor.js?v=20260901a"></script>
+  <script src="js/game.js?v=20260901a"></script>
 </body>
 </html>
