@@ -105,7 +105,12 @@ function roundPath(c, x, y, w, h, r) {
 // jackpot machine. Symbols slide DOWN into place, column by column, and
 // eight paylines are checked: three rows, three columns, two diagonals.
 // =====================================================================
-const SLOT_LINES = [
+// Lucky 7s is a single-payline machine: one row, three reels. Mega Jackpot is
+// the 3x3 with all eight lines live.
+const SLOT_LINES_1 = [
+  { label: "payline", cells: [[0, 0], [0, 1], [0, 2]], color: "#fbbf24" },
+];
+const SLOT_LINES_3 = [
   { label: "row 1",   cells: [[0, 0], [0, 1], [0, 2]], color: "#f87171" },
   { label: "row 2",   cells: [[1, 0], [1, 1], [1, 2]], color: "#fbbf24" },
   { label: "row 3",   cells: [[2, 0], [2, 1], [2, 2]], color: "#4ade80" },
@@ -116,15 +121,16 @@ const SLOT_LINES = [
   { label: "diag /",  cells: [[0, 2], [1, 1], [2, 0]], color: "#22d3ee" },
 ];
 
-// RTP note: with independent cells, a line pays with probability sum(p^3) and
-// the expected return is 8 * sum(p_s^3 * mult_s). Both symbol tables below are
-// tuned to land around 92%.
+// RTP note: with independent cells a line pays with probability sum(p^3), so
+// the expected return is (number of lines) * sum(p_s^3 * mult_s). Lucky 7s has
+// ONE line, so its multipliers are about 8x the jackpot machine's to land in
+// the same place — 92.7% here, 92.4% on Mega Jackpot's eight lines.
 const SLOT_SYMBOLS = [
-  { sym: "7", color: "#ef4444", weight: 1,  mult: 50 },
-  { sym: "★", color: "#fbbf24", weight: 3,  mult: 20 },
-  { sym: "♥", color: "#f472b6", weight: 6,  mult: 9 },
-  { sym: "♦", color: "#38bdf8", weight: 8,  mult: 5.5 },
-  { sym: "♣", color: "#4ade80", weight: 10, mult: 3.2 },
+  { sym: "7", color: "#ef4444", weight: 1,  mult: 400 },
+  { sym: "★", color: "#fbbf24", weight: 3,  mult: 150 },
+  { sym: "♥", color: "#f472b6", weight: 6,  mult: 75 },
+  { sym: "♦", color: "#38bdf8", weight: 8,  mult: 45 },
+  { sym: "♣", color: "#4ade80", weight: 10, mult: 25 },
   { sym: "🍀", color: "#94a3b8", weight: 14, mult: 0 },
 ];
 const JACKPOT_SYMBOLS = [
@@ -139,8 +145,17 @@ const JACKPOT_MIN_BET = 250;
 
 const SLOT_CELL = 96, SLOT_GAP = 8, SLOT_PAD = 14;
 const SLOT_W = SLOT_PAD * 2 + SLOT_CELL * 3 + SLOT_GAP * 2;
+function slotHeight(rows) { return SLOT_PAD * 2 + SLOT_CELL * rows + SLOT_GAP * (rows - 1); }
 
-let _slot = null; // { symbols, cols, grid, wins, spinning, flash, stop }
+// Reel timing: every column runs together for SPIN_HOLD, then they come to
+// rest one after another. SPIN_GLIDE is how many symbols are still to travel
+// when a reel starts slowing, chosen so the hand-off from constant speed to
+// the ease-out doesn't visibly jump.
+const SPIN_HOLD = 1500, SPIN_STAGGER = 400, SPIN_DECEL = 700;
+const SPIN_SPEED = 0.013, SPIN_GLIDE = 2.8;
+const SLOT_FILLER = 44;
+
+let _slot = null; // { symbols, lines, rows, cols, grid, wins, spinning }
 
 function slotPaytableHtml(symbols) {
   return symbols.filter(s => s.mult > 0).map(s =>
@@ -148,34 +163,41 @@ function slotPaytableHtml(symbols) {
      <b>${s.mult}&times;</b></div>`).join("");
 }
 
-function slotShellHtml(id, symbols, betId, minBet, blurb) {
+function slotShellHtml(cfg) {
+  const single = cfg.lines.length === 1;
+  const lineBlurb = single
+    ? "One payline, straight through the middle. Match all three and it pays."
+    : "All 8 lines are live on every spin — 3 rows, 3 columns and both diagonals.";
   return `
   <div class="slotWrap">
     <div class="slotMain">
-      <canvas id="${id}" width="${SLOT_W}" height="${SLOT_PAD * 2 + SLOT_CELL * 3 + SLOT_GAP * 2}"></canvas>
+      <canvas id="slotCanvas" width="${SLOT_W}" height="${slotHeight(cfg.rows)}"></canvas>
       <div id="slotResult" class="gameResult"></div>
-      ${betBar(betId, minBet)}
+      ${betBar(cfg.betId, cfg.minBet)}
       <button class="menuBtn gold bigBtn" id="slotBtn">SPIN</button>
     </div>
     <div class="slotSide">
-      <h3 class="section">PAYLINES</h3>
-      <p class="muted">All 8 lines are live on every spin — 3 rows, 3 columns and both diagonals.</p>
-      <div class="lineGrid">${SLOT_LINES.map(l => `<span class="pill" style="border-color:${l.color};color:${l.color}">${l.label}</span>`).join("")}</div>
-      <h3 class="section">PAYTABLE <span class="muted">(per line)</span></h3>
-      ${slotPaytableHtml(symbols)}
-      <p class="muted" style="margin-top:10px;">${blurb}</p>
+      <h3 class="section">${single ? "PAYLINE" : "PAYLINES"}</h3>
+      <p class="muted">${lineBlurb}</p>
+      ${single ? "" : `<div class="lineGrid">${cfg.lines.map(l => `<span class="pill" style="border-color:${l.color};color:${l.color}">${l.label}</span>`).join("")}</div>`}
+      <h3 class="section">PAYTABLE <span class="muted">${single ? "" : "(per line)"}</span></h3>
+      ${slotPaytableHtml(cfg.symbols)}
+      <p class="muted" style="margin-top:10px;">${cfg.blurb}</p>
     </div>
   </div>`;
 }
 
 function openSlotMachine(cfg) {
-  _slot = { symbols: cfg.symbols, cols: null, grid: null, wins: [], spinning: false, flash: 0 };
-  openMenu(cfg.title, slotShellHtml("slotCanvas", cfg.symbols, cfg.betId, cfg.minBet, cfg.blurb), true);
+  _slot = { symbols: cfg.symbols, lines: cfg.lines, rows: cfg.rows,
+            cols: null, grid: null, wins: [], spinning: false };
+  openMenu(cfg.title, slotShellHtml(cfg), true);
   // Idle grid so the machine isn't blank before the first pull
   _slot.grid = [];
-  for (let r = 0; r < 3; r++) { _slot.grid[r] = []; for (let c = 0; c < 3; c++) _slot.grid[r][c] = pickWeighted(cfg.symbols); }
-  _slot.cols = [0, 1, 2].map(() => ({ strip: [], p: 0 }));
-  for (let c = 0; c < 3; c++) _slot.cols[c].strip = [_slot.grid[0][c], _slot.grid[1][c], _slot.grid[2][c]];
+  for (let r = 0; r < cfg.rows; r++) {
+    _slot.grid[r] = [];
+    for (let c = 0; c < 3; c++) _slot.grid[r][c] = pickWeighted(cfg.symbols);
+  }
+  _slot.cols = [0, 1, 2].map(c => ({ strip: _slot.grid.map(row => row[c]), p: 0 }));
   drawSlotFrame();
   const btn = document.getElementById("slotBtn");
   if (btn) btn.onclick = () => spinSlotGrid(cfg);
@@ -191,10 +213,11 @@ function drawSlotFrame() {
   c.fillStyle = grad;
   roundPath(c, 0, 0, cv.width, cv.height, 14); c.fill();
 
+  const rows = _slot.rows;
   for (let col = 0; col < 3; col++) {
     const x = SLOT_PAD + col * (SLOT_CELL + SLOT_GAP);
     const y = SLOT_PAD;
-    const h = SLOT_CELL * 3 + SLOT_GAP * 2;
+    const h = SLOT_CELL * rows + SLOT_GAP * (rows - 1);
     // reel well
     c.fillStyle = "#05070d";
     roundPath(c, x, y, SLOT_CELL, h, 10); c.fill();
@@ -204,7 +227,7 @@ function drawSlotFrame() {
     const reel = _slot.cols[col];
     const p = reel.p;
     const i0 = Math.floor(p);
-    for (let k = -1; k <= 3; k++) {
+    for (let k = -1; k <= rows + 1; k++) {
       const idx = i0 + k;
       if (idx < 0 || idx >= reel.strip.length) continue;
       const sym = reel.strip[idx];
@@ -254,42 +277,59 @@ async function spinSlotGrid(cfg) {
   if (!_slot || _slot.spinning) return;
   const bet = readBet(cfg.betId);
   if (cfg.minBet && bet < cfg.minBet) { toast(`Minimum bet is $${cfg.minBet}.`); return; }
-  if (!(await takeBet(bet))) return;
-  if (!document.getElementById("slotCanvas")) return;
 
+  // Latch and clear the previous round synchronously. takeBet() awaits a
+  // server write, and until it resolved the last round's winning lines and
+  // payout stayed on screen over the top of the new spin.
   _slot.spinning = true;
   _slot.wins = [];
-  setEl("slotResult", `<span class="cSpin">Spinning…</span>`);
   const btn = document.getElementById("slotBtn");
   if (btn) btn.disabled = true;
+  setEl("slotResult", `<span class="cSpin">Spinning…</span>`);
+  drawSlotFrame();
+
+  if (!(await takeBet(bet))) {
+    _slot.spinning = false;
+    if (btn) btn.disabled = false;
+    setEl("slotResult", "");
+    return;
+  }
+  if (!document.getElementById("slotCanvas")) { _slot.spinning = false; return; }
 
   // Final grid, then a strip per column with the results on top so the reel
   // scrolls downward into them.
+  const rows = cfg.rows;
   const grid = [];
-  for (let r = 0; r < 3; r++) { grid[r] = []; for (let c = 0; c < 3; c++) grid[r][c] = pickWeighted(cfg.symbols); }
-  const FILLER = 16;
-  const now = performance.now();
+  for (let r = 0; r < rows; r++) { grid[r] = []; for (let c = 0; c < 3; c++) grid[r][c] = pickWeighted(cfg.symbols); }
+  const t0 = performance.now();
   _slot.grid = grid;
   _slot.cols = [0, 1, 2].map(col => {
-    const strip = [grid[0][col], grid[1][col], grid[2][col]];
-    for (let i = 0; i < FILLER; i++) strip.push(pickWeighted(cfg.symbols));
-    return { strip, p: strip.length - 3, from: strip.length - 3, t0: now + col * 170, dur: 900 + col * 320 };
+    const strip = grid.map(row => row[col]);
+    for (let i = 0; i < SLOT_FILLER; i++) strip.push(pickWeighted(cfg.symbols));
+    return { strip, p: 0, decelStart: SPIN_HOLD + col * SPIN_STAGGER };
   });
 
   await animate((ts) => {
+    const t = ts - t0;
     let allDone = true;
     for (const reel of _slot.cols) {
-      const k = clamp01((ts - reel.t0) / reel.dur);
-      reel.p = reel.from * (1 - easeOutQuint(k));
-      if (k < 1) allDone = false;
+      if (t < reel.decelStart) {
+        // full speed: streaming downward at a constant rate
+        reel.p = SPIN_GLIDE + SPIN_SPEED * (reel.decelStart - t);
+        allDone = false;
+      } else {
+        const k = clamp01((t - reel.decelStart) / SPIN_DECEL);
+        reel.p = SPIN_GLIDE * (1 - easeOutCubic(k));
+        if (k < 1) allDone = false;
+      }
     }
     drawSlotFrame();
     return !allDone;
   });
 
-  // Score the eight lines
+  // Score the paylines
   const wins = [];
-  for (const line of SLOT_LINES) {
+  for (const line of cfg.lines) {
     const first = grid[line.cells[0][0]][line.cells[0][1]];
     if (!first.mult) continue;
     if (line.cells.every(([r, c]) => grid[r][c].sym === first.sym)) wins.push({ line, sym: first, mult: first.mult });
@@ -318,15 +358,17 @@ async function spinSlotGrid(cfg) {
 
 function openSlots() {
   openSlotMachine({
-    title: "🎰 LUCKY 7s — 3×3",
-    symbols: SLOT_SYMBOLS, betId: "slotBet", minBet: 10,
-    blurb: "Three 7s on any line pays 50× your stake. Multiple lines pay together.",
+    title: "🎰 LUCKY 7s",
+    symbols: SLOT_SYMBOLS, lines: SLOT_LINES_1, rows: 1,
+    betId: "slotBet", minBet: 10,
+    blurb: "Three 7s across the payline pays 400× your stake.",
   });
 }
 function openJackpot() {
   openSlotMachine({
     title: "💎 MEGA JACKPOT — 3×3",
-    symbols: JACKPOT_SYMBOLS, betId: "slotBet", minBet: JACKPOT_MIN_BET,
+    symbols: JACKPOT_SYMBOLS, lines: SLOT_LINES_3, rows: 3,
+    betId: "slotBet", minBet: JACKPOT_MIN_BET,
     blurb: `Minimum bet $${JACKPOT_MIN_BET}. Three 💎 on a line pays 300× — and lines stack.`,
   });
 }
@@ -1004,9 +1046,12 @@ window.crashAction = async () => {
   if (_crash && _crash.running) { cashOutCrash(); return; }
   const bet = readBet("crashBet");
   if (!(await takeBet(bet))) return;
-  // 1/(1-u) curve with a 3% instant bust — that pair is the house edge.
+  // Crash point follows k/(1-u), which makes P(crash >= m) = k/m and therefore
+  // an expected return of exactly k whatever multiplier you cash out at. k was
+  // 0.97, the most generous game in the building; 0.92 lines it up with the
+  // slots. The 3% instant bust sits underneath that.
   const u = Math.random();
-  const crashAt = u < 0.03 ? 1.0 : Math.min(60, Math.max(1.01, 0.97 / (1 - u)));
+  const crashAt = u < 0.03 ? 1.0 : Math.min(60, Math.max(1.01, 0.92 / (1 - u)));
   _crash = { bet, mult: 1, crashAt, running: true, stop: null };
   const btn = document.getElementById("crashBtn");
   if (btn) { btn.textContent = "CASH OUT"; btn.className = "menuBtn green bigBtn"; }
@@ -1108,6 +1153,9 @@ window.dropPlinko = async () => {
   if (btn) btn.disabled = true;
   setEl("plinkoResult", "");
   document.querySelectorAll(".plinkoSlot").forEach(e => e.classList.remove("hit"));
+
+  // Every peg is a straight coin flip: 50% left, 50% right. Ten of them gives
+  // the binomial spread the bucket payouts are built around.
   const path = [];
   let i = 0;
   for (let row = 1; row <= PLINKO_ROWS; row++) {
@@ -1115,17 +1163,30 @@ window.dropPlinko = async () => {
     path.push({ row, i });
   }
   const cv = document.getElementById("plinkoCanvas");
-  const t0 = performance.now(), STEP = 105;
+
+  // One continuous polyline from the drop point through every peg it touches
+  // and down into the bucket, so the chip flows instead of hopping cell to
+  // cell: x eases with a smoothstep between pegs while y falls at a steady
+  // rate, with a small arc over each deflection.
+  const pts = [{ x: cv.width / 2, y: 10 }];
+  for (const st of path) pts.push(plinkoPegXY(st.row, st.i, cv));
+  const last = pts[pts.length - 1];
+  pts.push({ x: last.x, y: cv.height - 12 });
+
+  const SEG_MS = 115;
+  const DUR = (pts.length - 1) * SEG_MS;
+  const t0 = performance.now();
   await animate(ts => {
-    const k = (ts - t0) / STEP;
-    const seg = Math.floor(k);
-    if (seg >= path.length) return false;
-    const f = k - seg;
-    const a = seg === 0 ? { x: cv.width / 2, y: 8 } : plinkoPegXY(path[seg - 1].row, path[seg - 1].i, cv);
-    const b = plinkoPegXY(path[seg].row, path[seg].i, cv);
-    // little arc between pegs so it hops rather than slides
-    drawPlinko({ x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f - Math.sin(f * Math.PI) * 9 });
-    return true;
+    const g = clamp01((ts - t0) / DUR) * (pts.length - 1);
+    const seg = Math.min(Math.floor(g), pts.length - 2);
+    const f = g - seg;
+    const a = pts[seg], b = pts[seg + 1];
+    const smooth = f * f * (3 - 2 * f);
+    drawPlinko({
+      x: a.x + (b.x - a.x) * smooth,
+      y: a.y + (b.y - a.y) * f - Math.sin(f * Math.PI) * 7,
+    });
+    return ts - t0 < DUR;
   });
   const mult = PLINKO_SLOTS[i];
   const slotEl = document.getElementById("pslot" + i);
