@@ -16,6 +16,12 @@
 
   let ws = null;
   let connected = false;
+  // Credentials from the last successful auth, kept in memory only so a
+  // dropped socket can log itself back in. Without this, a reconnect came up
+  // unauthenticated and every later call failed with "not authed" until the
+  // player reloaded the page — which on school wifi is most of a lunch break.
+  let lastAuth = null;
+  let reauthing = false;
   let nextId = 1;
   const pending = new Map();        // id -> {resolve, reject}
   const readyQ  = [];               // waiters until first connect
@@ -39,9 +45,21 @@
 
   function connect() {
     ws = new WebSocket(WS_URL);
-    ws.onopen = () => {
+    ws.onopen = async () => {
       connected = true;
       console.log("[net] connected", WS_URL);
+      if (lastAuth && !reauthing) {
+        // Re-auth before releasing anything queued, so the first call out of
+        // the gate isn't rejected.
+        reauthing = true;
+        try {
+          await rpc("auth", { user: lastAuth.user, pass: lastAuth.pass, register: false });
+          console.log("[net] re-authenticated as", lastAuth.user);
+        } catch (e) {
+          console.warn("[net] re-auth failed", e.message);
+        }
+        reauthing = false;
+      }
       while (readyQ.length) readyQ.shift()();
       emit("open", {});
     };
@@ -72,12 +90,13 @@
   connect();
 
   function whenReady() {
-    if (connected) return Promise.resolve();
+    // reauthing lets the auth call itself through while everything else waits.
+    if (connected && !reauthing) return Promise.resolve();
     return new Promise(r => readyQ.push(r));
   }
 
   async function rpc(op, args) {
-    await whenReady();
+    if (op !== "auth" || !reauthing) await whenReady();
     const id = nextId++;
     return new Promise((resolve, reject) => {
       pending.set(id, { resolve, reject });
@@ -98,8 +117,13 @@
   // fbPost returns { name: "<auto-id>" } to match the existing Firebase REST response shape.
   window.fbPost   = (path, value)     => rpc("post",  { path, value });
 
-  // Auth: returns { user, data }
-  window.fbAuth   = (user, pass, register) => rpc("auth", { user, pass, register: !!register });
+  // Auth: returns { user, data }. The credentials are cached in memory so a
+  // reconnect can restore the session (see ws.onopen).
+  window.fbAuth   = async (user, pass, register) => {
+    const res = await rpc("auth", { user, pass, register: !!register });
+    lastAuth = { user, pass };
+    return res;
+  };
 
   // Presence — fast lane, no fbPut roundtrip; sends a single op the server uses for broadcast.
   window.netPresence = (data) => rpc("presence", { data });

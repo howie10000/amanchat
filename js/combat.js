@@ -249,7 +249,7 @@ function updateDungeon() {
   if (keys["d"] || keys["arrowright"]) dx += 1;
   const m = Math.hypot(dx, dy) || 1;
   if (dx || dy) {
-    const speed = 6.5; // matches the 2.5x overworld speed bump
+    const speed = 2.65; // same walking speed as the overworld
     const nx = state.pos.x + (dx/m) * speed;
     const ny = state.pos.y + (dy/m) * speed;
     moveWithWalls(state.pos, nx, ny, 12);
@@ -681,7 +681,7 @@ function updateDuel() {
   if (keys["d"] || keys["arrowright"]) dx += 1;
   const m = Math.hypot(dx, dy) || 1;
   if (m > 0 && (dx || dy)) {
-    const speed = 6.5; // matches the 2.5x overworld speed bump
+    const speed = 2.65; // same walking speed as the overworld
     state.pos.x += (dx/m) * speed; state.pos.y += (dy/m) * speed;
     state.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
   }
