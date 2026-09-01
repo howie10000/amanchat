@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Neighborhood — Social Gambling House Game</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- LOGIN SCREEN -->
+  <div id="loginScreen" class="screen">
+    <div class="loginBox">
+      <h1>NEIGHBORHOOD</h1>
+      <p class="tagline">Build. Gamble. Socialize. Survive.</p>
+      <input id="loginUser" placeholder="Username" maxlength="16" autocomplete="username" />
+      <input id="loginPass" type="password" placeholder="Password" maxlength="32" autocomplete="current-password" />
+      <div class="loginBtns">
+        <button id="btnLogin">Log In</button>
+        <button id="btnRegister">Register</button>
+      </div>
+      <div id="loginMsg" class="msg"></div>
+      <div class="hint">Tip: Username "mayor" gets the admin panel.</div>
+    </div>
+  </div>
+
+  <!-- GAME SCREEN -->
+  <div id="gameScreen" class="screen hidden">
+    <canvas id="game" width="1280" height="800"></canvas>
+
+    <!-- HUD -->
+    <div id="hud">
+      <div class="hudRow"><span id="hudName">—</span></div>
+      <div class="hudRow"><span class="hudIcon money">$</span><span id="hudMoney">0</span></div>
+      <div class="hudRow"><span class="hudIcon hp">+</span><span id="hudHp">100</span></div>
+      <div class="hudRow muted" id="hudArea">Neighborhood</div>
+    </div>
+
+    <!-- Action bar -->
+    <div id="actionBar">
+      <button class="actBtn" data-act="friends">Friends</button>
+      <button class="actBtn" data-act="dms">Messenger</button>
+      <button class="actBtn" data-act="map">Map</button>
+      <button class="actBtn" data-act="inv">Inventory</button>
+      <button class="actBtn" data-act="build">Build Mode</button>
+      <button class="actBtn" data-act="help">?</button>
+    </div>
+
+    <!-- Build-mode banner -->
+    <div id="buildBanner" class="hidden">
+      <b>BUILD MODE</b> — drag furniture to move • right-click to remove • ESC to exit
+    </div>
+
+    <!-- Chat bubble input -->
+    <div id="chatInput" class="hidden">
+      <input id="chatBox" maxlength="80" placeholder="Say something... (Enter to send, ESC to cancel)" />
+    </div>
+
+    <!-- Generic menu overlay -->
+    <div id="menu" class="menuOverlay hidden">
+      <div class="menuBox">
+        <div class="menuHeader">
+          <h2 id="menuTitle">Menu</h2>
+          <button class="closeBtn" onclick="closeMenu()">×</button>
+        </div>
+        <div id="menuBody"></div>
+      </div>
+    </div>
+
+    <!-- Side panel (Friends / Messenger) -->
+    <div id="sidePanel" class="hidden">
+      <div class="spHeader">
+        <span id="spTitle">Friends</span>
+        <button class="closeBtn" onclick="closeSidePanel()">×</button>
+      </div>
+      <div id="spBody"></div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div id="toast" class="hidden"></div>
+
+    <!-- Notification bell (incoming friend req / duel / quest invite) -->
+    <div id="notifyArea"></div>
+
+    <!-- Tutorial bubble -->
+    <div id="tutorial" class="hidden">
+      <div id="tutorialText"></div>
+      <button id="tutorialNext">Next</button>
+    </div>
+  </div>
+
+  <script src="js/net.js"></script>
+  <script src="js/furniture.js"></script>
+  <script src="js/graphics.js"></script>
+  <script src="js/core.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/interiors.js"></script>
+  <script src="js/casino.js"></script>
+  <script src="js/jobs.js"></script>
+  <script src="js/combat.js"></script>
+  <script src="js/social.js"></script>
+  <script src="js/outdoor.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

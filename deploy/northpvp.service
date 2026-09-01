@@ -1,0 +1,42 @@
+# /etc/systemd/system/northpvp.service
+#
+# Install:
+#   sudo cp deploy/northpvp.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now northpvp
+#   sudo systemctl status northpvp
+#
+# Logs:
+#   sudo journalctl -u northpvp -f
+#
+# Adjust paths/User as needed. The example assumes:
+#   /opt/northpvp/northpvp        (binary)
+#   /opt/northpvp/data.db         (SQLite database, created on first run)
+#
+# The client is hosted separately (GitHub Pages); this server only handles
+# the WebSocket backend at wss://northpvp.net/ws.
+
+[Unit]
+Description=Northpvp neighborhood game server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=northpvp
+Group=northpvp
+WorkingDirectory=/opt/northpvp
+ExecStart=/opt/northpvp/northpvp -addr 127.0.0.1:8080 -db /opt/northpvp/data.db
+Restart=on-failure
+RestartSec=2
+LimitNOFILE=65536
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/northpvp
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
