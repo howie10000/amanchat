@@ -476,7 +476,17 @@ setInterval(broadcastPresence, 66); // ~15Hz presence broadcast (was 100ms/10Hz)
 // a server-side settlement. Staff editing OTHER players keep their powers.
 const PROTECTED_FIELDS = new Set(['money', 'inventory', 'cosmetics', 'vegasFloor', 'dailyStreak', 'lastDaily',
     'lastInterest', 'fishInventory', 'houseStyle', 'furniture', 'houseIndex', 'createdAt',
-    'bankBalance', 'bankLast', 'creditScore', 'creditGainLast', 'loan']);
+    'bankBalance', 'bankLast', 'creditScore', 'creditGainLast', 'loan', 'notes']);
+// The only fields of a user record another (non-staff) player is allowed to
+// SEE. Everything else — friends, keys, furniture, inventory, notes, all the
+// bank/loan/credit numbers — is private and never leaves the server for anyone
+// but the owner or staff.
+const PUBLIC_USER_FIELDS = new Set(['houseIndex', 'houseStyle', 'locked', 'appearance', 'createdAt', 'money']);
+function publicUser(u) {
+    const out = {};
+    if (u && typeof u === 'object') for (const k of PUBLIC_USER_FIELDS) if (u[k] !== undefined) out[k] = u[k];
+    return out;
+}
 const PAID_APPEARANCE_KEYS = Object.keys(ECON.COSMETIC_DEFAULTS); // hat, accessory, aura, pet, nameColor
 const DEFAULT_APPEARANCE = {
     skin: '#f5d0a9', hair: 'short', hairColor: '#3f2210', shirt: '#3b82f6', pants: '#1e293b',
@@ -571,7 +581,10 @@ function canWrite(user, pathStr, op) {
     }
     if (top === 'banned_ips') return role === 'owner';
     if (top === 'meta') return false;             // server-written only (IPs)
-    if (top === 'mayor') return isStaff(user);    // legacy single announcement
+    if (top === 'mayor') {
+        if (parts[1] === 'treasury') return false;   // server-written only (bank tax + owner draws)
+        return isStaff(user);                        // legacy single announcement
+    }
     // Announcements feed: owners post, everyone reads.
     if (top === 'announcements') return role === 'owner';
     // Bug reports live under bug_reports/<author>/<id>. Staff may do anything
@@ -590,9 +603,14 @@ function canWrite(user, pathStr, op) {
         case 'players':
             if (parts.length < 2) return false;
             if (parts[1] === user) return true;
-            // Friend-request acceptance writes the reciprocal entry into the
-            // other player's `friends` — the one field anyone may touch.
-            if (parts.length >= 3 && parts[2] === 'friends' && op !== 'del') return true;
+            // On someone ELSE's record you may only add or remove the single
+            // leaf about YOURSELF in their `friends` or `keys` map — i.e.
+            // accepting a friend request, or leaving on unfriend. Nothing else.
+            if (parts.length === 4 && (parts[2] === 'friends' || parts[2] === 'keys') && parts[3] === user) {
+                return op === 'put' || op === 'del';
+            }
+            // (legacy) whole-object friends patch during accept
+            if (parts.length === 3 && parts[2] === 'friends' && op !== 'del') return true;
             // Admins may edit other players (give money etc.) but not wipe
             // accounts and not touch other staff.
             return role === 'admin' && op !== 'del' && !isStaff(parts[1]);
@@ -658,6 +676,13 @@ function afterModWrite(actor, pathStr, val, op) {
         pushTo(target, { event: 'mute', data: mute });
     } else if (parts[0] === 'roles' && parts[1] === 'admins' && parts.length >= 3) {
         pushTo(parts[2], { event: 'role', role: roleOf(parts[2]) });
+    } else if (parts[0] === 'users' && parts[2] === 'friends' && parts.length === 4 && op === 'del') {
+        // Unfriended — the house keys go with the friendship, on BOTH records,
+        // so a revoked friend can never walk back into a locked house.
+        const a = parts[1], b = parts[3];
+        store.delete(`users/${a}/keys/${b}`);
+        store.delete(`users/${b}/keys/${a}`);
+        store.delete(`users/${b}/friends/${a}`);   // keep it mutual even if the client only did one side
     }
 }
 
@@ -852,6 +877,23 @@ function handleMessage(c, msg) {
             if (parts[0] === 'meta' && !isStaff(c.user)) return replyErr('forbidden');
             // Bug reports are visible to staff (all) and to each author (their own).
             if (parts[0] === 'bug_reports' && !isStaff(c.user) && parts[1] !== c.user) return replyErr('forbidden');
+            if (parts[0] === 'mayor' && parts[1] === 'treasury' && !isStaff(c.user)) return replyErr('forbidden');
+
+            // ----- user records: only the owner or staff see the private fields.
+            if ((parts[0] === 'users' || parts[0] === 'players') && !isStaff(c.user)) {
+                const raw = store.get(msg.path);
+                if (parts.length === 1) {                       // whole "users" map
+                    const out = {};
+                    for (const [name, rec] of Object.entries(raw || {})) {
+                        out[name] = (name === c.user) ? rec : publicUser(rec);
+                    }
+                    return reply(out);
+                }
+                if (parts.length >= 2 && parts[1] !== c.user) {
+                    if (parts.length === 2) return reply(publicUser(raw));           // one user's record
+                    if (!PUBLIC_USER_FIELDS.has(parts[2])) return reply(null);       // a private field
+                }
+            }
             reply(store.get(msg.path));
             break;
         }
@@ -963,7 +1005,7 @@ function handleMessage(c, msg) {
         }
 
         // ----- server-authoritative economy ops (docs/SERVER-AUTHORITY.md) -----
-        case 'bank': case 'buy': case 'furniture_set': case 'earn': case 'fish': case 'casino': {
+        case 'bank': case 'buy': case 'furniture_set': case 'earn': case 'fish': case 'casino': case 'home': case 'treasury': {
             if (!c.user) return replyErr('not authed');
             let out;
             try { out = ECONOMY_OPS[op](c.user, msg); }
@@ -1076,6 +1118,14 @@ function grantCredit(user, u, amount, now) {
     return after - before;
 }
 
+// ---- Mayor's Treasury (mayor/treasury) — bank tax lands here; owners draw it.
+function treasuryBalance() { return Math.max(0, Math.floor(+store.get('mayor/treasury') || 0)); }
+function addTreasury(n) {
+    n = Math.floor(+n || 0);
+    if (n <= 0) return;
+    store.put('mayor/treasury', treasuryBalance() + n);
+}
+
 const OVERDUE_EARN_SKIM = ECON.OVERDUE_EARN_SKIM || 0.05;
 function creditEarnings(user, u, gross, reason) {
     gross = Math.max(0, Math.floor(+gross || 0));
@@ -1120,6 +1170,7 @@ const ECONOMY_OPS = {
                 loan: u.loan || null,
                 netWorth,
                 loanLimit: ECON.loanLimit(credit, netWorth),
+                taxRate: ECON.BANK_TAX_RATE,
                 synced: sync,
             };
         };
@@ -1130,12 +1181,14 @@ const ECONOMY_OPS = {
             const amt = nonNegInt(msg.amount);
             if (!amt || amt <= 0) throw new Error('Enter an amount to deposit.');
             if (moneyOf(u) < amt) throw new Error('Not enough cash on hand.');
+            const tax = ECON.bankTax(amt);                 // 2.5% -> Mayor's Treasury
             setMoney(user, u, moneyOf(u) - amt);
-            u.bankBalance = Math.max(0, Math.floor(+u.bankBalance || 0)) + amt;
+            u.bankBalance = Math.max(0, Math.floor(+u.bankBalance || 0)) + (amt - tax);
             u.bankLast = +u.bankLast || now;
             store.put(`users/${user}/bankBalance`, u.bankBalance);
             store.put(`users/${user}/bankLast`, u.bankLast);
-            return Object.assign(view(), { moved: amt });
+            addTreasury(tax);
+            return Object.assign(view(), { moved: amt - tax, gross: amt, tax });
         }
 
         if (msg.action === 'withdraw') {
@@ -1144,10 +1197,12 @@ const ECONOMY_OPS = {
             if (msg.amount === 'all') amt = have;
             if (!amt || amt <= 0) throw new Error('Enter an amount to withdraw.');
             if (have < amt) throw new Error('Your vault does not hold that much.');
+            const tax = ECON.bankTax(amt);
             u.bankBalance = have - amt;
             store.put(`users/${user}/bankBalance`, u.bankBalance);
-            setMoney(user, u, moneyOf(u) + amt);
-            return Object.assign(view(), { moved: amt });
+            setMoney(user, u, moneyOf(u) + (amt - tax));
+            addTreasury(tax);
+            return Object.assign(view(), { moved: amt - tax, gross: amt, tax });
         }
 
         if (msg.action === 'loan_take') {
@@ -1403,6 +1458,54 @@ const ECONOMY_OPS = {
         if (r.delta > 0) creditEarnings(user, u, r.delta, 'casino');
         else if (r.delta < 0) setMoney(user, u, moneyOf(u) + r.delta);
         return Object.assign({}, r.data, { money: moneyOf(u), loan: u.loan || null });
+    },
+
+    // Server-checked house entry. A locked door only opens for the owner, staff,
+    // or someone who is BOTH a friend of the owner AND holds their key. Returns
+    // the room contents on success — the client never reads another user's
+    // furniture / keys / friends directly.
+    home(user, msg) {
+        if (msg.action !== 'enter') throw new Error('Unknown home action.');
+        const owner = String(msg.owner || '').trim().toLowerCase();
+        if (!owner) throw new Error('No such house.');
+        const rec = store.get('users/' + owner);
+        if (!rec || rec.houseIndex == null) throw new Error('No such house.');
+        if (owner !== user && rec.locked && !isStaff(user)) {
+            const friends = (rec.friends && typeof rec.friends === 'object') ? rec.friends : {};
+            const keys = (rec.keys && typeof rec.keys === 'object') ? rec.keys : {};
+            if (!friends[user] || !keys[user]) {
+                throw new Error(`🔒 ${owner}'s door is locked — you need to be their friend AND hold their key.`);
+            }
+        }
+        const fr = rec.furniture;
+        return {
+            owner,
+            locked: !!rec.locked,
+            houseStyle: rec.houseStyle || {},
+            furniture: Array.isArray(fr) ? fr : (fr && typeof fr === 'object' ? Object.values(fr) : []),
+        };
+    },
+
+    // Mayor's Treasury: fed by the 2.5% bank tax. Any staff can see it; only
+    // owners can draw from it (into their own wallet).
+    treasury(user, msg) {
+        const bal = treasuryBalance();
+        if (msg.action === 'status') {
+            if (!isStaff(user)) throw new Error('Staff only.');
+            return { balance: bal, taxRate: ECON.BANK_TAX_RATE };
+        }
+        if (msg.action === 'withdraw') {
+            if (roleOf(user) !== 'owner') throw new Error('Only owners can draw from the treasury.');
+            let amt = nonNegInt(msg.amount);
+            if (msg.amount === 'all') amt = bal;
+            if (!amt || amt <= 0) throw new Error('Enter an amount to withdraw.');
+            amt = Math.min(amt, bal);
+            store.put('mayor/treasury', bal - amt);
+            const u = userRec(user);
+            setMoney(user, u, moneyOf(u) + amt);
+            return { balance: bal - amt, withdrew: amt, money: moneyOf(u) };
+        }
+        throw new Error('Unknown treasury action.');
     },
 };
 

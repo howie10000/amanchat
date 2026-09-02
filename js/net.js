@@ -142,6 +142,8 @@
   window.netEarn = (data) => rpc("earn", data);
   window.netFish = (data) => rpc("fish", data);
   window.netFurnitureSet = (data) => rpc("furniture_set", data);
+  window.netHome = (data) => rpc("home", data);          // server-checked house entry
+  window.netTreasury = (data) => rpc("treasury", data);  // Mayor's Treasury (staff)
 
   // For dev console / debugging
   window.fb = { fbGet: window.fbGet, fbPut: window.fbPut, fbPatch: window.fbPatch, fbPost: window.fbPost, fbDelete: window.fbDelete };

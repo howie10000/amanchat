@@ -95,9 +95,15 @@
   // Money parked in the vault (users/<me>/bankBalance) compounds at
   // BANK_INTEREST_RATE every BANK_INTEREST_PERIOD, applied lazily whenever the
   // player touches the bank or logs in, so it works while offline too.
-  const BANK_INTEREST_RATE = 0.001;         // 0.1% per period
+  const BANK_INTEREST_RATE = 0.0001;        // 0.01% per period
   const BANK_INTEREST_PERIOD = 5 * 60000;   // every 5 minutes
   const BANK_INTEREST_MAX_PERIODS = 4032;   // stop compounding after ~2 weeks idle
+
+  // Every deposit and withdrawal pays a 2.5% "tax" that goes to the Mayor's
+  // Treasury (mayor/treasury on the server). Owners draw from it in the Staff
+  // panel.
+  const BANK_TAX_RATE = 0.025;
+  function bankTax(amount) { return Math.floor(Math.max(0, +amount || 0) * BANK_TAX_RATE); }
 
   // Returns { balance, last, gained } — `last` only advances by whole periods so
   // partial progress toward the next payout isn't lost.
@@ -108,8 +114,6 @@
     if (balance <= 0 || now <= last) return { balance, last: Math.min(last, now) || now, gained: 0 };
     const periods = Math.floor((now - last) / BANK_INTEREST_PERIOD);
     if (periods <= 0) return { balance, last, gained: 0 };
-    // +1e-6 so an exact case (e.g. $10,000 at 0.1% = $10,010) isn't shaved to
-    // $10,009 by binary rounding of Math.pow.
     const grown = Math.floor(balance * Math.pow(1 + BANK_INTEREST_RATE, Math.min(periods, BANK_INTEREST_MAX_PERIODS)) + 1e-6);
     return { balance: grown, last: last + periods * BANK_INTEREST_PERIOD, gained: grown - balance };
   }
@@ -302,6 +306,7 @@
     DAILY_COOLDOWN, DAILY_STREAK_WINDOW, dailyBonusAmount,
     INTEREST_RATE, INTEREST_COOLDOWN,
     BANK_INTEREST_RATE, BANK_INTEREST_PERIOD, BANK_INTEREST_MAX_PERIODS,
+    BANK_TAX_RATE, bankTax,
     bankAccrue, bankNextInterestIn,
     CREDIT_MIN, CREDIT_MAX, CREDIT_START, LOAN_TERM, LOAN_LATE_PERIOD, LOAN_LATE_FEE,
     LOAN_ONTIME_CREDIT_GAIN, LOAN_EARLY_CREDIT_BONUS, LOAN_LATE_PAYOFF_CREDIT,

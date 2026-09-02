@@ -53,7 +53,8 @@ async function renderFriendsList() {
         <button class="menuBtn gold" onclick="challengeDuel('${f}')">Duel</button>
         <button class="menuBtn green" onclick="inviteCoop('${f}')">Quest</button>
         <button class="menuBtn ${hasKey ? "" : "gray"}" onclick="toggleKey('${f}')"
-          title="${hasKey ? "Revoke your house key" : "Give your house key"}">${hasKey ? "🔑 Has Key" : "🔑 Give Key"}</button>
+          title="${hasKey ? "Revoke the key to your house" : "Give them a key to your house"}">${hasKey ? "🔑 Has Key" : "🔑 Give Key"}</button>
+        <button class="menuBtn red" onclick="unfriend('${f}')" title="Remove friend (revokes any key)">Unfriend</button>
       </div>
     </div>`;
   }
@@ -86,6 +87,24 @@ async function sendFriendRequestTo(target) {
   toast(`Friend request sent to ${target}.`);
 }
 window.sendFriendRequestTo = sendFriendRequestTo;
+
+// Remove a friend on both sides. Any house key exchanged either way is revoked
+// (client does it here; the server also wipes keys whenever a friend link is
+// deleted, so a revoked friend can never keep access to a locked house).
+window.unfriend = async (other) => {
+  if (!confirm(`Unfriend ${other}? Any house key you gave them is revoked.`)) return;
+  delete state.friends[other];
+  state.data.friends = state.friends;
+  if (state.data.keys && state.data.keys[other]) delete state.data.keys[other];
+  try {
+    await fbDelete(`users/${state.user}/friends/${other}`);
+    await fbDelete(`users/${state.user}/keys/${other}`);        // revoke the key I gave them
+    await fbDelete(`users/${other}/friends/${state.user}`);     // drop me from their list
+    await fbDelete(`users/${other}/keys/${state.user}`);        // and any key they gave me
+  } catch (e) { toast("Couldn't fully unfriend: " + (e.message || e)); }
+  toast(`Unfriended ${other}.`);
+  renderFriendsList();
+};
 window.sendFriendRequest = async () => {
   const el = document.getElementById("addFriendInput");
   try { await sendFriendRequestTo(el.value); el.value = ""; }

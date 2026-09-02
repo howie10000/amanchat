@@ -608,13 +608,10 @@ async function handleNotification(n, act) {
   if (n.kind === "friend_req") {
     state.friends[n.from] = true;
     state.data.friends = state.friends;
-    await fbPatch(`users/${state.user}`, { friends: state.friends });
-    // also add me to their friends
-    const them = await fbGet(`users/${n.from}`);
-    if (them) {
-      const tf = them.friends || {}; tf[state.user] = true;
-      await fbPatch(`users/${n.from}`, { friends: tf });
-    }
+    // Leaf writes only — you may add/remove just your own entry in someone
+    // else's friends map (the server enforces this; you can't read their record).
+    await fbPut(`users/${state.user}/friends/${n.from}`, true);
+    await fbPut(`users/${n.from}/friends/${state.user}`, true);
     toast(`Now friends with ${n.from}!`);
   } else if (n.kind === "duel") {
     startDuel(n.from, n.stake, false);

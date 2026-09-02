@@ -127,18 +127,16 @@ async function enterOwnHome(initial) {
 }
 
 async function enterOtherHome(user) {
-  // Respect the owner's lock: only the owner, key-holders, or the mayor may
-  // enter a locked house. (Owner grants keys from the Friends panel; the flag
-  // and keyholder list live on the owner's own user record.)
-  const owner = (await fbGet(`users/${user}`)) || {};
-  const hasKey = owner.keys && owner.keys[state.user];
-  if (owner.locked && !hasKey && !state.isMayor) {
-    toast(`🔒 ${user}'s door is locked. Ask them for a key.`);
-    return;
-  }
+  // The SERVER decides whether the door opens (owner / staff / friend-with-key)
+  // and hands back the room contents. The client can't read another player's
+  // furniture, keys or friends list at all, so a locked house can't be walked
+  // into by tampering with the client.
+  let res;
+  try { res = await netHome({ action: "enter", owner: user }); }
+  catch (e) { toast(e.message || `Can't enter ${user}'s house.`); return; }
   state.area = "interior_home";
   state.interiorOf = user;
-  state.interiorFurniture = arrayify(owner.furniture);
+  state.interiorFurniture = arrayify(res.furniture);
   state.pos.x = 512; state.pos.y = 540;
   state.facing = "up";
   toast(`Visiting ${user}'s house. ESC to leave.`);

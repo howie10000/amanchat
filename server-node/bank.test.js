@@ -25,14 +25,17 @@ console.log('ECON.bankAccrue');
   const now = 1_000_000_000_000;
   ok(ECON.bankAccrue(0, now - 999999, now).gained === 0, 'empty vault earns nothing');
   ok(ECON.bankAccrue(1000, now, now).gained === 0, 'no time passed → no interest');
-  const one = ECON.bankAccrue(10000, now - ECON.BANK_INTEREST_PERIOD, now);
-  ok(one.gained === 10 && one.balance === 10010, 'one 5-min period on $10,000 = +$10 (0.1%)');
-  const three = ECON.bankAccrue(10000, now - 3 * ECON.BANK_INTEREST_PERIOD, now);
-  ok(three.balance === Math.floor(10000 * Math.pow(1.001, 3)), 'three periods compound');
+  ok(ECON.BANK_INTEREST_RATE === 0.0001, 'interest rate is 0.01% per period');
+  const r = 1 + ECON.BANK_INTEREST_RATE;
+  const one = ECON.bankAccrue(100000, now - ECON.BANK_INTEREST_PERIOD, now);
+  ok(one.gained === 10 && one.balance === 100010, 'one 5-min period on $100,000 = +$10 (0.01%)');
+  const three = ECON.bankAccrue(100000, now - 3 * ECON.BANK_INTEREST_PERIOD, now);
+  ok(three.balance === Math.floor(100000 * Math.pow(r, 3) + 1e-6), 'three periods compound');
   const partial = ECON.bankAccrue(10000, now - ECON.BANK_INTEREST_PERIOD - 60000, now);
   ok(partial.last === now - 60000, 'last advances by whole periods only (60s of progress kept)');
-  const capped = ECON.bankAccrue(1000, now - ECON.BANK_INTEREST_PERIOD * (ECON.BANK_INTEREST_MAX_PERIODS + 500), now);
-  ok(capped.balance === Math.floor(1000 * Math.pow(1.001, ECON.BANK_INTEREST_MAX_PERIODS)), 'compounding is capped');
+  const capped = ECON.bankAccrue(1000000, now - ECON.BANK_INTEREST_PERIOD * (ECON.BANK_INTEREST_MAX_PERIODS + 500), now);
+  ok(capped.balance === Math.floor(1000000 * Math.pow(r, ECON.BANK_INTEREST_MAX_PERIODS) + 1e-6), 'compounding is capped');
+  ok(ECON.bankTax(1000) === 25 && ECON.bankTax(97) === 2, 'bank tax is 2.5%, floored');
 }
 
 console.log('ECON credit + loans');
@@ -108,17 +111,33 @@ const tryRpc = async (c, op, args) => { try { return { ok: true, data: await c.r
   ok(reg.data.creditScore === ECON.CREDIT_START, 'new account starts at credit ' + ECON.CREDIT_START);
   await boss.rpc('patch', { path: 'users/amy', value: { money: 20000 } });
 
-  console.log('deposits & withdrawals');
+  console.log('deposits & withdrawals (2.5% tax -> treasury)');
+  const T = (n) => ECON.bankTax(n);
   let d = await amy.rpc('bank', { action: 'deposit', amount: 8000 });
-  ok(d.money === 12000 && d.bankBalance === 8000, 'deposit moves cash into the vault');
+  ok(d.money === 12000 && d.bankBalance === 8000 - T(8000) && d.tax === T(8000),
+    `deposit $8000: wallet -8000, vault +${8000 - T(8000)}, $${T(8000)} tax`);
   ok(!(await tryRpc(amy, 'bank', { action: 'deposit', amount: 999999 })).ok, 'cannot deposit more than you hold');
+  const vault0 = d.bankBalance, wallet0 = d.money;
   d = await amy.rpc('bank', { action: 'withdraw', amount: 3000 });
-  ok(d.money === 15000 && d.bankBalance === 5000, 'withdraw moves it back');
+  ok(d.bankBalance === vault0 - 3000 && d.money === wallet0 + (3000 - T(3000)) && d.tax === T(3000),
+    `withdraw $3000: vault -3000, wallet +${3000 - T(3000)}, $${T(3000)} tax`);
   ok(!(await tryRpc(amy, 'bank', { action: 'withdraw', amount: 99999 })).ok, 'cannot overdraw the vault');
+  const vault1 = d.bankBalance;
   d = await amy.rpc('bank', { action: 'withdraw', amount: 'all' });
-  ok(d.bankBalance === 0 && d.money === 20000, 'withdraw all empties the vault');
+  ok(d.bankBalance === 0, 'withdraw all empties the vault');
+  ok(d.money === (await amy.rpc('bank', { action: 'status' })).money, 'wallet reflects the withdrawal');
+
+  console.log('mayor treasury');
+  ok(!(await tryRpc(amy, 'treasury', { action: 'status' })).ok, 'a normal player cannot read the treasury');
+  const trez = await boss.rpc('treasury', { action: 'status' });
+  ok(trez.balance === T(8000) + T(3000) + T(vault1), `treasury holds the tax so far ($${trez.balance})`);
+  ok(!(await tryRpc(amy, 'treasury', { action: 'withdraw', amount: 100 })).ok, 'a normal player cannot draw from the treasury');
+  const bossM0 = (await boss.rpc('bank', { action: 'status' })).money;
+  const tw = await boss.rpc('treasury', { action: 'withdraw', amount: 'all' });
+  ok(tw.balance === 0 && tw.withdrew === trez.balance && tw.money === bossM0 + trez.balance, 'an owner drains the treasury into their wallet');
 
   console.log('loans');
+  await boss.rpc('patch', { path: 'users/amy', value: { money: 20000, bankBalance: 0 } });
   const st = await amy.rpc('bank', { action: 'status' });
   ok(st.netWorth === 20000 && st.loanLimit > 0, `status reports net worth ($${st.netWorth}) and ceiling ($${st.loanLimit})`);
   ok(st.loanLimit <= st.netWorth * 1.5, `ceiling ($${st.loanLimit}) is within 1.5x net worth ($${st.netWorth})`);

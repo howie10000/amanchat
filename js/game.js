@@ -841,8 +841,9 @@ async function openBankMain() {
     </div>
     <hr class="div">
     <h3 class="section">🏦 VAULT SAVINGS</h3>
-    <p>Balance: <b>$${bal.toLocaleString()}</b> · earns <b>0.1%</b> every 5 min, automatically and even while you're offline.</p>
+    <p>Balance: <b>$${bal.toLocaleString()}</b> · earns <b>${(ECON.BANK_INTEREST_RATE * 100).toFixed(2)}%</b> every 5 min, automatically and even while you're offline.</p>
     <p class="muted">Next payout in ${Math.ceil(nextMs / 1000)}s${perPeriod > 0 ? ` (+$${perPeriod.toLocaleString()})` : ""}.</p>
+    <p class="muted" style="color:#fca5a5;">Every deposit &amp; withdrawal pays a <b>${Math.round(ECON.BANK_TAX_RATE * 100 * 10) / 10}% tax</b> to the Mayor's Treasury.</p>
     <div class="btnRow">
       <button class="menuBtn green" onclick="bankMove('deposit')">DEPOSIT</button>
       <button class="menuBtn" onclick="bankMove('withdraw')">WITHDRAW</button>
@@ -864,14 +865,15 @@ window.bankMove = async (kind) => {
   if (kind === "withdrawAll") { action = "withdraw"; amount = "all"; }
   else {
     const have = action === "deposit" ? (state.data.money || 0) : ((_bank && _bank.bankBalance) || 0);
-    const v = prompt(`${action === "deposit" ? "Deposit into" : "Withdraw from"} your vault. You can ${action === "deposit" ? "deposit" : "withdraw"} up to $${have.toLocaleString()}:`, String(have));
+    const v = prompt(`${action === "deposit" ? "Deposit into" : "Withdraw from"} your vault (up to $${have.toLocaleString()}). A ${Math.round(ECON.BANK_TAX_RATE * 100 * 10) / 10}% tax applies:`, String(have));
     if (v === null) return;
     amount = Math.floor(parseFloat(String(v).replace(/[^0-9.]/g, "")));
     if (!Number.isFinite(amount) || amount <= 0) { toast("Enter a positive whole-dollar amount."); return; }
   }
   try {
     const d = await bankRpc(action, amount);
-    toast(`${action === "deposit" ? "Deposited" : "Withdrew"} $${(d.moved || 0).toLocaleString()}.`);
+    const taxTxt = d.tax > 0 ? ` (–$${d.tax.toLocaleString()} tax)` : "";
+    toast(`${action === "deposit" ? "Deposited" : "Withdrew"} $${(d.moved || 0).toLocaleString()}${taxTxt}.`);
   } catch (e) { toast(e.message || "Bank refused that."); return; }
   openBankMain();
 };
@@ -1286,6 +1288,8 @@ async function openStaffPanel() {
         style="flex:1;padding:8px;background:#0a0e15;color:white;border:1px solid #2a3344;border-radius:6px;" />
       <button class="menuBtn gold" onclick="mayorAnnounce()">Post</button>
     </div>` : ""}
+    <h3 class="section">🏛️ MAYOR'S TREASURY</h3>
+    <div id="treasuryBox"><p class="muted">Loading…</p></div>
     <h3 class="section">PLAYERS</h3>
     <p class="muted">${isOwner
       ? "You can promote players to admin, and ban / mute anyone below you, and add to or set any player's balance. Owners are set in the server save file."
@@ -1307,10 +1311,49 @@ async function openStaffPanel() {
     if (el) el.innerHTML = `<p style="color:#ef4444">Panel failed to render: ${escapeHtml(e.message)}</p>`;
   }
   renderStaffBugs();
+  renderTreasury();
   // keep the "Staff" button state right if our role changed
   setRole(state.role);
 }
 window.openStaffPanel = openStaffPanel;
+
+// Mayor's Treasury — where the bank tax collects. Any staff sees it; only
+// owners can draw from it.
+async function renderTreasury() {
+  const el = document.getElementById("treasuryBox");
+  if (!el) return;
+  let d;
+  try { d = await netTreasury({ action: "status" }); }
+  catch (e) { el.innerHTML = `<p class="muted">${escapeHtml(e.message || "Unavailable.")}</p>`; return; }
+  const isOwner = state.role === "owner";
+  el.innerHTML = `
+    <p>Balance: <b style="color:#4ade80">$${(d.balance || 0).toLocaleString()}</b>
+      <span class="muted">— fed by the ${Math.round((d.taxRate || 0) * 1000) / 10}% bank tax</span></p>
+    ${isOwner
+      ? `<div class="btnRow">
+           <button class="menuBtn gold" onclick="treasuryWithdraw('some')">WITHDRAW…</button>
+           ${d.balance > 0 ? `<button class="menuBtn" onclick="treasuryWithdraw('all')">TAKE ALL ($${(d.balance || 0).toLocaleString()})</button>` : ""}
+         </div>`
+      : `<p class="muted" style="font-size:11px;">Only owners can draw from the treasury.</p>`}`;
+}
+window.treasuryWithdraw = async (mode) => {
+  if (!await assertStaffRole()) return;
+  let amount = "all";
+  if (mode === "some") {
+    const bal = (await netTreasury({ action: "status" }).catch(() => ({}))).balance || 0;
+    const v = prompt(`Withdraw how much from the treasury? (balance $${bal.toLocaleString()})`, String(bal));
+    if (v === null) return;
+    amount = Math.floor(parseFloat(String(v).replace(/[^0-9.]/g, "")));
+    if (!Number.isFinite(amount) || amount <= 0) { toast("Enter a positive amount."); return; }
+  }
+  try {
+    const d = await netTreasury({ action: "withdraw", amount });
+    if (typeof d.money === "number") state.data.money = d.money;
+    updateHUD();
+    toast(`🏛️ Took $${(d.withdrew || 0).toLocaleString()} from the treasury. ($${(d.balance || 0).toLocaleString()} left)`, 4000);
+  } catch (e) { toast(e.message || "Withdrawal failed."); return; }
+  renderTreasury();
+};
 window.staffFilter = (v) => { if (_staff) { _staff.filter = v; renderStaffLists(); } };
 
 function renderStaffLists() {

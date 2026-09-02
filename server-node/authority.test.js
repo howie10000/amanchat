@@ -96,16 +96,46 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     assert((await tryRpc(owner, 'patch', { path: 'users/bob', value: { money: 100000 } })).ok, 'owner can still set money');
     assert((await tryRpc(owner, 'patch', { path: 'users/alice', value: { money: 5000 } })).ok, 'owner funds alice');
 
-    console.log('notes cap + announcements');
-    const bigNote = 'x'.repeat(5000);
-    assert((await tryRpc(bob, 'patch', { path: 'users/bob', value: { notes: bigNote } })).ok, 'notes patch accepted');
-    assert(((await bob.rpc('get', { path: 'users/bob/notes' })) || '').length === 1000, 'server clamps notes to 1000 chars');
-    assert((await tryRpc(bob, 'put', { path: 'users/bob/notes', value: bigNote })).ok, 'notes field-put accepted');
-    assert(((await bob.rpc('get', { path: 'users/bob/notes' })) || '').length === 1000, 'and clamped there too');
+    console.log('notes / announcements / private user data');
+    // notes are local-only now — the server won't take them at all
+    assert(!(await tryRpc(bob, 'patch', { path: 'users/bob', value: { notes: 'x'.repeat(5000) } })).ok, 'notes patch rejected (local-only)');
+    assert(!(await tryRpc(bob, 'put', { path: 'users/bob/notes', value: 'hi' })).ok, 'notes field-put rejected');
     assert(!(await tryRpc(bob, 'post', { path: 'announcements', value: { text: 'hi', by: 'bob', ts: Date.now() } })).ok, 'a normal player cannot post an announcement');
     assert((await tryRpc(owner, 'post', { path: 'announcements', value: { text: 'Town meeting at noon', by: 'boss', ts: Date.now() } })).ok, 'an owner can post an announcement');
     const feed = (await bob.rpc('get', { path: 'announcements' })) || {};
     assert(Object.values(feed).some(a => a && a.text === 'Town meeting at noon'), 'everyone can read the announcements feed');
+    // another player's private fields are invisible
+    await owner.rpc('patch', { path: 'users/alice', value: { money: 4242 } });
+    const aliceView = await bob.rpc('get', { path: 'users/alice' });
+    assert(aliceView && aliceView.money === 4242 && aliceView.houseIndex != null, 'a player can see another\'s public fields (money, house)');
+    assert(aliceView.friends === undefined && aliceView.keys === undefined && aliceView.bankBalance === undefined && aliceView.notes === undefined,
+        'but NOT their friends / keys / bank balance / notes');
+    assert((await bob.rpc('get', { path: 'users/alice/bankBalance' })) === null, 'a private field path returns null');
+    assert((await bob.rpc('get', { path: 'users/alice/money' })) === 4242, 'a public field path is fine');
+    const allUsers = await bob.rpc('get', { path: 'users' });
+    assert(allUsers.alice && allUsers.alice.creditScore === undefined && allUsers.bob && allUsers.bob.creditScore !== undefined,
+        'the whole users map is sanitized for everyone except your own row');
+    assert(!(await tryRpc(bob, 'treasury', { action: 'status' })).ok && !(await tryRpc(bob, 'get', { path: 'mayor/treasury' })).ok,
+        'the treasury balance is staff-only');
+
+    console.log('house keys + unfriend');
+    // alice locks her door; bob is not a friend -> denied
+    await owner.rpc('patch', { path: 'users/alice', value: { locked: true } });
+    assert(!(await tryRpc(bob, 'home', { action: 'enter', owner: 'alice' })).ok, 'locked house: a stranger cannot enter');
+    // become friends
+    await bob.rpc('put', { path: 'users/bob/friends/alice', value: true });
+    await bob.rpc('put', { path: 'users/alice/friends/bob', value: true });
+    assert(!(await tryRpc(bob, 'home', { action: 'enter', owner: 'alice' })).ok, 'locked house: a friend WITHOUT a key still cannot enter');
+    // alice gives bob a key
+    await alice.rpc('put', { path: 'users/alice/keys/bob', value: true });
+    assert((await tryRpc(bob, 'home', { action: 'enter', owner: 'alice' })).ok, 'locked house: a friend WITH the key gets in');
+    assert((await tryRpc(owner, 'home', { action: 'enter', owner: 'alice' })).ok, 'staff can always enter');
+    // bob unfriends alice -> the key is wiped server-side on both records
+    await bob.rpc('del', { path: 'users/bob/friends/alice' });
+    assert((await alice.rpc('get', { path: 'users/alice/keys' }) || {}).bob === undefined, 'unfriending wipes the key bob held');
+    assert((await alice.rpc('get', { path: 'users/alice/friends' }) || {}).bob === undefined, 'and removes bob from alice\'s friends');
+    assert(!(await tryRpc(bob, 'home', { action: 'enter', owner: 'alice' })).ok, 'and bob can no longer get into the locked house');
+    await owner.rpc('patch', { path: 'users/alice', value: { locked: false } });
 
     console.log('buy: furniture');
     const stock = ECON.marketStock(FURNITURE_LIST, Date.now());
