@@ -182,17 +182,21 @@ const SLOT_SYMBOLS = [
   { sym: "♥", color: "#f472b6", weight: 6,  mult: 60 },
   { sym: "♦", color: "#38bdf8", weight: 8,  mult: 38 },
   { sym: "♣", color: "#4ade80", weight: 10, mult: 22 },
-  { sym: "🍀", color: "#94a3b8", weight: 14, mult: 0 },
+  // Blank — a clear "no win" tile (used to be a clover, which looked like a
+  // prize when three landed even though it never paid).
+  { sym: "❌", color: "#64748b", weight: 14, mult: 0 },
 ];
+// MEGA JACKPOT — Egyptian symbols, values modelled on "Gamble With Your
+// Friends" slots (Eye .25 / Ankh .75 / Scarab 1.25 / Lotus 1.75, each ×2 per
+// line). Every symbol pays; winning lines ADD, so wins are frequent but small.
 const JACKPOT_SYMBOLS = [
-  { sym: "💎", color: "#67e8f9", weight: 1,  mult: 300 },
-  { sym: "🔔", color: "#fcd34d", weight: 3,  mult: 50 },
-  { sym: "🍒", color: "#f87171", weight: 6,  mult: 15 },
-  { sym: "🍋", color: "#fde047", weight: 9,  mult: 5 },
-  { sym: "🍇", color: "#c084fc", weight: 12, mult: 2 },
-  { sym: "🃏", color: "#64748b", weight: 16, mult: 0 },
+  { sym: "👁️", color: "#93c5fd", weight: 44, mult: 0.5 },
+  { sym: "☥",  color: "#fcd34d", weight: 28, mult: 1.5 },
+  { sym: "🪲", color: "#4ade80", weight: 16, mult: 2.5 },
+  { sym: "🪷", color: "#f472b6", weight: 8,  mult: 3.5 },
 ];
 const JACKPOT_MIN_BET = 250;
+const JACKPOT_FULLBOARD_MULT = 25;
 
 const SLOT_CELL = 96, SLOT_GAP = 8, SLOT_PAD = 14;
 const SLOT_W = SLOT_PAD * 2 + SLOT_CELL * 3 + SLOT_GAP * 2;
@@ -212,7 +216,7 @@ function slotShellHtml(cfg) {
   const h = SLOT_PAD * 2 + SLOT_CELL * rows + SLOT_GAP * (rows - 1);
   const linesBlock = rows > 1
     ? `<h3 class="section">PAYLINES</h3>
-       <p class="muted">All 8 lines are live on every spin — 3 rows, 3 columns and both diagonals. Hit more than one and their multipliers multiply.</p>
+       <p class="muted">All 8 lines are live on every spin — 3 rows, 3 columns and both diagonals. Every line you hit adds its multiplier to the payout.</p>
        <div class="lineGrid">${SLOT_LINES.map(l => `<span class="pill" style="border-color:${l.color};color:${l.color}">${l.label}</span>`).join("")}</div>`
     : `<h3 class="section">ONE LINE</h3>
        <p class="muted">A classic one-armed bandit: three reels, one line straight across.</p>`;
@@ -421,7 +425,16 @@ async function spinSlotGrid(cfg) {
   _slot.wins = wins;
   _slot.spinning = false;
 
-  let totalMult = wins.length ? wins.reduce((s, w) => s * w.mult, 1) : 0; // lines multiply together
+  const addMode = cfg.combine === "add";
+  let totalMult = addMode
+    ? wins.reduce((s, w) => s + w.mult, 0)              // lines add up
+    : (wins.length ? wins.reduce((s, w) => s * w.mult, 1) : 0); // lines multiply
+  let fullBoard = false;
+  if (addMode && cfg.fullBoardMult && grid.length) {
+    const s0 = grid[0][0].sym;
+    fullBoard = grid.every(row => row.every(cell => cell.sym === s0));
+    if (fullBoard) totalMult += cfg.fullBoardMult;
+  }
   let bonusDetail = "";
   if (cfg.bonus && !wins.length) {
     const b = cfg.bonus(grid);
@@ -429,9 +442,10 @@ async function spinSlotGrid(cfg) {
   }
   const payout = Math.floor(data.payout || 0);
   if (payout > 0) {
-    const detail = wins.map(w => `<span style="color:${w.line.color}">${w.sym.sym}${w.sym.sym}${w.sym.sym} ${w.line.label} ${w.mult}&times;</span>`).join(" &nbsp;·&nbsp; ") || bonusDetail;
+    const detail = (wins.map(w => `<span style="color:${w.line.color}">${w.sym.sym}${w.sym.sym}${w.sym.sym} ${w.line.label} ${w.mult}&times;</span>`).join(" &nbsp;·&nbsp; ")
+      + (fullBoard ? ` &nbsp;·&nbsp; <span style="color:#fbbf24">FULL BOARD +${cfg.fullBoardMult}&times;</span>` : "")) || bonusDetail;
     setEl("slotResult", win(`+$${payout}`) + `<div class="winDetail">${detail}</div>`);
-    if (totalMult >= 50) { toast("🎉 BIG WIN! 🎉", 4000); celebrate(); }
+    if (fullBoard || totalMult >= (addMode ? 8 : 50)) { toast("🎉 BIG WIN! 🎉", 4000); celebrate(); }
    
   } else {
     setEl("slotResult", lose(`No line. -$${bet}`));
@@ -466,10 +480,11 @@ function openSlots() {
 }
 function openJackpot() {
   openSlotMachine({
-    title: "💎 MEGA JACKPOT — 3×3",
+    title: "🪷 MEGA JACKPOT — 3×3",
     rows: 3, lines: SLOT_LINES,
     symbols: JACKPOT_SYMBOLS, betId: "slotBet", minBet: JACKPOT_MIN_BET,
-    blurb: `Minimum bet $${JACKPOT_MIN_BET}. Three 💎 on a line pays 300× — and winning lines multiply together (a 5× row and a 2× row pay 10×).`,
+    combine: "add", fullBoardMult: JACKPOT_FULLBOARD_MULT,
+    blurb: `Minimum bet $${JACKPOT_MIN_BET}. Every symbol pays, and winning lines ADD up — small hits land often. Fill all nine cells with one symbol for a +${JACKPOT_FULLBOARD_MULT}× jackpot.`,
   });
 }
 

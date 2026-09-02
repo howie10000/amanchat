@@ -55,16 +55,22 @@ const SLOT_SYMBOLS = [
     { sym: '♥', weight: 6,  mult: 60 },
     { sym: '♦', weight: 8,  mult: 38 },
     { sym: '♣', weight: 10, mult: 22 },
-    { sym: '🍀', weight: 14, mult: 0 },
+    // Blank — a clear "no win" tile. (Was a clover, which read as a prize when
+    // three landed even though it never paid.)
+    { sym: '❌', weight: 14, mult: 0 },
 ];
+// MEGA JACKPOT — Egyptian symbols, values modelled on "Gamble With Your
+// Friends" slots (Eye 0.25 / Ankh 0.75 / Scarab 1.25 / Lotus 1.75, each x2
+// per line). Every symbol pays, winning lines ADD (not multiply), so wins are
+// frequent but small — a full 3x3 board is the only true jackpot. Weights are
+// tuned a little tighter than that game so the house keeps an edge (~82% RTP).
 const JACKPOT_SYMBOLS = [
-    { sym: '💎', weight: 1,  mult: 300 },
-    { sym: '🔔', weight: 3,  mult: 50 },
-    { sym: '🍒', weight: 6,  mult: 15 },
-    { sym: '🍋', weight: 9,  mult: 5 },
-    { sym: '🍇', weight: 12, mult: 2 },
-    { sym: '🃏', weight: 16, mult: 0 },
+    { sym: '👁️', weight: 44, mult: 0.5 },
+    { sym: '☥',  weight: 28, mult: 1.5 },
+    { sym: '🪲', weight: 16, mult: 2.5 },
+    { sym: '🪷', weight: 8,  mult: 3.5 },
 ];
+const JACKPOT_FULLBOARD_MULT = 25; // flat bonus when all 9 cells match
 const SLOTS_MIN_BET = 10, JACKPOT_MIN_BET = 250;
 // Loose sevens on the single-line machine (only when no line pays).
 function slotsBonus(grid) {
@@ -73,7 +79,9 @@ function slotsBonus(grid) {
     if (n === 1) return { label: 'one 7', mult: 2 };
     return null;
 }
-function slotSpin(bet, rows, symbols, lines, bonus, rand) {
+function slotSpin(bet, rows, symbols, lines, bonus, rand, opts) {
+    opts = opts || {};
+    const combine = opts.combine || 'mul';   // 'mul' = lines multiply, 'add' = lines sum
     const grid = [];
     for (let r = 0; r < rows; r++) { grid[r] = []; for (let c = 0; c < 3; c++) grid[r][c] = pickWeighted(symbols, rand).sym; }
     const wins = [];
@@ -83,9 +91,19 @@ function slotSpin(bet, rows, symbols, lines, bonus, rand) {
         if (!def || !def.mult) continue;
         if (line.cells.every(([r, c]) => grid[r][c] === first)) wins.push({ line: line.label, symbol: first, pay: def.mult });
     }
-    // Winning lines MULTIPLY together (a 5x row and a 2x row pay 10x), so a
-    // multi-line hit on the 3x3 machine is a genuine jackpot, not a sum.
-    let totalMult = wins.length ? wins.reduce((s, w) => s * w.pay, 1) : 0;
+    let totalMult;
+    if (combine === 'add') {
+        // Every winning line pays its own multiplier and they add up — lots of
+        // small hits rather than one rare monster. A full matching board adds a
+        // flat jackpot bonus on top.
+        totalMult = wins.reduce((s, w) => s + w.pay, 0);
+        const c0 = grid[0][0];
+        if (grid.every(row => row.every(c => c === c0))) totalMult += (opts.fullBoardMult || 0);
+    } else {
+        // Winning lines MULTIPLY together (a 5x row and a 2x row pay 10x), so a
+        // multi-line hit is a genuine jackpot, not a sum.
+        totalMult = wins.length ? wins.reduce((s, w) => s * w.pay, 1) : 0;
+    }
     let bonusHit = null;
     if (bonus && !wins.length) {
         bonusHit = bonus(grid);
@@ -662,7 +680,8 @@ function play(user, game, action, args, balance, now, rand) {
         case 'jackpot': {
             if (action !== 'spin') throw new Error('Unknown action.');
             const bet = validBet(args.bet, balance, JACKPOT_MIN_BET);
-            const r = slotSpin(bet, 3, JACKPOT_SYMBOLS, SLOT_LINES, null, rand);
+            const r = slotSpin(bet, 3, JACKPOT_SYMBOLS, SLOT_LINES, null, rand,
+                { combine: 'add', fullBoardMult: JACKPOT_FULLBOARD_MULT });
             return { delta: r.payout - bet, data: Object.assign(r, { bet }) };
         }
         case 'coinflip': {
@@ -737,7 +756,7 @@ function clearUser(user) { for (const g of GAMES) rounds.delete(key(user, g)); }
 module.exports = {
     play, rounds, getRound, clearUser, GAMES,
     // tables (for tests / inspection)
-    SLOT_SYMBOLS, JACKPOT_SYMBOLS, SLOT_LINES, SLOTS_MIN_BET, JACKPOT_MIN_BET, SCRATCH_PRIZES, KENO_PAYTABLES,
+    SLOT_SYMBOLS, JACKPOT_SYMBOLS, JACKPOT_FULLBOARD_MULT, SLOT_LINES, SLOTS_MIN_BET, JACKPOT_MIN_BET, SCRATCH_PRIZES, KENO_PAYTABLES,
     PLINKO_RISKS, VP_PAYTABLE, HORSES, WHEEL_WEDGES, HL_MULT, MINES_GRID,
     // pure pieces
     slotSpin, slotsBonus, scratchCard, rouletteSpin, diceRoll, kenoDraw, baccaratDeal, bacTotal,

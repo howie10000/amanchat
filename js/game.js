@@ -927,6 +927,12 @@ function fmtUntil(ts) { return ts ? new Date(ts).toLocaleString([], { month: "sh
 
 async function openStaffPanel() {
   if (!state.isMayor) { toast("Staff only."); return; }
+  // Re-check with the server so a tampered client can't open the panel.
+  try {
+    const who = await netWhoami();
+    setRole(who && who.role);
+    if (!state.isMayor) { toast("Staff only."); return; }
+  } catch (e) { toast("Staff only."); return; }
   const [users, roles, bans, mutes, ann] = await Promise.all([
     fbGet("users"), fbGet("roles"), fbGet("bans"), fbGet("mutes"), fbGet("mayor/announcement"),
   ]);
@@ -1097,7 +1103,13 @@ window.mayorGive = async (u, amt) => {
   toast(`Gave ${u} $${amt}.`);
   openStaffPanel();
 };
-window.mayorTeleport = (u) => {
+window.mayorTeleport = async (u) => {
+  // Teleport is a staff-only power. state.role is set from the server at login,
+  // but re-check with the server here so tampering with client state (or
+  // calling this from the console) can't move you around the map.
+  let role = "user";
+  try { role = (await netWhoami())?.role || "user"; } catch (e) {}
+  if (role === "user") { setRole("user"); toast("Staff only."); return; }
   const ud = state._userCache?.[u];
   if (!ud) return;
   const r = gameWorld.houseRect(ud.houseIndex);

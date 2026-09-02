@@ -29,16 +29,19 @@ console.log('paytables');
     // slots: three 7s on the line = 280x; the rng that always returns ~0 picks the first symbol (7)
     const r = G.slotSpin(10, 1, G.SLOT_SYMBOLS, [{ label: 'center line', cells: [[0, 0], [0, 1], [0, 2]] }], G.slotsBonus, () => 0.0001);
     ok(r.grid[0].join('') === '777' && r.payout === 2800, 'slots: 777 pays 280x');
-    // one 7 then two clovers (weight sums: 7 is first 1/42, clover is last)
+    // one 7 then two blanks (weight sums: 7 is first 1/42, blank is last)
     const r2 = G.slotSpin(10, 1, G.SLOT_SYMBOLS, [{ label: 'c', cells: [[0, 0], [0, 1], [0, 2]] }], G.slotsBonus, seq([0.0001, 0.999, 0.999]));
     ok(r2.wins.length === 0 && r2.bonus && r2.bonus.mult === 2 && r2.payout === 20, 'slots: a single 7 pays the 2x bonus');
-    const j = G.slotSpin(250, 3, G.JACKPOT_SYMBOLS, G.SLOT_LINES, null, () => 0.0001);
-    ok(j.wins.length === 8 && j.payout === 250 * Math.pow(300, 8), 'jackpot: all diamonds multiplies 300x across all 8 lines');
-    // two winning rows multiply: 🍋 row (5x) + 🍇 row (2x) = 10x
-    const g2 = [['🍋','🍋','🍋'],['🍇','🍇','🍇'],['🃏','🔔','🍒']];
-    const rand2 = seq(g2.flat().map(sym => { let acc = 0; for (const d of G.JACKPOT_SYMBOLS) { if (d.sym === sym) return (acc + 0.5 * d.weight) / 47; acc += d.weight; } }));
-    const j2 = G.slotSpin(100, 3, G.JACKPOT_SYMBOLS, G.SLOT_LINES, null, rand2);
-    ok(j2.wins.length === 2 && j2.payout === 100 * 10, `jackpot: 5x row and 2x row pay 10x (got ${j2.payout}, ${j2.wins.length} wins)`);
+    // MEGA JACKPOT: lines ADD, not multiply. A full board of Lotus = 8 lines x
+    // 3.5 + the 25x full-board bonus = 53x.
+    const jOpts = { combine: 'add', fullBoardMult: G.JACKPOT_FULLBOARD_MULT };
+    const j = G.slotSpin(250, 3, G.JACKPOT_SYMBOLS, G.SLOT_LINES, null, () => 0.999, jOpts);
+    ok(j.wins.length === 8 && j.payout === 250 * (8 * 3.5 + 25), `jackpot: full Lotus board pays 8 lines + bonus (got ${j.payout})`);
+    // two winning rows add: Eye row (0.5x) + Ankh row (1.5x) = 2x
+    const g2 = [['👁️','👁️','👁️'],['☥','☥','☥'],['🪲','🪷','☥']];
+    const rand2 = seq(g2.flat().map(sym => { let acc = 0; for (const d of G.JACKPOT_SYMBOLS) { if (d.sym === sym) return (acc + 0.5 * d.weight) / 96; acc += d.weight; } }));
+    const j2 = G.slotSpin(100, 3, G.JACKPOT_SYMBOLS, G.SLOT_LINES, null, rand2, jOpts);
+    ok(j2.wins.length === 2 && j2.payout === 100 * 2, `jackpot: 0.5x row and 1.5x row add to 2x (got ${j2.payout}, ${j2.wins.length} wins)`);
     ok(G.scratchCard(50, () => 0.0001).payout === 2000, 'scratch: nine money bags pays 40x');
     ok(G.scratchCard(50, () => 0.999).payout === 0, 'scratch: nine rocks pays nothing');
     const rl = G.rouletteSpin([{ type: 'num', value: 0, amount: 10 }, { type: 'red', amount: 5 }, { type: 'low', amount: 5 }], 1000, () => 0);
@@ -147,11 +150,11 @@ function rtp(name, n, roundFn, lo, hi) {
 const U = 'sim', BAL = 1e12;
 const one = (game, action, args, bet) => (rand) => { const r = G.play(U, game, action, args, BAL, 0, rand); return [bet, bet + r.delta]; };
 rtp('slots',    20000, one('slots', 'spin', { bet: 10 }, 10), 0.80, 0.99);
-// Jackpot lines MULTIPLY together (by design, see slotSpin), which makes the
-// 3x3 machine strongly player-favourable: ~240% RTP over 200k spins, with
-// most of it coming from 3- and 4-line hits. Very high variance, so the band
-// is wide; a spin with 5+ lines of a top symbol can still blow past it.
-rtp('jackpot',  20000, one('jackpot', 'spin', { bet: 250 }, 250), 1.20, 6.00);
+// MEGA JACKPOT: winning lines ADD (see slotSpin combine:'add'). Frequent small
+// hits, low multipliers — modelled on "Gamble With Your Friends" slots but with
+// the house kept ahead. Lands around 80-85% RTP; band is wide for the rare
+// full-board bonus.
+rtp('jackpot',  20000, one('jackpot', 'spin', { bet: 250 }, 250), 0.60, 1.00);
 rtp('coinflip', 20000, one('coinflip', 'flip', { bet: 10, call: 'heads' }, 10), 0.90, 0.99);
 rtp('scratch',  20000, one('scratch', 'buy', { bet: 10 }, 10), 0.80, 0.99);
 rtp('roulette (red + straight 17)', 20000, one('roulette', 'spin', { bets: [{ type: 'red', amount: 10 }, { type: 'num', value: 17, amount: 10 }] }, 20), 0.90, 0.99);

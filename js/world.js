@@ -614,8 +614,21 @@ function drawNeighborhood() {
     }
   }
 
+  drawRouteTrail();
+
+  // Ambient scenery + time-of-day tint go down BEFORE players, so the night
+  // vignette / leaves / birds never wash out a character or their chat bubble.
+  // (Interiors have no such overlay, which is why outdoor bubbles used to look
+  // faint or invisible at dusk/night while Vegas was always fine.)
+  if (window.gameScenery) {
+    try { gameScenery.drawOverlay(ctx, state.cam, canvas); }
+    catch (e) { console.error("[scenery] overlay failed", e); }
+  }
+
   for (const [u, p] of Object.entries(state.others)) {
-    if (p.area !== "neighborhood") continue;
+    // Anyone standing in the open town. Accept a missing/blank area too, so a
+    // player whose presence hasn't settled yet still shows with their bubble.
+    if (p.area && p.area !== "neighborhood") continue;
     const px = typeof p.dispX === "number" ? p.dispX : p.x;
     const py = typeof p.dispY === "number" ? p.dispY : p.y;
     GFX.drawCharacter(ctx, px, py, p.appearance, { facing: p.facing, emote: p.emote });
@@ -625,9 +638,6 @@ function drawNeighborhood() {
                     { facing: state.facing, walking: state.walking, emote: state.emote });
   GFX.drawNameAndBubble(ctx, state.pos.x, state.pos.y, state.user, state.msgs, true, state.appearance, state.role);
 
-  drawRouteTrail();
-
-  if (window.gameScenery) gameScenery.drawOverlay(ctx, state.cam, canvas);
   ctx.restore();
   drawInteractionPrompt();
   drawWaypointArrow();

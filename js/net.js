@@ -128,6 +128,9 @@
 
   // Presence — fast lane, no fbPut roundtrip; sends a single op the server uses for broadcast.
   window.netPresence = (data) => rpc("presence", { data });
+  // Server-authoritative identity check: returns { user, role, mute }. Used to
+  // re-verify staff powers (e.g. teleport) rather than trusting client state.
+  window.netWhoami = () => rpc("whoami", {});
   // Server-authoritative economy ops (see docs/SERVER-AUTHORITY.md).
   window.netCasino = (data) => rpc("casino", data);
   // `id` is the rpc envelope field, so the purchase id travels as `item`.
