@@ -2423,6 +2423,9 @@ function drawFurniture(ctx, f, def, opts = {}) {
   const w = def.w, h = def.h;
   const c = def.color, a = def.accent || shadeColor(c, -25);
   ctx.save();
+  // Build-mode rotation: spin the whole piece about its centre. Stored on the
+  // placed piece as f.rot (radians) and persisted by the server.
+  if (f.rot) { ctx.translate(x, y); ctx.rotate(f.rot); ctx.translate(-x, -y); }
   switch (def.kind) {
     case "sofa":
     case "armchair": {

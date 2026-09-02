@@ -34,7 +34,9 @@ const state = {
   interiorOf: null,
   interiorFurniture: [],
   placeMode: null,
+  placeRot: 0,          // rotation (radians) applied to the next placed piece
   buildMode: false,
+  snapOn: true,         // snap-to-grid while building
   selectedFurn: -1, dragOffset: { x:0, y:0 },
   combat: null,
   enemies: [], bullets: [], enemyBullets: [], particles: [],
@@ -51,6 +53,18 @@ const state = {
   appearance: null,
   hotspotPrompt: null,
 };
+
+// Fit the fixed 1280x800 stage to the window. Everything inside (canvas + all
+// px-positioned HUD/menus/phone) scales together via the CSS transform, so the
+// UI stays proportional on any screen from a phone to an ultrawide.
+const STAGE_W = 1280, STAGE_H = 800;
+function fitStage() {
+  const s = Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H);
+  document.documentElement.style.setProperty("--stage-scale", String(Math.max(0.2, s)));
+}
+fitStage();
+window.addEventListener("resize", fitStage);
+window.addEventListener("orientationchange", fitStage);
 
 // keyboard
 const keys = {};
@@ -72,8 +86,9 @@ canvas.addEventListener("mousemove", e => {
   if (state.buildMode && state.selectedFurn >= 0 && state.mouse.down) {
     const f = state.interiorFurniture[state.selectedFurn];
     if (f) {
-      f.x = worldMouseX() - state.dragOffset.x;
-      f.y = worldMouseY() - state.dragOffset.y;
+      const snap = (v) => (state.snapOn ? Math.round(v / 16) * 16 : v);
+      f.x = snap(worldMouseX() - state.dragOffset.x);
+      f.y = snap(worldMouseY() - state.dragOffset.y);
     }
   }
 });
@@ -213,8 +228,18 @@ document.getElementById("tutorialNext").onclick = async () => {
 
 // HUD / TOAST
 function updateHUD() {
-  document.getElementById("hudMoney").textContent = state.data.money || 0;
+  document.getElementById("hudMoney").textContent = (state.data.money || 0).toLocaleString();
   document.getElementById("hudHp").textContent = state.hp;
+  const bank = Math.max(0, Math.floor(state.data.bankBalance || 0));
+  const bankRow = document.getElementById("hudBankRow");
+  if (bankRow) { bankRow.style.display = bank > 0 ? "flex" : "none"; document.getElementById("hudBank").textContent = bank.toLocaleString(); }
+  const loan = state.data.loan;
+  const debtRow = document.getElementById("hudDebtRow");
+  if (debtRow) {
+    const owe = loan && loan.owed > 0 ? Math.ceil(loan.owed) : 0;
+    debtRow.style.display = owe > 0 ? "flex" : "none";
+    if (owe > 0) document.getElementById("hudDebt").textContent = owe.toLocaleString();
+  }
   const labels = {
     neighborhood: "Town", interior_home: "Home",
     interior_casino: "VEGAS", interior_bank: "Bank",
@@ -304,6 +329,23 @@ async function pullNotifications() {
   const inb = (await fbGet(`inbox/${state.user}`)) || {};
   state.notifications = Object.entries(inb).map(([k,v]) => Object.assign({_id:k}, v));
   renderNotifications();
+  // Unread DMs waiting from before you logged in: one gentle pop, then clear
+  // them so they don't nag forever (the thread itself still has the messages).
+  const dms = state.notifications.filter(n => n.kind === "dm");
+  if (dms.length) {
+    const from = [...new Set(dms.map(d => d.from))];
+    showMessagePop({
+      _id: dms[dms.length - 1]._id,
+      from: dms[dms.length - 1].from,
+      preview: dms.length === 1
+        ? (dms[0].preview || "New message")
+        : `${dms.length} unread messages from ${from.slice(0, 3).join(", ")}${from.length > 3 ? "…" : ""}`,
+    });
+    for (const d of dms.slice(0, -1)) {
+      fbDelete(`inbox/${state.user}/${d._id}`).catch(() => {});
+    }
+    state.notifications = state.notifications.filter(n => n.kind !== "dm" || n._id === dms[dms.length - 1]._id);
+  }
 }
 function startNotifyLoop() {
   pullNotifications();
@@ -313,8 +355,12 @@ function startNotifyLoop() {
     const parts = (m.path || "").split("/");
     const id = parts[parts.length - 1];
     if (!state.notifications.find(n => n._id === id)) {
-      state.notifications.push(Object.assign({ _id: id }, m.data));
-      renderNotifications();
+      const n = Object.assign({ _id: id }, m.data);
+      state.notifications.push(n);
+      // DMs slide in from the top-left like an iMessage and self-dismiss — no
+      // Accept/Dismiss buttons. Everything else stays as a decision card.
+      if (n.kind === "dm") showMessagePop(n);
+      else renderNotifications();
     }
   });
   // When kicked (logged in elsewhere, or banned by staff), reload the page
@@ -346,15 +392,17 @@ function startNotifyLoop() {
 function renderNotifications() {
   const area = document.getElementById("notifyArea");
   area.innerHTML = "";
-  for (const n of state.notifications.slice(-3)) {
+  // DMs are handled by showMessagePop(), not as decision cards.
+  const cards = state.notifications.filter(n => n.kind !== "dm");
+  for (const n of cards.slice(-3)) {
     const card = document.createElement("div");
     card.className = "notifyCard";
     let body = "";
     if (n.kind === "friend_req")  body = `<b>${n.from}</b> wants to be friends.`;
     else if (n.kind === "duel")   body = `<b>${n.from}</b> challenges you to a duel for $${n.stake}.`;
     else if (n.kind === "quest")  body = `<b>${n.from}</b> invites you to a co-op quest.`;
-    else if (n.kind === "dm")     body = `<b>${n.from}:</b> ${escapeHtml(n.preview).slice(0,60)}`;
     else if (n.kind === "team_match") body = `<b>${n.teamA}</b> (captain ${n.from}) challenges your team <b>${n.teamB}</b> to a $${n.stakePerPlayer}/player match.`;
+    else body = `<b>${escapeHtml(n.from || "Someone")}</b> sent you something.`;
     card.innerHTML = `<div>${body}</div>
       <div class="row">
         <button class="yes" data-id="${n._id}" data-act="accept">Accept</button>
@@ -366,6 +414,45 @@ function renderNotifications() {
     area.appendChild(card);
   }
 }
+
+// iMessage-style DM pop-in. Slides in from the top-left, no buttons; click to
+// open the thread, otherwise it clears itself after a few seconds. Either way
+// the inbox entry is marked seen so it doesn't pile up or pop again.
+let _msgPopTimers = new Map();
+function showMessagePop(n) {
+  const host = document.getElementById("msgPops");
+  if (!host) return;
+  // collapse a rapid burst from the same person into one bubble
+  const existing = host.querySelector(`.msgPop[data-from="${CSS.escape(n.from || "")}"]`);
+  if (existing) existing.remove();
+  const el = document.createElement("div");
+  el.className = "msgPop";
+  el.dataset.from = n.from || "";
+  el.innerHTML = `
+    <div class="mpAvatar">${escapeHtml((n.from || "?").slice(0, 1).toUpperCase())}</div>
+    <div class="mpBody">
+      <div class="mpName">${escapeHtml(n.from || "Message")}</div>
+      <div class="mpText">${escapeHtml(n.preview || "").slice(0, 90)}</div>
+    </div>`;
+  const dismiss = (open) => {
+    clearTimeout(_msgPopTimers.get(el));
+    _msgPopTimers.delete(el);
+    el.classList.add("out");
+    setTimeout(() => el.remove(), 260);
+    // mark the inbox entry seen
+    fbDelete(`inbox/${state.user}/${n._id}`).catch(() => {});
+    state.notifications = state.notifications.filter(x => x._id !== n._id);
+    if (open && typeof openDMThread === "function") openDMThread(n.from);
+  };
+  el.onclick = () => dismiss(true);
+  host.appendChild(el);
+  // force the slide-in transition
+  requestAnimationFrame(() => el.classList.add("in"));
+  _msgPopTimers.set(el, setTimeout(() => dismiss(false), 6000));
+  // keep at most 4 on screen
+  while (host.children.length > 4) host.firstChild.remove();
+}
+window.showMessagePop = showMessagePop;
 async function handleNotification(n, act) {
   await fbDelete(`inbox/${state.user}/${n._id}`);
   // Remove locally and re-render immediately — the server doesn't push an

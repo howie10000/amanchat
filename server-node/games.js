@@ -65,7 +65,7 @@ const SLOT_SYMBOLS = [
 // frequent but small — a full 3x3 board is the only true jackpot. Weights are
 // tuned a little tighter than that game so the house keeps an edge (~82% RTP).
 const JACKPOT_SYMBOLS = [
-    { sym: '👁️', weight: 44, mult: 0.5 },
+    { sym: '👁', weight: 44, mult: 0.5 },
     { sym: '☥',  weight: 28, mult: 1.5 },
     { sym: '🪲', weight: 16, mult: 2.5 },
     { sym: '🪷', weight: 8,  mult: 3.5 },

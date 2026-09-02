@@ -60,8 +60,8 @@ const INTERIORS = {
   interior_bank: {
     w: 1024, h: 640, floor: "#d1d5db", wall: "#f3f4f6", trim: "#1e40af",
     hotspots: [
-      { x: 300, y: 240, label: "DEPOSIT/WITHDRAW", action: "bank_main", icon: "vault" },
-      { x: 720, y: 240, label: "CLAIM INTEREST", action: "bank_interest", icon: "coin" },
+      { x: 300, y: 240, label: "DEPOSIT / WITHDRAW / DAILY", action: "bank_main", icon: "vault" },
+      { x: 720, y: 240, label: "LOAN OFFICE", action: "bank_loans", icon: "coin" },
     ],
   },
   interior_furniture: {
@@ -340,10 +340,17 @@ function drawInterior() {
   if (state.area === "interior_home" && state.placeMode) {
     const d = FURNITURE_CATALOG[state.placeMode];
     if (d) {
+      const sn = (v) => (state.snapOn ? Math.round(v / 16) * 16 : v);
+      const gx = sn(state.mouse.x), gy = sn(state.mouse.y);
+      if (state.snapOn) drawSnapGrid();
       ctx.globalAlpha = 0.5;
-      GFX.drawFurniture(ctx, { x: state.mouse.x, y: state.mouse.y }, d);
+      GFX.drawFurniture(ctx, { x: gx, y: gy, rot: state.placeRot || 0 }, d);
       ctx.globalAlpha = 1;
     }
+  }
+  // Snap grid overlay while dragging an existing piece, too.
+  else if (state.area === "interior_home" && state.buildMode && state.snapOn && state.selectedFurn >= 0) {
+    drawSnapGrid();
   }
 
   ctx.restore(); // end VIEW_OX/VIEW_OY translate — room content is done
@@ -374,6 +381,22 @@ function buildingTitle(area) {
     interior_mayor: "TOWN HALL",
   };
   return map[area] || "Interior";
+}
+
+// Faint 16px lattice over the room floor — shown only while building with snap
+// on, so it's clear pieces are locking to a grid.
+function drawSnapGrid() {
+  const room = interiorRoom();
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.10)";
+  ctx.lineWidth = 1;
+  const x0 = Math.ceil((room.x + 8) / 16) * 16, x1 = room.x + room.w - 8;
+  const y0 = Math.ceil((room.y + 8) / 16) * 16, y1 = room.y + room.h - 8;
+  ctx.beginPath();
+  for (let x = x0; x <= x1; x += 16) { ctx.moveTo(x, y0); ctx.lineTo(x, y1); }
+  for (let y = y0; y <= y1; y += 16) { ctx.moveTo(x0, y); ctx.lineTo(x1, y); }
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawHomeContents() {
@@ -1897,7 +1920,7 @@ const bankRoom = {
     ctx.strokeStyle = "rgba(30,58,138,0.45)"; ctx.lineWidth = 6; ctx.strokeRect(room.x + 40, room.y + WALL_H + 30, room.w - 80, room.h - WALL_H - 60);
   },
   decor(room, t) {
-    drawTickerBoard(room.x + 250, room.y + 14, room.w - 500, t, "FIRST BANK  ▸  SAVINGS RATE 2.5% DAILY  ▸  DEPOSITS INSURED  ▸  CLAIM YOUR INTEREST AT TELLER 2  ▸  ", "#4ade80");
+    drawTickerBoard(room.x + 250, room.y + 14, room.w - 500, t, "FIRST BANK  ▸  VAULT SAVINGS EARN 0.1% EVERY 5 MIN, AUTOMATICALLY  ▸  DEPOSITS INSURED  ▸  LOANS &  CREDIT AT TELLER 2  ▸  ", "#4ade80");
     drawVaultDoor(300, 218, t);
     drawTellerCounter(700, 236, t);
     drawDepositBoxes(room.x + 400, room.y + 40, 6, 5);
@@ -1913,7 +1936,8 @@ const bankRoom = {
     ctx.fillStyle = "#0f172a"; ctx.fillRect(room.x + 26, room.y + 418, 22, 4); ctx.fillRect(room.x + 26, room.y + 440, 22, 10);
     ctx.fillStyle = "#fde68a"; ctx.font = "bold 7px sans-serif"; ctx.textAlign = "center"; ctx.fillText("ATM", room.x + 37, room.y + 465);
     drawClock(room.x + 160, room.y + 44, 14, t);
-    wallSign(room.x + room.w / 2, room.y + 100, "DEPOSITS · WITHDRAWALS · INTEREST", { size: 9, bg: "#1e3a8a", border: "#93c5fd", color: "#dbeafe" });
+    wallSign(room.x + 300, room.y + 100, "SAVINGS · DEPOSITS · DAILY BONUS", { size: 9, bg: "#1e3a8a", border: "#93c5fd", color: "#dbeafe" });
+    wallSign(room.x + 720, room.y + 100, "LOANS · CREDIT SCORES", { size: 9, bg: "#3f2d16", border: "#fbbf24", color: "#fde68a" });
   },
 };
 

@@ -22,11 +22,12 @@ window.closeSidePanel = closeSidePanel;
 async function renderFriendsList() {
   const body = document.getElementById("spBody");
   body.innerHTML = `
-    <div class="flexBetween" style="margin-bottom:10px;">
+    <div class="flexBetween" style="margin-bottom:8px;">
       <input id="addFriendInput" placeholder="username..."
         style="flex:1;padding:7px;background:#0a0e15;border:1px solid #2a3344;color:white;border-radius:6px;" />
       <button class="menuBtn" onclick="sendFriendRequest()">Add</button>
     </div>
+    <button class="menuBtn" style="width:100%;margin-bottom:10px;" onclick="closeSidePanel();openDirectory()">🌐 Search the player directory</button>
     <div id="friendsList"></div>
   `;
   const list = document.getElementById("friendsList");
@@ -73,13 +74,22 @@ window.toggleKey = async (friend) => {
   }
   renderFriendsList();
 };
-window.sendFriendRequest = async () => {
-  const target = document.getElementById("addFriendInput").value.trim().toLowerCase();
-  if (!target || target === state.user) return;
+// Send a friend request to a specific username. Throws on a bad target so
+// callers (directory, friends panel) can surface the reason.
+async function sendFriendRequestTo(target) {
+  target = (target || "").trim().toLowerCase();
+  if (!target || target === state.user) throw new Error("Pick someone else.");
+  if (state.friends && state.friends[target]) throw new Error(`Already friends with ${target}.`);
   const u = await fbGet(`users/${target}`);
-  if (!u) { toast("No such user."); return; }
+  if (!u) throw new Error("No such user.");
   await fbPost(`inbox/${target}`, { kind: "friend_req", from: state.user, ts: Date.now() });
   toast(`Friend request sent to ${target}.`);
+}
+window.sendFriendRequestTo = sendFriendRequestTo;
+window.sendFriendRequest = async () => {
+  const el = document.getElementById("addFriendInput");
+  try { await sendFriendRequestTo(el.value); el.value = ""; }
+  catch (e) { toast(e.message || "Could not send request."); }
 };
 
 async function renderDMList() {
@@ -206,5 +216,5 @@ function startCoopQuest(leader, tier) {
 window.gameSocial = {
   openSidePanelFriends, openSidePanelDMs, closeSidePanel,
   renderFriendsList, renderDMList, openDMThread, dmThreadId,
-  startCoopQuest,
+  startCoopQuest, sendFriendRequestTo,
 };

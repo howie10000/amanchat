@@ -189,11 +189,106 @@ const SLOT_SYMBOLS = [
 // MEGA JACKPOT — Egyptian symbols, values modelled on "Gamble With Your
 // Friends" slots (Eye .25 / Ankh .75 / Scarab 1.25 / Lotus 1.75, each ×2 per
 // line). Every symbol pays; winning lines ADD, so wins are frequent but small.
+// Each symbol is hand-drawn pixel art (see PIXEL_SYMBOLS) so it matches the
+// game's chunky look instead of an OS emoji font. `sym` is kept only as a
+// text fallback / stable id the server also uses.
+//
+// PIXEL_SYMBOLS[name] = { bg, rows } where rows is an array of equal-length
+// strings; each char keys into a small palette. Drawn centred, pixel-snapped.
+const PIXEL_PALETTE = {
+  " ": null,
+  K: "#0b1020", // outline / dark
+  g: "#fcd34d", // gold
+  G: "#d4a017", // deep gold
+  b: "#2563eb", // lapis
+  B: "#1e3a8a", // deep lapis
+  w: "#f8fafc", // white
+  t: "#14b8a6", // teal
+  T: "#0f766e", // deep teal
+  e: "#4ade80", // emerald
+  p: "#f472b6", // lotus pink
+  P: "#be185d", // deep pink
+  s: "#a16207", // stem brown
+};
+const PIXEL_SYMBOLS = {
+  eye: { rows: [
+    "            ",
+    "     KKK    ",
+    "   KK   KK  ",
+    "  K  bbb  K ",
+    " K  bBWBb   ",
+    "KKKKbBBBbKKK",
+    " K   bbb    ",
+    "  KK     KK ",
+    "   K KKK G  ",
+    "    G   G   ",
+    "     GGG    ",
+    "           ",
+  ] },
+  ankh: { rows: [
+    "    GGGG    ",
+    "   Gg  gG   ",
+    "  Gg    gG  ",
+    "  Gg    gG  ",
+    "   Gg  gG   ",
+    " GGGGggGGGG ",
+    " Gg  gg  gG ",
+    "    Gg gG   ",
+    "    Gg gG   ",
+    "    Gg gG   ",
+    "    GgggG   ",
+    "     GG     ",
+  ] },
+  scarab: { rows: [
+    "     KK     ",
+    "  K  tt  K  ",
+    "  KK tt KK  ",
+    "  tTttttTt  ",
+    " tTteeeetTt ",
+    "tT teeee t Tt",
+    "tT teeee t Tt",
+    " tTteeeetTt ",
+    "  tTttttTt  ",
+    "  K TTTT K  ",
+    "  K  KK  K  ",
+    "            ",
+  ] },
+  lotus: { rows: [
+    "     p      ",
+    "  p  p  p   ",
+    " pp ppp pp  ",
+    " pPp pPp Pp ",
+    "pPppPpPppPp ",
+    "pPPpPPPpPPp ",
+    " pPPPPPPPp  ",
+    "  pPPPPPp   ",
+    "   sssss    ",
+    "    s s     ",
+    "   e s e    ",
+    "    eee     ",
+  ] },
+};
+function drawPixelSymbol(c, name, cx, cy, size) {
+  const spec = PIXEL_SYMBOLS[name];
+  if (!spec) return;
+  const rows = spec.rows, R = rows.length, COLS = rows[0].length;
+  const u = Math.max(1, Math.round(size / Math.max(R, COLS)));
+  const ox = Math.round(cx - (COLS * u) / 2), oy = Math.round(cy - (R * u) / 2);
+  for (let r = 0; r < R; r++) {
+    for (let col = 0; col < COLS; col++) {
+      const ch = rows[r][col];
+      const fill = PIXEL_PALETTE[ch];
+      if (!fill) continue;
+      c.fillStyle = fill;
+      c.fillRect(ox + col * u, oy + r * u, u, u);
+    }
+  }
+}
 const JACKPOT_SYMBOLS = [
-  { sym: "👁️", color: "#93c5fd", weight: 44, mult: 0.5 },
-  { sym: "☥",  color: "#fcd34d", weight: 28, mult: 1.5 },
-  { sym: "🪲", color: "#4ade80", weight: 16, mult: 2.5 },
-  { sym: "🪷", color: "#f472b6", weight: 8,  mult: 3.5 },
+  { sym: "👁", key: "eye",    color: "#93c5fd", weight: 44, mult: 0.5, draw: (c,x,y,s) => drawPixelSymbol(c, "eye", x, y, s) },
+  { sym: "☥",  key: "ankh",   color: "#fcd34d", weight: 28, mult: 1.5, draw: (c,x,y,s) => drawPixelSymbol(c, "ankh", x, y, s) },
+  { sym: "🪲", key: "scarab", color: "#4ade80", weight: 16, mult: 2.5, draw: (c,x,y,s) => drawPixelSymbol(c, "scarab", x, y, s) },
+  { sym: "🪷", key: "lotus",  color: "#f472b6", weight: 8,  mult: 3.5, draw: (c,x,y,s) => drawPixelSymbol(c, "lotus", x, y, s) },
 ];
 const JACKPOT_MIN_BET = 250;
 const JACKPOT_FULLBOARD_MULT = 25;
@@ -204,11 +299,22 @@ const SLOT_W = SLOT_PAD * 2 + SLOT_CELL * 3 + SLOT_GAP * 2;
 let _slot = null; // { symbols, rows, lines, cols, grid, wins, spinning }
 
 function slotPaytableHtml(symbols, extraPays) {
-  return symbols.filter(s => s.mult > 0).map(s =>
-    `<div class="payRow"><span style="color:${s.color};font-size:18px">${s.sym}${s.sym}${s.sym}</span>
-     <b>${s.mult}&times;</b></div>`).join("") +
+  return symbols.filter(s => s.mult > 0).map(s => {
+    const face = s.draw
+      ? `<span class="paySyms"><canvas class="paySym" data-sk="${s.key}" width="28" height="28"></canvas><canvas class="paySym" data-sk="${s.key}" width="28" height="28"></canvas><canvas class="paySym" data-sk="${s.key}" width="28" height="28"></canvas></span>`
+      : `<span style="color:${s.color};font-size:18px">${s.sym}${s.sym}${s.sym}</span>`;
+    return `<div class="payRow">${face}<b>${s.mult}&times;</b></div>`;
+  }).join("") +
     (extraPays || []).map(p =>
       `<div class="payRow"><span style="font-size:15px">${p.label}</span><b>${p.mult}&times;</b></div>`).join("");
+}
+// Paint the little pixel symbols in an open slot paytable.
+function paintPaytableSymbols() {
+  document.querySelectorAll("#menuBody canvas.paySym[data-sk]").forEach(cv => {
+    const c = cv.getContext("2d");
+    c.clearRect(0, 0, cv.width, cv.height);
+    drawPixelSymbol(c, cv.dataset.sk, cv.width / 2, cv.height / 2, cv.width - 2);
+  });
 }
 
 function slotShellHtml(cfg) {
@@ -250,6 +356,7 @@ function openSlotMachine(cfg) {
     p: 0,
   }));
   drawSlotFrame();
+  paintPaytableSymbols();
   const btn = document.getElementById("slotBtn");
   if (btn) btn.onclick = () => spinSlotGrid(cfg);
 }
@@ -296,10 +403,14 @@ function drawSlotFrame() {
       const row = idx - i0;
       c.fillStyle = (row % 2 === 0) ? "#131228" : "#171635";
       roundPath(c, x + 4, cy - SLOT_CELL / 2 + 4, SLOT_CELL - 8, SLOT_CELL - 8, 8); c.fill();
-      c.font = "52px sans-serif";
-      c.textAlign = "center"; c.textBaseline = "middle";
-      c.fillStyle = sym.color;
-      c.fillText(sym.sym, x + SLOT_CELL / 2, cy + 2);
+      if (typeof sym.draw === "function") {
+        sym.draw(c, x + SLOT_CELL / 2, cy, SLOT_CELL - 20);
+      } else {
+        c.font = "52px sans-serif";
+        c.textAlign = "center"; c.textBaseline = "middle";
+        c.fillStyle = sym.color;
+        c.fillText(sym.sym, x + SLOT_CELL / 2, cy + 2);
+      }
     }
     c.restore();
     c.strokeStyle = "#3b3768"; c.lineWidth = 2;

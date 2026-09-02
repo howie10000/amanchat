@@ -435,7 +435,8 @@ setInterval(broadcastPresence, 66); // ~15Hz presence broadcast (was 100ms/10Hz)
 // them goes through an op below (bank/buy/earn/fish/casino/furniture_set) or
 // a server-side settlement. Staff editing OTHER players keep their powers.
 const PROTECTED_FIELDS = new Set(['money', 'inventory', 'cosmetics', 'vegasFloor', 'dailyStreak', 'lastDaily',
-    'lastInterest', 'fishInventory', 'houseStyle', 'furniture', 'houseIndex', 'createdAt']);
+    'lastInterest', 'fishInventory', 'houseStyle', 'furniture', 'houseIndex', 'createdAt',
+    'bankBalance', 'bankLast', 'creditScore', 'loan']);
 const PAID_APPEARANCE_KEYS = Object.keys(ECON.COSMETIC_DEFAULTS); // hat, accessory, aura, pet, nameColor
 const DEFAULT_APPEARANCE = {
     skin: '#f5d0a9', hair: 'short', hairColor: '#3f2210', shirt: '#3b82f6', pants: '#1e293b',
@@ -443,9 +444,10 @@ const DEFAULT_APPEARANCE = {
 };
 const MAX_PLACED_FURNITURE = 200;
 
-// Only owners (and the server itself) may touch protected fields of a record;
-// a player is restricted on their own record.
-function protectedFor(actor, target) { return actor === target && roleOf(actor) !== 'owner'; }
+// Only staff (and the server itself) may touch protected fields of a record;
+// a regular player is restricted on their own record. Staff may edit their own
+// balance from the staff panel just like anyone else's.
+function protectedFor(actor, target) { return actor === target && !isStaff(actor); }
 function hasProtectedKey(val) {
     if (!val || typeof val !== 'object' || Array.isArray(val)) return false;
     return Object.keys(val).some(k => PROTECTED_FIELDS.has(k));
@@ -486,6 +488,8 @@ function newUserRecord() {
         appearance: Object.assign({}, DEFAULT_APPEARANCE),
         seenTutorial: false,
         fishInventory: {},
+        bankBalance: 0, bankLast: Date.now(),
+        creditScore: ECON.CREDIT_START, loan: null,
         createdAt: Date.now(),
     };
 }
@@ -493,6 +497,10 @@ function newUserRecord() {
 function userRec(user) {
     let u = store.get('users/' + user);
     if (!u || typeof u !== 'object') { u = newUserRecord(); store.put('users/' + user, u); }
+    // Legacy accounts predate the vault / credit fields — seed sane defaults so
+    // bankSync and the loan office have something to work with.
+    if (u.creditScore == null) { u.creditScore = ECON.CREDIT_START; store.put('users/' + user + '/creditScore', u.creditScore); }
+    if (u.bankLast == null) { u.bankLast = Date.now(); store.put('users/' + user + '/bankLast', u.bankLast); }
     return u;
 }
 function moneyOf(u) { return Math.max(0, Math.floor(+u.money || 0)); }
@@ -524,6 +532,13 @@ function canWrite(user, pathStr, op) {
     if (top === 'banned_ips') return role === 'owner';
     if (top === 'meta') return false;             // server-written only (IPs)
     if (top === 'mayor') return isStaff(user);    // announcement
+    // Bug reports live under bug_reports/<author>/<id>. A player may file into
+    // their own subtree; only staff may triage (change status) or delete.
+    if (top === 'bug_reports') {
+        if (parts.length < 2) return isStaff(user);
+        if (parts[1] === user) return op === 'post' || op === 'patch';
+        return isStaff(user);
+    }
 
     // Owners keep the old all-powerful "mayor" behaviour.
     if (role === 'owner') return true;
@@ -776,13 +791,18 @@ function handleMessage(c, msg) {
             if (role !== 'user' || register) console.log(`[auth] ${user} ${register ? 'registered' : 'logged in'} role=${role}`);
             // The server owns the player record: created here on registration
             // (money 300, a random free lot) and never `put` by the client.
-            reply({ user, data: userRec(user), role, mute: activeMute(user) });
+            // Settle vault interest + overdue-loan penalties accrued while away.
+            const rec = userRec(user);
+            try { bankSync(user, rec, Date.now()); } catch (e) { console.error('[bank] sync on login failed', e); }
+            reply({ user, data: rec, role, mute: activeMute(user) });
             break;
         }
 
         case 'get': {
             const parts = Store.splitPath(msg.path);
             if (parts[0] === 'meta' && !isStaff(c.user)) return replyErr('forbidden');
+            // Bug reports are visible to staff (all) and to each author (their own).
+            if (parts[0] === 'bug_reports' && !isStaff(c.user) && parts[1] !== c.user) return replyErr('forbidden');
             reply(store.get(msg.path));
             break;
         }
@@ -914,10 +934,143 @@ const fishLast = new Map();   // user -> last catch ts
 
 function nonNegInt(v) { const n = Number(v); return Number.isInteger(n) && n >= 0 ? n : null; }
 
+// Net worth used to size a loan: spendable cash + whatever is parked in the vault.
+function netWorthOf(u) { return moneyOf(u) + Math.max(0, Math.floor(+u.bankBalance || 0)); }
+
+// Lazily bring a player's vault + loan up to date: pay out compound interest on
+// deposits, fold in any overdue-loan penalties, and garnish savings toward an
+// overdue balance. Safe to call as often as you like — it only does work when
+// real time has passed. Persists whatever it changes and returns a summary.
+function bankSync(user, u, now) {
+    now = now || Date.now();
+    u = u || userRec(user);
+    const out = { interest: 0, penalty: 0, garnished: 0, creditDrop: 0, cleared: false };
+
+    // ----- deposit interest -----
+    const acc = ECON.bankAccrue(u.bankBalance, u.bankLast, now);
+    if (acc.gained > 0 || acc.last !== (+u.bankLast || 0)) {
+        u.bankBalance = acc.balance;
+        u.bankLast = acc.last;
+        store.put(`users/${user}/bankBalance`, u.bankBalance);
+        store.put(`users/${user}/bankLast`, u.bankLast);
+        out.interest = acc.gained;
+    }
+
+    // ----- overdue loan penalties -----
+    if (u.loan && u.loan.owed > 0) {
+        const before = Math.floor(u.loan.owed);
+        const creditBefore = ECON.clampCredit(u.creditScore == null ? ECON.CREDIT_START : u.creditScore);
+        const la = ECON.loanAccrue(u.loan, creditBefore, now);
+        if (la.newLate > 0) {
+            u.loan = la.loan;
+            u.creditScore = la.credit;
+            out.penalty = Math.floor(u.loan.owed) - before;
+            out.creditDrop = creditBefore - la.credit;
+        }
+        // Garnish the vault (never the wallet) toward what's owed once overdue.
+        if (u.loan && u.loan.owed > 0 && now > (+u.loan.dueTs || 0)) {
+            const take = Math.min(Math.floor(+u.bankBalance || 0), Math.floor(u.loan.owed));
+            if (take > 0) {
+                u.bankBalance = Math.floor(u.bankBalance) - take;
+                u.loan.owed = Math.floor(u.loan.owed) - take;
+                out.garnished = take;
+                store.put(`users/${user}/bankBalance`, u.bankBalance);
+            }
+        }
+        if (u.loan && u.loan.owed <= 0) { u.loan = null; out.cleared = true; }
+        store.put(`users/${user}/loan`, u.loan || null);
+        if (u.creditScore != null) store.put(`users/${user}/creditScore`, u.creditScore);
+    }
+    return out;
+}
+
 const ECONOMY_OPS = {
     bank(user, msg) {
         const u = userRec(user), now = Date.now();
+        const sync = bankSync(user, u, now);
+        const view = () => ({
+            money: moneyOf(u),
+            bankBalance: Math.max(0, Math.floor(+u.bankBalance || 0)),
+            bankLast: +u.bankLast || now,
+            creditScore: ECON.clampCredit(u.creditScore == null ? ECON.CREDIT_START : u.creditScore),
+            loan: u.loan || null,
+            synced: sync,
+        });
+
+        if (msg.action === 'status') return view();
+
+        if (msg.action === 'deposit') {
+            const amt = nonNegInt(msg.amount);
+            if (!amt || amt <= 0) throw new Error('Enter an amount to deposit.');
+            if (moneyOf(u) < amt) throw new Error('Not enough cash on hand.');
+            setMoney(user, u, moneyOf(u) - amt);
+            u.bankBalance = Math.max(0, Math.floor(+u.bankBalance || 0)) + amt;
+            u.bankLast = +u.bankLast || now;
+            store.put(`users/${user}/bankBalance`, u.bankBalance);
+            store.put(`users/${user}/bankLast`, u.bankLast);
+            return Object.assign(view(), { moved: amt });
+        }
+
+        if (msg.action === 'withdraw') {
+            const have = Math.max(0, Math.floor(+u.bankBalance || 0));
+            let amt = nonNegInt(msg.amount);
+            if (msg.amount === 'all') amt = have;
+            if (!amt || amt <= 0) throw new Error('Enter an amount to withdraw.');
+            if (have < amt) throw new Error('Your vault does not hold that much.');
+            u.bankBalance = have - amt;
+            store.put(`users/${user}/bankBalance`, u.bankBalance);
+            setMoney(user, u, moneyOf(u) + amt);
+            return Object.assign(view(), { moved: amt });
+        }
+
+        if (msg.action === 'loan_take') {
+            if (u.loan && u.loan.owed > 0) throw new Error('Repay your current loan first.');
+            const credit = ECON.clampCredit(u.creditScore == null ? ECON.CREDIT_START : u.creditScore);
+            const principal = nonNegInt(msg.amount);
+            const limit = ECON.loanLimit(credit, netWorthOf(u));
+            if (!principal || principal < 100) throw new Error('Minimum loan is $100.');
+            if (principal > limit) throw new Error(`Your credit supports up to $${limit.toLocaleString()}.`);
+            const owed = ECON.loanTotalDue(principal, credit);
+            u.loan = { principal, owed, rate: ECON.loanRate(credit), takenTs: now, dueTs: now + ECON.LOAN_TERM, latePeriods: 0 };
+            u.creditScore = credit; // pin the starting score so it persists
+            store.put(`users/${user}/loan`, u.loan);
+            store.put(`users/${user}/creditScore`, u.creditScore);
+            setMoney(user, u, moneyOf(u) + principal);
+            return Object.assign(view(), { borrowed: principal, owed });
+        }
+
+        if (msg.action === 'loan_repay') {
+            if (!u.loan || !(u.loan.owed > 0)) throw new Error('You have no loan to repay.');
+            const owed = Math.floor(u.loan.owed);
+            let amt = nonNegInt(msg.amount);
+            if (msg.amount === 'all') amt = Math.min(owed, moneyOf(u));
+            if (!amt || amt <= 0) throw new Error('Enter an amount to repay.');
+            amt = Math.min(amt, owed);
+            if (moneyOf(u) < amt) throw new Error('Not enough cash on hand.');
+            setMoney(user, u, moneyOf(u) - amt);
+            u.loan.owed = owed - amt;
+            let paidOff = false, creditGain = 0;
+            if (u.loan.owed <= 0) {
+                paidOff = true;
+                const credit = ECON.clampCredit(u.creditScore == null ? ECON.CREDIT_START : u.creditScore);
+                const onTime = now <= (+u.loan.dueTs || 0) && !(u.loan.latePeriods > 0);
+                if (onTime) {
+                    creditGain = ECON.LOAN_ONTIME_CREDIT_GAIN;
+                    if (now <= (u.loan.takenTs + ECON.LOAN_TERM / 2)) creditGain += ECON.LOAN_EARLY_CREDIT_BONUS;
+                } else {
+                    creditGain = 5; // clearing a late debt still helps a little
+                }
+                u.creditScore = ECON.clampCredit(credit + creditGain);
+                u.loan = null;
+                store.put(`users/${user}/creditScore`, u.creditScore);
+            }
+            store.put(`users/${user}/loan`, u.loan || null);
+            return Object.assign(view(), { repaid: amt, paidOff, creditGain });
+        }
+
         if (msg.action === 'interest') {
+            // Legacy wallet-interest button — kept working for old clients, but
+            // the bank now pays automatically on deposits (see bankSync).
             const last = +u.lastInterest || 0;
             if (now - last < ECON.INTEREST_COOLDOWN) throw new Error(`Come back in ${Math.ceil((ECON.INTEREST_COOLDOWN - (now - last)) / 1000)}s`);
             const gained = Math.floor(moneyOf(u) * ECON.INTEREST_RATE);
@@ -1031,7 +1184,8 @@ const ECONOMY_OPS = {
             if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error('Bad position.');
             placedNow[f.id] = (placedNow[f.id] || 0) + 1;
             const out = { id: f.id, x: Math.round(x), y: Math.round(y) };
-            if (f.rot != null) out.rot = f.rot;
+            const rot = Number(f.rot);
+            if (Number.isFinite(rot) && rot !== 0) out.rot = ((rot % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
             return out;
         });
         const newInv = {};

@@ -84,7 +84,95 @@
   // gap resets it). Day 7+ pays the cap.
   const DAILY_COOLDOWN = 20 * 3600000, DAILY_STREAK_WINDOW = 48 * 3600000;
   function dailyBonusAmount(streak) { return Math.min(900, 150 + 125 * Math.max(0, streak - 1)); }
-  const INTEREST_RATE = 0.05, INTEREST_COOLDOWN = 120000;
+  const INTEREST_RATE = 0.05, INTEREST_COOLDOWN = 120000; // legacy wallet interest (unused by bank v2)
+
+  // ---------- bank v2: deposits + automatic compound interest ----------
+  // Money parked in the vault (users/<me>/bankBalance) compounds at
+  // BANK_INTEREST_RATE every BANK_INTEREST_PERIOD, applied lazily whenever the
+  // player touches the bank or logs in, so it works while offline too.
+  const BANK_INTEREST_RATE = 0.001;         // 0.1% per period
+  const BANK_INTEREST_PERIOD = 5 * 60000;   // every 5 minutes
+  const BANK_INTEREST_MAX_PERIODS = 4032;   // stop compounding after ~2 weeks idle
+
+  // Returns { balance, last, gained } — `last` only advances by whole periods so
+  // partial progress toward the next payout isn't lost.
+  function bankAccrue(balance, last, now) {
+    balance = Math.max(0, Math.floor(+balance || 0));
+    now = now || Date.now();
+    last = +last || now;
+    if (balance <= 0 || now <= last) return { balance, last: Math.min(last, now) || now, gained: 0 };
+    const periods = Math.floor((now - last) / BANK_INTEREST_PERIOD);
+    if (periods <= 0) return { balance, last, gained: 0 };
+    // +1e-6 so an exact case (e.g. $10,000 at 0.1% = $10,010) isn't shaved to
+    // $10,009 by binary rounding of Math.pow.
+    const grown = Math.floor(balance * Math.pow(1 + BANK_INTEREST_RATE, Math.min(periods, BANK_INTEREST_MAX_PERIODS)) + 1e-6);
+    return { balance: grown, last: last + periods * BANK_INTEREST_PERIOD, gained: grown - balance };
+  }
+  function bankNextInterestIn(last, now) {
+    now = now || Date.now(); last = +last || now;
+    const elapsed = (now - last) % BANK_INTEREST_PERIOD;
+    return Math.max(0, BANK_INTEREST_PERIOD - elapsed);
+  }
+
+  // ---------- credit score & loans ----------
+  // One active loan at a time. Credit score 300-850 sets both how much you can
+  // borrow and the rate. Repay in full before the due date to gain points; go
+  // past due and the debt grows and the score drops every late period, and the
+  // bank quietly garnishes your savings toward what you owe.
+  const CREDIT_MIN = 300, CREDIT_MAX = 850, CREDIT_START = 600;
+  const LOAN_TERM = 24 * 3600000;           // time to repay in full
+  const LOAN_LATE_PERIOD = 6 * 3600000;     // penalties compound this often once overdue
+  const LOAN_LATE_FEE = 0.08;               // owed grows 8% per late period
+  const LOAN_LATE_CREDIT_HIT = 25;          // score lost per late period
+  const LOAN_ONTIME_CREDIT_GAIN = 20;       // score gained for a clean full repay
+  const LOAN_EARLY_CREDIT_BONUS = 8;        // extra for repaying with >half the term left
+
+  function clampCredit(s) {
+    s = Math.round(+s); if (!Number.isFinite(s)) s = CREDIT_START;
+    return Math.max(CREDIT_MIN, Math.min(CREDIT_MAX, s));
+  }
+  function creditTier(s) {
+    s = clampCredit(s);
+    return s >= 780 ? "Excellent" : s >= 700 ? "Good" : s >= 580 ? "Fair" : s >= 460 ? "Poor" : "Bad";
+  }
+  // Annualless flat rate charged up front on a new loan: 6% (great credit) .. 45% (bad).
+  function loanRate(credit) {
+    const t = (clampCredit(credit) - CREDIT_MIN) / (CREDIT_MAX - CREDIT_MIN); // 0..1
+    return Math.round((0.45 - 0.39 * t) * 1000) / 1000;
+  }
+  // Most a player may borrow, from credit alone plus a slice of their net worth.
+  function loanLimit(credit, netWorth) {
+    const t = (clampCredit(credit) - CREDIT_MIN) / (CREDIT_MAX - CREDIT_MIN);
+    const base = 500 + Math.floor(11500 * t);                 // 500 .. 12,000
+    const worthPart = Math.floor(Math.max(0, +netWorth || 0) * (0.25 + 0.35 * t));
+    return base + worthPart;
+  }
+  // What a `principal` loan will cost to clear if repaid on time.
+  function loanTotalDue(principal, credit) {
+    principal = Math.max(0, Math.floor(+principal || 0));
+    return principal + Math.ceil(principal * loanRate(credit));
+  }
+  // Fold overdue penalties into an active loan. Returns
+  // { loan, credit, newLate } with `owed` grown and `credit` docked for any
+  // late periods not already counted. Pass loan=null / no owed for "no loan".
+  function loanAccrue(loan, credit, now) {
+    now = now || Date.now();
+    credit = clampCredit(credit == null ? CREDIT_START : credit);
+    if (!loan || !(loan.owed > 0)) return { loan: null, credit, newLate: 0 };
+    const due = +loan.dueTs || 0;
+    const counted = Math.max(0, Math.floor(+loan.latePeriods || 0));
+    if (!due || now <= due) return { loan, credit, newLate: 0 };
+    const totalLate = Math.floor((now - due) / LOAN_LATE_PERIOD) + 1; // 1 the moment it's overdue
+    const newLate = Math.max(0, totalLate - counted);
+    if (newLate <= 0) return { loan, credit, newLate: 0 };
+    let owed = Math.floor(loan.owed);
+    for (let i = 0; i < Math.min(newLate, 60); i++) owed = Math.ceil(owed * (1 + LOAN_LATE_FEE));
+    return {
+      loan: Object.assign({}, loan, { owed, latePeriods: counted + newLate }),
+      credit: clampCredit(credit - LOAN_LATE_CREDIT_HIT * newLate),
+      newLate,
+    };
+  }
 
   // ---------- client-run mini-game payouts ----------
   // Hard cap per round and a cooldown between rounds, per source. team_match
@@ -181,6 +269,11 @@
     LOOTBOX_CFG, lootboxPool, rollLootbox,
     DAILY_COOLDOWN, DAILY_STREAK_WINDOW, dailyBonusAmount,
     INTEREST_RATE, INTEREST_COOLDOWN,
+    BANK_INTEREST_RATE, BANK_INTEREST_PERIOD, BANK_INTEREST_MAX_PERIODS,
+    bankAccrue, bankNextInterestIn,
+    CREDIT_MIN, CREDIT_MAX, CREDIT_START, LOAN_TERM, LOAN_LATE_PERIOD, LOAN_LATE_FEE,
+    LOAN_ONTIME_CREDIT_GAIN, LOAN_EARLY_CREDIT_BONUS,
+    clampCredit, creditTier, loanRate, loanLimit, loanTotalDue, loanAccrue,
     EARN_CAPS,
     mulberry32, strToSeed, marketStock,
     FISH_TABLE, FISH_JUNK_NAMES, FISH_CATCH_COOLDOWN, fishPriceNow, fishQualityLabel, rollFish,

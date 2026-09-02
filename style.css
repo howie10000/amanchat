@@ -19,7 +19,7 @@ html, body {
 .loginBox {
   background: linear-gradient(180deg, #161b24, #0f131c);
   border: 1px solid #2a3344; padding: 36px 40px; border-radius: 16px;
-  width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,.6);
+  width: 380px; max-width: 92vw; box-shadow: 0 20px 60px rgba(0,0,0,.6);
   text-align: center;
 }
 .loginBox h1 {
@@ -51,7 +51,15 @@ html, body {
    by the .screen flexbox. Every HUD element is positioned inside it, so the
    phone, HUD and menus hug the play area instead of the window corners.
    Pointer maths in core.js already divides by the canvas's CSS size. */
-#stage { position: relative; width: min(100vw, calc(100vh * 1.6)); aspect-ratio: 16 / 10; }
+/* The stage is a fixed 1280x800 design surface; core.js sets --stage-scale on
+   resize so the whole thing (canvas + every px-positioned HUD/menu/phone) scales
+   as one unit to fit any window. */
+#stage {
+  position: relative;
+  width: 1280px; height: 800px; flex: none;
+  transform: scale(var(--stage-scale, 1));
+  transform-origin: center center;
+}
 #game {
   display: block; background: #1a3d2a;
   width: 100%; height: 100%;
@@ -303,10 +311,15 @@ html, body {
 #buildBanner {
   position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
   background: rgba(251,191,36,0.95); color: #1a1a1a;
-  padding: 8px 18px; border-radius: 8px;
+  padding: 8px 14px; border-radius: 8px;
   font-size: 13px; font-weight: 600;
-  z-index: 40;
+  z-index: 40; display: flex; align-items: center; gap: 10px; white-space: nowrap;
 }
+.bannerBtn {
+  border: 1px solid rgba(0,0,0,.4); background: rgba(0,0,0,.14); color: #1a1a1a;
+  font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 6px; cursor: pointer;
+}
+.bannerBtn.off { background: rgba(0,0,0,.35); color: #fef3c7; }
 
 /* Menu overlays */
 .menuOverlay {
@@ -319,12 +332,12 @@ html, body {
 .menuBox {
   background: linear-gradient(180deg, #1a1f2b, #0f131c);
   border: 1px solid #2a3344; border-radius: 14px;
-  width: 600px; max-width: 92vw; max-height: 85vh;
+  width: 600px; max-width: 1180px; max-height: 720px;
   display: flex; flex-direction: column;
   overflow: hidden;
   box-shadow: 0 20px 60px rgba(0,0,0,.6);
 }
-.menuBox.wide { width: 800px; }
+.menuBox.wide { width: 800px; max-width: 1180px; }
 .menuHeader {
   display: flex; justify-content: space-between; align-items: center;
   padding: 14px 20px; border-bottom: 1px solid #2a3344;
@@ -396,7 +409,7 @@ html, body {
 /* Side panel (friends / IM) */
 #sidePanel {
   position: absolute; top: 12px; right: 232px;
-  width: 320px; max-height: calc(100vh - 80px);
+  width: 320px; max-height: 740px;
   background: linear-gradient(180deg, #1a1f2b, #0f131c);
   border: 1px solid #2a3344; border-radius: 12px;
   display: flex; flex-direction: column;
@@ -420,7 +433,7 @@ html, body {
 
 .imThread {
   display: flex; flex-direction: column;
-  height: calc(100vh - 200px);
+  height: 560px;
 }
 .imMessages {
   flex: 1; overflow-y: auto; padding: 10px;
@@ -488,7 +501,7 @@ html, body {
   position: absolute; bottom: 90px; left: 50%; transform: translateX(-50%);
   background: linear-gradient(180deg, #1a1f2b, #0f131c);
   border: 2px solid #fbbf24; border-radius: 14px;
-  padding: 18px 22px; width: 520px; max-width: 90vw;
+  padding: 18px 22px; width: 520px; max-width: 90%;
   z-index: 60;
   box-shadow: 0 12px 40px rgba(0,0,0,.6);
 }
@@ -662,6 +675,8 @@ h3.section { margin: 14px 0 8px; font-size: 14px; color: #fbbf24; letter-spacing
   padding: 5px 10px; border-bottom: 1px solid #1c2432; font-size: 13px;
 }
 .payRow b { color: #fbbf24; }
+.paySyms { display: inline-flex; gap: 3px; }
+.paySym { width: 26px; height: 26px; image-rendering: pixelated; background: #0d1526; border-radius: 5px; }
 
 /* ---- slots ---- */
 .slotWrap { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
@@ -856,3 +871,32 @@ h3.section { margin: 14px 0 8px; font-size: 14px; color: #fbbf24; letter-spacing
   border-radius: 2px; z-index: 5; pointer-events: none;
   animation: confettiFall linear forwards;
 }
+
+/* ---- iMessage-style DM pop-ins (top-left) ---- */
+#msgPops {
+  position: absolute; top: 14px; left: 14px;
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 105; pointer-events: none;
+}
+.msgPop {
+  pointer-events: auto; cursor: pointer;
+  display: flex; align-items: center; gap: 10px;
+  width: 300px; max-width: 340px; padding: 10px 12px;
+  background: linear-gradient(180deg, rgba(28,34,46,.97), rgba(15,19,28,.97));
+  border: 1px solid #2a3344; border-left: 3px solid #38bdf8;
+  border-radius: 14px;
+  box-shadow: 0 14px 34px rgba(0,0,0,.55);
+  transform: translateX(-120%); opacity: 0;
+  transition: transform .26s cubic-bezier(.2,.9,.25,1), opacity .2s;
+}
+.msgPop.in { transform: translateX(0); opacity: 1; }
+.msgPop.out { transform: translateX(-120%); opacity: 0; }
+.msgPop:hover { border-color: #38bdf8; }
+.mpAvatar {
+  flex: none; width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center; font-weight: 800; font-size: 15px; color: #06121b;
+  background: linear-gradient(160deg, #7dd3fc, #38bdf8);
+}
+.mpBody { min-width: 0; }
+.mpName { font-size: 12px; font-weight: 700; color: #e8eef7; }
+.mpText { font-size: 12px; color: #b6c2d6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

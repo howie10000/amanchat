@@ -38,7 +38,7 @@ console.log('paytables');
     const j = G.slotSpin(250, 3, G.JACKPOT_SYMBOLS, G.SLOT_LINES, null, () => 0.999, jOpts);
     ok(j.wins.length === 8 && j.payout === 250 * (8 * 3.5 + 25), `jackpot: full Lotus board pays 8 lines + bonus (got ${j.payout})`);
     // two winning rows add: Eye row (0.5x) + Ankh row (1.5x) = 2x
-    const g2 = [['👁️','👁️','👁️'],['☥','☥','☥'],['🪲','🪷','☥']];
+    const g2 = [['👁','👁','👁'],['☥','☥','☥'],['🪲','🪷','☥']];
     const rand2 = seq(g2.flat().map(sym => { let acc = 0; for (const d of G.JACKPOT_SYMBOLS) { if (d.sym === sym) return (acc + 0.5 * d.weight) / 96; acc += d.weight; } }));
     const j2 = G.slotSpin(100, 3, G.JACKPOT_SYMBOLS, G.SLOT_LINES, null, rand2, jOpts);
     ok(j2.wins.length === 2 && j2.payout === 100 * 2, `jackpot: 0.5x row and 1.5x row add to 2x (got ${j2.payout}, ${j2.wins.length} wins)`);

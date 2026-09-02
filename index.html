@@ -31,6 +31,8 @@
     <div id="hud">
       <div class="hudRow"><span id="hudName">—</span></div>
       <div class="hudRow"><span class="hudIcon money">$</span><span id="hudMoney">0</span></div>
+      <div class="hudRow muted" id="hudBankRow" style="display:none;"><span class="hudIcon" style="background:#4ade80;color:#06210f">🏦</span><span id="hudBank">0</span></div>
+      <div class="hudRow" id="hudDebtRow" style="display:none;color:#f87171;"><span class="hudIcon" style="background:#ef4444;color:#fff">!</span>owe <span id="hudDebt">0</span></div>
       <div class="hudRow"><span class="hudIcon hp">+</span><span id="hudHp">100</span></div>
       <div class="hudRow muted" id="hudArea">Neighborhood</div>
     </div>
@@ -52,10 +54,12 @@
           <div class="phoneApps">
             <button class="actBtn app" data-act="friends"><span class="ico" style="--c:#22c55e">👥</span><span>Friends</span></button>
             <button class="actBtn app" data-act="dms"><span class="ico" style="--c:#3b82f6">💬</span><span>Messages</span></button>
+            <button class="actBtn app" data-act="directory"><span class="ico" style="--c:#0ea5e9">🌐</span><span>Directory</span></button>
             <button class="actBtn app" data-act="map"><span class="ico" style="--c:#f97316">🗺️</span><span>Map</span></button>
             <button class="actBtn app" data-act="inv"><span class="ico" style="--c:#a855f7">🎒</span><span>Items</span></button>
             <button class="actBtn app" data-act="emotes" title="Emotes (G)"><span class="ico" style="--c:#eab308">😀</span><span>Emotes</span></button>
             <button class="actBtn app" data-act="build"><span class="ico" style="--c:#14b8a6">🔨</span><span>Build</span></button>
+            <button class="actBtn app" data-act="bugs" title="Report a bug"><span class="ico" style="--c:#ef4444">🐞</span><span>Report Bug</span></button>
             <button class="actBtn app staff hidden" id="btnStaff" data-act="staff" title="Staff panel"><span class="ico" style="--c:#fbbf24">🛡️</span><span>Staff</span></button>
             <button class="actBtn app" data-act="help"><span class="ico" style="--c:#64748b">❓</span><span>Help</span></button>
           </div>
@@ -67,7 +71,8 @@
 
     <!-- Build-mode banner -->
     <div id="buildBanner" class="hidden">
-      <b>BUILD MODE</b> — drag furniture to move • right-click to remove • ESC to exit
+      <b>BUILD MODE</b> — drag to move • <b>R</b> rotate • right-click remove • ESC exit
+      <button id="snapToggle" class="bannerBtn" title="Toggle snap-to-grid">grid: on</button>
     </div>
 
     <!-- Chat bubble input -->
@@ -100,6 +105,9 @@
 
     <!-- Notification bell (incoming friend req / duel / quest invite) -->
     <div id="notifyArea"></div>
+
+    <!-- iMessage-style DM pop-ins (slide in from the top-left) -->
+    <div id="msgPops"></div>
 
     <!-- Tutorial bubble -->
     <div id="tutorial" class="hidden">

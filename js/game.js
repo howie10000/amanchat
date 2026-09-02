@@ -21,10 +21,12 @@ document.querySelectorAll(".actBtn").forEach(b => {
     const a = b.dataset.act;
     if (a === "friends") gameSocial.openSidePanelFriends();
     else if (a === "dms") gameSocial.openSidePanelDMs();
+    else if (a === "directory") openDirectory();
     else if (a === "inv") openInventory();
     else if (a === "build") toggleBuildMode();
     else if (a === "map") openTownMap();
     else if (a === "emotes") openEmotes();
+    else if (a === "bugs") openBugReport();
     else if (a === "staff") openStaffPanel();
     else if (a === "help") openHelp();
   };
@@ -164,6 +166,8 @@ function handleKey(e) {
     toggleBuildMode();
   } else if (k === "l" && state.area === "interior_home" && state.interiorOf === state.user) {
     toggleDoorLock();
+  } else if (k === "r" && state.area === "interior_home" && state.interiorOf === state.user && (state.buildMode || state.placeMode)) {
+    rotateBuildTarget();
   } else if (k === "e") {
     tryInteract();
   } else if (k === "escape") {
@@ -215,8 +219,10 @@ function furnitureUnderMouse() {
   for (let i = state.interiorFurniture.length - 1; i >= 0; i--) {
     const f = state.interiorFurniture[i];
     const def = FURNITURE_CATALOG[f.id]; if (!def) continue;
-    if (mx > f.x - def.w/2 && mx < f.x + def.w/2 &&
-        my > f.y - def.h/2 && my < f.y + def.h/2) return i;
+    // Quarter-turns swap the footprint; treat other angles by their bounding box.
+    const q = Math.round(((f.rot || 0) / (Math.PI / 2))) % 2 !== 0;
+    const hw = (q ? def.h : def.w) / 2, hh = (q ? def.w : def.h) / 2;
+    if (mx > f.x - hw && mx < f.x + hw && my > f.y - hh && my < f.y + hh) return i;
   }
   return -1;
 }
@@ -254,10 +260,39 @@ function toggleBuildMode() {
   state.buildMode = !state.buildMode;
   state.placeMode = null;
   toggleBuildBanner(state.buildMode);
-  toast(state.buildMode ? "Build Mode ON" : "Build Mode OFF");
+  toast(state.buildMode ? "Build Mode ON — R to rotate, drag to move" : "Build Mode OFF");
 }
 function toggleBuildBanner(on) {
   document.getElementById("buildBanner").classList.toggle("hidden", !on);
+}
+
+// ---------- Build-mode snap grid + rotation ----------
+const BUILD_SNAP = 16; // px grid; small enough to line up chairs, big enough to feel like a grid
+function buildSnap(v) { return state.snapOn ? Math.round(v / BUILD_SNAP) * BUILD_SNAP : v; }
+window.snapEnabled = () => !!state.snapOn;
+(function wireSnapToggle() {
+  const btn = document.getElementById("snapToggle");
+  if (!btn) return;
+  const paint = () => { btn.textContent = "grid: " + (state.snapOn ? "on" : "off"); btn.classList.toggle("off", !state.snapOn); };
+  btn.onclick = () => { state.snapOn = !state.snapOn; paint(); toast(`Snap-to-grid ${state.snapOn ? "ON" : "OFF"}`); };
+  paint();
+})();
+
+// Rotate the piece under the cursor (or the one being dragged) by 90°. When
+// placing from inventory, rotates the ghost preview instead.
+function rotateBuildTarget() {
+  if (!(state.area === "interior_home" && state.interiorOf === state.user)) return;
+  if (state.placeMode) {
+    state.placeRot = (state.placeRot + Math.PI / 2) % (Math.PI * 2);
+    toast("Rotated — click to place");
+    return;
+  }
+  if (!state.buildMode) return;
+  let idx = state.selectedFurn >= 0 ? state.selectedFurn : furnitureUnderMouse();
+  if (idx < 0) { toast("Hover a piece and press R to rotate it."); return; }
+  const f = state.interiorFurniture[idx];
+  f.rot = ((f.rot || 0) + Math.PI / 2) % (Math.PI * 2);
+  saveFurniture();
 }
 
 // ---------- Door lock (key system) ----------
@@ -278,12 +313,14 @@ function placeFurnitureAtMouse() {
   if (!inv[id]) { toast("None left."); state.placeMode = null; return; }
   const def = FURNITURE_CATALOG[id]; if (!def) return;
   const room = gameInteriors.interiorRoom();
-  let x = state.mouse.x, y = state.mouse.y;
+  let x = buildSnap(state.mouse.x), y = buildSnap(state.mouse.y);
   x = Math.max(room.x + def.w/2 + 4, Math.min(room.x + room.w - def.w/2 - 4, x));
   y = Math.max(room.y + def.h/2 + 4, Math.min(room.y + room.h - def.h/2 - 4, y));
   const piece = { id, x, y };
+  if (state.placeRot) piece.rot = state.placeRot;
   state.interiorFurniture.push(piece);
   state.placeMode = null;
+  state.placeRot = 0;
   // Server decrements inventory (furniture_set reply); roll back if rejected.
   saveFurniture().then(ok => {
     if (ok) toast(`Placed ${def.name}.`);
@@ -344,7 +381,8 @@ function triggerHotspotAction(action) {
     case "casino_wheel":     gameCasino.openWheel(); break;
     case "casino_elevator":  gameCasino.openElevator(); break;
     case "bank_main":        openBankMain(); break;
-    case "bank_interest":    claimInterest(); break;
+    case "bank_interest":    openBankMain(); break;   // legacy: interest is automatic now
+    case "bank_loans":       openLoanOffice(); break;
     case "furniture_catalog":openFurnitureCatalog(); break;
     case "lootbox_common":   openLootbox("common"); break;
     case "lootbox_rare":     openLootbox("rare"); break;
@@ -473,8 +511,9 @@ window.pickPlace = (id) => {
     return;
   }
   state.placeMode = id;
+  state.placeRot = 0;
   closeMenu();
-  toast("Click in the room to place. ESC to cancel.");
+  toast("Click in the room to place · R to rotate · ESC to cancel.");
 };
 function drawCatalogPreviews() {
   const cvs = document.querySelectorAll("#menuBody canvas[data-id]");
@@ -613,31 +652,92 @@ function nextDailyStreak() {
   const last = state.data.lastDaily || 0;
   return (Date.now() - last <= ECON.DAILY_STREAK_WINDOW) ? (state.data.dailyStreak || 0) + 1 : 1;
 }
+// Local mirror of the bank view the server sends back on every bank op.
+let _bank = null;
+function applyBankView(d) {
+  if (!d) return;
+  _bank = {
+    bankBalance: d.bankBalance || 0,
+    bankLast: d.bankLast || Date.now(),
+    creditScore: d.creditScore || ECON.CREDIT_START,
+    loan: d.loan || null,
+  };
+  if (typeof d.money === "number") state.data.money = d.money;
+  if (typeof d.bankBalance === "number") state.data.bankBalance = d.bankBalance;
+  if (d.creditScore != null) state.data.creditScore = d.creditScore;
+  state.data.loan = d.loan || null;
+  updateHUD();
+}
+async function bankRpc(action, amount) {
+  const d = await netBank(amount === undefined ? { action } : { action, amount });
+  applyBankView(d);
+  return d;
+}
+function bankSyncedToast(s) {
+  if (!s) return;
+  const bits = [];
+  if (s.interest > 0) bits.push(`+$${s.interest.toLocaleString()} vault interest`);
+  if (s.garnished > 0) bits.push(`–$${s.garnished.toLocaleString()} taken toward your overdue loan`);
+  if (s.penalty > 0) bits.push(`late fees added $${s.penalty.toLocaleString()} to your debt`);
+  if (s.creditDrop > 0) bits.push(`credit –${s.creditDrop}`);
+  if (s.cleared) bits.push("loan cleared");
+  if (bits.length) toast("🏦 " + bits.join(" · "), 5000);
+}
+
 async function openBankMain() {
-  const interest = Math.floor((state.data.money || 0) * ECON.INTEREST_RATE);
-  const last = state.data.lastInterest || 0;
-  const next = Math.max(0, Math.ceil((ECON.INTEREST_COOLDOWN - (Date.now() - last)) / 1000));
+  let view;
+  try { view = await bankRpc("status"); }
+  catch (e) { view = null; }
+  bankSyncedToast(view && view.synced);
+  const bal = (_bank && _bank.bankBalance) || 0;
+  const nextMs = ECON.bankNextInterestIn((_bank && _bank.bankLast) || Date.now());
+  const perPeriod = Math.floor(bal * ECON.BANK_INTEREST_RATE);
   const ready = dailyBonusReady();
   const streak = nextDailyStreak();
   const wait = Math.max(0, ECON.DAILY_COOLDOWN - (Date.now() - (state.data.lastDaily || 0)));
   const waitTxt = `${Math.floor(wait / 3600000)}h ${Math.floor((wait % 3600000) / 60000)}m`;
+  const loan = _bank && _bank.loan;
   openMenu("FIRST BANK", `
     <div class="center">
-      <div class="bigNum">$${state.data.money}</div>
-      <p class="muted">Your balance</p>
+      <div class="bigNum">$${(state.data.money || 0).toLocaleString()}</div>
+      <p class="muted">Cash on hand</p>
     </div>
     <hr class="div">
+    <h3 class="section">🏦 VAULT SAVINGS</h3>
+    <p>Balance: <b>$${bal.toLocaleString()}</b> · earns <b>0.1%</b> every 5 min, automatically and even while you're offline.</p>
+    <p class="muted">Next payout in ${Math.ceil(nextMs / 1000)}s${perPeriod > 0 ? ` (+$${perPeriod.toLocaleString()})` : ""}.</p>
+    <div class="btnRow">
+      <button class="menuBtn green" onclick="bankMove('deposit')">DEPOSIT</button>
+      <button class="menuBtn" onclick="bankMove('withdraw')">WITHDRAW</button>
+      ${bal > 0 ? `<button class="menuBtn gray" onclick="bankMove('withdrawAll')">WITHDRAW ALL</button>` : ""}
+    </div>
     <h3 class="section">🎁 DAILY BONUS</h3>
     <p>Come back every day and the bonus grows. Streak: <b>${state.data.dailyStreak || 0} day${(state.data.dailyStreak || 0) === 1 ? "" : "s"}</b>
       ${ready ? `· claiming now makes it <b>day ${streak}</b> for <b>$${dailyBonusAmount(streak)}</b>` : ""}</p>
     <button class="menuBtn gold" ${ready ? "" : "disabled"} onclick="claimDaily()">
       ${ready ? `CLAIM $${dailyBonusAmount(streak)}` : `NEXT BONUS IN ${waitTxt}`}</button>
-    <h3 class="section">INTEREST</h3>
-    <p>Earn 5% of balance every 2 minutes.</p>
-    <p>Available: <b>$${interest}</b> ${next > 0 ? `<span class="muted">(in ${next}s)</span>` : ""}</p>
-    <button class="menuBtn green" ${next > 0 ? "disabled" : ""} onclick="claimInterest()">CLAIM INTEREST</button>
+    <h3 class="section">💳 LOAN OFFICE</h3>
+    <p>Credit score: <b>${(_bank && _bank.creditScore) || ECON.CREDIT_START}</b> <span class="muted">(${ECON.creditTier((_bank && _bank.creditScore) || ECON.CREDIT_START)})</span>
+      ${loan ? `· <span style="color:#f87171">you owe $${Math.ceil(loan.owed).toLocaleString()}</span>` : ""}</p>
+    <button class="menuBtn" onclick="openLoanOffice()">OPEN LOAN OFFICE →</button>
   `);
 }
+window.bankMove = async (kind) => {
+  let action = kind, amount;
+  if (kind === "withdrawAll") { action = "withdraw"; amount = "all"; }
+  else {
+    const have = action === "deposit" ? (state.data.money || 0) : ((_bank && _bank.bankBalance) || 0);
+    const v = prompt(`${action === "deposit" ? "Deposit into" : "Withdraw from"} your vault. You can ${action === "deposit" ? "deposit" : "withdraw"} up to $${have.toLocaleString()}:`, String(have));
+    if (v === null) return;
+    amount = Math.floor(parseFloat(String(v).replace(/[^0-9.]/g, "")));
+    if (!Number.isFinite(amount) || amount <= 0) { toast("Enter a positive whole-dollar amount."); return; }
+  }
+  try {
+    const d = await bankRpc(action, amount);
+    toast(`${action === "deposit" ? "Deposited" : "Withdrew"} $${(d.moved || 0).toLocaleString()}.`);
+  } catch (e) { toast(e.message || "Bank refused that."); return; }
+  openBankMain();
+};
 async function claimDaily() {
   if (!dailyBonusReady()) { toast("Not yet — come back later."); return; }
   let data;
@@ -653,23 +753,111 @@ async function claimDaily() {
 }
 window.claimDaily = claimDaily;
 window.dailyBonusReady = dailyBonusReady;
-async function claimInterest() {
-  const last = state.data.lastInterest || 0;
-  if (Date.now() - last < ECON.INTEREST_COOLDOWN) {
-    toast("Come back in " + Math.ceil((ECON.INTEREST_COOLDOWN - (Date.now() - last))/1000) + "s");
-    return;
-  }
-  if (Math.floor((state.data.money || 0) * ECON.INTEREST_RATE) <= 0) { toast("Need some balance to earn interest."); return; }
-  let data;
-  try { data = await netBank({ action: "interest" }); }
-  catch (e) { toast(e.message); return; }
-  state.data.money = data.money;
-  state.data.lastInterest = data.lastInterest;
-  updateHUD();
-  toast(`+$${data.gained} interest`);
-  openBankMain();
-}
+// Legacy hotspot handler — the standalone "claim interest" teller is gone (the
+// vault pays automatically now). Point old wiring at the main desk.
+async function claimInterest() { openBankMain(); }
 window.claimInterest = claimInterest;
+
+// ---------- LOAN OFFICE ----------
+// One loan at a time. Your credit score sets the rate and the ceiling; repay in
+// full and on time to raise it, miss the due date and the debt compounds, your
+// score drops, and the bank starts pulling from your vault savings.
+async function openLoanOffice() {
+  let view;
+  try { view = await bankRpc("status"); }
+  catch (e) {}
+  bankSyncedToast(view && view.synced);
+  const credit = (_bank && _bank.creditScore) || ECON.CREDIT_START;
+  const loan = _bank && _bank.loan;
+  const netWorth = (state.data.money || 0) + ((_bank && _bank.bankBalance) || 0);
+  const gaugePct = Math.round(((ECON.clampCredit(credit) - ECON.CREDIT_MIN) / (ECON.CREDIT_MAX - ECON.CREDIT_MIN)) * 100);
+  let body = `
+    <div class="center">
+      <div class="bigNum">${credit}</div>
+      <p class="muted">Credit score — ${ECON.creditTier(credit)}</p>
+      <div style="height:10px;background:#0a0e15;border:1px solid #2a3344;border-radius:6px;overflow:hidden;margin:6px auto 2px;max-width:320px;">
+        <div style="height:100%;width:${gaugePct}%;background:linear-gradient(90deg,#ef4444,#fbbf24,#4ade80);"></div>
+      </div>
+      <p class="muted" style="font-size:11px;">300 &nbsp;·&nbsp; poor → excellent &nbsp;·&nbsp; 850</p>
+    </div>
+    <hr class="div">`;
+  if (loan && loan.owed > 0) {
+    const overdue = Date.now() > (loan.dueTs || 0);
+    const dueTxt = overdue
+      ? `<span style="color:#f87171">OVERDUE by ${fmtDur(Date.now() - loan.dueTs)}</span>`
+      : `due in <b>${fmtDur(loan.dueTs - Date.now())}</b>`;
+    body += `
+      <h3 class="section">YOUR LOAN</h3>
+      <p>Borrowed <b>$${(loan.principal || 0).toLocaleString()}</b> at ${Math.round((loan.rate || 0) * 100)}% · ${dueTxt}</p>
+      <p>Balance owed: <b style="color:#f87171">$${Math.ceil(loan.owed).toLocaleString()}</b>
+        ${loan.latePeriods ? `<span class="muted">(${loan.latePeriods} late fee${loan.latePeriods === 1 ? "" : "s"} applied)</span>` : ""}</p>
+      ${overdue ? `<p class="muted">Every 6 hours late adds 8% to the balance and knocks 25 off your credit. The bank is also drawing from your vault savings until it's clear.</p>` : ""}
+      <div class="btnRow">
+        <button class="menuBtn green" onclick="loanRepay('part')">REPAY SOME</button>
+        <button class="menuBtn gold" onclick="loanRepay('all')">REPAY ALL ($${Math.min(Math.ceil(loan.owed), state.data.money || 0).toLocaleString()})</button>
+      </div>`;
+  } else {
+    const limit = ECON.loanLimit(credit, netWorth);
+    const rate = ECON.loanRate(credit);
+    const example = ECON.loanTotalDue(1000, credit);
+    body += `
+      <h3 class="section">TAKE A LOAN</h3>
+      <p>Your rate: <b>${Math.round(rate * 100)}%</b> flat · ceiling: <b>$${limit.toLocaleString()}</b> · term: <b>24h</b></p>
+      <p class="muted">Example: borrow $1,000 → repay $${example.toLocaleString()} within 24h. Clear it on time and your score climbs; miss it and it compounds fast.</p>
+      <div class="btnRow">
+        <button class="menuBtn gold" onclick="loanTake(${limit})">BORROW…</button>
+      </div>`;
+  }
+  body += `
+    <h3 class="section">HOW CREDIT MOVES</h3>
+    <div class="enemyLegend">
+      <div><span class="dot" style="background:#4ade80"></span>Repay a loan in full &amp; on time — <b>+20</b> (+8 more if early)</div>
+      <div><span class="dot" style="background:#f87171"></span>Every 6h past due — <b>−25</b> and the debt grows 8%</div>
+      <div><span class="dot" style="background:#fbbf24"></span>Higher score → bigger loans, lower rates</div>
+    </div>`;
+  openMenu("💳 LOAN OFFICE", body);
+}
+window.openLoanOffice = openLoanOffice;
+function fmtDur(ms) {
+  ms = Math.max(0, ms);
+  const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+window.loanTake = async (limit) => {
+  const v = prompt(`How much would you like to borrow? (min $100, max $${limit.toLocaleString()})`, "1000");
+  if (v === null) return;
+  const amt = Math.floor(parseFloat(String(v).replace(/[^0-9.]/g, "")));
+  if (!Number.isFinite(amt) || amt < 100) { toast("Minimum loan is $100."); return; }
+  const credit = (_bank && _bank.creditScore) || ECON.CREDIT_START;
+  if (!confirm(`Borrow $${amt.toLocaleString()} at ${Math.round(ECON.loanRate(credit) * 100)}%? You'll owe $${ECON.loanTotalDue(amt, credit).toLocaleString()}, due in 24 hours.`)) return;
+  try {
+    const d = await bankRpc("loan_take", amt);
+    toast(`💵 Loan approved: +$${(d.borrowed || 0).toLocaleString()}. You owe $${Math.ceil(d.owed || 0).toLocaleString()}.`, 4000);
+  } catch (e) { toast(e.message || "Loan denied."); return; }
+  openLoanOffice();
+};
+window.loanRepay = async (mode) => {
+  const loan = _bank && _bank.loan;
+  if (!loan) return;
+  let amount = "all";
+  if (mode === "part") {
+    const max = Math.min(Math.ceil(loan.owed), state.data.money || 0);
+    const v = prompt(`Repay how much? (you owe $${Math.ceil(loan.owed).toLocaleString()}, you have $${(state.data.money || 0).toLocaleString()})`, String(max));
+    if (v === null) return;
+    amount = Math.floor(parseFloat(String(v).replace(/[^0-9.]/g, "")));
+    if (!Number.isFinite(amount) || amount <= 0) { toast("Enter a positive amount."); return; }
+  }
+  try {
+    const d = await bankRpc("loan_repay", amount);
+    if (d.paidOff) {
+      toast(`✅ Loan cleared!${d.creditGain ? ` Credit +${d.creditGain}.` : ""}`, 4000);
+      if (typeof celebrate === "function" && d.creditGain >= 20) celebrate();
+    } else {
+      toast(`Repaid $${(d.repaid || 0).toLocaleString()} · $${Math.ceil((_bank.loan && _bank.loan.owed) || 0).toLocaleString()} to go.`);
+    }
+  } catch (e) { toast(e.message || "Repayment failed."); return; }
+  openLoanOffice();
+};
 
 // ---------- QUEST BOARD ----------
 function openQuestBoard() {
@@ -956,6 +1144,8 @@ async function openStaffPanel() {
     <div id="staffBans"></div>
     <h3 class="section">ACTIVE MUTES</h3>
     <div id="staffMutes"></div>
+    <h3 class="section">🐞 BUG REPORTS</h3>
+    <div id="staffBugs"><p class="muted">Loading…</p></div>
   `, true);
   try { renderStaffLists(); }
   catch (e) {
@@ -963,6 +1153,7 @@ async function openStaffPanel() {
     const el = document.getElementById("staffList");
     if (el) el.innerHTML = `<p style="color:#ef4444">Panel failed to render: ${escapeHtml(e.message)}</p>`;
   }
+  renderStaffBugs();
   // keep the "Staff" button state right if our role changed
   setRole(state.role);
 }
@@ -1039,6 +1230,50 @@ function renderStaffLists() {
       <div class="btns">${iOutrank(u) ? `<button class="menuBtn green" onclick="staffUnmute('${u}')">Unmute</button>` : ""}</div>
     </div>`).join("") : `<p class="muted">Nobody is muted.</p>`;
 }
+
+async function renderStaffBugs() {
+  const el = document.getElementById("staffBugs");
+  if (!el) return;
+  let all;
+  try { all = (await fbGet("bug_reports")) || {}; }
+  catch (e) { el.innerHTML = `<p class="muted">Could not load reports.</p>`; return; }
+  // bug_reports/<author>/<id> -> flat list
+  const list = [];
+  for (const [author, reports] of Object.entries(all)) {
+    if (!reports || typeof reports !== "object") continue;
+    for (const [id, r] of Object.entries(reports)) {
+      if (r && typeof r === "object") list.push(Object.assign({ id, author }, r));
+    }
+  }
+  list.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  const open = list.filter(r => (r.status || "open") === "open");
+  if (!list.length) { el.innerHTML = `<p class="muted">No bug reports.</p>`; return; }
+  el.innerHTML = `<p class="muted">${open.length} open · ${list.length} total</p>` +
+    list.slice(0, 25).map(r => `
+      <div class="staffRow">
+        <div class="who">
+          <b>${escapeHtml(r.category || "Bug")}</b>
+          <span class="roleTag ${r.status === "fixed" ? "admin" : r.status === "closed" ? "muted" : "banned"}">${escapeHtml(r.status || "open")}</span>
+          <small>${escapeHtml(r.from || "?")} · ${escapeHtml(r.area || "")} · ${escapeHtml(r.screen || "")} · ${new Date(r.ts || 0).toLocaleString()}</small>
+          <small>${escapeHtml(r.text || "")}</small>
+        </div>
+        <div class="btns">
+          ${(r.status || "open") === "open" ? `<button class="menuBtn green" onclick="bugSetStatus('${r.author}','${r.id}','fixed')">Fixed</button>
+          <button class="menuBtn gray" onclick="bugSetStatus('${r.author}','${r.id}','closed')">Close</button>` : `<button class="menuBtn" onclick="bugSetStatus('${r.author}','${r.id}','open')">Reopen</button>`}
+          <button class="menuBtn red" onclick="bugDelete('${r.author}','${r.id}')">Del</button>
+        </div>
+      </div>`).join("");
+}
+window.bugSetStatus = async (author, id, status) => {
+  try { await fbPatch(`bug_reports/${author}/${id}`, { status, triagedBy: state.user, triagedAt: Date.now() }); }
+  catch (e) { toast("Server refused: " + (e.message || e)); return; }
+  renderStaffBugs();
+};
+window.bugDelete = async (author, id) => {
+  if (!confirm("Delete this bug report?")) return;
+  try { await fbDelete(`bug_reports/${author}/${id}`); } catch (e) { toast(e.message); return; }
+  renderStaffBugs();
+};
 
 async function staffDo(fn, okMsg) {
   try { await fn(); if (okMsg) toast(okMsg); }
@@ -1127,6 +1362,127 @@ window.mayorDelete = async (u) => {
   toast(`Deleted ${u}.`);
   openStaffPanel();
 };
+
+// ---------- UNIVERSAL USER DIRECTORY ----------
+// A searchable list of every account on the server — add friends, jump to their
+// house, or open a chat. Reads the user cache (refreshed every 4s in core.js).
+let _dirFilter = "";
+function openDirectory() {
+  openMenu("🌐 PLAYER DIRECTORY", `
+    <p class="muted">Search everyone in town. Add a friend, DM them, or route to their house.</p>
+    <input class="staffSearch" id="dirSearch" placeholder="Search players…" value="${escapeHtml(_dirFilter)}"
+      oninput="dirFilter(this.value)" autocomplete="off" />
+    <div id="dirList"></div>
+  `, true);
+  renderDirectory();
+}
+window.openDirectory = openDirectory;
+window.dirFilter = (v) => { _dirFilter = v || ""; renderDirectory(); };
+function renderDirectory() {
+  const el = document.getElementById("dirList");
+  if (!el) return;
+  const users = state._userCache || {};
+  const f = _dirFilter.trim().toLowerCase();
+  const names = Object.keys(users)
+    .filter(u => u !== state.user && u !== "mayor")
+    .filter(u => !f || u.includes(f))
+    .sort((a, b) => {
+      const oa = !!state.others[a], ob = !!state.others[b];
+      if (oa !== ob) return ob - oa;                 // online first
+      return a.localeCompare(b);
+    });
+  if (!names.length) {
+    el.innerHTML = `<p class="muted">${f ? `No players match "${escapeHtml(f)}".` : "No other players yet."}</p>`;
+    return;
+  }
+  let html = "";
+  for (const u of names.slice(0, 80)) {
+    const ud = users[u] || {};
+    const online = !!state.others[u];
+    const isFriend = !!state.friends[u];
+    const addr = ud.houseIndex != null ? gameWorld.houseAddress(ud.houseIndex) : null;
+    html += `<div class="friendItem">
+      <div class="info">
+        <span class="statusDot ${online ? "online" : ""}"></span>
+        <div><b>${escapeHtml(u)}</b>${isFriend ? ' <span class="tier rare" style="font-size:9px">friend</span>' : ""}
+          ${addr ? `<div class="muted" style="font-size:11px;">${escapeHtml(addr)}</div>` : ""}</div>
+      </div>
+      <div class="flexRow">
+        ${isFriend
+          ? `<button class="menuBtn" onclick="openDMThread('${u}');closeMenu();">Chat</button>`
+          : `<button class="menuBtn green" onclick="directoryAddFriend('${u}')">Add</button>`}
+        ${addr ? `<button class="menuBtn gold" onclick="directoryGuide('${u}')">Route</button>` : ""}
+      </div>
+    </div>`;
+  }
+  if (names.length > 80) html += `<p class="muted">Showing 80 of ${names.length} — narrow the search.</p>`;
+  el.innerHTML = html;
+}
+window.directoryAddFriend = async (u) => {
+  try { await sendFriendRequestTo(u); }
+  catch (e) { toast(e.message || "Could not send request."); return; }
+  renderDirectory();
+};
+window.directoryGuide = (u) => {
+  const ud = (state._userCache || {})[u];
+  if (!ud || ud.houseIndex == null) { toast("No house on file."); return; }
+  const r = gameWorld.houseRect(ud.houseIndex);
+  if (!r) return;
+  guideMeTo(Math.round(r.x + r.w / 2), Math.round(r.y + r.h + 26), `${u}'s house`);
+};
+
+// ---------- BUG REPORT APP ----------
+const BUG_CATEGORIES = ["Visual glitch", "Stuck / can't move", "Money / economy", "Chat / social", "Casino game", "Crash / freeze", "Other"];
+async function openBugReport() {
+  openMenu("🐞 REPORT A BUG", `
+    <p class="muted">Something broken or weird? Tell the devs. Your username, area and balance are attached automatically.</p>
+    <h3 class="section">CATEGORY</h3>
+    <select id="bugCat" class="staffSearch" style="margin-bottom:10px;">
+      ${BUG_CATEGORIES.map(c => `<option>${c}</option>`).join("")}
+    </select>
+    <h3 class="section">WHAT HAPPENED</h3>
+    <textarea id="bugText" maxlength="600" placeholder="What did you do, what did you expect, what happened instead?"
+      style="width:100%;min-height:110px;padding:10px;background:#0a0e15;border:1px solid #2a3344;color:#e8eef7;border-radius:8px;resize:vertical;font:inherit;"></textarea>
+    <button class="menuBtn gold" style="margin-top:10px;" onclick="submitBugReport()">SEND REPORT</button>
+    <div id="bugMine"></div>
+  `);
+  renderMyBugReports();
+}
+window.openBugReport = openBugReport;
+window.submitBugReport = async () => {
+  const text = (document.getElementById("bugText").value || "").trim();
+  const cat = document.getElementById("bugCat").value || "Other";
+  if (text.length < 8) { toast("Please describe the bug (a few words at least)."); return; }
+  const report = {
+    from: state.user, category: cat, text: text.slice(0, 600),
+    area: state.area, money: state.data.money || 0,
+    ua: navigator.userAgent.slice(0, 160),
+    screen: `${window.innerWidth}x${window.innerHeight}`,
+    ts: Date.now(), status: "open",
+  };
+  try { await fbPost("bug_reports/" + state.user, report); }
+  catch (e) { toast("Could not send: " + (e.message || e)); return; }
+  toast("🐞 Bug report sent — thank you!", 3500);
+  document.getElementById("bugText").value = "";
+  renderMyBugReports();
+};
+async function renderMyBugReports() {
+  const el = document.getElementById("bugMine");
+  if (!el) return;
+  const all = (await fbGet("bug_reports/" + state.user)) || {};
+  const mine = Object.entries(all)
+    .map(([id, r]) => Object.assign({ id }, r))
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+    .slice(0, 6);
+  if (!mine.length) { el.innerHTML = ""; return; }
+  el.innerHTML = `<h3 class="section">YOUR RECENT REPORTS</h3>` + mine.map(r => `
+    <div class="shopItem">
+      <div class="info"><b>${escapeHtml(r.category || "Bug")}</b>
+        <span class="tier ${r.status === "fixed" ? "legendary" : r.status === "closed" ? "common" : "rare"}" style="font-size:9px">${escapeHtml(r.status || "open")}</span>
+        <br/><small>${escapeHtml((r.text || "").slice(0, 80))}${(r.text || "").length > 80 ? "…" : ""}</small>
+        <br/><small class="muted">${new Date(r.ts || 0).toLocaleDateString()}</small></div>
+    </div>`).join("");
+}
 
 // ---------- MAIN UPDATE ----------
 function update() {
