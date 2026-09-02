@@ -202,12 +202,9 @@ function handleKey(e) {
     if (k === "escape") closeMenu();
     return;
   }
-  // A phone app is open on the phone screen — Esc backs out, other keys pass
-  // through to nothing (so you don't walk while reading Help).
-  if (phoneAppShowing()) {
-    if (k === "escape" || k === "p") closeSidePanel();
-    return;
-  }
+  // A phone app is open on the phone screen (the phone is a HUD, not a modal —
+  // you can still walk). Esc / P back out of it; every other key falls through.
+  if (phoneAppShowing() && (k === "escape" || k === "p")) { closeSidePanel(); return; }
   if (k === "t") {
     e.preventDefault();
     if (isMuted()) { toast(muteText(state.mute), 3000); return; }
@@ -557,13 +554,15 @@ function openInventory() {
     html += `<div class="furnGrid">`;
     for (const id of ids) {
       const def = FURNITURE_CATALOG[id];
-      html += `<div class="furnCard" onclick="pickPlace('${id}')">
-        <canvas data-id="${id}" width="120" height="70"></canvas>
+      html += `<div class="furnCard">
+        <canvas data-id="${id}" width="120" height="70" onclick="pickPlace('${id}')"></canvas>
         <div class="nm">${def.name}</div>
         <div class="pr">x${inv[id]} <span class="tier ${def.tier}">${def.tier}</span></div>
+        <button class="menuBtn gray" style="font-size:11px;padding:4px 8px;margin-top:4px;" onclick="event.stopPropagation();sellFurn('${id}')">Sell $${ECON.furnitureResaleValue(def.price)}</button>
       </div>`;
     }
     html += `</div>`;
+    html += `<p class="muted" style="font-size:11px;">Selling gives you ${Math.round(ECON.FURNITURE_RESALE * 100)}% of the shelf price. Placed pieces must be picked up first (Build Mode → right-click).</p>`;
   }
   uiPanel("INVENTORY", html, true);
   drawCatalogPreviews();
@@ -617,10 +616,52 @@ function openFurnitureCatalog() {
     </div>`;
   }
   html += `</div>`;
+  html += sellShopHtml();
   html += paintShopHtml();
   openMenu(`FURNITURELAND — MARKET (restocks in ${minsLeft}m)`, html, true);
   drawCatalogPreviews();
 }
+
+// ---------- SELL FURNITURE ----------
+// Sell unplaced pieces back for half their shelf price. Placed furniture must
+// be picked up (Build Mode, right-click) first — that returns it to inventory.
+function sellShopHtml() {
+  const inv = state.data.inventory || {};
+  const ids = Object.keys(inv).filter(id => FURNITURE_CATALOG[id] && inv[id] > 0);
+  let html = `<h3 class="section">💸 SELL FURNITURE — ${Math.round(ECON.FURNITURE_RESALE * 100)}% of shelf price</h3>`;
+  if (!ids.length) {
+    return html + `<p class="muted">Nothing in your inventory to sell. Pieces placed in your house have to be picked up first (Build Mode → right-click).</p>`;
+  }
+  html += `<p class="muted">You only get a fraction back — the store keeps its cut.</p><div class="furnGrid">`;
+  for (const id of ids) {
+    const def = FURNITURE_CATALOG[id];
+    const back = ECON.furnitureResaleValue(def.price);
+    html += `<div class="furnCard" onclick="sellFurn('${id}')">
+      <canvas data-id="${id}" width="120" height="70"></canvas>
+      <div class="nm">${def.name}</div>
+      <div class="pr">sell for <b style="color:#4ade80">$${back}</b></div>
+      <div class="muted" style="font-size:10px;">x${inv[id]} · worth $${def.price}</div>
+    </div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+window.sellFurn = async (id) => {
+  const def = FURNITURE_CATALOG[id]; if (!def) return;
+  const back = ECON.furnitureResaleValue(def.price);
+  if (!confirm(`Sell one ${def.name} for $${back}? (It's worth $${def.price} new.)`)) return;
+  try {
+    const data = await netBuy({ kind: "sell_furniture", id });
+    state.data.money = data.money;
+    if (data.inventory) state.data.inventory = data.inventory;
+    updateHUD();
+    toast(`Sold ${def.name} for $${data.gained}.`);
+    // Re-render whichever screen the sell button was on.
+    const t = (document.getElementById("menuTitle").textContent + " " + document.getElementById("spTitle").textContent).toUpperCase();
+    if (t.includes("INVENTORY")) { phoneAppShowing() ? phoneApp(openInventory) : openInventory(); }
+    else openFurnitureCatalog();
+  } catch (e) { toast(e.message || "Could not sell that."); }
+};
 
 // ---------- PAINT SHOP (house exterior) ----------
 // Repaint the walls or roof of your house for everyone to see. Stored at
@@ -724,6 +765,8 @@ function applyBankView(d) {
     bankLast: d.bankLast || Date.now(),
     creditScore: d.creditScore || ECON.CREDIT_START,
     loan: d.loan || null,
+    netWorth: typeof d.netWorth === "number" ? d.netWorth : (_bank && _bank.netWorth) || 0,
+    loanLimit: typeof d.loanLimit === "number" ? d.loanLimit : (_bank && _bank.loanLimit) || 0,
   };
   if (typeof d.money === "number") state.data.money = d.money;
   if (typeof d.bankBalance === "number") state.data.bankBalance = d.bankBalance;
@@ -832,7 +875,10 @@ async function openLoanOffice() {
   bankSyncedToast(view && view.synced);
   const credit = (_bank && _bank.creditScore) || ECON.CREDIT_START;
   const loan = _bank && _bank.loan;
-  const netWorth = (state.data.money || 0) + ((_bank && _bank.bankBalance) || 0);
+  // Net worth + ceiling come straight from the server (it knows your furniture's
+  // resale value too), with a local fallback.
+  const netWorth = (_bank && _bank.netWorth) || ((state.data.money || 0) + ((_bank && _bank.bankBalance) || 0));
+  const limit = (_bank && _bank.loanLimit) || ECON.loanLimit(credit, netWorth);
   const gaugePct = Math.round(((ECON.clampCredit(credit) - ECON.CREDIT_MIN) / (ECON.CREDIT_MAX - ECON.CREDIT_MIN)) * 100);
   let body = `
     <div class="center">
@@ -860,12 +906,13 @@ async function openLoanOffice() {
         <button class="menuBtn gold" onclick="loanRepay('all')">REPAY ALL ($${Math.min(Math.ceil(loan.owed), state.data.money || 0).toLocaleString()})</button>
       </div>`;
   } else {
-    const limit = ECON.loanLimit(credit, netWorth);
     const rate = ECON.loanRate(credit);
     const example = ECON.loanTotalDue(1000, credit);
     body += `
       <h3 class="section">TAKE A LOAN</h3>
-      <p>Your rate: <b>${Math.round(rate * 100)}%</b> flat · ceiling: <b>$${limit.toLocaleString()}</b> · term: <b>24h</b></p>
+      <p>Net worth: <b>$${netWorth.toLocaleString()}</b> <span class="muted">(cash + vault + furniture resale)</span></p>
+      <p>Your rate: <b>${Math.round(rate * 100)}%</b> flat · you can borrow up to <b>$${limit.toLocaleString()}</b> · term: <b>24h</b></p>
+      <p class="muted">The ceiling scales with what you own — clean credit lifts it toward 1.5× your net worth, poor credit holds it near a third.</p>
       <p class="muted">Example: borrow $1,000 → repay $${example.toLocaleString()} within 24h. Clear it on time and your score climbs; miss it and it compounds fast.</p>
       <div class="btnRow">
         <button class="menuBtn gold" onclick="loanTake(${limit})">BORROW…</button>
@@ -1257,7 +1304,7 @@ function renderStaffLists() {
       btns += `<button class="menuBtn gold" onclick="staffGive('${u}')" title="Add to (or take from) their balance">+ $</button>`;
       btns += `<button class="menuBtn gold" onclick="staffSet('${u}')" title="Set their balance to an exact amount">Set $</button>`;
     }
-    btns += `<button class="menuBtn" onclick="mayorTeleport('${u}')" title="Teleport to their house">🏠 ${ud.houseIndex != null ? gameWorld.houseAddress(ud.houseIndex) : "?"}</button>`;
+    btns += `<button class="menuBtn" onclick="mayorTeleport('${u}')" title="Teleport to this player">📍 ${online ? "Go to" : (ud.houseIndex != null ? gameWorld.houseAddress(ud.houseIndex) : "House")}</button>`;
     if (state.role === "owner" && !me) {
       if (role === "user") btns += `<button class="menuBtn" style="background:linear-gradient(180deg,#3b82f6,#1d4ed8)" onclick="staffPromote('${u}')">Make Admin</button>`;
       else if (role === "admin") btns += `<button class="menuBtn gray" onclick="staffDemote('${u}')">Remove Admin</button>`;
@@ -1419,18 +1466,50 @@ window.mayorGive = async (u, amt) => {
   toast(`Gave ${u} $${amt}.`);
   openStaffPanel();
 };
+// Staff (admin or owner) teleport to a player. Lands ON them wherever they
+// actually are — the open town, inside a home (staff bypass the door lock), or
+// a building interior — and falls back to their house if they're offline or
+// somewhere you can't follow (a dungeon / duel). Re-checks role with the server.
 window.mayorTeleport = async (u) => {
-  // Teleport is a staff-only power — re-check with the server so tampering with
-  // client state (or calling this from the console) can't move you around.
   if (!await assertStaffRole()) return;
-  const ud = state._userCache?.[u];
-  if (!ud) return;
-  const r = gameWorld.houseRect(ud.houseIndex);
-  if (!r) return;
-  state.area = "neighborhood";
-  state.pos.x = r.x + r.w/2; state.pos.y = r.y + r.h + 30;
   closeMenu();
-  toast(`Teleported to ${u}'s house.`);
+  const p = state.others[u];                 // live presence, if they're online
+  const ud = state._userCache && state._userCache[u];
+  const dropAt = (x, y) => { if (typeof x === "number" && typeof y === "number") { state.pos.x = x; state.pos.y = y; } };
+
+  if (p && p.area === "neighborhood") {
+    state.area = "neighborhood"; state.interiorOf = null;
+    dropAt(p.x, p.y);
+    updateHUD();
+    toast(`Teleported to ${u}.`);
+    return;
+  }
+  if (p && typeof p.area === "string" && p.area.indexOf("inside:") === 0) {
+    const owner = p.area.slice(7);
+    if (owner === state.user) await gameInteriors.enterOwnHome(false);
+    else await gameInteriors.enterOtherHome(owner);
+    dropAt(p.x, p.y);
+    toast(`Teleported to ${u} — inside ${owner === state.user ? "your" : owner + "'s"} house.`);
+    return;
+  }
+  if (p && typeof p.area === "string" && p.area.indexOf("interior_") === 0) {
+    const type = p.area.replace("interior_", "");
+    const b = (gameWorld.BUILDINGS || []).find(x => x.type === type) || { type, label: type };
+    await gameInteriors.enterBuilding(b);
+    if (p.area === "interior_casino" && typeof p.floor === "number") state.casinoFloor = p.floor;
+    dropAt(p.x, p.y);
+    updateHUD();
+    toast(`Teleported to ${u}${b.label ? " — " + b.label : ""}.`);
+    return;
+  }
+
+  // Offline, or in a dungeon/duel — best we can do is their house.
+  const r = ud && gameWorld.houseRect(ud.houseIndex);
+  if (!r) { toast(`Can't locate ${u} right now.`); return; }
+  state.area = "neighborhood"; state.interiorOf = null;
+  state.pos.x = r.x + r.w / 2; state.pos.y = r.y + r.h + 30;
+  updateHUD();
+  toast(p ? `${u} is somewhere you can't follow — sent you to their house.` : `${u} isn't online — sent you to their house.`);
 };
 window.mayorDelete = async (u) => {
   if (!confirm("Delete user " + u + "? This wipes their house, money and inventory.")) return;
@@ -1575,7 +1654,8 @@ function update() {
   const inputBlocked =
     ae === document.getElementById("chatBox") ||
     !document.getElementById("menu").classList.contains("hidden") ||
-    phoneAppShowing() ||
+    // A phone app does NOT block movement (the phone is a HUD, not a modal) —
+    // only a focused text field in it does.
     (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
 
   if (!inputBlocked) {

@@ -56,6 +56,11 @@
   // One-off unlock price per floor index (0 = lobby, always open).
   const VEGAS_FLOOR_PRICES = [0, 2500, 10000, 30000, 75000];
 
+  // ---------- furniture resale ----------
+  // Sell furniture back for a fraction of its shelf price (the store's cut).
+  const FURNITURE_RESALE = 0.5;
+  function furnitureResaleValue(price) { return Math.max(1, Math.floor((+price || 0) * FURNITURE_RESALE)); }
+
   // ---------- lootboxes ----------
   const LOOTBOX_CFG = {
     common:    { price: 100,  pool: "common",    label: "COMMON" },
@@ -140,12 +145,16 @@
     const t = (clampCredit(credit) - CREDIT_MIN) / (CREDIT_MAX - CREDIT_MIN); // 0..1
     return Math.round((0.45 - 0.39 * t) * 1000) / 1000;
   }
-  // Most a player may borrow, from credit alone plus a slice of their net worth.
+  // Most a player may borrow. It's a multiple of what they actually own (cash +
+  // vault + resale value of their stuff), and credit only moves that multiple:
+  //   Bad credit  → ~0.35x net worth   Excellent → ~1.5x net worth
+  // plus a small starter floor so a broke new player can still get a leg up.
   function loanLimit(credit, netWorth) {
-    const t = (clampCredit(credit) - CREDIT_MIN) / (CREDIT_MAX - CREDIT_MIN);
-    const base = 500 + Math.floor(11500 * t);                 // 500 .. 12,000
-    const worthPart = Math.floor(Math.max(0, +netWorth || 0) * (0.25 + 0.35 * t));
-    return base + worthPart;
+    const t = (clampCredit(credit) - CREDIT_MIN) / (CREDIT_MAX - CREDIT_MIN); // 0..1
+    const worth = Math.max(0, Math.floor(+netWorth || 0));
+    const floor = 200 + Math.floor(600 * t);                  // 200 .. 800
+    const multiple = 0.35 + 1.15 * t;                         // 0.35x .. 1.5x
+    return floor + Math.floor(worth * multiple);
   }
   // What a `principal` loan will cost to clear if repaid on time.
   function loanTotalDue(principal, credit) {
@@ -267,6 +276,7 @@
     PAINT_PRICE, PAINT_WALLS, PAINT_ROOFS,
     VEGAS_FLOOR_PRICES,
     LOOTBOX_CFG, lootboxPool, rollLootbox,
+    FURNITURE_RESALE, furnitureResaleValue,
     DAILY_COOLDOWN, DAILY_STREAK_WINDOW, dailyBonusAmount,
     INTEREST_RATE, INTEREST_COOLDOWN,
     BANK_INTEREST_RATE, BANK_INTEREST_PERIOD, BANK_INTEREST_MAX_PERIODS,

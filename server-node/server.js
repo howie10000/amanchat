@@ -934,8 +934,25 @@ const fishLast = new Map();   // user -> last catch ts
 
 function nonNegInt(v) { const n = Number(v); return Number.isInteger(n) && n >= 0 ? n : null; }
 
-// Net worth used to size a loan: spendable cash + whatever is parked in the vault.
-function netWorthOf(u) { return moneyOf(u) + Math.max(0, Math.floor(+u.bankBalance || 0)); }
+// Resale value of everything a player owns (inventory + placed furniture).
+function furnitureWorthOf(u) {
+    let total = 0;
+    const inv = (u.inventory && typeof u.inventory === 'object') ? u.inventory : {};
+    for (const [id, n] of Object.entries(inv)) {
+        const def = FURNITURE_CATALOG[id];
+        if (def) total += ECON.furnitureResaleValue(def.price) * Math.max(0, Math.floor(+n || 0));
+    }
+    for (const f of (Array.isArray(u.furniture) ? u.furniture : [])) {
+        const def = f && FURNITURE_CATALOG[f.id];
+        if (def) total += ECON.furnitureResaleValue(def.price);
+    }
+    return total;
+}
+// Net worth used to size a loan: spendable cash + vault + what your stuff is
+// worth if you sold it. Loans are capped as a multiple of THIS (see ECON.loanLimit).
+function netWorthOf(u) {
+    return moneyOf(u) + Math.max(0, Math.floor(+u.bankBalance || 0)) + furnitureWorthOf(u);
+}
 
 // Lazily bring a player's vault + loan up to date: pay out compound interest on
 // deposits, fold in any overdue-loan penalties, and garnish savings toward an
@@ -988,14 +1005,20 @@ const ECONOMY_OPS = {
     bank(user, msg) {
         const u = userRec(user), now = Date.now();
         const sync = bankSync(user, u, now);
-        const view = () => ({
-            money: moneyOf(u),
-            bankBalance: Math.max(0, Math.floor(+u.bankBalance || 0)),
-            bankLast: +u.bankLast || now,
-            creditScore: ECON.clampCredit(u.creditScore == null ? ECON.CREDIT_START : u.creditScore),
-            loan: u.loan || null,
-            synced: sync,
-        });
+        const view = () => {
+            const credit = ECON.clampCredit(u.creditScore == null ? ECON.CREDIT_START : u.creditScore);
+            const netWorth = netWorthOf(u);
+            return {
+                money: moneyOf(u),
+                bankBalance: Math.max(0, Math.floor(+u.bankBalance || 0)),
+                bankLast: +u.bankLast || now,
+                creditScore: credit,
+                loan: u.loan || null,
+                netWorth,
+                loanLimit: ECON.loanLimit(credit, netWorth),
+                synced: sync,
+            };
+        };
 
         if (msg.action === 'status') return view();
 
@@ -1116,6 +1139,19 @@ const ECONOMY_OPS = {
                 if (!ECON.marketStock(FURNITURE_LIST, Date.now()).some(f => f.id === id)) throw new Error('That item is not on the shelf this hour.');
                 pay(def.price);
                 return { money: u.money, inventory: addInv(id), item: id };
+            }
+            case 'sell_furniture': {
+                // Sell an UNPLACED piece back for a fraction of its shelf price.
+                const def = FURNITURE_CATALOG[id];
+                if (!def) throw new Error('No such item.');
+                const inv = (u.inventory && typeof u.inventory === 'object') ? u.inventory : {};
+                if (!(inv[id] > 0)) throw new Error("You don't have that in your inventory to sell. Pick it up from your room first.");
+                inv[id] -= 1;
+                if (inv[id] <= 0) delete inv[id];
+                u.inventory = inv; store.put(`users/${user}/inventory`, inv);
+                const gained = ECON.furnitureResaleValue(def.price);
+                setMoney(user, u, moneyOf(u) + gained);
+                return { money: u.money, inventory: inv, item: id, gained };
             }
             case 'lootbox': {
                 const cfg = ECON.LOOTBOX_CFG[id];

@@ -384,7 +384,7 @@ html, body {
   position: absolute; inset: 0;
   background: rgba(0,0,0,.7);
   display: flex; align-items: center; justify-content: center;
-  z-index: 50;
+  z-index: 62;                 /* above the expanded phone (58) and tutorial (60) */
   backdrop-filter: blur(4px);
 }
 .menuBox {

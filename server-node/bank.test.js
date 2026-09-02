@@ -42,6 +42,11 @@ console.log('ECON credit + loans');
   ok(ECON.loanRate(300) <= 0.45 && ECON.loanRate(850) >= 0.05, 'rate stays in a sane band');
   ok(ECON.loanLimit(850, 0) > ECON.loanLimit(300, 0), 'better credit → bigger ceiling');
   ok(ECON.loanLimit(600, 100000) > ECON.loanLimit(600, 0), 'net worth lifts the ceiling');
+  // The ceiling is a modest multiple of net worth, not many times it.
+  ok(ECON.loanLimit(600, 20000) <= 20000 * 1.5, 'a fair-credit loan cannot far exceed net worth');
+  ok(ECON.loanLimit(850, 20000) <= 20000 * 1.6, 'even great credit stays near ~1.5x net worth');
+  ok(ECON.loanLimit(600, 300) < 2000, 'a broke player only gets a small starter loan');
+  ok(ECON.furnitureResaleValue(1000) === 500 && ECON.furnitureResaleValue(1) >= 1, 'furniture resells at half, min $1');
   ok(ECON.loanTotalDue(1000, 600) === 1000 + Math.ceil(1000 * ECON.loanRate(600)), 'total due = principal + flat interest');
 
   const now = 2_000_000_000_000;
@@ -108,9 +113,12 @@ const tryRpc = async (c, op, args) => { try { return { ok: true, data: await c.r
 
   console.log('loans');
   const st = await amy.rpc('bank', { action: 'status' });
-  const limit = ECON.loanLimit(st.creditScore, st.money + st.bankBalance);
+  ok(st.netWorth === 20000 && st.loanLimit > 0, `status reports net worth ($${st.netWorth}) and ceiling ($${st.loanLimit})`);
+  ok(st.loanLimit <= st.netWorth * 1.5, `ceiling ($${st.loanLimit}) is within 1.5x net worth ($${st.netWorth})`);
+  const limit = st.loanLimit;
   ok(!(await tryRpc(amy, 'bank', { action: 'loan_take', amount: 50 })).ok, 'loan below the $100 minimum rejected');
-  ok(!(await tryRpc(amy, 'bank', { action: 'loan_take', amount: limit + 100000 })).ok, 'loan over the credit ceiling rejected');
+  ok(!(await tryRpc(amy, 'bank', { action: 'loan_take', amount: limit + 1 })).ok, 'loan a dollar over the ceiling rejected');
+  ok(!(await tryRpc(amy, 'bank', { action: 'loan_take', amount: 500000 })).ok, 'loan far over the ceiling rejected');
   const take = await amy.rpc('bank', { action: 'loan_take', amount: 2000 });
   ok(take.money === 22000 && take.loan && take.loan.owed === ECON.loanTotalDue(2000, ECON.CREDIT_START), 'loan pays out the principal, records the full owed');
   ok(!(await tryRpc(amy, 'bank', { action: 'loan_take', amount: 500 })).ok, 'only one loan at a time');
@@ -122,6 +130,19 @@ const tryRpc = async (c, op, args) => { try { return { ok: true, data: await c.r
   ok(r.paidOff && r.loan == null, 'repay all clears the loan');
   ok(r.creditScore > ECON.CREDIT_START, `on-time full repay raised credit (${ECON.CREDIT_START} → ${r.creditScore})`);
   ok(!(await tryRpc(amy, 'bank', { action: 'loan_repay', amount: 100 })).ok, 'nothing to repay once cleared');
+
+  console.log('sell furniture + net worth');
+  const { FURNITURE_LIST } = require(path.join(__dirname, '..', 'js', 'furniture.js'));
+  const item = ECON.marketStock(FURNITURE_LIST, Date.now()).find(f => f.price >= 100) || FURNITURE_LIST[0];
+  const m0 = (await amy.rpc('bank', { action: 'status' })).money;
+  await amy.rpc('buy', { kind: 'furniture', item: item.id });
+  const afterBuy = await amy.rpc('bank', { action: 'status' });
+  ok(afterBuy.money === m0 - item.price, 'buying a piece costs its shelf price');
+  ok(afterBuy.netWorth > afterBuy.money + afterBuy.bankBalance, 'owned furniture counts toward net worth');
+  const sell = await amy.rpc('buy', { kind: 'sell_furniture', item: item.id });
+  ok(sell.gained === ECON.furnitureResaleValue(item.price) && sell.money === afterBuy.money + sell.gained,
+    `selling it back pays ${Math.round(ECON.FURNITURE_RESALE * 100)}% ($${sell.gained} of $${item.price})`);
+  ok(!(await tryRpc(amy, 'buy', { kind: 'sell_furniture', item: item.id })).ok, 'cannot sell what you no longer own');
 
   console.log(`\n${passes} passed, ${fails} failed`);
   stop();
