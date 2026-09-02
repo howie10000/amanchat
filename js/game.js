@@ -764,6 +764,7 @@ function applyBankView(d) {
     bankBalance: d.bankBalance || 0,
     bankLast: d.bankLast || Date.now(),
     creditScore: d.creditScore || ECON.CREDIT_START,
+    creditGainReadyIn: typeof d.creditGainReadyIn === "number" ? d.creditGainReadyIn : (_bank && _bank.creditGainReadyIn) || 0,
     loan: d.loan || null,
     netWorth: typeof d.netWorth === "number" ? d.netWorth : (_bank && _bank.netWorth) || 0,
     loanLimit: typeof d.loanLimit === "number" ? d.loanLimit : (_bank && _bank.loanLimit) || 0,
@@ -880,6 +881,7 @@ async function openLoanOffice() {
   const netWorth = (_bank && _bank.netWorth) || ((state.data.money || 0) + ((_bank && _bank.bankBalance) || 0));
   const limit = (_bank && _bank.loanLimit) || ECON.loanLimit(credit, netWorth);
   const gaugePct = Math.round(((ECON.clampCredit(credit) - ECON.CREDIT_MIN) / (ECON.CREDIT_MAX - ECON.CREDIT_MIN)) * 100);
+  const gainWaitMs = (_bank && _bank.creditGainReadyIn) || 0;
   let body = `
     <div class="center">
       <div class="bigNum">${credit}</div>
@@ -888,6 +890,9 @@ async function openLoanOffice() {
         <div style="height:100%;width:${gaugePct}%;background:linear-gradient(90deg,#ef4444,#fbbf24,#4ade80);"></div>
       </div>
       <p class="muted" style="font-size:11px;">300 &nbsp;·&nbsp; poor → excellent &nbsp;·&nbsp; 850</p>
+      ${gainWaitMs > 0
+        ? `<p class="muted" style="font-size:11px;color:#fca5a5;">Score can't rise again for <b>${fmtDur(gainWaitMs)}</b> (24h between gains).</p>`
+        : `<p class="muted" style="font-size:11px;color:#86efac;">Ready to build credit.</p>`}
     </div>
     <hr class="div">`;
   if (loan && loan.owed > 0) {
@@ -921,7 +926,8 @@ async function openLoanOffice() {
   body += `
     <h3 class="section">HOW CREDIT MOVES</h3>
     <div class="enemyLegend">
-      <div><span class="dot" style="background:#4ade80"></span>Repay a loan in full &amp; on time — <b>+20</b> (+8 more if early)</div>
+      <div><span class="dot" style="background:#4ade80"></span>Repay a loan in full &amp; on time — a small gain, <b>bigger for larger loans</b> (a $${(ECON.LOAN_CREDIT_FULL_SIZE || 3000).toLocaleString()}+ loan counts most; a token loan does nothing)</div>
+      <div><span class="dot" style="background:#93c5fd"></span>Gains slow down the higher your score, and only <b>one gain every 24h</b> — no farming</div>
       <div><span class="dot" style="background:#f87171"></span>Every 6h past due — <b>−25</b>, debt grows 8%, and ${Math.round((ECON.OVERDUE_EARN_SKIM || 0.05) * 100)}% of your earnings is skimmed</div>
       <div><span class="dot" style="background:#fbbf24"></span>Higher score → bigger loans, lower rates</div>
     </div>`;
@@ -960,7 +966,10 @@ window.loanRepay = async (mode) => {
   try {
     const d = await bankRpc("loan_repay", amount);
     if (d.paidOff) {
-      toast(`✅ Loan cleared!${d.creditGain ? ` Credit +${d.creditGain}.` : ""}`, 4000);
+      const extra = d.creditGain
+        ? ` Credit +${d.creditGain}.`
+        : (d.creditGainBlocked ? ` (No credit gain — you already built credit today; next in ${fmtDur(d.creditGainReadyIn || 0)}.)` : "");
+      toast(`✅ Loan cleared!${extra}`, 4500);
       if (typeof celebrate === "function" && d.creditGain >= 20) celebrate();
     } else {
       toast(`Repaid $${(d.repaid || 0).toLocaleString()} · $${Math.ceil((_bank.loan && _bank.loan.owed) || 0).toLocaleString()} to go.`);

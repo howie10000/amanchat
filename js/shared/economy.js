@@ -130,8 +130,29 @@
   const LOAN_LATE_FEE = 0.08;               // owed grows 8% per late period
   const LOAN_LATE_CREDIT_HIT = 25;          // score lost per late period
   const OVERDUE_EARN_SKIM = 0.05;           // while overdue, 5% of everything you earn goes to the debt
-  const LOAN_ONTIME_CREDIT_GAIN = 20;       // score gained for a clean full repay
-  const LOAN_EARLY_CREDIT_BONUS = 8;        // extra for repaying with >half the term left
+  const LOAN_ONTIME_CREDIT_GAIN = 10;       // base score for a clean full repay (before scaling)
+  const LOAN_EARLY_CREDIT_BONUS = 4;        // extra for repaying with >half the term left
+  const LOAN_LATE_PAYOFF_CREDIT = 2;        // clearing a late/garnished debt barely helps
+  const CREDIT_GAIN_COOLDOWN = 24 * 3600000; // your score can only go UP once every 24h
+  const LOAN_CREDIT_FULL_SIZE = 3000;       // loans this big (or bigger) build credit at full weight
+
+  // Points a full repayment is worth (before the 24h cooldown). Deliberately
+  // hard to move: scaled DOWN by loan size (a token $100 flip earns nothing)
+  // and by how high your score already is (the last climb to 850 crawls).
+  function loanRepayCreditGain(principal, onTime, early, currentScore) {
+    let base = onTime ? LOAN_ONTIME_CREDIT_GAIN : LOAN_LATE_PAYOFF_CREDIT;
+    if (onTime && early) base += LOAN_EARLY_CREDIT_BONUS;
+    const sizeFactor = Math.max(0, Math.min(1, (Number(principal) || 0) / LOAN_CREDIT_FULL_SIZE));
+    const room = (CREDIT_MAX - clampCredit(currentScore)) / (CREDIT_MAX - CREDIT_START);
+    const highFactor = Math.max(0.15, Math.min(1, room));
+    return Math.max(0, Math.floor(base * sizeFactor * highFactor));
+  }
+
+  // ms until the next credit-score GAIN is allowed (0 = ready now).
+  function creditGainReadyIn(last, now) {
+    now = now || Date.now();
+    return Math.max(0, CREDIT_GAIN_COOLDOWN - (now - (+last || 0)));
+  }
 
   function clampCredit(s) {
     s = Math.round(+s); if (!Number.isFinite(s)) s = CREDIT_START;
@@ -283,7 +304,9 @@
     BANK_INTEREST_RATE, BANK_INTEREST_PERIOD, BANK_INTEREST_MAX_PERIODS,
     bankAccrue, bankNextInterestIn,
     CREDIT_MIN, CREDIT_MAX, CREDIT_START, LOAN_TERM, LOAN_LATE_PERIOD, LOAN_LATE_FEE,
-    LOAN_ONTIME_CREDIT_GAIN, LOAN_EARLY_CREDIT_BONUS, OVERDUE_EARN_SKIM,
+    LOAN_ONTIME_CREDIT_GAIN, LOAN_EARLY_CREDIT_BONUS, LOAN_LATE_PAYOFF_CREDIT,
+    LOAN_CREDIT_FULL_SIZE, OVERDUE_EARN_SKIM,
+    CREDIT_GAIN_COOLDOWN, creditGainReadyIn, loanRepayCreditGain,
     clampCredit, creditTier, loanRate, loanLimit, loanTotalDue, loanAccrue,
     EARN_CAPS,
     mulberry32, strToSeed, marketStock,

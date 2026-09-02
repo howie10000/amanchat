@@ -49,6 +49,13 @@ console.log('ECON credit + loans');
   ok(ECON.furnitureResaleValue(1000) === 500 && ECON.furnitureResaleValue(1) >= 1, 'furniture resells at half, min $1');
   ok(ECON.loanTotalDue(1000, 600) === 1000 + Math.ceil(1000 * ECON.loanRate(600)), 'total due = principal + flat interest');
 
+  // Credit gains are hard to move now.
+  ok(ECON.loanRepayCreditGain(100, true, true, 600) === 0, 'a token $100 loan repaid on time builds NO credit');
+  ok(ECON.loanRepayCreditGain(5000, true, true, 600) > ECON.loanRepayCreditGain(1000, true, true, 600), 'bigger loans build more credit');
+  ok(ECON.loanRepayCreditGain(5000, true, true, 600) <= 14, 'even a big early on-time repay is a single-digit / low gain');
+  ok(ECON.loanRepayCreditGain(5000, true, true, 830) < ECON.loanRepayCreditGain(5000, true, true, 600), 'gains shrink as the score climbs toward 850');
+  ok(ECON.loanRepayCreditGain(5000, false, false, 600) < ECON.loanRepayCreditGain(5000, true, false, 600), 'a late payoff is worth less than an on-time one');
+
   const now = 2_000_000_000_000;
   const fresh = { principal: 1000, owed: 1250, rate: 0.25, takenTs: now - 1000, dueTs: now + 3600000, latePeriods: 0 };
   ok(ECON.loanAccrue(fresh, 600, now).newLate === 0, 'a loan that is not due yet takes no penalty');
@@ -119,17 +126,29 @@ const tryRpc = async (c, op, args) => { try { return { ok: true, data: await c.r
   ok(!(await tryRpc(amy, 'bank', { action: 'loan_take', amount: 50 })).ok, 'loan below the $100 minimum rejected');
   ok(!(await tryRpc(amy, 'bank', { action: 'loan_take', amount: limit + 1 })).ok, 'loan a dollar over the ceiling rejected');
   ok(!(await tryRpc(amy, 'bank', { action: 'loan_take', amount: 500000 })).ok, 'loan far over the ceiling rejected');
-  const take = await amy.rpc('bank', { action: 'loan_take', amount: 2000 });
-  ok(take.money === 22000 && take.loan && take.loan.owed === ECON.loanTotalDue(2000, ECON.CREDIT_START), 'loan pays out the principal, records the full owed');
+  const take = await amy.rpc('bank', { action: 'loan_take', amount: 3000 });
+  ok(take.money === 23000 && take.loan && take.loan.owed === ECON.loanTotalDue(3000, ECON.CREDIT_START), 'loan pays out the principal, records the full owed');
   ok(!(await tryRpc(amy, 'bank', { action: 'loan_take', amount: 500 })).ok, 'only one loan at a time');
 
-  console.log('repayment raises credit');
+  console.log('repayment raises credit (a little)');
   let r = await amy.rpc('bank', { action: 'loan_repay', amount: 500 });
   ok(!r.paidOff && r.loan.owed === take.loan.owed - 500, 'partial repayment reduces what is owed');
   r = await amy.rpc('bank', { action: 'loan_repay', amount: 'all' });
   ok(r.paidOff && r.loan == null, 'repay all clears the loan');
-  ok(r.creditScore > ECON.CREDIT_START, `on-time full repay raised credit (${ECON.CREDIT_START} → ${r.creditScore})`);
+  const expectGain = ECON.loanRepayCreditGain(3000, true, true, ECON.CREDIT_START);
+  ok(r.creditGain === expectGain && r.creditScore === ECON.CREDIT_START + expectGain,
+    `on-time full repay of a big loan raised credit by ${expectGain} (${ECON.CREDIT_START} → ${r.creditScore})`);
+  ok(expectGain <= 14, 'the gain is modest even at its best');
   ok(!(await tryRpc(amy, 'bank', { action: 'loan_repay', amount: 100 })).ok, 'nothing to repay once cleared');
+
+  console.log('credit gain is capped at once per 24h');
+  const scoreAfter1 = r.creditScore;
+  const take2 = await amy.rpc('bank', { action: 'loan_take', amount: 3000 });
+  ok(take2.loan && take2.creditScore === scoreAfter1, 'taking another loan same-day does not change the score');
+  const r2 = await amy.rpc('bank', { action: 'loan_repay', amount: 'all' });
+  ok(r2.paidOff && r2.creditGain === 0 && r2.creditGainBlocked, 'a second on-time payoff within 24h grants NO credit');
+  ok(r2.creditScore === scoreAfter1, `score is unchanged (still ${scoreAfter1})`);
+  ok(r2.creditGainReadyIn > 23 * 3600000 && r2.creditGainReadyIn <= 24 * 3600000, 'and reports ~24h until the next gain');
 
   console.log('sell furniture + net worth');
   const { FURNITURE_LIST } = require(path.join(__dirname, '..', 'js', 'furniture.js'));

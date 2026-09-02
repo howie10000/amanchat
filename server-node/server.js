@@ -436,7 +436,7 @@ setInterval(broadcastPresence, 66); // ~15Hz presence broadcast (was 100ms/10Hz)
 // a server-side settlement. Staff editing OTHER players keep their powers.
 const PROTECTED_FIELDS = new Set(['money', 'inventory', 'cosmetics', 'vegasFloor', 'dailyStreak', 'lastDaily',
     'lastInterest', 'fishInventory', 'houseStyle', 'furniture', 'houseIndex', 'createdAt',
-    'bankBalance', 'bankLast', 'creditScore', 'loan']);
+    'bankBalance', 'bankLast', 'creditScore', 'creditGainLast', 'loan']);
 const PAID_APPEARANCE_KEYS = Object.keys(ECON.COSMETIC_DEFAULTS); // hat, accessory, aura, pet, nameColor
 const DEFAULT_APPEARANCE = {
     skin: '#f5d0a9', hair: 'short', hairColor: '#3f2210', shirt: '#3b82f6', pants: '#1e293b',
@@ -489,7 +489,7 @@ function newUserRecord() {
         seenTutorial: false,
         fishInventory: {},
         bankBalance: 0, bankLast: Date.now(),
-        creditScore: ECON.CREDIT_START, loan: null,
+        creditScore: ECON.CREDIT_START, creditGainLast: 0, loan: null,
         createdAt: Date.now(),
     };
 }
@@ -1006,6 +1006,25 @@ function bankSync(user, u, now) {
 // off the top toward the balance. Credits `gross`, returns what actually
 // reached the wallet, and pushes a `money` event so the client can explain the
 // shortfall no matter which activity triggered it.
+// Raise a player's credit score — but at most once every 24h (ECON
+// .CREDIT_GAIN_COOLDOWN). Flipping loans to farm the score no longer works;
+// the first repay of a day still counts. Score DROPS (late fees) are not gated.
+// Returns the points actually applied (0 if on cooldown or already maxed).
+function grantCredit(user, u, amount, now) {
+    now = now || Date.now();
+    amount = Math.floor(+amount || 0);
+    if (amount <= 0) return 0;
+    if (now - (+u.creditGainLast || 0) < (ECON.CREDIT_GAIN_COOLDOWN || 0)) return 0;
+    const before = ECON.clampCredit(u.creditScore == null ? ECON.CREDIT_START : u.creditScore);
+    const after = ECON.clampCredit(before + amount);
+    if (after <= before) return 0;
+    u.creditScore = after;
+    u.creditGainLast = now;
+    store.put(`users/${user}/creditScore`, after);
+    store.put(`users/${user}/creditGainLast`, now);
+    return after - before;
+}
+
 const OVERDUE_EARN_SKIM = ECON.OVERDUE_EARN_SKIM || 0.05;
 function creditEarnings(user, u, gross, reason) {
     gross = Math.max(0, Math.floor(+gross || 0));
@@ -1021,10 +1040,12 @@ function creditEarnings(user, u, gross, reason) {
     if (skim > 0) {
         loan.owed = owed - skim;
         if (loan.owed <= 0) {
-            // Cleared by garnishment — a modest credit nudge, like a late payoff.
+            // Cleared by garnishment — a tiny credit nudge, scaled to the loan
+            // size and gated by the once-per-24h gain cooldown like any other.
+            const score = ECON.clampCredit(u.creditScore == null ? ECON.CREDIT_START : u.creditScore);
+            const nudge = ECON.loanRepayCreditGain(loan.principal, false, false, score);
             u.loan = null;
-            u.creditScore = ECON.clampCredit((u.creditScore == null ? ECON.CREDIT_START : u.creditScore) + 5);
-            store.put(`users/${user}/creditScore`, u.creditScore);
+            grantCredit(user, u, nudge);
         }
         store.put(`users/${user}/loan`, u.loan || null);
         pushTo(user, { event: 'money', money: moneyOf(u), reason: 'loan_skim', skim, from: reason || 'earnings', cleared: !u.loan, owed: u.loan ? Math.ceil(u.loan.owed) : 0 });
@@ -1044,6 +1065,7 @@ const ECONOMY_OPS = {
                 bankBalance: Math.max(0, Math.floor(+u.bankBalance || 0)),
                 bankLast: +u.bankLast || now,
                 creditScore: credit,
+                creditGainReadyIn: ECON.creditGainReadyIn(u.creditGainLast, now),
                 loan: u.loan || null,
                 netWorth,
                 loanLimit: ECON.loanLimit(credit, netWorth),
@@ -1103,23 +1125,22 @@ const ECONOMY_OPS = {
             if (moneyOf(u) < amt) throw new Error('Not enough cash on hand.');
             setMoney(user, u, moneyOf(u) - amt);
             u.loan.owed = owed - amt;
-            let paidOff = false, creditGain = 0;
+            let paidOff = false, creditGain = 0, creditGainBlocked = false;
             if (u.loan.owed <= 0) {
                 paidOff = true;
-                const credit = ECON.clampCredit(u.creditScore == null ? ECON.CREDIT_START : u.creditScore);
                 const onTime = now <= (+u.loan.dueTs || 0) && !(u.loan.latePeriods > 0);
-                if (onTime) {
-                    creditGain = ECON.LOAN_ONTIME_CREDIT_GAIN;
-                    if (now <= (u.loan.takenTs + ECON.LOAN_TERM / 2)) creditGain += ECON.LOAN_EARLY_CREDIT_BONUS;
-                } else {
-                    creditGain = 5; // clearing a late debt still helps a little
-                }
-                u.creditScore = ECON.clampCredit(credit + creditGain);
+                const early = onTime && now <= (u.loan.takenTs + ECON.LOAN_TERM / 2);
+                const score = ECON.clampCredit(u.creditScore == null ? ECON.CREDIT_START : u.creditScore);
+                const earned = ECON.loanRepayCreditGain(u.loan.principal, onTime, early, score);
                 u.loan = null;
-                store.put(`users/${user}/creditScore`, u.creditScore);
+                creditGain = grantCredit(user, u, earned, now);       // 0 if you already gained credit in the last 24h
+                creditGainBlocked = creditGain === 0 && earned > 0;
             }
             store.put(`users/${user}/loan`, u.loan || null);
-            return Object.assign(view(), { repaid: amt, paidOff, creditGain });
+            return Object.assign(view(), {
+                repaid: amt, paidOff, creditGain, creditGainBlocked,
+                creditGainReadyIn: ECON.creditGainReadyIn(u.creditGainLast, now),
+            });
         }
 
         if (msg.action === 'interest') {
