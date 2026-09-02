@@ -108,15 +108,17 @@ async function renderDMList() {
     }
   }
   myThreads.sort((a,b) => (b.last?.ts || 0) - (a.last?.ts || 0));
-  let html = `<p class="muted">Click a friend to start a chat.</p>`;
+  let html = `<p class="muted">Click a friend to start a chat. Messages vanish 7 days after they're sent.</p>`;
   if (!myThreads.length) html += `<p class="muted"><i>No conversations yet. Open Friends and click Chat.</i></p>`;
   for (const t of myThreads) {
+    const tid = dmThreadId(state.user, t.other);
+    const unseen = Math.max(0, (state.dmUnseen && state.dmUnseen[tid]) | 0);
     html += `<div class="friendItem" onclick="openDMThread('${t.other}')" style="cursor:pointer;">
       <div class="info">
         <span class="statusDot ${state.others[t.other] ? "online" : ""}"></span>
         <div>
-          <b>${t.other}</b>
-          <div class="muted" style="font-size:11px;">${t.last ? escapeHtml(t.last.text).slice(0, 36) : ""}</div>
+          <b>${t.other}</b>${unseen ? ` <span class="dmCount">${unseen > 99 ? "99+" : unseen}</span>` : ""}
+          <div class="muted" style="font-size:11px;">${t.last ? escapeHtml(t.last.text).slice(0, 36) : ""}${t.last ? " · " + formatTs(t.last.ts) : ""}</div>
         </div>
       </div>
     </div>`;
@@ -129,6 +131,7 @@ function dmThreadId(a, b) { return [a, b].sort().join("__"); }
 async function openDMThread(other) {
   state.dmThread = other;
   const tid = dmThreadId(state.user, other);
+  if (window.markThreadSeen) markThreadSeen(other);   // clears the unseen badge for this chat
   document.getElementById("spTitle").textContent = "Chat with " + other;
   document.getElementById("spBody").innerHTML = `
     <button class="imBack" onclick="renderDMList()">← Back</button>
@@ -161,17 +164,41 @@ async function renderIMMessages(tid) {
   msgs.sort((a,b)=>a.ts - b.ts);
   const el = document.getElementById("imMsgs");
   if (!el) return;
+  if (window.markThreadSeen && state.dmThread) markThreadSeen(state.dmThread);
   el.innerHTML = "";
+  let lastDay = "";
   for (const m of msgs.slice(-100)) {
+    const day = dayKey(m.ts);
+    if (day !== lastDay) {
+      lastDay = day;
+      const sep = document.createElement("div");
+      sep.className = "imDay";
+      sep.textContent = dayLabel(m.ts);
+      el.appendChild(sep);
+    }
     const div = document.createElement("div");
     div.className = "imBubble " + (m.from === state.user ? "me" : "them");
-    div.innerHTML = escapeHtml(m.text) + `<span class="ts">${formatTs(m.ts)}</span>`;
+    div.innerHTML = escapeHtml(m.text) +
+      `<span class="ts" title="${escapeHtml(new Date(m.ts).toLocaleString())}">${formatTs(m.ts)}</span>`;
     el.appendChild(div);
   }
+  const note = document.createElement("div");
+  note.className = "imDay muted";
+  note.style.fontStyle = "italic";
+  note.textContent = "Messages disappear 7 days after they're sent.";
+  el.appendChild(note);
   el.scrollTop = el.scrollHeight;
 }
 function formatTs(ts) {
   const d = new Date(ts); return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+function dayKey(ts) { const d = new Date(ts); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; }
+function dayLabel(ts) {
+  const d = new Date(ts), today = new Date();
+  const y = new Date(today); y.setDate(today.getDate() - 1);
+  if (dayKey(ts) === dayKey(today.getTime())) return "Today";
+  if (dayKey(ts) === dayKey(y.getTime())) return "Yesterday";
+  return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: (d.getFullYear() !== today.getFullYear() ? "numeric" : undefined) });
 }
 window.sendIM = async (other) => {
   const inp = document.getElementById("imInput");

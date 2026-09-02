@@ -95,7 +95,22 @@ db.exec(`
 //   * A legacy `__root__` row is migrated on first start, then VACUUMed away.
 
 const zlib = require('zlib');
-const DM_KEEP = 200;              // messages kept per DM thread
+const DM_KEEP = 200;                    // messages kept per DM thread
+const DM_MAX_AGE = 7 * 24 * 60 * 60 * 1000;  // DMs vanish 7 days after they're sent
+const ANNOUNCE_KEEP = 40;              // announcements kept in the feed
+const NOTES_MAX = 1000;               // server-saved notes are capped (local notes are unlimited, client-side)
+
+// Clamp a client write to a user's own record so `notes` can never exceed
+// NOTES_MAX. Returns the (possibly new) value to store.
+function clampUserNotes(parts, value) {
+    if (parts.length === 2 && value && typeof value === 'object' && !Array.isArray(value) && value.notes != null) {
+        return Object.assign({}, value, { notes: String(value.notes).slice(0, NOTES_MAX) });
+    }
+    if (parts.length === 3 && parts[2] === 'notes') {
+        return value == null ? '' : String(value).slice(0, NOTES_MAX);
+    }
+    return value;
+}
 const DUEL_TTL = 60 * 60 * 1000;  // ended duels older than this are dropped
 const EPHEMERAL_KEYS = new Set(['catalog']);
 
@@ -148,12 +163,18 @@ function compactTree(root) {
         } else if (k === 'dm_threads') {
             const threads = {};
             for (const [id, t] of Object.entries(v)) {
-                const msgs = Object.entries((t && t.messages) || {});
-                if (!msgs.length) continue;
+                let msgs = Object.entries((t && t.messages) || {});
+                // Messages self-destruct 7 days after they're sent.
+                msgs = msgs.filter(([, m]) => (now - (m.ts || 0)) < DM_MAX_AGE);
+                if (!msgs.length) continue;   // thread with nothing left is dropped
                 msgs.sort((a, b) => (a[1].ts || 0) - (b[1].ts || 0));
                 threads[id] = Object.assign({}, t, { messages: Object.fromEntries(msgs.slice(-DM_KEEP)) });
             }
             if (!isEmptyish(threads)) out[k] = threads;
+        } else if (k === 'announcements') {
+            const ann = Object.entries(v).filter(([, a]) => a && a.text)
+                .sort((a, b) => (a[1].ts || 0) - (b[1].ts || 0)).slice(-ANNOUNCE_KEEP);
+            if (ann.length) out[k] = Object.fromEntries(ann);
         } else if (k === 'inbox') {
             const inbox = {};
             for (const [name, box] of Object.entries(v)) if (!isEmptyish(box)) inbox[name] = box;
@@ -308,6 +329,25 @@ const store = new Store();
 setInterval(() => {
     try { store.snapshot(); } catch (e) { console.error('[snapshot]', e); }
 }, 2000);
+
+// Age old DMs out of the LIVE tree (not just the on-disk snapshot) so clients
+// stop seeing them within the hour, not only after a restart.
+function pruneOldDms() {
+    const threads = store.get('dm_threads');
+    if (!threads || typeof threads !== 'object') return;
+    const cutoff = Date.now() - DM_MAX_AGE;
+    let changed = false;
+    for (const [id, t] of Object.entries(threads)) {
+        const msgs = (t && t.messages) || {};
+        for (const [mid, m] of Object.entries(msgs)) {
+            if (!m || (m.ts || 0) < cutoff) { delete msgs[mid]; changed = true; }
+        }
+        if (!Object.keys(msgs).length) { store.delete('dm_threads/' + id); changed = true; }
+    }
+    if (changed) store._touch(['dm_threads']);
+}
+pruneOldDms();
+setInterval(pruneOldDms, 30 * 60 * 1000);   // every half hour
 
 // ---------------------------------------------------------------- ROLES
 // owner > admin > user.
@@ -531,7 +571,9 @@ function canWrite(user, pathStr, op) {
     }
     if (top === 'banned_ips') return role === 'owner';
     if (top === 'meta') return false;             // server-written only (IPs)
-    if (top === 'mayor') return isStaff(user);    // announcement
+    if (top === 'mayor') return isStaff(user);    // legacy single announcement
+    // Announcements feed: owners post, everyone reads.
+    if (top === 'announcements') return role === 'owner';
     // Bug reports live under bug_reports/<author>/<id>. Staff may do anything
     // (triage, delete); a player may only file into / amend their own subtree.
     if (top === 'bug_reports') {
@@ -691,6 +733,13 @@ function afterWrite(pathStr, val) {
         case 'inbox':
             if (parts.length >= 2) pushTo(parts[1], { event: 'notify', path: pathStr, data: val });
             break;
+        case 'announcements':
+            // A new announcement — tell everyone online so it can pop.
+            if (parts.length >= 2 && val && val.text) {
+                const msg = JSON.stringify({ event: 'announce', data: val });
+                for (const c of clients) { if (c.user && c.ws.readyState === c.ws.OPEN) { try { c.ws.send(msg); } catch (e) {} } }
+            }
+            break;
         case 'dm_threads':
             if (parts.length >= 4 && parts[2] === 'messages') {
                 for (const u of parts[1].split('__')) {
@@ -829,6 +878,7 @@ function handleMessage(c, msg) {
                         if (!ownsCosmetic(userRec(c.user), parts[3], value)) value = ECON.COSMETIC_DEFAULTS[parts[3]];
                     }
                 }
+                if ((parts[0] === 'users' || parts[0] === 'players') && parts[1] === c.user) value = clampUserNotes(parts, value);
                 const duelErr = checkDuelWrite(c.user, parts, value, 'put');
                 if (duelErr) return replyErr(duelErr);
             }
@@ -857,6 +907,7 @@ function handleMessage(c, msg) {
                         value = sanitizeAppearance(cur, Object.assign({}, cur.appearance || {}, value));
                     }
                 }
+                if ((parts[0] === 'users' || parts[0] === 'players') && parts[1] === c.user) value = clampUserNotes(parts, value);
                 const duelErr = checkDuelWrite(c.user, parts, value, 'patch');
                 if (duelErr) return replyErr(duelErr);
             }

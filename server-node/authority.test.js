@@ -96,6 +96,17 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     assert((await tryRpc(owner, 'patch', { path: 'users/bob', value: { money: 100000 } })).ok, 'owner can still set money');
     assert((await tryRpc(owner, 'patch', { path: 'users/alice', value: { money: 5000 } })).ok, 'owner funds alice');
 
+    console.log('notes cap + announcements');
+    const bigNote = 'x'.repeat(5000);
+    assert((await tryRpc(bob, 'patch', { path: 'users/bob', value: { notes: bigNote } })).ok, 'notes patch accepted');
+    assert(((await bob.rpc('get', { path: 'users/bob/notes' })) || '').length === 1000, 'server clamps notes to 1000 chars');
+    assert((await tryRpc(bob, 'put', { path: 'users/bob/notes', value: bigNote })).ok, 'notes field-put accepted');
+    assert(((await bob.rpc('get', { path: 'users/bob/notes' })) || '').length === 1000, 'and clamped there too');
+    assert(!(await tryRpc(bob, 'post', { path: 'announcements', value: { text: 'hi', by: 'bob', ts: Date.now() } })).ok, 'a normal player cannot post an announcement');
+    assert((await tryRpc(owner, 'post', { path: 'announcements', value: { text: 'Town meeting at noon', by: 'boss', ts: Date.now() } })).ok, 'an owner can post an announcement');
+    const feed = (await bob.rpc('get', { path: 'announcements' })) || {};
+    assert(Object.values(feed).some(a => a && a.text === 'Town meeting at noon'), 'everyone can read the announcements feed');
+
     console.log('buy: furniture');
     const stock = ECON.marketStock(FURNITURE_LIST, Date.now());
     const offShelf = FURNITURE_LIST.find(f => !stock.some(s => s.id === f.id));

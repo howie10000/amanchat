@@ -156,6 +156,13 @@ html, body {
 
 /* App screen inside the phone */
 #phoneAppView { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+/* Pop in from the tapped icon (transform-origin set inline by phoneView) */
+#phoneAppView.popIn { animation: appPopIn .26s cubic-bezier(.2,.9,.3,1.15); }
+@keyframes appPopIn {
+  from { transform: scale(.28); opacity: 0; }
+  60%  { opacity: 1; }
+  to   { transform: scale(1); opacity: 1; }
+}
 .phoneAppBar {
   display: flex; align-items: center; gap: 6px; flex: none;
   padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,.08);
@@ -204,6 +211,16 @@ html, body {
   width: 11px; height: 11px; background: #ef4444; border-radius: 50%;
   border: 2px solid #0b1020; animation: pulse 1.2s infinite;
 }
+/* Numbered unread badge (Messages) — replaces the plain dot when it's showing */
+.actBtn.app .appBadge {
+  position: absolute; top: -5px; right: -6px; z-index: 2;
+  min-width: 16px; height: 16px; padding: 0 3px; border-radius: 8px;
+  background: #ef4444; color: #fff; border: 2px solid #0b1020;
+  font-size: 9px; font-weight: 800; line-height: 12px; text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,.5);
+}
+#phone.big .actBtn.app .appBadge { min-width: 19px; height: 19px; font-size: 11px; line-height: 15px; }
+.actBtn[data-act="dms"].alert .ico::after { display: none; }  /* the number carries it */
 .actBtn.staff { }
 .phoneHome {
   position: absolute; bottom: 9px; left: 50%; transform: translateX(-50%);
@@ -495,7 +512,18 @@ html, body {
   align-self: flex-start;
   background: #1f2735; color: #e8eef7;
 }
-.imBubble .ts { font-size: 9px; opacity: 0.6; display: block; margin-top: 2px; }
+.imBubble .ts { font-size: 9px; opacity: 0.6; display: block; margin-top: 2px; cursor: help; }
+.imDay {
+  align-self: center; margin: 6px 0 2px;
+  font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+  color: #7c8aa5; background: rgba(255,255,255,.04); padding: 2px 10px; border-radius: 999px;
+}
+.imDay.muted { text-transform: none; letter-spacing: 0; font-weight: 400; background: none; }
+.dmCount {
+  display: inline-block; min-width: 15px; padding: 0 4px; margin-left: 4px;
+  background: #ef4444; color: #fff; font-size: 10px; font-weight: 800;
+  line-height: 15px; text-align: center; border-radius: 8px; vertical-align: middle;
+}
 .imInput { display: flex; gap: 6px; margin-top: 8px; }
 .imInput input {
   flex: 1; padding: 8px 10px; background: #0a0e15;

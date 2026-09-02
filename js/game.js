@@ -20,11 +20,16 @@ window.closeMenu = closeMenu;
 window.openMenu = openMenu;
 
 // ---------- Action bar wiring ----------
+// Remembered so the app view can pop in from the icon you actually tapped.
+let _lastAppEl = null;
 document.querySelectorAll(".actBtn").forEach(b => {
   b.onclick = () => {
+    _lastAppEl = b;
     const a = b.dataset.act;
     if (a === "friends") gameSocial.openSidePanelFriends();
     else if (a === "dms") gameSocial.openSidePanelDMs();
+    else if (a === "announcements") phoneApp(openAnnouncements);
+    else if (a === "notes") phoneApp(openNotes);
     else if (a === "directory") phoneApp(openDirectory);
     else if (a === "inv") phoneApp(openInventory);
     else if (a === "build") toggleBuildMode();
@@ -56,15 +61,31 @@ window.togglePhone = () => setPhone(!phoneOpen());
 _phoneTab.onclick = () => setPhone(true);
 try { if (localStorage.getItem("phoneOpen") === "0") setPhone(false); } catch (e) {}
 
-// Render arbitrary HTML into the phone's app screen (with a back bar).
+// Render arbitrary HTML into the phone's app screen (with a back bar). The
+// view pops in scaling out from wherever the app icon was tapped.
 function phoneView(title, html) {
   setPhone(true);
+  // Work out where the pop-in should scale FROM — the tapped icon's centre,
+  // as a %% of the phone screen — while the home view is still visible.
+  let ox = 50, oy = 32;
+  try {
+    const sr = _phoneEl.querySelector(".phoneScreen").getBoundingClientRect();
+    const ir = _lastAppEl && _lastAppEl.getBoundingClientRect();
+    if (ir && ir.width && sr.width) {
+      ox = Math.max(0, Math.min(100, ((ir.left + ir.width / 2 - sr.left) / sr.width) * 100));
+      oy = Math.max(0, Math.min(100, ((ir.top + ir.height / 2 - sr.top) / sr.height) * 100));
+    }
+  } catch (e) {}
   _phoneHomeView.classList.add("hidden");
   _phoneAppView.classList.remove("hidden");
   document.getElementById("spTitle").textContent = title;
   const body = document.getElementById("spBody");
   body.innerHTML = html;
   body.scrollTop = 0;
+  _phoneAppView.style.transformOrigin = `${ox}% ${oy}%`;
+  _phoneAppView.classList.remove("popIn");
+  void _phoneAppView.offsetWidth;   // reflow so the animation restarts
+  _phoneAppView.classList.add("popIn");
 }
 function phoneBackHome() {
   if (!phoneAppShowing()) return;
@@ -1192,12 +1213,16 @@ window.saveBarber = async () => {
 
 // ---------- PLAZA ----------
 async function openPlazaBoard() {
-  const ann = (await fbGet("mayor/announcement")) || "(no announcement)";
+  const feed = (await fbGet("announcements")) || {};
+  const list = Object.values(feed).filter(a => a && a.text).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  const latest = list[0] || { text: (await fbGet("mayor/announcement")) || "(no announcements yet)", by: "owner" };
   let online = 1 + Object.keys(state.others).length;
   openMenu("TOWN PLAZA", `
     <p><b>${online}</b> player(s) online right now.</p>
-    <h3 class="section">MAYOR'S ANNOUNCEMENT</h3>
-    <div style="padding:14px;background:#0a0e15;border:1px solid #2a3344;border-radius:8px;">${escapeHtml(ann)}</div>
+    <h3 class="section">LATEST ANNOUNCEMENT</h3>
+    <div style="padding:14px;background:#0a0e15;border:1px solid #2a3344;border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere;">${escapeHtml(latest.text)}</div>
+    <p class="muted" style="font-size:11px;">— ${escapeHtml(latest.by || "owner")}${latest.ts ? " · " + new Date(latest.ts).toLocaleString() : ""}</p>
+    <button class="menuBtn" style="margin-top:8px;" onclick="closeMenu();phoneApp(openAnnouncements)">📣 See all announcements</button>
     <h3 class="section">CHAT</h3>
     <p>Walk near other players and press <b>T</b> to chat with bubbles. Open Messenger for instant DMs that save.</p>
   `);
@@ -1246,12 +1271,12 @@ async function openStaffPanel() {
   _staff = { users: users || {}, roles: roles || {}, bans: bans || {}, mutes: mutes || {}, ann: ann || "", filter: (_staff && _staff.filter) || "" };
   const isOwner = state.role === "owner";
   openMenu(`${state.role === "owner" ? "👑 OWNER" : "🛡️ ADMIN"} — STAFF PANEL`, `
-    <h3 class="section">ANNOUNCEMENT (shown at the Town Plaza)</h3>
+    ${isOwner ? `<h3 class="section">POST AN ANNOUNCEMENT (📣 News app + Town Plaza)</h3>
     <div class="flexRow">
-      <input id="annInput" value="${escapeHtml(_staff.ann).replace(/"/g, "&quot;")}"
+      <input id="annInput" placeholder="Message to the whole town…"
         style="flex:1;padding:8px;background:#0a0e15;color:white;border:1px solid #2a3344;border-radius:6px;" />
-      <button class="menuBtn" onclick="mayorAnnounce()">Save</button>
-    </div>
+      <button class="menuBtn gold" onclick="mayorAnnounce()">Post</button>
+    </div>` : ""}
     <h3 class="section">PLAYERS</h3>
     <p class="muted">${isOwner
       ? "You can promote players to admin, and ban / mute anyone below you, and add to or set any player's balance. Owners are set in the server save file."
@@ -1464,9 +1489,14 @@ window.staffDemote = (u) => {
 
 window.mayorAnnounce = async () => {
   if (!await assertStaffRole()) return;
-  const v = document.getElementById("annInput").value;
-  await fbPut("mayor/announcement", v);
-  toast("Announcement saved.");
+  if (state.role !== "owner") { toast("Only owners can post announcements."); return; }
+  const v = (document.getElementById("annInput").value || "").trim().slice(0, 600);
+  if (!v) { toast("Type an announcement first."); return; }
+  try {
+    await fbPost("announcements", { text: v, by: state.user, ts: Date.now() });
+    await fbPut("mayor/announcement", v);   // keep the legacy single-string in sync
+    toast("📣 Announcement posted to everyone.");
+  } catch (e) { toast("Server refused: " + (e.message || e)); }
 };
 window.mayorGive = async (u, amt) => {
   if (!await assertStaffRole()) return;
@@ -1531,6 +1561,75 @@ window.mayorDelete = async (u) => {
 };
 
 // ---------- UNIVERSAL USER DIRECTORY ----------
+// ---------- NOTES APP ----------
+// A personal notepad. It auto-saves to this device (localStorage, unlimited).
+// "Sync to server" pushes it to users/<me>/notes so it follows you to other
+// devices — but the server caps that copy at NOTES_MAX_SRV characters.
+const NOTES_MAX_SRV = 1000;
+function notesLocalKey() { return "notes:" + (state.user || "_"); }
+function loadNotesLocal() { try { return localStorage.getItem(notesLocalKey()) || ""; } catch (e) { return ""; } }
+function saveNotesLocal(v) { try { localStorage.setItem(notesLocalKey(), v); } catch (e) {} }
+function openNotes() {
+  // Prefer the local copy (it may be longer / newer); fall back to the server's.
+  const local = loadNotesLocal();
+  const text = local || (state.data && state.data.notes) || "";
+  uiPanel("📝 NOTES", `
+    <p class="muted">Auto-saved to this device. <b>Sync to server</b> to carry it to other devices (that copy is capped at ${NOTES_MAX_SRV.toLocaleString()} characters).</p>
+    <textarea id="notesArea" placeholder="Jot anything…"
+      style="width:100%;min-height:200px;padding:10px;background:#0a0e15;border:1px solid #2a3344;color:#e8eef7;border-radius:8px;resize:vertical;font:inherit;line-height:1.5;">${escapeHtml(text)}</textarea>
+    <div class="flexBetween" style="margin-top:8px;">
+      <span class="muted" id="notesCount">${text.length.toLocaleString()} chars</span>
+      <button class="menuBtn gold" onclick="notesSync()">☁ Sync to server</button>
+    </div>
+    <p class="muted" id="notesStatus" style="font-size:11px;"></p>
+  `);
+  const ta = document.getElementById("notesArea");
+  const count = document.getElementById("notesCount");
+  ta.oninput = () => {
+    saveNotesLocal(ta.value);
+    count.textContent = ta.value.length.toLocaleString() + " chars";
+    count.style.color = ta.value.length > NOTES_MAX_SRV ? "#fca5a5" : "";
+  };
+}
+window.openNotes = openNotes;
+window.notesSync = async () => {
+  const ta = document.getElementById("notesArea");
+  const status = document.getElementById("notesStatus");
+  if (!ta) return;
+  const full = ta.value;
+  const toSend = full.slice(0, NOTES_MAX_SRV);
+  try {
+    await fbPatch(`users/${state.user}`, { notes: toSend });
+    state.data.notes = toSend;
+    status.style.color = "#86efac";
+    status.textContent = full.length > NOTES_MAX_SRV
+      ? `Synced the first ${NOTES_MAX_SRV.toLocaleString()} characters. The full text is still saved on this device.`
+      : `Synced ✓`;
+  } catch (e) {
+    status.style.color = "#fca5a5";
+    status.textContent = "Sync failed: " + (e.message || e);
+  }
+};
+
+// ---------- ANNOUNCEMENTS APP ----------
+// Read-only feed of the latest announcements posted by owners.
+async function openAnnouncements() {
+  uiPanel("📣 ANNOUNCEMENTS", `<div id="annFeed"><p class="muted">Loading…</p></div>`);
+  let feed = {};
+  try { feed = (await fbGet("announcements")) || {}; } catch (e) {}
+  const list = Object.values(feed).filter(a => a && a.text).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  const el = document.getElementById("annFeed");
+  if (!el) return;
+  if (!list.length) { el.innerHTML = `<p class="muted">No announcements yet.</p>`; return; }
+  el.innerHTML = list.slice(0, 40).map((a, i) => `
+    <div class="shopItem" style="${i === 0 ? "border-color:#fbbf24;" : ""}display:block;">
+      ${i === 0 ? `<div class="tier legendary" style="font-size:9px;margin-bottom:4px;">LATEST</div>` : ""}
+      <div style="white-space:pre-wrap;overflow-wrap:anywhere;">${escapeHtml(a.text)}</div>
+      <div class="muted" style="font-size:11px;margin-top:6px;">— ${escapeHtml(a.by || "owner")} · ${new Date(a.ts || 0).toLocaleString()}</div>
+    </div>`).join("");
+}
+window.openAnnouncements = openAnnouncements;
+
 // A searchable list of every account on the server — add friends, jump to their
 // house, or open a chat. Reads the user cache (refreshed every 4s in core.js).
 let _dirFilter = "";

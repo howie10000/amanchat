@@ -167,12 +167,72 @@ async function enterGame(user, data, role, mute) {
   startPresenceLoop();
   startNotifyLoop();
   wrapEconomyReplies();
+  initDMBadge();
   setInterval(refreshUserCache, 4000);
   if (state.mute) toast(muteText(state.mute), 5000);
   if (typeof dailyBonusReady === "function" && dailyBonusReady()) {
     setTimeout(() => toast("🎁 Your <b>daily bonus</b> is ready at FIRST BANK!", 4000), 2500);
   }
   requestAnimationFrame(loop);
+}
+
+// ---------- UNSEEN DM BADGE ----------
+// A red count on the Messages app icon: unopened DMs from other people. Tracked
+// entirely client-side off a per-thread "last seen" timestamp in localStorage;
+// live increments come from the server's `dm` push events (which we already get).
+state.dmUnseen = {};   // { threadId: count }
+function dmSeenKey() { return "dmSeen:" + (state.user || "_"); }
+function dmSeenMap() { try { return JSON.parse(localStorage.getItem(dmSeenKey()) || "{}") || {}; } catch (e) { return {}; } }
+function dmSeenSave(m) { try { localStorage.setItem(dmSeenKey(), JSON.stringify(m)); } catch (e) {} }
+function markThreadSeen(other) {
+  if (!other || !state.user) return;
+  const tid = [state.user, other].sort().join("__");
+  const m = dmSeenMap();
+  m[tid] = Date.now();
+  dmSeenSave(m);
+  state.dmUnseen[tid] = 0;
+  updateDMBadge();
+}
+window.markThreadSeen = markThreadSeen;
+function totalUnseenDMs() {
+  let n = 0;
+  for (const k in state.dmUnseen) n += Math.max(0, state.dmUnseen[k] | 0);
+  return n;
+}
+function updateDMBadge() {
+  const n = totalUnseenDMs();
+  const badge = document.getElementById("dmBadge");
+  const btn = document.querySelector('.actBtn[data-act="dms"]');
+  if (badge) {
+    badge.textContent = n > 99 ? "99+" : String(n);
+    badge.classList.toggle("hidden", n === 0);
+  }
+  if (btn) btn.classList.toggle("alert", n > 0);
+}
+window.updateDMBadge = updateDMBadge;
+async function initDMBadge() {
+  const seen = dmSeenMap();
+  let all = {};
+  try { all = (await fbGet("dm_threads")) || {}; } catch (e) {}
+  state.dmUnseen = {};
+  for (const [tid, t] of Object.entries(all)) {
+    if (!tid.split("__").includes(state.user)) continue;
+    const since = seen[tid] || 0;
+    const msgs = (t && t.messages) ? Object.values(t.messages) : [];
+    state.dmUnseen[tid] = msgs.filter(m => m && m.from !== state.user && (m.ts || 0) > since).length;
+  }
+  updateDMBadge();
+  // Live: every incoming DM from someone else bumps the count for its thread,
+  // unless that exact thread is open right now (then it's already seen).
+  NET.on("dm", (m) => {
+    const d = m && m.data;
+    if (!d || d.from === state.user) return;
+    const tid = m.thread;
+    const openTid = state.dmThread ? [state.user, state.dmThread].sort().join("__") : null;
+    if (tid === openTid) { markThreadSeen(state.dmThread); return; }
+    state.dmUnseen[tid] = (state.dmUnseen[tid] | 0) + 1;
+    updateDMBadge();
+  });
 }
 
 // Every server-authoritative economy reply carries the caller's fresh `money`
@@ -422,6 +482,12 @@ function startNotifyLoop() {
       if (n.kind === "dm") showMessagePop(n);
       else renderNotifications();
     }
+  });
+  // Owner posted an announcement — everyone online gets a heads-up.
+  NET.on("announce", (m) => {
+    const a = m && m.data;
+    if (!a || !a.text) return;
+    toast(`📣 <b>${escapeHtml(a.by || "Announcement")}:</b> ${escapeHtml(String(a.text).slice(0, 140))}`, 7000);
   });
   // When kicked (logged in elsewhere, or banned by staff), reload the page
   NET.on("kicked", (m) => {
