@@ -29,8 +29,20 @@ const STATIC_DIR = process.env.STATIC_DIR || path.join(__dirname, '..');
 // Shared with the client (docs/SERVER-AUTHORITY.md): prices, tables and the
 // hour-seeded market shelf come from the same file the browser loads, so the
 // server never disagrees with what the player was shown.
-const ECON = require(path.join(STATIC_DIR, 'js', 'shared', 'economy.js'));
-const { FURNITURE_CATALOG, FURNITURE_LIST } = require(path.join(STATIC_DIR, 'js', 'furniture.js'));
+// Looked up in STATIC_DIR/js, then ../js, then GAME_JS if set — so a box that
+// only has server-node/ checked out gets told exactly what to copy instead of
+// a bare MODULE_NOT_FOUND.
+const JS_DIR = [process.env.GAME_JS, path.join(STATIC_DIR, 'js'), path.join(__dirname, '..', 'js')]
+    .filter(Boolean).find(d => require('fs').existsSync(path.join(d, 'shared', 'economy.js')));
+if (!JS_DIR) {
+    console.error('\n[startup] The server needs the game\'s js/ folder (js/shared/economy.js and js/furniture.js).');
+    console.error(`[startup] Looked in: ${path.join(STATIC_DIR, 'js')} and ${path.join(__dirname, '..', 'js')}`);
+    console.error('[startup] Fix: copy the repo\'s js/ folder next to server-node/ (e.g. scp -r js user@host:' + path.join(__dirname, '..') + '/),');
+    console.error('[startup]      or start with GAME_JS=/path/to/js node server.js\n');
+    process.exit(1);
+}
+const ECON = require(path.join(JS_DIR, 'shared', 'economy.js'));
+const { FURNITURE_CATALOG, FURNITURE_LIST } = require(path.join(JS_DIR, 'furniture.js'));
 const GAMES = require('./games.js');
 const HOUSE_COUNT = 60;
 
