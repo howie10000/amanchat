@@ -88,7 +88,7 @@ const HOOPS = [
 ];
 const BALL_SPOT = { x: COURT.x + COURT.w/2, y: COURT.y + COURT.h/2, r: 90 };
 // Town notice board (center) — leaderboard / who's online
-const NOTICE = { x: 2150, y: 1318, w: 100, h: 82 };
+const NOTICE = { x: 2262, y: 1318, w: 100, h: 82 };
 const NOTICE_SPOT = { x: NOTICE.x + NOTICE.w/2, y: NOTICE.y + NOTICE.h + 30, r: 74 };
 const ACTIVITY_SPOTS = [
   { spot: FISH_SPOT,   type: "fishing",     label: "GO FISHING" },
@@ -183,7 +183,7 @@ const SIGNPOSTS = [
       { text: "← GUILD · JOBS · PLAZA", dir: 0 },
       { text: "PARK & HOMES ↓", dir: 0 } ] },
   // Where the park meets the activity band.
-  // Offset west of the notice board (x 2170-2230) so they don't stack.
+  // Offset west of the notice board (x 2262-2362) so they don't stack.
   { x: PARK.x + PARK.w / 2 - 200, y: PARK.y + PARK.h + 40, arms: [
       { text: "↑ MAIN STREET", dir: 0 },
       { text: "FISHING · BALL · STAGE ↓", dir: 0 } ] },

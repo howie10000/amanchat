@@ -2620,7 +2620,7 @@ function drawArcadeCabinet(x, y, col, t, kind) {
   ctx.fillStyle = "#1f2937"; ctx.fillRect(x + 8, y - 2, 3, 10); ctx.fillStyle = "#ef4444"; ctx.beginPath(); ctx.arc(x + 9.5, y - 4, 3.5, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "#fef3c7"; ctx.font = "bold 7px sans-serif"; ctx.textAlign = "center"; ctx.fillText(kind === "kbd" ? "TYPE RACER" : "WHACK!", x, y - 43);
 }
-function drawNoticeBoard(x, y, t) {
+function drawGuildQuestBoard(x, y, t) {
   ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.fillRect(x - 76, y - 46, 156, 100);
   ctx.fillStyle = "#3f2210"; ctx.fillRect(x - 80, y - 50, 160, 100);
   ctx.fillStyle = "#c2a06b"; ctx.fillRect(x - 74, y - 44, 148, 88);
@@ -2666,7 +2666,7 @@ const plazaRoom = {
     drawStall(room.x + 150, room.y + 200, "#dc2626", "PIZZA CORNER", t, "pizza");
     drawStall(room.x + room.w - 150, room.y + 200, "#0ea5e9", "FLOWER CART", t, "flowers");
     drawStall(room.x + 330, room.y + 178, "#a16207", "CAFÉ", t, "coffee");
-    drawNoticeBoard(512, 196, t);
+    drawGuildQuestBoard(512, 196, t);
     drawStringLights(room.x + 20, room.x + room.w - 20, room.y + 14, 22, t, 22);
     drawStringLights(room.x + 20, room.x + room.w / 2, room.y + 4, 14, t + 500, 11);
     drawStringLights(room.x + room.w / 2, room.x + room.w - 20, room.y + 4, 14, t + 900, 11);
