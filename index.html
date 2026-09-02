@@ -24,6 +24,7 @@
 
   <!-- GAME SCREEN -->
   <div id="gameScreen" class="screen hidden">
+   <div id="stage">
     <canvas id="game" width="1280" height="800"></canvas>
 
     <!-- HUD -->
@@ -34,17 +35,35 @@
       <div class="hudRow muted" id="hudArea">Neighborhood</div>
     </div>
 
-    <!-- Action bar -->
-    <div id="actionBar">
-      <button class="actBtn" data-act="friends">Friends</button>
-      <button class="actBtn" data-act="dms">Messenger</button>
-      <button class="actBtn" data-act="map">Map</button>
-      <button class="actBtn" data-act="inv">Inventory</button>
-      <button class="actBtn" data-act="emotes" title="Emotes (G)">😀</button>
-      <button class="actBtn" data-act="build">Build Mode</button>
-      <button class="actBtn staff hidden" id="btnStaff" data-act="staff" title="Staff panel">🛡️ Staff</button>
-      <button class="actBtn" data-act="help">?</button>
+    <!-- PHONE — the action bar lives on a GTA-style phone in the corner -->
+    <div id="phone">
+      <div class="phoneBody">
+        <div class="phoneNotch"></div>
+        <div class="phoneScreen">
+          <div class="phoneStatus">
+            <span class="sig">▂▄▆ NBHD</span>
+            <span id="phoneClock">12:00</span>
+            <span class="bat">🔋</span>
+          </div>
+          <div class="phoneHero">
+            <div id="phoneBigClock">12:00</div>
+            <div id="phoneDate">Tuesday</div>
+          </div>
+          <div class="phoneApps">
+            <button class="actBtn app" data-act="friends"><span class="ico" style="--c:#22c55e">👥</span><span>Friends</span></button>
+            <button class="actBtn app" data-act="dms"><span class="ico" style="--c:#3b82f6">💬</span><span>Messages</span></button>
+            <button class="actBtn app" data-act="map"><span class="ico" style="--c:#f97316">🗺️</span><span>Map</span></button>
+            <button class="actBtn app" data-act="inv"><span class="ico" style="--c:#a855f7">🎒</span><span>Items</span></button>
+            <button class="actBtn app" data-act="emotes" title="Emotes (G)"><span class="ico" style="--c:#eab308">😀</span><span>Emotes</span></button>
+            <button class="actBtn app" data-act="build"><span class="ico" style="--c:#14b8a6">🔨</span><span>Build</span></button>
+            <button class="actBtn app staff hidden" id="btnStaff" data-act="staff" title="Staff panel"><span class="ico" style="--c:#fbbf24">🛡️</span><span>Staff</span></button>
+            <button class="actBtn app" data-act="help"><span class="ico" style="--c:#64748b">❓</span><span>Help</span></button>
+          </div>
+        </div>
+        <button class="phoneHome" id="phoneHome" title="Put phone away (P)"></button>
+      </div>
     </div>
+    <button id="phoneTab" class="hidden" title="Phone (P)">📱</button>
 
     <!-- Build-mode banner -->
     <div id="buildBanner" class="hidden">
@@ -87,6 +106,7 @@
       <div id="tutorialText"></div>
       <button id="tutorialNext">Next</button>
     </div>
+   </div><!-- /stage -->
   </div>
 
   <script src="js/net.js"></script>
@@ -95,6 +115,7 @@
   <script src="js/graphics.js"></script>
   <script src="js/core.js"></script>
   <script src="js/world.js"></script>
+  <script src="js/scenery.js"></script>
   <script src="js/interiors.js"></script>
   <script src="js/casino.js"></script>
   <script src="js/jobs.js"></script>

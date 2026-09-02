@@ -30,6 +30,36 @@ document.querySelectorAll(".actBtn").forEach(b => {
   };
 });
 
+// ---------- Phone ----------
+// The action buttons live on a phone in the bottom-right corner. P (or the
+// home button) puts it away; the little tab brings it back. Clock is real.
+const _phoneEl = document.getElementById("phone"), _phoneTab = document.getElementById("phoneTab");
+function phoneOpen() { return _phoneEl && !_phoneEl.classList.contains("closed"); }
+function setPhone(open) {
+  if (!_phoneEl) return;
+  _phoneEl.classList.toggle("closed", !open);
+  _phoneTab.classList.toggle("hidden", open);
+  try { localStorage.setItem("phoneOpen", open ? "1" : "0"); } catch (e) {}
+}
+window.togglePhone = () => setPhone(!phoneOpen());
+document.getElementById("phoneHome").onclick = () => setPhone(false);
+_phoneTab.onclick = () => setPhone(true);
+try { if (localStorage.getItem("phoneOpen") === "0") setPhone(false); } catch (e) {}
+function tickPhoneClock() {
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2, "0"), mm = String(d.getMinutes()).padStart(2, "0");
+  const el1 = document.getElementById("phoneClock"), el2 = document.getElementById("phoneBigClock"), el3 = document.getElementById("phoneDate");
+  if (el1) el1.textContent = `${hh}:${mm}`;
+  if (el2) el2.textContent = `${hh}:${mm}`;
+  if (el3) el3.textContent = d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+}
+tickPhoneClock(); setInterval(tickPhoneClock, 10000);
+// Any pending notification also lights the phone tab so a stowed phone still nags.
+new MutationObserver(() => {
+  const any = document.querySelector(".actBtn.alert") || document.querySelector("#notifyArea .notifyCard");
+  _phoneTab.classList.toggle("alert", !!any);
+}).observe(document.getElementById("gameScreen"), { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+
 function openHelp() {
   openMenu("CONTROLS & GUIDE", `
     <h3 class="section">MOVEMENT</h3>
@@ -40,6 +70,7 @@ function openHelp() {
     <div>T — chat bubble (up to 3 stack above your head)</div>
     <div>G — emotes (wave, laugh, dance… everyone nearby sees it)</div>
     <div>I — inventory (toggle)</div>
+    <div>P — put your phone away / take it out (Friends, Messages, Map… live on it)</div>
     <h3 class="section">GETTING AROUND</h3>
     <div>Lost? Press <b>M</b>, pick a destination, hit <b>Guide me</b>. A gold arrow
         and a dotted trail point the way and the minimap marks it.</div>
@@ -117,6 +148,8 @@ function handleKey(e) {
     if (isMuted()) { toast(muteText(state.mute), 3000); return; }
     document.getElementById("chatInput").classList.remove("hidden");
     document.getElementById("chatBox").focus();
+  } else if (k === "p") {
+    togglePhone();
   } else if (k === "g") {
     openEmotes();
   } else if (k === "q") {
