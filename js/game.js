@@ -63,10 +63,11 @@ try { if (localStorage.getItem("phoneOpen") === "0") setPhone(false); } catch (e
 
 // Render arbitrary HTML into the phone's app screen (with a back bar). The
 // view pops in scaling out from wherever the app icon was tapped.
+let _homeHideTimer = null;
 function phoneView(title, html) {
   setPhone(true);
-  // Work out where the pop-in should scale FROM — the tapped icon's centre,
-  // as a %% of the phone screen — while the home view is still visible.
+  // Where the pop-in scales FROM — the tapped icon's centre, as a %% of the
+  // phone screen. Measured while the home grid is still on screen.
   let ox = 50, oy = 32;
   try {
     const sr = _phoneEl.querySelector(".phoneScreen").getBoundingClientRect();
@@ -76,8 +77,9 @@ function phoneView(title, html) {
       oy = Math.max(0, Math.min(100, ((ir.top + ir.height / 2 - sr.top) / sr.height) * 100));
     }
   } catch (e) {}
-  _phoneHomeView.classList.add("hidden");
   _phoneAppView.classList.remove("hidden");
+  _phoneEl.classList.add("in-app");
+  try { _phoneAppView.style.top = (_phoneEl.querySelector(".phoneStatus").offsetHeight || 30) + "px"; } catch (e) {}
   document.getElementById("spTitle").textContent = title;
   const body = document.getElementById("spBody");
   body.innerHTML = html;
@@ -86,11 +88,18 @@ function phoneView(title, html) {
   _phoneAppView.classList.remove("popIn");
   void _phoneAppView.offsetWidth;   // reflow so the animation restarts
   _phoneAppView.classList.add("popIn");
+  // Keep the home grid visible behind it for the length of the unfold, so the
+  // app reads as growing OUT of its icon rather than a hard cut.
+  clearTimeout(_homeHideTimer);
+  _homeHideTimer = setTimeout(() => { if (phoneAppShowing()) _phoneHomeView.classList.add("hidden"); }, 300);
 }
 function phoneBackHome() {
   if (!phoneAppShowing()) return;
+  clearTimeout(_homeHideTimer);
   _phoneAppView.classList.add("hidden");
+  _phoneAppView.classList.remove("popIn");
   _phoneHomeView.classList.remove("hidden");
+  _phoneEl.classList.remove("in-app");
   document.getElementById("spBody").innerHTML = "";
 }
 window.phoneView = phoneView;
@@ -1560,56 +1569,33 @@ window.mayorDelete = async (u) => {
   openStaffPanel();
 };
 
-// ---------- UNIVERSAL USER DIRECTORY ----------
 // ---------- NOTES APP ----------
-// A personal notepad. It auto-saves to this device (localStorage, unlimited).
-// "Sync to server" pushes it to users/<me>/notes so it follows you to other
-// devices — but the server caps that copy at NOTES_MAX_SRV characters.
-const NOTES_MAX_SRV = 1000;
+// A personal notepad. Saved only on this device (localStorage), so it's
+// unlimited and private — nothing ever leaves the browser.
 function notesLocalKey() { return "notes:" + (state.user || "_"); }
 function loadNotesLocal() { try { return localStorage.getItem(notesLocalKey()) || ""; } catch (e) { return ""; } }
 function saveNotesLocal(v) { try { localStorage.setItem(notesLocalKey(), v); } catch (e) {} }
 function openNotes() {
-  // Prefer the local copy (it may be longer / newer); fall back to the server's.
-  const local = loadNotesLocal();
-  const text = local || (state.data && state.data.notes) || "";
+  const text = loadNotesLocal();
   uiPanel("📝 NOTES", `
-    <p class="muted">Auto-saved to this device. <b>Sync to server</b> to carry it to other devices (that copy is capped at ${NOTES_MAX_SRV.toLocaleString()} characters).</p>
+    <p class="muted">Saved on this device only — no length limit, and it never leaves your browser.</p>
     <textarea id="notesArea" placeholder="Jot anything…"
-      style="width:100%;min-height:200px;padding:10px;background:#0a0e15;border:1px solid #2a3344;color:#e8eef7;border-radius:8px;resize:vertical;font:inherit;line-height:1.5;">${escapeHtml(text)}</textarea>
+      style="width:100%;min-height:220px;padding:10px;background:#0a0e15;border:1px solid #2a3344;color:#e8eef7;border-radius:8px;resize:vertical;font:inherit;line-height:1.5;">${escapeHtml(text)}</textarea>
     <div class="flexBetween" style="margin-top:8px;">
-      <span class="muted" id="notesCount">${text.length.toLocaleString()} chars</span>
-      <button class="menuBtn gold" onclick="notesSync()">☁ Sync to server</button>
+      <span class="muted" id="notesCount">${text.length.toLocaleString()} characters</span>
+      <span class="muted" id="notesStatus" style="font-size:11px;"></span>
     </div>
-    <p class="muted" id="notesStatus" style="font-size:11px;"></p>
   `);
   const ta = document.getElementById("notesArea");
   const count = document.getElementById("notesCount");
+  const status = document.getElementById("notesStatus");
   ta.oninput = () => {
     saveNotesLocal(ta.value);
-    count.textContent = ta.value.length.toLocaleString() + " chars";
-    count.style.color = ta.value.length > NOTES_MAX_SRV ? "#fca5a5" : "";
+    count.textContent = ta.value.length.toLocaleString() + " characters";
+    status.textContent = "saved ✓";
   };
 }
 window.openNotes = openNotes;
-window.notesSync = async () => {
-  const ta = document.getElementById("notesArea");
-  const status = document.getElementById("notesStatus");
-  if (!ta) return;
-  const full = ta.value;
-  const toSend = full.slice(0, NOTES_MAX_SRV);
-  try {
-    await fbPatch(`users/${state.user}`, { notes: toSend });
-    state.data.notes = toSend;
-    status.style.color = "#86efac";
-    status.textContent = full.length > NOTES_MAX_SRV
-      ? `Synced the first ${NOTES_MAX_SRV.toLocaleString()} characters. The full text is still saved on this device.`
-      : `Synced ✓`;
-  } catch (e) {
-    status.style.color = "#fca5a5";
-    status.textContent = "Sync failed: " + (e.message || e);
-  }
-};
 
 // ---------- ANNOUNCEMENTS APP ----------
 // Read-only feed of the latest announcements posted by owners.
@@ -1630,6 +1616,7 @@ async function openAnnouncements() {
 }
 window.openAnnouncements = openAnnouncements;
 
+// ---------- UNIVERSAL USER DIRECTORY ----------
 // A searchable list of every account on the server — add friends, jump to their
 // house, or open a chat. Reads the user cache (refreshed every 4s in core.js).
 let _dirFilter = "";
@@ -1667,17 +1654,15 @@ function renderDirectory() {
     const online = !!state.others[u];
     const isFriend = !!state.friends[u];
     const addr = ud.houseIndex != null ? gameWorld.houseAddress(ud.houseIndex) : null;
-    html += `<div class="friendItem">
-      <div class="info">
-        <span class="statusDot ${online ? "online" : ""}"></span>
-        <div><b>${escapeHtml(u)}</b>${isFriend ? ' <span class="tier rare" style="font-size:9px">friend</span>' : ""}
-          ${addr ? `<div class="muted" style="font-size:11px;">${escapeHtml(addr)}</div>` : ""}</div>
-      </div>
-      <div class="flexRow">
+    html += `<div class="dirRow">
+      <span class="statusDot ${online ? "online" : ""}"></span>
+      <div class="dirName"><b>${escapeHtml(u)}</b>${isFriend ? ' <span class="dirTag">friend</span>' : ""}
+        ${addr ? `<div class="muted" style="font-size:10px;">${escapeHtml(addr)}</div>` : ""}</div>
+      <div class="dirActions">
         ${isFriend
-          ? `<button class="menuBtn" onclick="openDMThread('${u}');closeMenu();">Chat</button>`
-          : `<button class="menuBtn green" onclick="directoryAddFriend('${u}')">Add</button>`}
-        ${addr ? `<button class="menuBtn gold" onclick="directoryGuide('${u}')">Route</button>` : ""}
+          ? `<button class="iconBtn" title="Open chat" onclick="openDMThread('${u}');closeMenu();">💬</button>`
+          : `<button class="iconBtn green" title="Add friend" onclick="directoryAddFriend('${u}')">+</button>`}
+        ${addr ? `<button class="iconBtn gold" title="Route to their house" onclick="directoryGuide('${u}')">📍</button>` : ""}
       </div>
     </div>`;
   }

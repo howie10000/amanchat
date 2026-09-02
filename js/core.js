@@ -352,12 +352,11 @@ async function pushPresence() {
   if (!state.user) return;
   let area = state.area;
   if (state.area === "interior_home") area = `inside:${state.interiorOf || state.user}`;
-  // Keep broadcasting a line a few seconds past its on-screen lifetime, so a
-  // viewer (who times it off their OWN clock — see mergeRemoteMsgs) always has
-  // a fresh copy for the whole time the bubble should be up. Dead lines are
-  // GC'd well after that.
+  // Keep broadcasting a line a touch past its on-screen life so a viewer always
+  // has a fresh copy for the whole bubble (they time it off their own clock via
+  // mergeRemoteMsgs, which also stops a still-broadcast line from re-popping).
   const now = Date.now();
-  state.msgs = state.msgs.filter(m => now - m.ts < GFX.CHAT_TTL + 4000).slice(0, GFX.CHAT_STACK_MAX);
+  state.msgs = state.msgs.filter(m => now - m.ts < GFX.CHAT_TTL + 2000).slice(0, GFX.CHAT_STACK_MAX);
   // Presence is fire-and-forget at 15Hz. A push that lands while the socket is
   // reconnecting is expected and harmless, so swallow it rather than spraying
   // unhandled rejections across the console.
@@ -396,39 +395,44 @@ function startPresenceLoop() {
         out[u].dispX = prev.dispX;
         out[u].dispY = prev.dispY;
       }
-      out[u].msgs = mergeRemoteMsgs(prev && prev.msgs, (p.msgs != null ? p.msgs : p.msg), now);
+      out[u].msgs = mergeRemoteMsgs(u, prev && prev.msgs, (p.msgs != null ? p.msgs : p.msg), now);
     }
     state.others = out;
   });
 }
 
 // A remote chat line is timed off the sender's wall clock, which drifts from
-// ours and lags by the network. Stamp each line with a stable LOCAL receive
-// time the first time we see it, and hold a line that's still alive by that
-// clock even after the sender drops it from its feed — so other players'
-// bubbles last exactly as long on our screen as our own do.
-function mergeRemoteMsgs(prevMsgs, incoming, now) {
+// ours and lags. We stamp each line with a LOCAL receive time the first time
+// we see it and time the bubble off THAT — so other players' bubbles last
+// exactly as long on our screen as our own do. `_chatSeen` remembers that
+// stamp for well past the bubble's life, so a line the sender is still
+// broadcasting after it has faded here does NOT get a fresh stamp and pop
+// again (the "sent twice" bug).
+const _chatSeen = new Map();   // "user|ts|text" -> local rxTs
+function chatKey(user, m) { return user + "|" + (m.ts || 0) + "|" + (m.text || m.t || "").slice(0, 140); }
+function mergeRemoteMsgs(user, prevMsgs, incoming, now) {
   const TTL = (window.GFX && GFX.CHAT_TTL) || 9000;
   const MAX = (window.GFX && GFX.CHAT_STACK_MAX) || 3;
-  const keyOf = (m) => `${m.ts || 0}|${m.text || m.t || ""}`;
-  const kept = new Map();
-  for (const m of (Array.isArray(prevMsgs) ? prevMsgs : [])) {
-    if (m && m.text && now - (m.rxTs || m.ts || 0) < TTL) kept.set(keyOf(m), m);
-  }
   const feed = typeof incoming === "string"
     ? (incoming ? [{ text: incoming, ts: now }] : [])
     : (Array.isArray(incoming) ? incoming : []);
-  for (const raw of feed) {
-    const m = typeof raw === "string" ? { text: raw, ts: now } : { text: raw.text || raw.t || "", ts: raw.ts || 0 };
-    if (!m.text) continue;
-    const k = keyOf(m);
-    if (kept.has(k)) continue;                 // seen before — keep its rxTs
-    m.rxTs = now;
-    kept.set(k, m);
+  const out = [];
+  const take = (m) => {
+    if (!m || !m.text) return;
+    const k = chatKey(user, m);
+    let rxTs = _chatSeen.get(k);
+    if (rxTs == null) { rxTs = now; _chatSeen.set(k, now); }   // genuinely new line
+    if (now - rxTs >= TTL) return;                             // already lived its life — stays dead
+    if (out.some(o => o._k === k)) return;
+    out.push({ text: m.text, ts: m.ts || rxTs, rxTs, _k: k });
+  };
+  for (const raw of feed) take(typeof raw === "string" ? { text: raw, ts: now } : { text: raw.text || raw.t || "", ts: raw.ts || 0 });
+  for (const m of (Array.isArray(prevMsgs) ? prevMsgs : [])) take(m);   // carry ones the feed dropped a hair early
+  if (_chatSeen.size > 400) {                                  // occasional GC
+    const cutoff = now - (TTL + 30000);
+    for (const [k, ts] of _chatSeen) if (ts < cutoff) _chatSeen.delete(k);
   }
-  return [...kept.values()]
-    .sort((a, b) => (b.rxTs || b.ts) - (a.rxTs || a.ts))
-    .slice(0, MAX);
+  return out.sort((a, b) => b.rxTs - a.rxTs).slice(0, MAX).map(({ text, ts, rxTs }) => ({ text, ts, rxTs }));
 }
 
 // Eases each other-player's displayed position toward their latest reported

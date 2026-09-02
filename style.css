@@ -133,7 +133,14 @@ html, body {
   flex: none;
 }
 #phone.big .phoneStatus { font-size: 12px; padding: 9px 16px 6px; }
-.phoneStatus #phoneClock { font-weight: 700; }
+/* The small status-bar clock is redundant on the home screen (there's a big
+   one in the middle). Show it only inside an app, fading in with the pop. */
+.phoneStatus #phoneClock {
+  font-weight: 700;
+  opacity: 0; transform: translateY(-3px);
+  transition: opacity .28s ease .06s, transform .28s ease .06s;
+}
+#phone.in-app .phoneStatus #phoneClock { opacity: 1; transform: none; }
 .statRight { display: inline-flex; align-items: center; gap: 6px; }
 #phoneExpand {
   background: rgba(255,255,255,.1); border: 1px solid #3a4658; color: #cbd5e1;
@@ -154,14 +161,25 @@ html, body {
 }
 #phone.big .phoneApps { grid-template-columns: repeat(4, 1fr); gap: 18px 8px; padding: 18px; }
 
-/* App screen inside the phone */
-#phoneAppView { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-/* Pop in from the tapped icon (transform-origin set inline by phoneView) */
-#phoneAppView.popIn { animation: appPopIn .26s cubic-bezier(.2,.9,.3,1.15); }
+/* App screen — absolutely overlays the home grid (below the status bar, whose
+   top offset is set inline by phoneView) so the pop reads as the icon itself
+   unfolding out over the home screen. Opaque once expanded. */
+#phoneAppView {
+  position: absolute; left: 0; right: 0; bottom: 0; top: 30px; z-index: 3;
+  display: flex; flex-direction: column; min-height: 0;
+  background:
+    radial-gradient(circle at 30% 18%, #7c3aed44, transparent 46%),
+    radial-gradient(circle at 82% 88%, #f9731633, transparent 42%),
+    linear-gradient(180deg, #111827, #0b1020);
+}
+/* Grows from the tapped icon (transform-origin set inline by phoneView):
+   starts icon-sized with rounded corners, unfolds to fill the screen. */
+#phoneAppView.popIn { animation: appPopIn .3s cubic-bezier(.16,.84,.3,1); will-change: transform, opacity; }
 @keyframes appPopIn {
-  from { transform: scale(.28); opacity: 0; }
-  60%  { opacity: 1; }
-  to   { transform: scale(1); opacity: 1; }
+  0%   { transform: scale(.11); opacity: 0; border-radius: 40px; }
+  22%  { opacity: 1; }
+  70%  { border-radius: 14px; }
+  100% { transform: scale(1); opacity: 1; border-radius: 0; }
 }
 .phoneAppBar {
   display: flex; align-items: center; gap: 6px; flex: none;
@@ -524,6 +542,25 @@ html, body {
   background: #ef4444; color: #fff; font-size: 10px; font-weight: 800;
   line-height: 15px; text-align: center; border-radius: 8px; vertical-align: middle;
 }
+
+/* Player directory rows — compact so name + actions fit any width */
+.dirRow {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 9px; margin: 5px 0;
+  background: #0a0e15; border: 1px solid #2a3344; border-radius: 9px;
+}
+.dirRow .dirName { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.dirRow .dirActions { flex: none; display: flex; gap: 5px; }
+.dirTag { font-size: 9px; color: #93c5fd; }
+.iconBtn {
+  flex: none; width: 26px; height: 26px; padding: 0;
+  border: 0; border-radius: 7px; cursor: pointer;
+  font-size: 13px; font-weight: 800; line-height: 26px; text-align: center;
+  background: linear-gradient(180deg, #3b82f6, #2563eb); color: #fff;
+}
+.iconBtn.green { background: linear-gradient(180deg, #10b981, #059669); }
+.iconBtn.gold  { background: linear-gradient(180deg, #fbbf24, #d97706); color: #1a1a1a; }
+.iconBtn:hover { filter: brightness(1.15); }
 .imInput { display: flex; gap: 6px; margin-top: 8px; }
 .imInput input {
   flex: 1; padding: 8px 10px; background: #0a0e15;
