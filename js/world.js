@@ -78,7 +78,8 @@ const PARK_BENCHES = [];
 // Fishing pond (west) — solo activity
 const POND = { x: 620, y: 1600, rx: 300, ry: 190 };
 const POND_DOCK = { x: POND.x, y: POND.y + POND.ry - 6, w: 90, h: 120 }; // dock reaching into water from south
-const FISH_SPOT = { x: POND.x, y: POND.y + POND.ry + 70, r: 78 };
+// Pulled up so the stand-here ring stays clear of the residential road (y 1894+).
+const FISH_SPOT = { x: POND.x, y: POND.y + POND.ry + 36, r: 78 };
 // Basketball court (east) — solo activity
 const COURT = { x: 3300, y: 1420, w: 760, h: 380 };
 const HOOPS = [
@@ -182,7 +183,8 @@ const SIGNPOSTS = [
       { text: "← GUILD · JOBS · PLAZA", dir: 0 },
       { text: "PARK & HOMES ↓", dir: 0 } ] },
   // Where the park meets the activity band.
-  { x: PARK.x + PARK.w / 2, y: PARK.y + PARK.h + 40, arms: [
+  // Offset west of the notice board (x 2170-2230) so they don't stack.
+  { x: PARK.x + PARK.w / 2 - 200, y: PARK.y + PARK.h + 40, arms: [
       { text: "↑ MAIN STREET", dir: 0 },
       { text: "FISHING · BALL · STAGE ↓", dir: 0 } ] },
   // Just north of the residential road.
@@ -815,7 +817,9 @@ function drawGrassPattern() {
 
 // Worn dirt desire-lines between the places people actually walk.
 const DIRT_PATHS = [
-  [[FOUNTAIN.x, PARK.y + PARK.h], [FOUNTAIN.x - 20, 1330], [MAYOR_AVE.x + 100, 1400], [MAYOR_AVE.x + 100, 1890]],
+  // Park gate down to the residential road, swinging west of the notice board
+  // and around the amphitheater's seating instead of through the stage.
+  [[FOUNTAIN.x - 60, PARK.y + PARK.h], [2060, 1360], [1840, 1500], [1840, 1890]],
   [[MAYOR_AVE.x + 60, 1300], [1500, 1380], [POND.x + 120, 1420], [POND.x + 60, POND.y - POND.ry - 30]],
   [[MAYOR_AVE.x + 140, 1300], [2900, 1400], [COURT.x - 40, COURT.y + COURT.h / 2]],
   [[FISH_SPOT.x + 80, FISH_SPOT.y], [STAGE.x - 200, STAGE.y + 120], [STAGE.x - 80, STAGE.y + 70]],
@@ -1039,7 +1043,9 @@ function drawMayorAvenue() {
   // warm stone bed
   ctx.fillStyle = "#c9b28e"; ctx.fillRect(cx, top, cw, bot - top);
   // diamond paving (only the visible band of rows)
-  const y0 = Math.max(top, Math.floor((_cam.y - 24) / 24) * 24), y1 = Math.min(bot, _cam.y + _cam.h + 24);
+  // Rows are anchored to the avenue's top edge (not the camera) so the
+  // pattern phase never changes as you scroll.
+  const y0 = Math.max(top, top + Math.floor((_cam.y - 24 - top) / 24) * 24), y1 = Math.min(bot, _cam.y + _cam.h + 24);
   for (let yy = y0; yy < y1; yy += 24) {
     const odd = ((yy - top) / 24) % 2;
     for (let xx = cx + (odd ? 12 : 0); xx < cx + cw; xx += 24) {
@@ -1167,9 +1173,11 @@ function drawPark() {
   const P = PARK, t = Date.now();
   // lawn with mown stripes (visible band only)
   ctx.fillStyle = "#5f9a12"; ctx.fillRect(P.x, P.y, P.w, P.h);
-  const sy0 = Math.max(P.y, Math.floor(_cam.y / 40) * 40), sy1 = Math.min(P.y + P.h, _cam.y + _cam.h + 40);
+  // Stripes are anchored to the park's top edge so their phase is fixed in
+  // world space; only the visible band is iterated.
+  const sy0 = Math.max(P.y, P.y + Math.floor((_cam.y - P.y) / 80) * 80), sy1 = Math.min(P.y + P.h, _cam.y + _cam.h + 80);
   ctx.fillStyle = "rgba(255,255,255,.06)";
-  for (let yy = sy0; yy < sy1; yy += 80) ctx.fillRect(P.x, yy, P.w, 40);
+  for (let yy = sy0; yy < sy1; yy += 80) ctx.fillRect(P.x, yy, P.w, Math.min(40, P.y + P.h - yy));
   // clover blotches
   ctx.fillStyle = "rgba(0,0,0,.05)";
   for (let gx = Math.max(P.x, Math.floor(_cam.x / 128) * 128); gx < Math.min(P.x + P.w, _cam.x + _cam.w + 128); gx += 128)
@@ -2047,4 +2055,6 @@ window.gameWorld = {
   houseRect, drawNeighborhood, collidesNeighborhood, buildingAtPlayer, houseAtPlayer,
   activityAtPlayer, visibleHouseUsers, houseAddress, STREET_NAMES,
   PARK, FOUNTAIN, POND, COURT, STAGE, NOTICE, FISH_SPOT, BALL_SPOT, NOTICE_SPOT,
+  // for scenery.js: "is this open grass with nothing standing on it?"
+  openGround: (x, y) => inGreenSpace(x, y) && !tooCloseToTree(x, y),
 };

@@ -103,6 +103,9 @@
       if (y > 480 && y < 660) continue;
       if (y > 1880 && y < 1980) continue;
       if (Math.hypot((x - Q.x) / (Q.rx + 80), (y - Q.y) / (Q.ry + 80)) < 1) continue;
+      // never under a tree, building, bench or on a path/road
+      const GW = window.gameWorld;
+      if (GW && typeof GW.openGround === "function" && !GW.openGround(x, y)) continue;
       puddles.push({ x, y, rx: 18 + R() * 26, ry: 8 + R() * 10, seed: R() * TAU });
     }
 
