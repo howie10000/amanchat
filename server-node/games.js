@@ -83,7 +83,9 @@ function slotSpin(bet, rows, symbols, lines, bonus, rand) {
         if (!def || !def.mult) continue;
         if (line.cells.every(([r, c]) => grid[r][c] === first)) wins.push({ line: line.label, symbol: first, pay: def.mult });
     }
-    let totalMult = wins.reduce((s, w) => s + w.pay, 0);
+    // Winning lines MULTIPLY together (a 5x row and a 2x row pay 10x), so a
+    // multi-line hit on the 3x3 machine is a genuine jackpot, not a sum.
+    let totalMult = wins.length ? wins.reduce((s, w) => s * w.pay, 1) : 0;
     let bonusHit = null;
     if (bonus && !wins.length) {
         bonusHit = bonus(grid);

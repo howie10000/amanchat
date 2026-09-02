@@ -212,7 +212,7 @@ function slotShellHtml(cfg) {
   const h = SLOT_PAD * 2 + SLOT_CELL * rows + SLOT_GAP * (rows - 1);
   const linesBlock = rows > 1
     ? `<h3 class="section">PAYLINES</h3>
-       <p class="muted">All 8 lines are live on every spin — 3 rows, 3 columns and both diagonals.</p>
+       <p class="muted">All 8 lines are live on every spin — 3 rows, 3 columns and both diagonals. Hit more than one and their multipliers multiply.</p>
        <div class="lineGrid">${SLOT_LINES.map(l => `<span class="pill" style="border-color:${l.color};color:${l.color}">${l.label}</span>`).join("")}</div>`
     : `<h3 class="section">ONE LINE</h3>
        <p class="muted">A classic one-armed bandit: three reels, one line straight across.</p>`;
@@ -421,7 +421,7 @@ async function spinSlotGrid(cfg) {
   _slot.wins = wins;
   _slot.spinning = false;
 
-  let totalMult = wins.reduce((s, w) => s + w.mult, 0);
+  let totalMult = wins.length ? wins.reduce((s, w) => s * w.mult, 1) : 0; // lines multiply together
   let bonusDetail = "";
   if (cfg.bonus && !wins.length) {
     const b = cfg.bonus(grid);
@@ -469,7 +469,7 @@ function openJackpot() {
     title: "💎 MEGA JACKPOT — 3×3",
     rows: 3, lines: SLOT_LINES,
     symbols: JACKPOT_SYMBOLS, betId: "slotBet", minBet: JACKPOT_MIN_BET,
-    blurb: `Minimum bet $${JACKPOT_MIN_BET}. Three 💎 on a line pays 300× — and lines stack.`,
+    blurb: `Minimum bet $${JACKPOT_MIN_BET}. Three 💎 on a line pays 300× — and winning lines multiply together (a 5× row and a 2× row pay 10×).`,
   });
 }
 

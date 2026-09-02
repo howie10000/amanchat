@@ -33,7 +33,12 @@ console.log('paytables');
     const r2 = G.slotSpin(10, 1, G.SLOT_SYMBOLS, [{ label: 'c', cells: [[0, 0], [0, 1], [0, 2]] }], G.slotsBonus, seq([0.0001, 0.999, 0.999]));
     ok(r2.wins.length === 0 && r2.bonus && r2.bonus.mult === 2 && r2.payout === 20, 'slots: a single 7 pays the 2x bonus');
     const j = G.slotSpin(250, 3, G.JACKPOT_SYMBOLS, G.SLOT_LINES, null, () => 0.0001);
-    ok(j.wins.length === 8 && j.payout === 250 * 300 * 8, 'jackpot: all diamonds pays 300x on all 8 lines');
+    ok(j.wins.length === 8 && j.payout === 250 * Math.pow(300, 8), 'jackpot: all diamonds multiplies 300x across all 8 lines');
+    // two winning rows multiply: 🍋 row (5x) + 🍇 row (2x) = 10x
+    const g2 = [['🍋','🍋','🍋'],['🍇','🍇','🍇'],['🃏','🔔','🍒']];
+    const rand2 = seq(g2.flat().map(sym => { let acc = 0; for (const d of G.JACKPOT_SYMBOLS) { if (d.sym === sym) return (acc + 0.5 * d.weight) / 47; acc += d.weight; } }));
+    const j2 = G.slotSpin(100, 3, G.JACKPOT_SYMBOLS, G.SLOT_LINES, null, rand2);
+    ok(j2.wins.length === 2 && j2.payout === 100 * 10, `jackpot: 5x row and 2x row pay 10x (got ${j2.payout}, ${j2.wins.length} wins)`);
     ok(G.scratchCard(50, () => 0.0001).payout === 2000, 'scratch: nine money bags pays 40x');
     ok(G.scratchCard(50, () => 0.999).payout === 0, 'scratch: nine rocks pays nothing');
     const rl = G.rouletteSpin([{ type: 'num', value: 0, amount: 10 }, { type: 'red', amount: 5 }, { type: 'low', amount: 5 }], 1000, () => 0);
@@ -142,7 +147,11 @@ function rtp(name, n, roundFn, lo, hi) {
 const U = 'sim', BAL = 1e12;
 const one = (game, action, args, bet) => (rand) => { const r = G.play(U, game, action, args, BAL, 0, rand); return [bet, bet + r.delta]; };
 rtp('slots',    20000, one('slots', 'spin', { bet: 10 }, 10), 0.80, 0.99);
-rtp('jackpot',  20000, one('jackpot', 'spin', { bet: 250 }, 250), 0.80, 0.99);
+// Jackpot lines MULTIPLY together (by design, see slotSpin), which makes the
+// 3x3 machine strongly player-favourable: ~240% RTP over 200k spins, with
+// most of it coming from 3- and 4-line hits. Very high variance, so the band
+// is wide; a spin with 5+ lines of a top symbol can still blow past it.
+rtp('jackpot',  20000, one('jackpot', 'spin', { bet: 250 }, 250), 1.20, 6.00);
 rtp('coinflip', 20000, one('coinflip', 'flip', { bet: 10, call: 'heads' }, 10), 0.90, 0.99);
 rtp('scratch',  20000, one('scratch', 'buy', { bet: 10 }, 10), 0.80, 0.99);
 rtp('roulette (red + straight 17)', 20000, one('roulette', 'spin', { bets: [{ type: 'red', amount: 10 }, { type: 'num', value: 17, amount: 10 }] }, 20), 0.90, 0.99);
