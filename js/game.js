@@ -939,16 +939,22 @@ function renderStaffLists() {
     const d = ROLE_RANK[staffRoleOf(b)] - ROLE_RANK[staffRoleOf(a)];
     return d || a.localeCompare(b);
   }).filter(u => u !== state.user && (!f || u.includes(f)));
+  // Your own row goes first: staff may pay themselves too.
+  if (_staff.users[state.user] && (!f || state.user.includes(f))) names.unshift(state.user);
   let html = "";
   for (const u of names.slice(0, 60)) {
     const ud = _staff.users[u] || {};
     const role = staffRoleOf(u);
     const ban = _staff.bans[u]; const banned = ban && (!ban.until || ban.until > now);
     const mute = _staff.mutes[u]; const muted = mute && (!mute.until || mute.until > now);
-    const online = !!state.others[u];
+    const online = me || !!state.others[u];
+    const me = u === state.user;
     const can = iOutrank(u);
     let btns = "";
-    if (can) {
+    if (me) {
+      btns += `<button class="menuBtn gold" onclick="staffGive('${u}')" title="Add to (or take from) your own balance">+ $</button>`;
+      btns += `<button class="menuBtn gold" onclick="staffSet('${u}')" title="Set your balance to an exact amount">Set $</button>`;
+    } else if (can) {
       btns += banned
         ? `<button class="menuBtn green" onclick="staffUnban('${u}')">Unban</button>`
         : `<button class="menuBtn red" onclick="staffBan('${u}')">Ban</button>`;
@@ -959,13 +965,13 @@ function renderStaffLists() {
       btns += `<button class="menuBtn gold" onclick="staffSet('${u}')" title="Set their balance to an exact amount">Set $</button>`;
     }
     btns += `<button class="menuBtn" onclick="mayorTeleport('${u}')" title="Teleport to their house">🏠 ${ud.houseIndex != null ? gameWorld.houseAddress(ud.houseIndex) : "?"}</button>`;
-    if (state.role === "owner") {
+    if (state.role === "owner" && !me) {
       if (role === "user") btns += `<button class="menuBtn" style="background:linear-gradient(180deg,#3b82f6,#1d4ed8)" onclick="staffPromote('${u}')">Make Admin</button>`;
       else if (role === "admin") btns += `<button class="menuBtn gray" onclick="staffDemote('${u}')">Remove Admin</button>`;
       if (role !== "owner") btns += `<button class="menuBtn red" onclick="mayorDelete('${u}')">Delete</button>`;
     }
     html += `<div class="staffRow">
-      <div class="who"><span class="statusDot ${online ? "online" : ""}"></span> <b>${u}</b>
+      <div class="who"><span class="statusDot ${online ? "online" : ""}"></span> <b>${u}</b>${me ? " <small>(you)</small>" : ""}
         ${role !== "user" ? `<span class="roleTag ${role}">${role.toUpperCase()}</span>` : ""}
         ${banned ? `<span class="roleTag banned">BANNED</span>` : ""}${muted ? `<span class="roleTag muted">MUTED</span>` : ""}
         <small>$${ud.money || 0} · joined ${ud.createdAt ? new Date(ud.createdAt).toLocaleDateString() : "?"}</small></div>
