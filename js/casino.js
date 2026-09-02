@@ -2246,32 +2246,65 @@ window.minesCash = async () => {
 // =====================================================================
 // ELEVATOR
 // =====================================================================
+// Floors unlock in order and stay unlocked. users/<me>/vegasFloor is the
+// highest floor index you've paid for (0 = lobby only, the default).
+function highestUnlockedFloor() { return Math.max(0, Math.min(4, state.data.vegasFloor | 0)); }
+function floorUnlocked(i) { return i <= highestUnlockedFloor(); }
 function openElevator() {
   const floors = gameInteriors.INTERIORS.interior_casino.floors;
   const cur = state.casinoFloor || 0;
-  const names = ["G", "2F", "3F", "MEZZ", "SKY"];
-  const rows = floors.map((f, i) => `
-    <div class="shopItem" ${i === cur ? 'style="border-color:#fbbf24;"' : ""}>
-      <div class="info"><b>${names[i]}</b> — ${f.name}${i === cur ? " <span class='muted'>(you are here)</span>" : ""}
-        <br/><small>${(f.hotspots || []).map(h => h.label).join(" · ")}</small></div>
-      <button class="menuBtn ${i === cur ? "gray" : "gold"}" ${i === cur ? "disabled" : ""}
-        onclick="rideElevator(${i})">GO</button>
-    </div>`).join("");
-  openMenu("🛗 VEGAS ELEVATOR", `<p class="muted">Five floors of neon. The sky deck is all glass — you can see the whole town from up there.</p>${rows}`);
+  const top = highestUnlockedFloor();
+  const rows = floors.map((f, i) => {
+    const here = i === cur, open = i <= top, next = i === top + 1;
+    const canAfford = (state.data.money || 0) >= f.price;
+    let btn;
+    if (here) btn = `<button class="menuBtn gray" disabled>HERE</button>`;
+    else if (open) btn = `<button class="menuBtn gold" onclick="rideElevator(${i})">GO UP</button>`;
+    else if (next) btn = `<button class="menuBtn ${canAfford ? "green" : "gray"}" ${canAfford ? "" : "disabled"} onclick="unlockFloor(${i})">UNLOCK · $${f.price.toLocaleString()}</button>`;
+    else btn = `<button class="menuBtn gray" disabled>🔒 LOCKED</button>`;
+    return `
+    <div class="elevRow ${here ? "here" : open ? "open" : "locked"}" style="--neon:${f.neon}">
+      <div class="elevLevel">${f.level.replace("Floor ", "")}</div>
+      <div class="info">
+        <b style="color:${f.neon}">${f.name}</b>${here ? " <span class='muted'>· you are here</span>" : ""}
+        <div class="elevTag">${f.tagline}</div>
+        <small>${(f.hotspots || []).map(h => h.label).join(" · ")}</small>
+        ${!open && !next ? `<small class="muted">Unlock ${floors[i - 1].name} first.</small>` : ""}
+      </div>
+      ${btn}
+    </div>`;
+  }).join("");
+  openMenu("🛗 VEGAS — ELEVATOR", `<p class="muted">Five rooms, each grander than the last. Every floor is a one-time membership: pay once and it's yours for good — but you have to earn your way up one floor at a time.</p>${rows}`, false, "casino");
 }
+window.unlockFloor = async (i) => {
+  const floors = gameInteriors.INTERIORS.interior_casino.floors;
+  const f = floors[i]; if (!f) return;
+  if (i !== highestUnlockedFloor() + 1) { toast("Unlock the floor below first."); return; }
+  if ((state.data.money || 0) < f.price) { toast(`You need $${f.price.toLocaleString()} for ${f.name}.`); return; }
+  if (!confirm(`Unlock ${f.name} for $${f.price.toLocaleString()}? This is permanent.`)) return;
+  state.data.money -= f.price;
+  state.data.vegasFloor = i;
+  await fbPatch(`users/${state.user}`, { money: state.data.money, vegasFloor: i });
+  updateHUD();
+  celebrate();
+  toast(`🎉 Welcome to <b>${f.name}</b>. The elevator now goes there.`, 3500);
+  rideElevator(i);
+};
 window.rideElevator = (floor) => {
+  if (!floorUnlocked(floor)) { toast("That floor is locked."); return; }
   state.casinoFloor = floor;
   // Step off the pad on arrival, or E would re-open the elevator immediately.
   state.pos.x = 512; state.pos.y = 520;
   state.facing = "up";
   closeMenu();
   updateHUD();
-  toast("🛗 " + gameInteriors.INTERIORS.interior_casino.floors[floor].name);
+  const f = gameInteriors.INTERIORS.interior_casino.floors[floor];
+  toast(`🛗 <b>${f.name}</b> — ${f.tagline}`, 2600);
 };
 
 window.gameCasino = {
   openSlots, openJackpot, openCoinFlip, openScratch, openKeno,
   openBlackjack, openRoulette, openDice, openBaccarat,
   openCrash, openPlinko, openHighLow, openVideoPoker, openMines,
-  openHorses, openWheel, openElevator,
+  openHorses, openWheel, openElevator, floorUnlocked, highestUnlockedFloor,
 };

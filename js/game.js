@@ -1,11 +1,14 @@
 /* GAME — main loop, key handling, menus, action dispatch, build mode */
 
 // ---------- Menu helpers ----------
-function openMenu(title, html, wide) {
+// `theme` picks an alternate skin for the box ("casino" = black & gold, used
+// by every VEGAS game so the whole building feels like one venue).
+function openMenu(title, html, wide, theme) {
   document.getElementById("menuTitle").textContent = title;
   document.getElementById("menuBody").innerHTML = html;
   const box = document.querySelector(".menuBox");
   box.classList.toggle("wide", !!wide);
+  box.classList.toggle("casino", theme === "casino" || (!theme && state.area === "interior_casino"));
   document.getElementById("menu").classList.remove("hidden");
 }
 function closeMenu() { document.getElementById("menu").classList.add("hidden"); }
@@ -53,8 +56,10 @@ function openHelp() {
     <div>🎣 Fishing Pond • 🏀 Basketball Court — walk up and press E</div>
     <div>★ Notice Board — leaderboard of the richest neighbors</div>
     <h3 class="section">VEGAS</h3>
-    <div>The tower on the west side. Four floors, fourteen games — ride the
-        elevator inside to change floor. The sky deck is all glass.</div>
+    <div>The tower on the west side. Five rooms, sixteen games: The Strip (lobby),
+        The Emerald Room, The Velvet Lounge, The Diamond Mezzanine and The Penthouse.
+        You start with the lobby — each floor above is a one-time membership you buy
+        at the elevator, in order. The Penthouse is all glass.</div>
     <h3 class="section">SOCIAL</h3>
     <div>Friends panel — chat, quest, duel, and give a house key (🔑)</div>
     <div>Messenger — instant DMs</div>

@@ -24,7 +24,7 @@ const BUILDINGS = [
   // routine; `doorHalf` widens the entrance to match the grand doorway.
   { x: 240, y: 150, w: 320, h: 350, type: "casino", label: "VEGAS",
     color: "#7f1d1d", roofColor: "#0a0a0a", signColor: "#fcd34d",
-    tower: true, storeys: 4, doorHalf: 46 },
+    tower: true, storeys: 5, doorHalf: 46 },
 
   // West side shops (left of mayor avenue)
   { x: 700,  y: 320, w: 220, h: 180, type: "bank",      label: "FIRST BANK",        color: "#14532d", roofColor: "#1e293b", signColor: "#fcd34d" },

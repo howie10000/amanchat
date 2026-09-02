@@ -301,6 +301,11 @@ const ENV_OWNERS = new Set(
     (process.env.OWNERS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
 );
 if (!store.get('roles')) store.put('roles', { owners: {}, admins: {} });
+{
+    const owners = [...new Set(['mayor', ...ENV_OWNERS, ...Object.keys(store.get('roles/owners') || {})])];
+    const admins = Object.keys(store.get('roles/admins') || {});
+    console.log(`[roles] owners: ${owners.join(', ')}${admins.length ? ' | admins: ' + admins.join(', ') : ''}`);
+}
 
 function roleOf(user) {
     if (!user) return 'user';
@@ -605,7 +610,9 @@ function handleMessage(c, msg) {
             if (ban) return replyErr(fmtBan(ban));
             setUser(c, user);
             if (c.ip) store.put('meta/ips/' + user, c.ip);
-            reply({ user, data: store.get('users/' + user), role: roleOf(user), mute: activeMute(user) });
+            const role = roleOf(user);
+            if (role !== 'user' || register) console.log(`[auth] ${user} ${register ? 'registered' : 'logged in'} role=${role}`);
+            reply({ user, data: store.get('users/' + user), role, mute: activeMute(user) });
             break;
         }
 

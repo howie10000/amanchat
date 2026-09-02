@@ -46,6 +46,19 @@ if (legacy) {
 roles.owners = roles.owners || {};
 roles.admins = roles.admins || {};
 
+// Sanity: is this actually the live database? The most common mistake is
+// running this in a folder with no data.db, which silently creates a fresh,
+// empty one while the real save sits somewhere like /opt/northpvp/data.db.
+const authUsers = db.prepare(`SELECT user FROM auth`).all().map(r => r.user);
+console.log(`database: ${DB_PATH}  (${authUsers.length} accounts${authUsers.length ? ': ' + authUsers.slice(0, 12).join(', ') + (authUsers.length > 12 ? ', …' : '') : ''})`);
+if (!authUsers.length && !args.includes('--force')) {
+    console.error('\nThis database has NO accounts, so it is probably not the one the server uses.');
+    console.error('Point DB_PATH at the real file, e.g.:  DB_PATH=/opt/northpvp/data.db node set-owner.js ' + names.join(' '));
+    console.error('(or pass --force to write here anyway)');
+    process.exit(2);
+}
+for (const n of names) if (!authUsers.includes(n)) console.log(`note: no account named "${n}" yet — the role applies once it registers`);
+
 if (list) {
     console.log('owners:', Object.keys(roles.owners).join(', ') || '(none — "mayor" and OWNERS env still count)');
     console.log('admins:', Object.keys(roles.admins).join(', ') || '(none)');
@@ -58,3 +71,4 @@ for (const n of names) {
 save();
 db.close();
 console.log('saved to', DB_PATH);
+console.log('Now RESTART the game server — it keeps roles in memory and only reads the file at startup.');

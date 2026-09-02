@@ -9,14 +9,16 @@ A multiplayer browser game built on the idea you sent your friend:
 - **Live multiplayer** — see other players walk around (server pushes presence at 10 Hz over WebSocket)
 - **In-person chat bubbles** (press `T`) + **saved DMs** (press `Q`)
 - **City center buildings**:
-  - 🎰 **VEGAS** — a five-storey neon tower with sixteen games:
-    - *Ground floor* — Lucky 7s Slots (classic single line), Coin Flip, Scratch Cards
-    - *2F Table Games* — Blackjack (naturals pay 3:2), Roulette, Dice Over/Under
-    - *3F High Roller Lounge* — Crash, Plinko (real physics, multi-ball, three risk levels), Higher or Lower, Video Poker
-    - *Mezzanine* — Keno, Baccarat, Mines
-    - *Sky Deck* — Horse Racing, Mega Jackpot Slots ($250 minimum, 300× top line), Wheel of Fortune
+  - 🎰 **VEGAS** — a five-storey art-deco tower with sixteen games across five
+    named rooms. You start with the lobby; every floor above is a one-time
+    membership bought at the elevator, and you must own the floor below first:
+    - **The Strip** (lobby, free) — Lucky 7s Slots, Coin Flip, Scratch Cards
+    - **The Emerald Room** ($2,500) — Blackjack (naturals pay 3:2), Roulette, Dice Over/Under
+    - **The Velvet Lounge** ($10,000) — Crash, Plinko (real physics, three risk levels), Higher or Lower, Video Poker
+    - **The Diamond Mezzanine** ($30,000) — Keno, Baccarat, Mines
+    - **The Penthouse** ($75,000) — glass sky deck: Horse Racing, Mega Jackpot Slots ($250 minimum, 300× top line), Wheel of Fortune
 
-    Ride the elevator inside to change floor.
+    Unlocks are saved per player (`users/<name>/vegasFloor`).
   - 🏦 **Bank** — Earn 5% interest every 2 minutes
   - 🛋️ **Furniture Store** — a rotating market that restocks every hour; legendaries are only sometimes on the shelf
   - 🎁 **Lootbox Shop** — Gacha for random furniture (incl. legendary Gold Statue)

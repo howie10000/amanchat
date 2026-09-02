@@ -461,108 +461,247 @@ function drawNameAndBubble(ctx, x, y, name, msgs, isYou, appearance, role) {
 }
 
 // ---------- BUILDING ----------
-// VEGAS. A four-storey neon tower rather than the usual shop box: lit window
-// grid, a marquee, a rooftop sign and a spotlight sweep. Drawn from the ground
-// up so the ground-floor doorway still lines up with the door hitbox.
+// VEGAS. An art-deco casino tower in black & gold rather than the usual shop
+// box: stepped crown, gold pilasters, lit floors, an illuminated marquee, a
+// porte-cochère over the entrance, a rooftop beacon and sweeping searchlights.
+// Drawn from the ground up so the ground-floor doorway still lines up with
+// the door hitbox (door rect at x + w/2 ± doorHalf, bottom 44px).
 function drawTower(ctx, b) {
   const t = Date.now();
   const storeys = b.storeys || 4;
-  const bodyTop = b.y + 46;
-  const bodyH = b.h - 46;
-
-  // Ground shadow
-  ctx.fillStyle = "rgba(0,0,0,0.35)";
-  ctx.fillRect(b.x + 6, b.y + b.h - 8, b.w, 12);
-
-  // Tower body, tapering slightly toward the top
-  ctx.fillStyle = "#111827";
-  ctx.beginPath();
-  ctx.moveTo(b.x, b.y + b.h);
-  ctx.lineTo(b.x + 16, bodyTop);
-  ctx.lineTo(b.x + b.w - 16, bodyTop);
-  ctx.lineTo(b.x + b.w, b.y + b.h);
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle = "#0a0a0a"; ctx.lineWidth = 2; ctx.stroke();
-
-  // Lit window grid — each pane flickers on its own slow cycle
-  const cols = 7;
-  const rowH = (bodyH - 70) / storeys;
-  for (let row = 0; row < storeys; row++) {
-    const inset = 16 * (1 - row / storeys);
-    const rowY = bodyTop + 14 + row * rowH;
-    for (let col = 0; col < cols; col++) {
-      const cw = (b.w - inset * 2 - 24) / cols;
-      const wx = b.x + inset + 12 + col * cw;
-      const lit = Math.sin(t / 900 + row * 2.1 + col * 1.7) > -0.35;
-      ctx.fillStyle = lit ? ["#fcd34d", "#f472b6", "#38bdf8", "#a78bfa"][(row + col) % 4] : "#1f2937";
-      ctx.fillRect(wx, rowY, cw - 6, rowH * 0.52);
-      ctx.strokeStyle = "rgba(0,0,0,.55)"; ctx.lineWidth = 1;
-      ctx.strokeRect(wx, rowY, cw - 6, rowH * 0.52);
-    }
-    // Floor band
-    ctx.fillStyle = "rgba(251,191,36,.35)";
-    ctx.fillRect(b.x + inset + 8, rowY + rowH * 0.62, b.w - inset * 2 - 16, 2);
-  }
-
-  // Marquee over the entrance
-  const mw = b.w - 40;
-  ctx.fillStyle = "#7f1d1d";
-  ctx.fillRect(b.x + 20, b.y + b.h - 74, mw, 30);
-  ctx.strokeStyle = "#fcd34d"; ctx.lineWidth = 3;
-  ctx.strokeRect(b.x + 20, b.y + b.h - 74, mw, 30);
-  for (let i = 0; i < 14; i++) {
-    const on = ((t / 180 | 0) + i) % 3 !== 0;
-    ctx.fillStyle = on ? "#fde047" : "#78350f";
-    ctx.beginPath(); ctx.arc(b.x + 28 + i * (mw - 16) / 13, b.y + b.h - 78, 2.6, 0, Math.PI * 2); ctx.fill();
-  }
-  ctx.fillStyle = "#fcd34d"; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
-  ctx.fillText("SLOTS · TABLES · JACKPOTS", b.x + b.w / 2, b.y + b.h - 54);
-
-  // Grand doorway (matches doorHalf on the building record)
+  const cx = b.x + b.w / 2;
+  const base = b.y + b.h;
   const half = b.doorHalf || 46;
-  ctx.fillStyle = "#0a0a0a";
-  ctx.fillRect(b.x + b.w / 2 - half, b.y + b.h - 44, half * 2, 44);
-  ctx.fillStyle = "rgba(252,211,77,.30)";
-  ctx.fillRect(b.x + b.w / 2 - half + 6, b.y + b.h - 38, half * 2 - 12, 38);
-  ctx.strokeStyle = "#fcd34d"; ctx.lineWidth = 3;
-  ctx.strokeRect(b.x + b.w / 2 - half, b.y + b.h - 44, half * 2, 44);
-  // Red carpet out the front
-  ctx.fillStyle = "#991b1b";
-  ctx.fillRect(b.x + b.w / 2 - half + 8, b.y + b.h, half * 2 - 16, 34);
-  ctx.fillStyle = "#fcd34d";
-  ctx.fillRect(b.x + b.w / 2 - half + 8, b.y + b.h, 3, 34);
-  ctx.fillRect(b.x + b.w / 2 + half - 11, b.y + b.h, 3, 34);
+  const GOLD = "#d4a017", GOLD_LT = "#f5d270", GOLD_DK = "#7a5a0c";
 
-  // Rooftop crown + big neon sign
-  ctx.fillStyle = "#1f2937";
-  ctx.fillRect(b.x + 30, b.y + 30, b.w - 60, 18);
-  const glow = 0.55 + 0.45 * Math.abs(Math.sin(t / 420));
-  ctx.save();
-  ctx.font = "bold 40px sans-serif";
-  ctx.textAlign = "center";
-  ctx.strokeStyle = "rgba(0,0,0,.85)"; ctx.lineWidth = 4;
-  ctx.strokeText(b.label, b.x + b.w / 2, b.y + 26);
-  ctx.shadowColor = `rgba(251,191,36,${glow})`;
-  ctx.shadowBlur = 26;
-  ctx.fillStyle = "#fde047";
-  ctx.fillText(b.label, b.x + b.w / 2, b.y + 26);
-  ctx.restore();
+  // Layout: crown occupies the top ~72px; shaft below it; ground floor 74px.
+  const crownH = 72;
+  const shaftTop = b.y + crownH;
+  const groundTop = base - 74;
+  const shaftH = groundTop - shaftTop;
+  const inset = 18;                                  // shaft narrower than podium
+  const sx = b.x + inset, sw = b.w - inset * 2;
 
-  // Spotlight beams sweeping the sky
+  // ---- Searchlights (behind everything) ----
   for (let i = 0; i < 2; i++) {
-    const a = Math.sin(t / 1600 + i * 2.2) * 0.55 + (i ? 0.5 : -0.5);
+    const a = Math.sin(t / 2100 + i * 2.4) * 0.5 + (i ? 0.42 : -0.42);
     ctx.save();
-    ctx.translate(b.x + (i ? b.w - 26 : 26), b.y + 34);
+    ctx.translate(cx + (i ? 1 : -1) * (b.w / 2 - 34), b.y + 40);
     ctx.rotate(a);
-    const g = ctx.createLinearGradient(0, 0, 0, -180);
-    g.addColorStop(0, "rgba(253,224,71,.35)");
-    g.addColorStop(1, "rgba(253,224,71,0)");
+    const g = ctx.createLinearGradient(0, 0, 0, -230);
+    g.addColorStop(0, "rgba(255,236,170,.32)");
+    g.addColorStop(1, "rgba(255,236,170,0)");
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.moveTo(-5, 0); ctx.lineTo(5, 0); ctx.lineTo(34, -180); ctx.lineTo(-34, -180);
+    ctx.beginPath(); ctx.moveTo(-4, 0); ctx.lineTo(4, 0); ctx.lineTo(30, -230); ctx.lineTo(-30, -230);
     ctx.closePath(); ctx.fill();
     ctx.restore();
   }
+
+  // ---- Ground shadow ----
+  ctx.fillStyle = "rgba(0,0,0,0.4)";
+  ctx.fillRect(b.x + 8, base - 6, b.w, 14);
+
+  // ---- Podium (ground floor, full width) ----
+  const podium = ctx.createLinearGradient(b.x, 0, b.x + b.w, 0);
+  podium.addColorStop(0, "#0c0a07"); podium.addColorStop(0.5, "#1c170e"); podium.addColorStop(1, "#0c0a07");
+  ctx.fillStyle = podium;
+  ctx.fillRect(b.x, groundTop, b.w, 74);
+  // Polished black granite band with faint reflection
+  ctx.fillStyle = "rgba(255,255,255,.04)";
+  ctx.fillRect(b.x, groundTop + 4, b.w, 10);
+
+  // ---- Shaft (main tower body) ----
+  const body = ctx.createLinearGradient(sx, 0, sx + sw, 0);
+  body.addColorStop(0, "#07060a"); body.addColorStop(0.3, "#141019"); body.addColorStop(0.55, "#0f0c12"); body.addColorStop(1, "#050407");
+  ctx.fillStyle = body;
+  ctx.fillRect(sx, shaftTop, sw, shaftH);
+
+  // Lit floors — each storey a warm band of glass with mullions, lighting
+  // shifting slowly so the building breathes rather than flickers.
+  const floorH = shaftH / storeys;
+  const panes = 9;
+  const paneW = (sw - 28) / panes;
+  for (let row = 0; row < storeys; row++) {
+    const fy = shaftTop + row * floorH;
+    const glassTop = fy + 8, glassH = floorH - 18;
+    // Base warm glow for the whole floor
+    const warmth = 0.55 + 0.45 * Math.sin(t / 2600 + row * 1.9);
+    ctx.fillStyle = `rgba(255,205,110,${0.10 + 0.12 * warmth})`;
+    ctx.fillRect(sx + 14, glassTop, sw - 28, glassH);
+    for (let col = 0; col < panes; col++) {
+      const wx = sx + 14 + col * paneW;
+      const l = Math.sin(t / 1800 + row * 2.3 + col * 1.31);
+      // three states: bright, dim amber, dark — mostly lit
+      ctx.fillStyle = l > 0.15 ? "#ffd98a" : l > -0.55 ? "#8a6a2c" : "#1a1510";
+      ctx.fillRect(wx + 2, glassTop, paneW - 4, glassH);
+      // upper pane highlight
+      ctx.fillStyle = "rgba(255,255,255,.10)";
+      ctx.fillRect(wx + 2, glassTop, paneW - 4, 3);
+    }
+    // Spandrel (dark band between floors) with gold hairline
+    ctx.fillStyle = "#0a0810";
+    ctx.fillRect(sx + 10, fy + floorH - 10, sw - 20, 10);
+    ctx.fillStyle = "rgba(212,160,23,.5)";
+    ctx.fillRect(sx + 10, fy + floorH - 10, sw - 20, 1);
+  }
+
+  // Gold pilasters / vertical fins running the full shaft
+  const fins = [sx + 4, sx + sw / 4, sx + sw / 2, sx + sw * 3 / 4, sx + sw - 8];
+  const finG = ctx.createLinearGradient(0, shaftTop, 0, groundTop);
+  finG.addColorStop(0, GOLD_LT); finG.addColorStop(0.5, GOLD); finG.addColorStop(1, GOLD_DK);
+  ctx.fillStyle = finG;
+  for (const fx of fins) ctx.fillRect(fx, shaftTop, 4, shaftH);
+  // Edge pilasters (wider)
+  ctx.fillRect(sx - 4, shaftTop, 5, shaftH);
+  ctx.fillRect(sx + sw - 1, shaftTop, 5, shaftH);
+  // Shaft outline
+  ctx.strokeStyle = "#000"; ctx.lineWidth = 1.5;
+  ctx.strokeRect(sx - 4, shaftTop, sw + 8, shaftH);
+
+  // ---- Stepped art-deco crown ----
+  // Three tiers narrowing upward, each with a gold cap line.
+  const tiers = [
+    { w: sw + 8, h: 14 },
+    { w: sw - 40, h: 16 },
+    { w: sw - 100, h: 18 },
+  ];
+  let ty = shaftTop;
+  for (const tier of tiers) {
+    ty -= tier.h;
+    ctx.fillStyle = "#0d0a12";
+    ctx.fillRect(cx - tier.w / 2, ty, tier.w, tier.h);
+    ctx.fillStyle = GOLD;
+    ctx.fillRect(cx - tier.w / 2, ty, tier.w, 2);
+    ctx.fillStyle = "rgba(212,160,23,.35)";
+    ctx.fillRect(cx - tier.w / 2, ty + tier.h - 1, tier.w, 1);
+    // sunburst ribs on each tier
+    ctx.fillStyle = "rgba(212,160,23,.55)";
+    const ribs = Math.max(3, Math.floor(tier.w / 22));
+    for (let i = 0; i <= ribs; i++) {
+      ctx.fillRect(cx - tier.w / 2 + i * (tier.w / ribs) - 1, ty + 3, 2, tier.h - 5);
+    }
+  }
+  // Spire + beacon
+  const spireTop = ty - 18;
+  ctx.fillStyle = GOLD;
+  ctx.fillRect(cx - 2, spireTop, 4, 18);
+  const beacon = 0.5 + 0.5 * Math.sin(t / 380);
+  ctx.save();
+  ctx.shadowColor = `rgba(255,80,80,${0.6 + 0.4 * beacon})`;
+  ctx.shadowBlur = 14 + 10 * beacon;
+  ctx.fillStyle = beacon > 0.5 ? "#ff5a5a" : "#b02020";
+  ctx.beginPath(); ctx.arc(cx, spireTop - 2, 3.5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  // ---- "VEGAS" rooftop sign — serif, gold, neon halo ----
+  const glow = 0.55 + 0.45 * Math.abs(Math.sin(t / 700));
+  ctx.save();
+  ctx.font = "bold 36px Georgia, 'Times New Roman', serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  const signY = ty + 30;   // sits within the crown tiers, below the beacon
+  // dark backing plate behind lettering
+  ctx.fillStyle = "rgba(0,0,0,.55)";
+  ctx.fillRect(cx - 88, signY - 30, 176, 38);
+  ctx.strokeStyle = "rgba(212,160,23,.5)"; ctx.lineWidth = 1;
+  ctx.strokeRect(cx - 88.5, signY - 30.5, 177, 39);
+  ctx.shadowColor = `rgba(255,214,100,${glow})`;
+  ctx.shadowBlur = 22;
+  ctx.fillStyle = "#ffe08a";
+  ctx.fillText(b.label, cx, signY);
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgba(90,60,0,.9)"; ctx.lineWidth = 1;
+  ctx.strokeText(b.label, cx, signY);
+  ctx.restore();
+
+  // ---- Marquee (illuminated, chasing bulbs) ----
+  const mx = b.x + 22, mw = b.w - 44, my = groundTop - 4, mh = 26;
+  ctx.fillStyle = "#1a0606";
+  ctx.fillRect(mx, my, mw, mh);
+  const marq = ctx.createLinearGradient(0, my, 0, my + mh);
+  marq.addColorStop(0, "#3a0a0a"); marq.addColorStop(1, "#160404");
+  ctx.fillStyle = marq;
+  ctx.fillRect(mx + 3, my + 3, mw - 6, mh - 6);
+  ctx.strokeStyle = GOLD; ctx.lineWidth = 2;
+  ctx.strokeRect(mx, my, mw, mh);
+  const bulbs = 22;
+  const phase = (t / 140 | 0);
+  for (let i = 0; i < bulbs; i++) {
+    const on = (phase + i) % 4 !== 0;
+    const bx = mx + 6 + i * (mw - 12) / (bulbs - 1);
+    ctx.fillStyle = on ? "#fff1b8" : "#5a4010";
+    ctx.beginPath(); ctx.arc(bx, my - 4, 2.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(bx, my + mh + 4, 2.4, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = "#f5deb3";
+  ctx.font = "bold 12px Georgia, 'Times New Roman', serif";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("SLOTS  ·  TABLES  ·  HIGH ROLLERS", cx, my + mh / 2 + 1);
+
+  // ---- Porte-cochère over the entrance ----
+  const awW = half * 2 + 44, awY = base - 44 - 14;
+  // canopy
+  ctx.fillStyle = "#0e0b08";
+  ctx.fillRect(cx - awW / 2, awY, awW, 12);
+  ctx.fillStyle = GOLD;
+  ctx.fillRect(cx - awW / 2, awY, awW, 2);
+  ctx.fillRect(cx - awW / 2, awY + 10, awW, 2);
+  // downlights under the canopy
+  ctx.fillStyle = "rgba(255,220,140,.9)";
+  for (let i = 0; i < 5; i++) {
+    ctx.beginPath(); ctx.arc(cx - awW / 2 + 14 + i * (awW - 28) / 4, awY + 13, 1.8, 0, Math.PI * 2); ctx.fill();
+  }
+  // columns flanking the door
+  const colG = ctx.createLinearGradient(0, awY, 0, base);
+  colG.addColorStop(0, GOLD_LT); colG.addColorStop(0.5, GOLD); colG.addColorStop(1, GOLD_DK);
+  ctx.fillStyle = colG;
+  ctx.fillRect(cx - half - 16, awY + 12, 8, base - awY - 12);
+  ctx.fillRect(cx + half + 8, awY + 12, 8, base - awY - 12);
+  ctx.fillStyle = "#0a0806";
+  ctx.fillRect(cx - half - 18, base - 6, 12, 6);
+  ctx.fillRect(cx + half + 6, base - 6, 12, 6);
+
+  // ---- Grand doorway (geometry fixed: matches doorHalf on the record) ----
+  ctx.fillStyle = "#0a0a0a";
+  ctx.fillRect(cx - half, base - 44, half * 2, 44);
+  const doorGlow = ctx.createLinearGradient(0, base - 44, 0, base);
+  doorGlow.addColorStop(0, "rgba(255,210,120,.55)");
+  doorGlow.addColorStop(1, "rgba(255,210,120,.12)");
+  ctx.fillStyle = doorGlow;
+  ctx.fillRect(cx - half + 6, base - 38, half * 2 - 12, 38);
+  // double-door split + brass handles
+  ctx.fillStyle = "rgba(0,0,0,.6)";
+  ctx.fillRect(cx - 1, base - 38, 2, 38);
+  ctx.fillStyle = GOLD_LT;
+  ctx.fillRect(cx - 7, base - 22, 3, 8);
+  ctx.fillRect(cx + 4, base - 22, 3, 8);
+  ctx.strokeStyle = GOLD; ctx.lineWidth = 3;
+  ctx.strokeRect(cx - half, base - 44, half * 2, 44);
+  // Red carpet out the front
+  ctx.fillStyle = "#991b1b";
+  ctx.fillRect(cx - half + 8, base, half * 2 - 16, 34);
+  ctx.fillStyle = "#fcd34d";
+  ctx.fillRect(cx - half + 8, base, 3, 34);
+  ctx.fillRect(cx + half - 11, base, 3, 34);
+  // Velvet rope stanchions along the carpet edge
+  ctx.fillStyle = GOLD;
+  for (let i = 0; i < 2; i++) {
+    const sxp = i ? cx + half - 4 : cx - half + 1;
+    ctx.fillRect(sxp, base + 4, 3, 22);
+    ctx.beginPath(); ctx.arc(sxp + 1.5, base + 4, 2.5, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.strokeStyle = "#b91c1c"; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx - half + 2, base + 10);
+  ctx.quadraticCurveTo(cx - half + 4, base + 22, cx - half + 8, base + 24);
+  ctx.moveTo(cx + half - 3, base + 10);
+  ctx.quadraticCurveTo(cx + half - 5, base + 22, cx + half - 9, base + 24);
+  ctx.stroke();
+
+  // Pavement light spill from the entrance
+  ctx.fillStyle = `rgba(255,214,120,${0.10 + 0.05 * glow})`;
+  ctx.fillRect(cx - half - 20, base, half * 2 + 40, 6);
+
+  ctx.textBaseline = "alphabetic";
 }
 
 function drawBuildingBox(ctx, b) {

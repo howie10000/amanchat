@@ -115,6 +115,100 @@ html, body {
 .emoteBtn span { display: block; font-size: 28px; margin-bottom: 4px; }
 .emoteBtn:hover { border-color: #fbbf24; background: #1c1f12; }
 
+/* VEGAS — black & gold skin for every casino menu */
+.menuBox.casino {
+  background:
+    radial-gradient(ellipse 70% 40% at 50% 0%, rgba(212,160,23,0.16), transparent 70%),
+    radial-gradient(ellipse 60% 30% at 50% 100%, rgba(212,160,23,0.06), transparent 70%),
+    linear-gradient(180deg, #14110a, #0a0806);
+  border: 1px solid #d4a017;
+  box-shadow:
+    inset 0 0 0 1px rgba(212,160,23,.18),
+    inset 0 0 0 4px #0a0806,
+    inset 0 0 0 5px rgba(212,160,23,.28),
+    0 0 40px rgba(212,160,23,.16), 0 30px 80px rgba(0,0,0,.75);
+  color: #f5deb3;
+}
+.menuBox.casino .menuHeader {
+  position: relative;
+  padding-bottom: 18px;
+  background:
+    linear-gradient(90deg, transparent, rgba(212,160,23,.08) 50%, transparent),
+    linear-gradient(180deg, #1b160c, #0f0c07);
+  border-bottom: 1px solid #d4a017;
+  box-shadow: 0 1px 0 rgba(212,160,23,.25), 0 10px 30px rgba(0,0,0,.5);
+}
+/* Ornamental hairline flourish under the title */
+.menuBox.casino .menuHeader::before,
+.menuBox.casino .menuHeader::after {
+  content: ""; position: absolute; bottom: 7px; height: 1px; width: 26%;
+  background: linear-gradient(90deg, transparent, #d4a017 60%, #f5d270);
+  pointer-events: none;
+}
+.menuBox.casino .menuHeader::before { left: 16%; }
+.menuBox.casino .menuHeader::after { right: 16%; transform: scaleX(-1); }
+.menuBox.casino .menuHeader h2 {
+  font-family: Georgia, "Times New Roman", serif; font-weight: 700;
+  letter-spacing: 4px; text-transform: uppercase; font-size: 19px;
+  color: #f5deb3;
+  text-shadow: 0 0 10px rgba(212,160,23,.55), 0 1px 0 #000;
+}
+.menuBox.casino .menuHeader h2::before,
+.menuBox.casino .menuHeader h2::after {
+  content: "\25C6"; /* ◆ */ font-size: 8px; color: #d4a017; vertical-align: middle;
+  margin: 0 12px; position: relative; top: -2px; text-shadow: none;
+}
+.menuBox.casino .closeBtn { color: #a48a52; }
+.menuBox.casino .closeBtn:hover { color: #f5deb3; }
+.menuBox.casino h3.section {
+  color: #d4a017; font-family: Georgia, "Times New Roman", serif;
+  letter-spacing: 3px; text-transform: uppercase; font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; gap: 12px;
+}
+.menuBox.casino h3.section::after {
+  content: ""; flex: 1; height: 1px;
+  background: linear-gradient(90deg, rgba(212,160,23,.55), transparent);
+}
+.menuBox.casino .menuBtn.gold {
+  background: linear-gradient(180deg, #f5d270, #d4a017 55%, #a8770c);
+  color: #1a1205; border: 1px solid #f5d270; font-weight: 700; letter-spacing: 1px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 0 14px rgba(212,160,23,.35);
+}
+.menuBox.casino .menuBtn.gold:hover { filter: brightness(1.08); box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 0 22px rgba(212,160,23,.55); }
+.menuBox.casino .betBar { background: #0a0806; border: 1px solid #3b2a10; box-shadow: inset 0 0 0 1px rgba(212,160,23,.12); }
+.menuBox.casino .betBar .chip { border-color: #3b2a10; color: #cbbf9e; font-family: Georgia, serif; }
+.menuBox.casino .betBar .chip:hover { border-color: #d4a017; color: #f5deb3; box-shadow: 0 0 10px rgba(212,160,23,.35); }
+
+/* Elevator */
+.elevRow {
+  display: flex; align-items: center; gap: 14px; padding: 10px 14px; margin: 8px 0;
+  border: 1px solid #3b2a10; border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255,255,255,.02), transparent), rgba(0,0,0,.4);
+  box-shadow: inset 0 0 0 1px rgba(212,160,23,.08);
+  transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+.elevRow:not(.locked):hover { border-color: #d4a017; box-shadow: inset 0 0 0 1px rgba(212,160,23,.18), 0 0 14px rgba(212,160,23,.18); transform: translateX(2px); }
+.elevRow .info { flex: 1; }
+.elevRow .info b { font-family: Georgia, "Times New Roman", serif; letter-spacing: 1px; color: #f5deb3; }
+.elevRow .info small { display: block; color: #8a7f6a; font-size: 11px; margin-top: 2px; }
+.elevRow .elevTag { color: #cbbf9e; font-size: 12px; font-style: italic; font-family: Georgia, serif; margin: 2px 0; }
+.elevRow.here {
+  border-color: var(--neon);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--neon) 10%, transparent), transparent 60%), rgba(0,0,0,.45);
+  box-shadow: inset 0 0 24px rgba(0,0,0,.6), 0 0 14px color-mix(in srgb, var(--neon) 35%, transparent);
+}
+.elevRow.locked { opacity: .55; filter: grayscale(.4); }
+.elevRow.locked .info b { color: #8a7f6a !important; }
+.elevLevel {
+  flex: 0 0 44px; height: 44px; border-radius: 50%; border: 2px solid #d4a017;
+  display: flex; align-items: center; justify-content: center;
+  font-family: Georgia, serif; font-weight: 700; font-size: 13px; color: #f5deb3;
+  background: radial-gradient(circle at 35% 30%, #3b2a10, #0a0806);
+  box-shadow: inset 0 0 0 3px #0a0806, inset 0 0 0 4px rgba(212,160,23,.35), 0 2px 6px rgba(0,0,0,.6);
+  text-shadow: 0 1px 0 #000;
+}
+.elevRow.here .elevLevel { border-color: var(--neon); color: var(--neon); box-shadow: inset 0 0 0 3px #0a0806, inset 0 0 0 4px color-mix(in srgb, var(--neon) 40%, transparent), 0 0 12px color-mix(in srgb, var(--neon) 45%, transparent); }
+
 /* Paint shop */
 .paintRow { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
 .paintRow .swatch { width: 30px; height: 30px; }
