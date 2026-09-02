@@ -918,7 +918,12 @@ async function openStaffPanel() {
     <h3 class="section">ACTIVE MUTES</h3>
     <div id="staffMutes"></div>
   `, true);
-  renderStaffLists();
+  try { renderStaffLists(); }
+  catch (e) {
+    console.error("[staff] render failed", e);
+    const el = document.getElementById("staffList");
+    if (el) el.innerHTML = `<p style="color:#ef4444">Panel failed to render: ${escapeHtml(e.message)}</p>`;
+  }
   // keep the "Staff" button state right if our role changed
   setRole(state.role);
 }
@@ -968,7 +973,12 @@ function renderStaffLists() {
     </div>`;
   }
   if (names.length > 60) html += `<p class="muted">Showing 60 of ${names.length} — narrow the search.</p>`;
-  list.innerHTML = html || `<p class="muted">No players match.</p>`;
+  const total = Object.keys(_staff.users).length;
+  list.innerHTML = html || (f
+    ? `<p class="muted">No players match "${escapeHtml(f)}" (${total} account${total === 1 ? "" : "s"} on this server).</p>`
+    : total <= 1
+      ? `<p class="muted"><b>You are the only account on this server.</b> If other players exist, the server is running on the wrong database — check the <code>db=</code> path in its startup log.</p>`
+      : `<p class="muted">No other players.</p>`);
 
   const bansEl = document.getElementById("staffBans");
   const activeBans = Object.entries(_staff.bans).filter(([, b]) => b && (!b.until || b.until > now));
