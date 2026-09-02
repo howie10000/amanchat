@@ -144,6 +144,21 @@ const tryRpc = async (c, op, args) => { try { return { ok: true, data: await c.r
     `selling it back pays ${Math.round(ECON.FURNITURE_RESALE * 100)}% ($${sell.gained} of $${item.price})`);
   ok(!(await tryRpc(amy, 'buy', { kind: 'sell_furniture', item: item.id })).ok, 'cannot sell what you no longer own');
 
+  console.log('overdue loan skims earnings');
+  // Force a long-overdue loan on amy (latePeriods huge so bankSync adds no new penalty).
+  await boss.rpc('patch', { path: 'users/amy', value: { loan: { principal: 1000, owed: 1000, rate: 0.3, takenTs: 1, dueTs: 1, latePeriods: 9e9 } } });
+  const owedBefore = (await amy.rpc('bank', { action: 'status' })).loan.owed;
+  const e = await amy.rpc('earn', { source: 'typing', amount: 100 });
+  ok(e.gained === 100 && e.net === 95, `earning $100 with an overdue loan credits $95 (5% skimmed)`);
+  const st2 = await amy.rpc('bank', { action: 'status' });
+  ok(st2.loan && st2.loan.owed === owedBefore - 5, `the $5 skim came off the loan (${owedBefore} → ${st2.loan ? st2.loan.owed : 'cleared'})`);
+  // Repaying it normally still works and no longer skims.
+  await boss.rpc('patch', { path: 'users/amy', value: { money: 5000 } });
+  const rr = await amy.rpc('bank', { action: 'loan_repay', amount: 'all' });
+  ok(rr.paidOff, 'can still clear an overdue loan by paying it off');
+  const e2 = await amy.rpc('earn', { source: 'whack', amount: 100 });
+  ok(e2.net === 100, 'once the loan is gone, earnings arrive in full again');
+
   console.log(`\n${passes} passed, ${fails} failed`);
   stop();
   process.exit(fails ? 1 : 0);

@@ -153,17 +153,14 @@ function houseRect(i) {
   return { x: HOUSES_START_X + col * (HOUSE_W + HOUSE_GAP_X), y: HOUSE_ROW_Y[row], w: HOUSE_W, h: HOUSE_H };
 }
 
-// Houses that exist on the map right now: your own, anyone currently online,
-// and every friend. Friends used to vanish the moment they logged off, which
-// made "walk to my friend's house" impossible to plan — and left the map
-// full of empty lots.
+// Every house on the map: one per account that has a lot, online or not.
+// (The neighbourhood is a fixed set of lots; an empty street reads as broken.)
 function visibleHouseUsers() {
   const users = state._userCache || {};
-  const friends = state.friends || {};
   const out = {};
   for (const [u, info] of Object.entries(users)) {
-    if (!info || info.houseIndex == null) continue;
-    if (u === state.user || state.others[u] || friends[u]) out[u] = info;
+    if (!info || info.houseIndex == null || u === "mayor") continue;
+    out[u] = info;
   }
   return out;
 }

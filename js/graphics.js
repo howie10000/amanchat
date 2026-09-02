@@ -360,29 +360,36 @@ function drawCharacter(ctx, x, y, appearance, opts = {}) {
 
 // ---------- CHAT BUBBLE STACK ----------
 // Up to CHAT_STACK_MAX bubbles float above a character's head, newest at the
-// bottom. When a new line arrives the older ones slide up fast, then the new
-// one pops in underneath them. Everything is derived from message timestamps,
-// so remote players animate identically without syncing any animation state.
+// bottom. When a new line arrives the older ones slide up, then the new one
+// pops in underneath. A long line wraps onto more rows and the bubble grows
+// taller. Timing is off the LOCAL clock (core.js stamps remote lines with a
+// receive time), so everyone's bubbles last the same on your screen.
 const CHAT_STACK_MAX = 3;
 const CHAT_TTL   = 9000; // ms a bubble stays up
 const CHAT_SLIDE = 170;  // ms the older bubbles take to slide up
 const CHAT_POP   = 130;  // ms the new bubble takes to pop in
-const CHAT_ROW_H = 26;   // vertical gap between stacked bubbles
-const CHAT_BASE_Y = -52; // offset of the bottom (newest) bubble from feet
+const CHAT_GAP   = 5;    // vertical gap between stacked bubbles
+const CHAT_BASE_Y = -50; // feet-offset of the NEWEST bubble's bottom edge
+const CHAT_MAX_W = 216;  // px of text before a line wraps
+const CHAT_LINE_H = 15;  // px per wrapped line
+const CHAT_PAD_X = 11, CHAT_PAD_Y = 6;
+const CHAT_MAX_LINES = 6;
 
 function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
 function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 function easeOutBack(t) { const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); }
 
-// Normalizes whatever presence gave us into [{text, ts}], newest first,
-// dropping expired lines. Accepts a bare string for backwards compatibility
-// with any client still sending the old single-message field.
+// Normalizes whatever presence gave us into [{text, ts}], newest first, timed
+// off the local clock (m.rxTs from core.js when present, else m.ts), and drops
+// expired lines. Accepts a bare string for old single-message clients.
 function normalizeMsgs(msgs) {
   const now = Date.now();
   let list;
   if (!msgs) return [];
   if (typeof msgs === "string") list = msgs ? [{ text: msgs, ts: now }] : [];
-  else if (Array.isArray(msgs)) list = msgs.map(m => (typeof m === "string" ? { text: m, ts: now } : { text: m.text || m.t || "", ts: m.ts || 0 }));
+  else if (Array.isArray(msgs)) list = msgs.map(m => (typeof m === "string"
+    ? { text: m, ts: now }
+    : { text: m.text || m.t || "", ts: m.rxTs || m.ts || 0 }));
   else return [];
   return list
     .filter(m => m.text && now - m.ts < CHAT_TTL)
@@ -390,52 +397,92 @@ function normalizeMsgs(msgs) {
     .slice(0, CHAT_STACK_MAX);
 }
 
+// Greedy word-wrap to CHAT_MAX_W, breaking any single over-long word, capped
+// at CHAT_MAX_LINES (last line gets an ellipsis if it overflows).
+function wrapChatText(ctx, text) {
+  ctx.font = "12px sans-serif";
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let cur = "";
+  const push = () => { if (cur) { lines.push(cur); cur = ""; } };
+  for (let w of words) {
+    while (ctx.measureText(w).width > CHAT_MAX_W && w.length > 1) {
+      // hard-break a giant word
+      let cut = w.length;
+      while (cut > 1 && ctx.measureText(w.slice(0, cut)).width > CHAT_MAX_W) cut--;
+      push();
+      lines.push(w.slice(0, cut));
+      w = w.slice(cut);
+    }
+    const trial = cur ? cur + " " + w : w;
+    if (ctx.measureText(trial).width > CHAT_MAX_W) { push(); cur = w; }
+    else cur = trial;
+    if (lines.length >= CHAT_MAX_LINES) break;
+  }
+  push();
+  if (lines.length > CHAT_MAX_LINES) {
+    lines.length = CHAT_MAX_LINES;
+    lines[CHAT_MAX_LINES - 1] = lines[CHAT_MAX_LINES - 1].replace(/.{1}$/, "…");
+  }
+  let maxW = 0;
+  for (const l of lines) maxW = Math.max(maxW, ctx.measureText(l).width);
+  return { lines, w: Math.ceil(maxW) + CHAT_PAD_X * 2, h: lines.length * CHAT_LINE_H + CHAT_PAD_Y * 2 };
+}
+
 function drawChatStack(ctx, x, y, msgs) {
   const list = normalizeMsgs(msgs);
   if (!list.length) return;
   const now = Date.now();
+  const met = list.map(m => wrapChatText(ctx, m.text));
+
   const slideAge = now - list[0].ts;
   const slide = easeOutCubic(clamp01(slideAge / CHAT_SLIDE));
+  const shift = met[0].h + CHAT_GAP;               // room the new bubble makes
 
-  // Draw oldest first so the newest bubble lands on top of the stack.
+  // Bottom-edge offset of each bubble (newest = 0, older stack upward).
+  const bottom = [CHAT_BASE_Y];
+  for (let i = 1; i < list.length; i++) bottom[i] = bottom[i - 1] - met[i - 1].h - CHAT_GAP;
+
+  // Draw oldest first so the newest lands on top.
   for (let i = list.length - 1; i >= 0; i--) {
-    const m = list[i];
-    let rowY, scale = 1;
-    if (i === 0) {
-      // Newest: waits for the slide to finish, then pops in.
-      if (slideAge < CHAT_SLIDE) continue;
-      scale = easeOutBack(clamp01((slideAge - CHAT_SLIDE) / CHAT_POP));
-      rowY = CHAT_BASE_Y;
-    } else {
-      // Older: glide from the slot it used to occupy up to its new one.
-      rowY = CHAT_BASE_Y - (i - 1 + slide) * CHAT_ROW_H;
-    }
-    // Fade the last moments of a bubble's life instead of blinking it away.
+    const m = list[i], mm = met[i];
     const life = now - m.ts;
-    const alpha = life > CHAT_TTL - 500 ? clamp01((CHAT_TTL - life) / 500) : 1;
-    drawBubble(ctx, x, y + rowY, m.text, alpha, scale, i === 0);
+    const alpha = life > CHAT_TTL - 600 ? clamp01((CHAT_TTL - life) / 600) : 1;
+    if (alpha <= 0) continue;
+    let topY, scale = 1;
+    if (i === 0) {
+      if (slideAge < CHAT_SLIDE) continue;         // wait for the older ones to move
+      scale = easeOutBack(clamp01((slideAge - CHAT_SLIDE) / CHAT_POP));
+      topY = bottom[0] - mm.h;
+    } else {
+      topY = (bottom[i] + (1 - slide) * shift) - mm.h;   // slide up into place
+    }
+    drawBubble(ctx, x, y + topY, mm, alpha, scale, i === 0);
   }
 }
 
-function drawBubble(ctx, x, by, text, alpha, scale, isNewest) {
+function drawBubble(ctx, x, topY, met, alpha, scale, isNewest) {
+  const { lines, w, h } = met;
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.font = "12px sans-serif";
-  ctx.textAlign = "center";
-  const w = Math.min(230, ctx.measureText(text).width + 18);
-  const h = 22;
-  if (scale !== 1) { ctx.translate(x, by + h); ctx.scale(scale, scale); ctx.translate(-x, -(by + h)); }
+  if (scale !== 1) { ctx.translate(x, topY + h); ctx.scale(scale, scale); ctx.translate(-x, -(topY + h)); }
   ctx.fillStyle = "rgba(0,0,0,.85)";
-  roundRect(ctx, x - w/2, by, w, h, 6, true, false);
+  roundRect(ctx, x - w / 2, topY, w, h, 7, true, false);
   ctx.strokeStyle = isNewest ? "#fbbf24" : "rgba(251,191,36,.45)";
   ctx.lineWidth = 1;
-  roundRect(ctx, x - w/2, by, w, h, 6, false, true);
+  roundRect(ctx, x - w / 2, topY, w, h, 7, false, true);
   ctx.fillStyle = "#fff";
-  ctx.fillText(text, x, by + 15);
+  ctx.font = "12px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (let li = 0; li < lines.length; li++) {
+    ctx.fillText(lines[li], x, topY + CHAT_PAD_Y + CHAT_LINE_H * li + CHAT_LINE_H / 2);
+  }
+  ctx.textBaseline = "alphabetic";
   if (isNewest) {
     ctx.fillStyle = "rgba(0,0,0,.85)";
     ctx.beginPath();
-    ctx.moveTo(x - 4, by + h); ctx.lineTo(x + 4, by + h); ctx.lineTo(x, by + h + 5);
+    ctx.moveTo(x - 4, topY + h - 0.5); ctx.lineTo(x + 4, topY + h - 0.5); ctx.lineTo(x, topY + h + 5);
     ctx.closePath(); ctx.fill();
   }
   ctx.restore();

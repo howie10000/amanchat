@@ -166,12 +166,38 @@ async function enterGame(user, data, role, mute) {
   updateHUD();
   startPresenceLoop();
   startNotifyLoop();
+  wrapEconomyReplies();
   setInterval(refreshUserCache, 4000);
   if (state.mute) toast(muteText(state.mute), 5000);
   if (typeof dailyBonusReady === "function" && dailyBonusReady()) {
     setTimeout(() => toast("🎁 Your <b>daily bonus</b> is ready at FIRST BANK!", 4000), 2500);
   }
   requestAnimationFrame(loop);
+}
+
+// Every server-authoritative economy reply carries the caller's fresh `money`
+// (and, where relevant, `loan`). Adopt those automatically so the HUD — vault
+// debt included — never drifts, whatever activity produced the money.
+let _economyWrapped = false;
+function wrapEconomyReplies() {
+  if (_economyWrapped) return;
+  _economyWrapped = true;
+  for (const fn of ["netEarn", "netCasino", "netFish", "netBank", "netBuy"]) {
+    const orig = window[fn];
+    if (typeof orig !== "function" || orig._wrapped) continue;
+    const wrapped = async (...args) => {
+      const d = await orig(...args);
+      if (d && typeof d === "object" && state.data) {
+        if (typeof d.money === "number") state.data.money = d.money;
+        if ("loan" in d) state.data.loan = d.loan || null;
+        if (typeof d.bankBalance === "number") state.data.bankBalance = d.bankBalance;
+        updateHUD();
+      }
+      return d;
+    };
+    wrapped._wrapped = true;
+    window[fn] = wrapped;
+  }
 }
 
 // ROLES
@@ -266,9 +292,12 @@ async function pushPresence() {
   if (!state.user) return;
   let area = state.area;
   if (state.area === "interior_home") area = `inside:${state.interiorOf || state.user}`;
-  // Trim expired bubbles before every push so dead lines never go out.
+  // Keep broadcasting a line a few seconds past its on-screen lifetime, so a
+  // viewer (who times it off their OWN clock — see mergeRemoteMsgs) always has
+  // a fresh copy for the whole time the bubble should be up. Dead lines are
+  // GC'd well after that.
   const now = Date.now();
-  state.msgs = state.msgs.filter(m => now - m.ts < GFX.CHAT_TTL).slice(0, GFX.CHAT_STACK_MAX);
+  state.msgs = state.msgs.filter(m => now - m.ts < GFX.CHAT_TTL + 4000).slice(0, GFX.CHAT_STACK_MAX);
   // Presence is fire-and-forget at 15Hz. A push that lands while the socket is
   // reconnecting is expected and harmless, so swallow it rather than spraying
   // unhandled rejections across the console.
@@ -294,6 +323,7 @@ function startPresenceLoop() {
   NET.on("presence", (m) => {
     const users = m.users || {};
     const out = {};
+    const now = Date.now();
     for (const [u, p] of Object.entries(users)) {
       if (u === state.user) continue;
       // Keep the smoothed display position running across updates — only
@@ -306,9 +336,39 @@ function startPresenceLoop() {
         out[u].dispX = prev.dispX;
         out[u].dispY = prev.dispY;
       }
+      out[u].msgs = mergeRemoteMsgs(prev && prev.msgs, (p.msgs != null ? p.msgs : p.msg), now);
     }
     state.others = out;
   });
+}
+
+// A remote chat line is timed off the sender's wall clock, which drifts from
+// ours and lags by the network. Stamp each line with a stable LOCAL receive
+// time the first time we see it, and hold a line that's still alive by that
+// clock even after the sender drops it from its feed — so other players'
+// bubbles last exactly as long on our screen as our own do.
+function mergeRemoteMsgs(prevMsgs, incoming, now) {
+  const TTL = (window.GFX && GFX.CHAT_TTL) || 9000;
+  const MAX = (window.GFX && GFX.CHAT_STACK_MAX) || 3;
+  const keyOf = (m) => `${m.ts || 0}|${m.text || m.t || ""}`;
+  const kept = new Map();
+  for (const m of (Array.isArray(prevMsgs) ? prevMsgs : [])) {
+    if (m && m.text && now - (m.rxTs || m.ts || 0) < TTL) kept.set(keyOf(m), m);
+  }
+  const feed = typeof incoming === "string"
+    ? (incoming ? [{ text: incoming, ts: now }] : [])
+    : (Array.isArray(incoming) ? incoming : []);
+  for (const raw of feed) {
+    const m = typeof raw === "string" ? { text: raw, ts: now } : { text: raw.text || raw.t || "", ts: raw.ts || 0 };
+    if (!m.text) continue;
+    const k = keyOf(m);
+    if (kept.has(k)) continue;                 // seen before — keep its rxTs
+    m.rxTs = now;
+    kept.set(k, m);
+  }
+  return [...kept.values()]
+    .sort((a, b) => (b.rxTs || b.ts) - (a.rxTs || a.ts))
+    .slice(0, MAX);
 }
 
 // Eases each other-player's displayed position toward their latest reported
@@ -379,9 +439,20 @@ function startNotifyLoop() {
     if (typeof m.money !== "number" || !state.data) return;
     const before = state.data.money || 0;
     state.data.money = m.money;
+    if (m.reason === "loan_skim") {
+      if (m.cleared) state.data.loan = null;
+      else if (typeof m.owed === "number" && m.owed > 0) {
+        state.data.loan = Object.assign({}, state.data.loan, { owed: m.owed });
+      }
+    }
     updateHUD();
     const d = m.money - before;
     if (m.reason === "staff" && d !== 0) toast(d > 0 ? `💰 Staff gave you $${d.toLocaleString()}.` : `💸 Staff took $${(-d).toLocaleString()}.`, 4000);
+    else if (m.reason === "loan_skim" && m.skim > 0) {
+      toast(m.cleared
+        ? `🏦 The bank skimmed $${m.skim.toLocaleString()} from your ${m.from || "earnings"} — that clears your overdue loan!`
+        : `🏦 Overdue loan: the bank took $${m.skim.toLocaleString()} (5%) from your ${m.from || "earnings"}.`, 4500);
+    }
   });
   // Promoted / demoted while online
   NET.on("role", (m) => {

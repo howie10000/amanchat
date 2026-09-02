@@ -672,7 +672,7 @@ function settleDuel(id) {
     if (!uw || !ul || !stake) return;
     const moved = Math.min(stake, moneyOf(ul));
     setMoney(loser, ul, moneyOf(ul) - moved);
-    setMoney(winner, uw, moneyOf(uw) + moved);
+    creditEarnings(winner, uw, moved, 'duel');   // winnings are earnings — skimmed if the winner's loan is overdue
     d.settledAmount = moved;
     store.put('duels/' + id + '/settledAmount', moved);
     for (const [u, rec] of [[winner, uw], [loser, ul]]) pushTo(u, { event: 'money', money: rec.money, reason: 'duel', duelId: id });
@@ -1001,6 +1001,37 @@ function bankSync(user, u, now) {
     return out;
 }
 
+// While a loan is overdue the bank also skims a cut of everything you EARN
+// (job pay, casino wins, fishing, quest/duel rewards, the daily bonus) straight
+// off the top toward the balance. Credits `gross`, returns what actually
+// reached the wallet, and pushes a `money` event so the client can explain the
+// shortfall no matter which activity triggered it.
+const OVERDUE_EARN_SKIM = ECON.OVERDUE_EARN_SKIM || 0.05;
+function creditEarnings(user, u, gross, reason) {
+    gross = Math.max(0, Math.floor(+gross || 0));
+    if (gross <= 0) return 0;
+    const loan = u.loan;
+    const overdue = loan && loan.owed > 0 && Date.now() > (+loan.dueTs || 0);
+    if (!overdue) { setMoney(user, u, moneyOf(u) + gross); return gross; }
+
+    const owed = Math.ceil(loan.owed);
+    const skim = Math.min(Math.floor(gross * OVERDUE_EARN_SKIM), owed);
+    const net = gross - skim;
+    if (net > 0) setMoney(user, u, moneyOf(u) + net);
+    if (skim > 0) {
+        loan.owed = owed - skim;
+        if (loan.owed <= 0) {
+            // Cleared by garnishment — a modest credit nudge, like a late payoff.
+            u.loan = null;
+            u.creditScore = ECON.clampCredit((u.creditScore == null ? ECON.CREDIT_START : u.creditScore) + 5);
+            store.put(`users/${user}/creditScore`, u.creditScore);
+        }
+        store.put(`users/${user}/loan`, u.loan || null);
+        pushTo(user, { event: 'money', money: moneyOf(u), reason: 'loan_skim', skim, from: reason || 'earnings', cleared: !u.loan, owed: u.loan ? Math.ceil(u.loan.owed) : 0 });
+    }
+    return net;
+}
+
 const ECONOMY_OPS = {
     bank(user, msg) {
         const u = userRec(user), now = Date.now();
@@ -1107,11 +1138,11 @@ const ECONOMY_OPS = {
             if (now - last < ECON.DAILY_COOLDOWN) throw new Error('Not yet — come back later.');
             const streak = (now - last <= ECON.DAILY_STREAK_WINDOW) ? ((+u.dailyStreak || 0) + 1) : 1;
             const gained = ECON.dailyBonusAmount(streak);
-            setMoney(user, u, moneyOf(u) + gained);
+            creditEarnings(user, u, gained, 'daily bonus');
             u.dailyStreak = streak; u.lastDaily = now;
             store.put(`users/${user}/dailyStreak`, streak);
             store.put(`users/${user}/lastDaily`, now);
-            return { money: u.money, gained, dailyStreak: streak, lastDaily: now };
+            return { money: moneyOf(u), gained, dailyStreak: streak, lastDaily: now, loan: u.loan || null };
         }
         throw new Error('Unknown bank action.');
     },
@@ -1254,8 +1285,8 @@ const ECONOMY_OPS = {
         if (!Number.isFinite(asked) || asked < 0) throw new Error('Bad amount.');
         const gained = Math.min(asked, cap);
         earnLast.set(k, now);
-        setMoney(user, u, moneyOf(u) + gained);
-        return { money: u.money, gained, cap };
+        const net = creditEarnings(user, u, gained, source);
+        return { money: moneyOf(u), gained, net, cap, loan: u.loan || null };
     },
 
     fish(user, msg) {
@@ -1286,8 +1317,8 @@ const ECONOMY_OPS = {
             inv[msg.name] = have - qty;
             if (inv[msg.name] <= 0) delete inv[msg.name];
             u.fishInventory = inv; store.put(`users/${user}/fishInventory`, inv);
-            setMoney(user, u, moneyOf(u) + gained);
-            return { money: u.money, fishInventory: inv, gained, price, qty };
+            creditEarnings(user, u, gained, 'fishing');
+            return { money: moneyOf(u), fishInventory: inv, gained, price, qty, loan: u.loan || null };
         }
         throw new Error('Unknown fish action.');
     },
@@ -1296,8 +1327,10 @@ const ECONOMY_OPS = {
         const u = userRec(user);
         const game = String(msg.game || ''), action = String(msg.action || '');
         const r = GAMES.play(user, game, action, msg, moneyOf(u));
-        if (r.delta) setMoney(user, u, moneyOf(u) + r.delta);
-        return Object.assign({}, r.data, { money: moneyOf(u) });
+        // A win is earnings (skimmed while a loan is overdue); a loss is a loss.
+        if (r.delta > 0) creditEarnings(user, u, r.delta, 'casino');
+        else if (r.delta < 0) setMoney(user, u, moneyOf(u) + r.delta);
+        return Object.assign({}, r.data, { money: moneyOf(u), loan: u.loan || null });
     },
 };
 

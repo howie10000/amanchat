@@ -900,7 +900,7 @@ async function openLoanOffice() {
       <p>Borrowed <b>$${(loan.principal || 0).toLocaleString()}</b> at ${Math.round((loan.rate || 0) * 100)}% · ${dueTxt}</p>
       <p>Balance owed: <b style="color:#f87171">$${Math.ceil(loan.owed).toLocaleString()}</b>
         ${loan.latePeriods ? `<span class="muted">(${loan.latePeriods} late fee${loan.latePeriods === 1 ? "" : "s"} applied)</span>` : ""}</p>
-      ${overdue ? `<p class="muted">Every 6 hours late adds 8% to the balance and knocks 25 off your credit. The bank is also drawing from your vault savings until it's clear.</p>` : ""}
+      ${overdue ? `<p class="muted" style="color:#fca5a5">While overdue: every 6h late adds 8% to the balance and −25 credit, the bank drains your vault savings toward it, <b>and it skims ${Math.round((ECON.OVERDUE_EARN_SKIM || 0.05) * 100)}% off everything you earn</b> until it's clear.</p>` : `<p class="muted">Miss the due date and it compounds fast — and the bank starts skimming ${Math.round((ECON.OVERDUE_EARN_SKIM || 0.05) * 100)}% of everything you earn.</p>`}
       <div class="btnRow">
         <button class="menuBtn green" onclick="loanRepay('part')">REPAY SOME</button>
         <button class="menuBtn gold" onclick="loanRepay('all')">REPAY ALL ($${Math.min(Math.ceil(loan.owed), state.data.money || 0).toLocaleString()})</button>
@@ -922,7 +922,7 @@ async function openLoanOffice() {
     <h3 class="section">HOW CREDIT MOVES</h3>
     <div class="enemyLegend">
       <div><span class="dot" style="background:#4ade80"></span>Repay a loan in full &amp; on time — <b>+20</b> (+8 more if early)</div>
-      <div><span class="dot" style="background:#f87171"></span>Every 6h past due — <b>−25</b> and the debt grows 8%</div>
+      <div><span class="dot" style="background:#f87171"></span>Every 6h past due — <b>−25</b>, debt grows 8%, and ${Math.round((ECON.OVERDUE_EARN_SKIM || 0.05) * 100)}% of your earnings is skimmed</div>
       <div><span class="dot" style="background:#fbbf24"></span>Higher score → bigger loans, lower rates</div>
     </div>`;
   openMenu("💳 LOAN OFFICE", body);

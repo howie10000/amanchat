@@ -129,6 +129,7 @@
   const LOAN_LATE_PERIOD = 6 * 3600000;     // penalties compound this often once overdue
   const LOAN_LATE_FEE = 0.08;               // owed grows 8% per late period
   const LOAN_LATE_CREDIT_HIT = 25;          // score lost per late period
+  const OVERDUE_EARN_SKIM = 0.05;           // while overdue, 5% of everything you earn goes to the debt
   const LOAN_ONTIME_CREDIT_GAIN = 20;       // score gained for a clean full repay
   const LOAN_EARLY_CREDIT_BONUS = 8;        // extra for repaying with >half the term left
 
@@ -282,7 +283,7 @@
     BANK_INTEREST_RATE, BANK_INTEREST_PERIOD, BANK_INTEREST_MAX_PERIODS,
     bankAccrue, bankNextInterestIn,
     CREDIT_MIN, CREDIT_MAX, CREDIT_START, LOAN_TERM, LOAN_LATE_PERIOD, LOAN_LATE_FEE,
-    LOAN_ONTIME_CREDIT_GAIN, LOAN_EARLY_CREDIT_BONUS,
+    LOAN_ONTIME_CREDIT_GAIN, LOAN_EARLY_CREDIT_BONUS, OVERDUE_EARN_SKIM,
     clampCredit, creditTier, loanRate, loanLimit, loanTotalDue, loanAccrue,
     EARN_CAPS,
     mulberry32, strToSeed, marketStock,
