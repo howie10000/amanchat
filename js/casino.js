@@ -1298,10 +1298,17 @@ function endCrashRound() {
 }
 
 // =====================================================================
-// PLINKO — real physics. Balls fall under gravity, carom off the pegs
-// and off each other, and you can rain down as many at once as you can
-// afford. Three risk levels reshape the buckets: higher risk means
-// fatter edges and a deader middle.
+// PLINKO — real physics. Balls fall under gravity and carom off the pegs,
+// and you can rain down as many at once as you can afford. Three risk
+// levels reshape the buckets: higher risk means fatter edges and a deader
+// middle.
+//
+// The OUTCOME is decided by the server (server-node/games.js) with a
+// single-ball simulation and settled before the chip is even drawn. The
+// physics here is a show: chips never collide with each other (the server
+// model has no ball-on-ball contact, so letting them bump would only knock
+// a chip into a bucket it isn't paying), and each chip is steered to the
+// bucket the server assigned it.
 // =====================================================================
 const PLINKO_ROWS = 10;
 const PLINKO_W = 460, PLINKO_H = 340;
@@ -1314,10 +1321,12 @@ const PLINKO_RISKS = {
   medium: { label: "MEDIUM", slots: [15, 3, 1, 0.6, 0.35, 0.25, 0.35, 0.6, 1, 3, 15] },
   high:   { label: "HIGH",   slots: [30, 2, 0.7, 0.3, 0.2, 0.1, 0.2, 0.3, 0.7, 2, 30] },
 };
-let _plinko = null; // { balls, risk, hitTimers }
+let _plinko = null; // { balls, risk, hitTimers, pending }
+// pending = payout of chips still in the air. The server has already paid
+// them, so the HUD shows money minus pending and credits each chip as it lands.
 
 function openPlinko() {
-  _plinko = { balls: [], risk: "medium", hitTimers: {} };
+  _plinko = { balls: [], risk: "medium", hitTimers: {}, pending: 0 };
   openMenu("🔻 PLINKO", `
     <div class="center">
       <p class="muted">Drop chips through ${PLINKO_ROWS} rows of pegs — as many at once as you like. Crank the risk for bigger edges (and a meaner middle).</p>
@@ -1432,25 +1441,6 @@ function stepPlinko(dt) {
     }
     if (ball.y > PLINKO_H - PLINKO_BALL_R + 2) settlePlinkoBall(ball);
   }
-  // ball-on-ball: split the overlap and swap normal velocity, half-elastic
-  const bs = _plinko.balls;
-  for (let a = 0; a < bs.length; a++) {
-    for (let b2 = a + 1; b2 < bs.length; b2++) {
-      const A = bs[a], B = bs[b2];
-      const dx = B.x - A.x, dy = B.y - A.y;
-      const d = Math.hypot(dx, dy), R = PLINKO_BALL_R * 2;
-      if (d <= 0 || d >= R) continue;
-      const nx = dx / d, ny = dy / d, push = (R - d) / 2;
-      A.x -= nx * push; A.y -= ny * push;
-      B.x += nx * push; B.y += ny * push;
-      const rel = (B.vx - A.vx) * nx + (B.vy - A.vy) * ny;
-      if (rel < 0) {
-        const imp = rel * 0.75;
-        A.vx += imp * nx; A.vy += imp * ny;
-        B.vx -= imp * nx; B.vy -= imp * ny;
-      }
-    }
-  }
 }
 function settlePlinkoBall(ball, silent) {
   const idx = _plinko.balls.indexOf(ball);
@@ -1460,6 +1450,9 @@ function settlePlinkoBall(ball, silent) {
   const slot = Math.max(0, Math.min(ball.slots.length - 1, ball.target | 0));
   const mult = ball.mult != null ? ball.mult : ball.slots[slot];
   const p = ball.payout != null ? ball.payout : Math.floor(ball.bet * mult);
+  // credit the chip's (already server-settled) payout to the displayed balance
+  _plinko.pending = Math.max(0, _plinko.pending - p);
+  state.data.money = (state.data.money || 0) + p; updateHUD();
   if (silent) return;
   if (mult >= 7) celebrate();
   setEl("plinkoResult", p >= ball.bet ? win(`${mult}× — +$${p}`) : lose(`${mult}× — $${p} back of $${ball.bet}`));
@@ -1516,9 +1509,13 @@ window.dropPlinko = async () => {
   let data;
   try { data = await casinoRpc("plinko", "drop", { bet, risk, balls: 1 }); }
   catch (e) { casinoFail(e); return; }
-  // Settled the moment the server replies; the chip is just the show.
-  applyMoney(data);
-  if (!_plinko || !document.getElementById("plinkoCanvas")) return;
+  // Settled the moment the server replies; the chip is just the show. If the
+  // table is gone, take the server's balance as-is; otherwise hold this
+  // drop's payout back until the chip lands.
+  if (!_plinko || !document.getElementById("plinkoCanvas")) { applyMoney(data); return; }
+  const payout = Math.max(0, Math.floor(data.payout || 0));
+  _plinko.pending += payout;
+  if (typeof data.money === "number") { state.data.money = data.money - _plinko.pending; updateHUD(); }
   const targets = Array.isArray(data.slots) ? data.slots : [];
   const mults = Array.isArray(data.mults) ? data.mults : [];
   const n = Math.max(1, targets.length);
