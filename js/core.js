@@ -11,9 +11,17 @@ const ctx = canvas.getContext("2d");
 const VIEW_OX = (canvas.width - 1024) / 2;
 const VIEW_OY = (canvas.height - 640) / 2;
 
+// Player walking speed in px per simulation tick (60 ticks/s — see loop()).
+// Shared by the overworld, interiors, dungeon and duel so they all feel the same.
+const WALK_SPEED = 2.0;
+
 const state = {
   area: "interior_home",
-  user: null, data: null, isMayor: false,
+  user: null, data: null,
+  role: "user",        // "user" | "admin" | "owner" — stamped by the server on auth
+  isMayor: false,      // true for any staff (admin/owner); legacy name kept for old call sites
+  mute: null,          // { by, reason, until } while muted, else null
+  emote: null,         // { id, ts } — floating emote above the head
   pos: { x: 512, y: 400 }, vel: { x:0, y:0 },
   facing: "down", walking: 0,
   hp: 100,
@@ -135,16 +143,17 @@ async function doAuth(register) {
     }
     if (!data.fishInventory) data.fishInventory = {};
     msg.textContent = "";
-    enterGame(user, data);
+    enterGame(user, data, res && res.role, res && res.mute);
   } catch (e) {
     msg.textContent = e.message || "Auth failed.";
   }
 }
 
-async function enterGame(user, data) {
+async function enterGame(user, data, role, mute) {
   state.user = user;
   state.data = data;
-  state.isMayor = (user === "mayor");
+  setRole(role || "user");
+  state.mute = mute || null;
   state.hp = 100;
   state.appearance = data.appearance || GFX.DEFAULT_APPEARANCE;
   state.friends = data.friends || {};
@@ -161,7 +170,9 @@ async function enterGame(user, data) {
 
   document.getElementById("loginScreen").classList.add("hidden");
   document.getElementById("gameScreen").classList.remove("hidden");
-  document.getElementById("hudName").textContent = user + (state.isMayor ? " ★" : "");
+  // The password box kept keyboard focus after login, which update() treats
+  // as "typing" and blocks walking until the player clicked the canvas.
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
 
   await refreshUserCache();
   await enterOwnHome(true);
@@ -172,7 +183,34 @@ async function enterGame(user, data) {
   startPresenceLoop();
   startNotifyLoop();
   setInterval(refreshUserCache, 4000);
+  if (state.mute) toast(muteText(state.mute), 5000);
+  if (typeof dailyBonusReady === "function" && dailyBonusReady()) {
+    setTimeout(() => toast("🎁 Your <b>daily bonus</b> is ready at FIRST BANK!", 4000), 2500);
+  }
   requestAnimationFrame(loop);
+}
+
+// ROLES
+const ROLE_BADGE = { owner: "👑", admin: "🛡️", user: "" };
+function setRole(role) {
+  state.role = role || "user";
+  state.isMayor = state.role !== "user";
+  const nameEl = document.getElementById("hudName");
+  if (nameEl && state.user) {
+    nameEl.textContent = state.user + (ROLE_BADGE[state.role] ? " " + ROLE_BADGE[state.role] : "");
+    nameEl.title = state.role === "user" ? "" : state.role.toUpperCase();
+  }
+  const staffBtn = document.getElementById("btnStaff");
+  if (staffBtn) staffBtn.classList.toggle("hidden", !state.isMayor);
+}
+function muteText(m) {
+  if (!m) return "";
+  const until = m.until ? " until " + new Date(m.until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+  return `🔇 You are muted${until}${m.reason ? ": " + escapeHtml(m.reason) : "."}`;
+}
+function isMuted() {
+  if (state.mute && state.mute.until && state.mute.until < Date.now()) state.mute = null;
+  return !!state.mute;
 }
 
 // TUTORIAL
@@ -182,7 +220,8 @@ const TUT = [
   "Press <b>Build Mode</b> (top-right) to drag furniture around. Right-click to pick up.",
   "Press <b>ESC</b> to leave your house. Walk around town and press <b>E</b> at any building, doorway or glowing pad to enter or use it.",
   "Lost? Press <b>M</b> for the town map. Pick your house, a friend's house or any shop and hit <b>Guide me</b> — a gold arrow and a dotted trail lead you there. The minimap sits bottom-right.",
-  "Buildings: <b>VEGAS</b> — the big neon tower, four floors and eleven games — plus the Bank (interest), Furniture Store, Mystery Boxes, Adventurers Guild (combat quests), Jobs Center (mini-games), Trim &amp; Style, Town Plaza and Town Hall.",
+  "Buildings: <b>VEGAS</b> — the big neon tower, five floors and sixteen games — plus the Bank (interest + daily bonus), Furniture Store (with a paint shop for your house), Mystery Boxes, Adventurers Guild (combat quests), Jobs Center (mini-games), Trim &amp; Style (hats, auras, pets, name colours), Town Plaza and Town Hall.",
+  "Press <b>G</b> to emote — a wave, a laugh or a dance pops up over your head for everyone to see.",
   "Press <b>T</b> to chat. Up to three of your lines stack above your head — keep talking and the old ones slide up. Open <b>Messenger</b> for instant DMs, and add friends to quest or duel with them.",
   "Have fun. Build the dopest house in town."
 ];
@@ -239,6 +278,7 @@ async function pushPresence() {
   // Presence is fire-and-forget at 15Hz. A push that lands while the socket is
   // reconnecting is expected and harmless, so swallow it rather than spraying
   // unhandled rejections across the console.
+  if (state.emote && now - state.emote.ts > GFX.EMOTE_TTL) state.emote = null;
   netPresence({
     x: state.pos.x, y: state.pos.y,
     area,
@@ -247,6 +287,7 @@ async function pushPresence() {
     appearance: state.appearance,
     facing: state.facing,
     hp: state.hp,
+    emote: state.emote,
   }).catch(() => {});
 }
 function startPresenceLoop() {
@@ -304,10 +345,20 @@ function startNotifyLoop() {
       renderNotifications();
     }
   });
-  // When kicked (logged in elsewhere), reload the page
-  NET.on("kicked", () => {
-    alert("You've been logged in elsewhere.");
+  // When kicked (logged in elsewhere, or banned by staff), reload the page
+  NET.on("kicked", (m) => {
+    alert(m && m.reason === "banned" ? (m.message || "You have been banned.") : "You've been logged in elsewhere.");
     location.reload();
+  });
+  // Staff muted / unmuted us
+  NET.on("mute", (m) => {
+    state.mute = m.data || null;
+    toast(state.mute ? muteText(state.mute) : "🔊 You have been unmuted.", 5000);
+  });
+  // Promoted / demoted while online
+  NET.on("role", (m) => {
+    setRole(m.role);
+    toast(state.role === "user" ? "You are no longer staff." : `You are now <b>${state.role.toUpperCase()}</b>!`, 5000);
   });
 }
 function renderNotifications() {
@@ -368,11 +419,40 @@ async function refreshUserCache() {
 }
 
 // MAIN LOOP DISPATCH
-function loop() {
-  update();
-  interpolateOthers();
+// Fixed-timestep simulation. update() used to run once per animation frame,
+// so a 144Hz gaming monitor moved you 2.4x faster than a 60Hz school laptop
+// (and a laptop dropping to 30fps crawled). Now the game logic always ticks
+// at 60Hz: we accumulate real elapsed time and run as many ticks as fit, and
+// rendering happens once per frame whatever the refresh rate.
+const TICK_MS = 1000 / 60;
+const MAX_TICKS_PER_FRAME = 5; // after a long stall (tab hidden) don't try to catch up forever
+let _loopLast = 0, _loopAcc = 0;
+function loop(now) {
+  if (typeof now !== "number") now = performance.now();
+  if (!_loopLast) _loopLast = now;
+  let dt = now - _loopLast;
+  _loopLast = now;
+  if (dt < 0) dt = 0;
+  if (dt > 250) dt = 250;
+  _loopAcc += dt;
+  let ticks = 0;
+  while (_loopAcc >= TICK_MS && ticks < MAX_TICKS_PER_FRAME) {
+    update();
+    interpolateOthers();
+    _loopAcc -= TICK_MS;
+    ticks++;
+  }
+  if (ticks === MAX_TICKS_PER_FRAME) _loopAcc = 0;
   draw();
   requestAnimationFrame(loop);
+}
+
+// For the mini-games that run their own requestAnimationFrame loops: returns
+// how many 60Hz "frames" worth of time passed since `last` (clamped), so
+// per-frame constants can be multiplied by it instead of assumed 60fps.
+function frameUnits(nowTs, lastTs) {
+  const d = (nowTs - lastTs) / TICK_MS;
+  return d < 0 ? 0 : d > 4 ? 4 : d;
 }
 
 // Adds a chat line to the local stack (newest first, capped). Draw code and
@@ -389,4 +469,4 @@ function pushChatMessage(text) {
 
 function escapeHtml(s){return (s+"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 
-window.gameCore = { state, ctx, canvas, keys, toast, updateHUD, escapeHtml, pushChatMessage };
+window.gameCore = { state, ctx, canvas, keys, toast, updateHUD, escapeHtml, pushChatMessage, frameUnits, WALK_SPEED, setRole, isMuted, muteText, ROLE_BADGE };

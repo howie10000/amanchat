@@ -434,7 +434,7 @@ function drawNeighborhood() {
   const users = onlineHouseUsers();
   for (const [u, info] of Object.entries(users)) {
     const r = houseRect(info.houseIndex); if (!r) continue;
-    GFX.drawHouse(ctx, r, u, u === state.user);
+    GFX.drawHouse(ctx, r, u, u === state.user, info.houseStyle);
     // Street address under the nameplate — so "come to 4 Oak Lane" works.
     ctx.fillStyle = "rgba(0,0,0,.6)";
     GFX.roundFill(ctx, r.x + r.w/2 - 46, r.y - 42, 92, 16, 4, "rgba(0,0,0,.6)");
@@ -453,12 +453,12 @@ function drawNeighborhood() {
     if (p.area !== "neighborhood") continue;
     const px = typeof p.dispX === "number" ? p.dispX : p.x;
     const py = typeof p.dispY === "number" ? p.dispY : p.y;
-    GFX.drawCharacter(ctx, px, py, p.appearance, { facing: p.facing });
-    GFX.drawNameAndBubble(ctx, px, py, u, p.msgs || p.msg, false);
+    GFX.drawCharacter(ctx, px, py, p.appearance, { facing: p.facing, emote: p.emote });
+    GFX.drawNameAndBubble(ctx, px, py, u, p.msgs || p.msg, false, p.appearance, p.role);
   }
   GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance,
-                    { facing: state.facing, walking: state.walking });
-  GFX.drawNameAndBubble(ctx, state.pos.x, state.pos.y, state.user, state.msgs, true);
+                    { facing: state.facing, walking: state.walking, emote: state.emote });
+  GFX.drawNameAndBubble(ctx, state.pos.x, state.pos.y, state.user, state.msgs, true, state.appearance, state.role);
 
   drawRouteTrail();
 

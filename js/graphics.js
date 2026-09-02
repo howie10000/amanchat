@@ -4,23 +4,169 @@
    ============================================================ */
 
 // ---------- CHARACTER ----------
-// appearance: { skin, hair, hairColor, shirt, pants, hat, hatColor }
+// appearance: { skin, hair, hairColor, shirt, pants, hat, hatColor,
+//               accessory, aura, pet, nameColor }
+// The last four are cosmetics bought at Trim & Style (see COSMETICS in
+// game.js); everything is carried in presence so other players see it.
 const DEFAULT_APPEARANCE = {
   skin: "#f5d0a9", hair: "short",
   hairColor: "#3f2210", shirt: "#3b82f6",
   pants: "#1e293b", hat: "none", hatColor: "#dc2626",
+  accessory: "none", aura: "none", pet: "none", nameColor: "",
 };
+
+// Emotes float above the head for EMOTE_TTL ms; presence carries {id, ts}.
+const EMOTES = [
+  { id: "wave",   icon: "👋", label: "Wave" },
+  { id: "laugh",  icon: "😂", label: "Laugh" },
+  { id: "heart",  icon: "❤️", label: "Love" },
+  { id: "fire",   icon: "🔥", label: "Fire" },
+  { id: "cool",   icon: "😎", label: "Cool" },
+  { id: "cry",    icon: "😭", label: "Cry" },
+  { id: "angry",  icon: "😡", label: "Angry" },
+  { id: "shrug",  icon: "🤷", label: "Shrug" },
+  { id: "dance",  icon: "💃", label: "Dance" },
+  { id: "gg",     icon: "🎮", label: "GG" },
+  { id: "money",  icon: "🤑", label: "Rich" },
+  { id: "skull",  icon: "💀", label: "Dead" },
+  { id: "clown",  icon: "🤡", label: "Clown" },
+  { id: "think",  icon: "🤔", label: "Hmm" },
+  { id: "party",  icon: "🎉", label: "Party" },
+  { id: "sleep",  icon: "😴", label: "Sleep" },
+];
+const EMOTE_TTL = 2600;
+
+// Auras: a ring of little particles that orbit the player. Purely a function
+// of time so every client animates the same thing with no synced state.
+function drawAura(ctx, x, y, kind) {
+  if (!kind || kind === "none") return;
+  const t = Date.now() / 1000;
+  ctx.save();
+  if (kind === "sparkle") {
+    for (let i = 0; i < 7; i++) {
+      const ang = t * 1.6 + i * (Math.PI * 2 / 7);
+      const px = x + Math.cos(ang) * 20, py = y - 4 + Math.sin(ang) * 12 + Math.sin(t * 5 + i) * 3;
+      ctx.fillStyle = i % 2 ? "#fde68a" : "#ffffff";
+      ctx.globalAlpha = 0.6 + 0.4 * Math.sin(t * 7 + i);
+      ctx.beginPath(); ctx.arc(px, py, 2, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (kind === "fire") {
+    for (let i = 0; i < 10; i++) {
+      const ph = (t * 1.4 + i * 0.37) % 1;
+      const px = x + Math.sin(i * 2.1 + t * 3) * 12, py = y + 12 - ph * 34;
+      ctx.fillStyle = ph < 0.4 ? "#fbbf24" : ph < 0.75 ? "#f97316" : "#ef4444";
+      ctx.globalAlpha = 0.85 * (1 - ph);
+      ctx.beginPath(); ctx.arc(px, py, 4 * (1 - ph) + 1, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (kind === "rainbow") {
+    for (let i = 0; i < 12; i++) {
+      const ang = t * 2 + i * (Math.PI / 6);
+      ctx.fillStyle = `hsl(${(i * 30 + t * 120) % 360},100%,60%)`;
+      ctx.globalAlpha = 0.8;
+      ctx.beginPath(); ctx.arc(x + Math.cos(ang) * 22, y - 2 + Math.sin(ang) * 14, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (kind === "hearts") {
+    ctx.font = "10px sans-serif"; ctx.textAlign = "center";
+    for (let i = 0; i < 4; i++) {
+      const ph = (t * 0.6 + i * 0.25) % 1;
+      ctx.globalAlpha = 1 - ph;
+      ctx.fillText("❤", x + Math.sin(ph * 6 + i) * 10 - 10 + i * 7, y - 20 - ph * 30);
+    }
+  } else if (kind === "shadow") {
+    ctx.fillStyle = "#4c1d95";
+    for (let i = 0; i < 8; i++) {
+      const ph = (t * 0.9 + i * 0.125) % 1;
+      ctx.globalAlpha = 0.5 * (1 - ph);
+      ctx.beginPath(); ctx.arc(x + Math.sin(i * 1.7 + t * 2) * 14, y + 10 - ph * 30, 5, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (kind === "gold") {
+    for (let i = 0; i < 6; i++) {
+      const ph = (t * 0.8 + i * (1 / 6)) % 1;
+      ctx.globalAlpha = 1 - ph;
+      ctx.font = "bold 9px sans-serif"; ctx.fillStyle = "#fbbf24"; ctx.textAlign = "center";
+      ctx.fillText("$", x - 14 + (i * 6) % 28, y + 8 - ph * 36);
+    }
+  } else if (kind === "electric") {
+    ctx.strokeStyle = "#7dd3fc"; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.9;
+    for (let i = 0; i < 3; i++) {
+      const ang = t * 6 + i * 2.1;
+      ctx.beginPath();
+      let px = x + Math.cos(ang) * 18, py = y - 6 + Math.sin(ang) * 12;
+      ctx.moveTo(px, py);
+      for (let s = 0; s < 3; s++) { px += (Math.random() - 0.5) * 12; py += (Math.random() - 0.5) * 12; ctx.lineTo(px, py); }
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+// Pets trot along behind their owner (offset by facing) and bob a little.
+function drawPet(ctx, x, y, kind, facing) {
+  if (!kind || kind === "none") return;
+  const t = Date.now() / 1000;
+  const off = { down: [-22, -6], up: [-22, 6], left: [22, 2], right: [-22, 2] }[facing || "down"] || [-22, 0];
+  const px = x + off[0], py = y + off[1] + Math.sin(t * 6) * 1.5;
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,.3)";
+  ctx.beginPath(); ctx.ellipse(px, py + 10, 8, 3, 0, 0, Math.PI * 2); ctx.fill();
+  if (kind === "cat" || kind === "dog") {
+    const body = kind === "cat" ? "#f59e0b" : "#a16207";
+    ctx.fillStyle = body;
+    roundRect(ctx, px - 8, py - 2, 16, 9, 3, true, false);      // body
+    ctx.beginPath(); ctx.arc(px + 7, py - 4, 5, 0, Math.PI * 2); ctx.fill(); // head
+    if (kind === "cat") { ctx.beginPath(); ctx.moveTo(px + 3, py - 7); ctx.lineTo(px + 5, py - 12); ctx.lineTo(px + 7, py - 7); ctx.moveTo(px + 7, py - 7); ctx.lineTo(px + 9, py - 12); ctx.lineTo(px + 11, py - 7); ctx.fill(); }
+    else { ctx.fillStyle = "#713f12"; ctx.fillRect(px + 2, py - 7, 3, 6); ctx.fillRect(px + 10, py - 7, 3, 6); }
+    ctx.fillStyle = body;
+    ctx.fillRect(px - 6, py + 6, 3, 4); ctx.fillRect(px + 3, py + 6, 3, 4);  // legs
+    ctx.strokeStyle = body; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(px - 8, py); ctx.quadraticCurveTo(px - 14, py - 6 + Math.sin(t * 8) * 3, px - 12, py - 9); ctx.stroke(); // tail
+    ctx.fillStyle = "#0a0a0a"; ctx.fillRect(px + 8, py - 5, 1.5, 1.5);
+  } else if (kind === "duck") {
+    ctx.fillStyle = "#fde047";
+    ctx.beginPath(); ctx.ellipse(px, py + 2, 8, 6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px + 6, py - 5, 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#f97316"; ctx.fillRect(px + 9, py - 5, 5, 2.5);
+    ctx.fillStyle = "#0a0a0a"; ctx.fillRect(px + 7, py - 7, 1.5, 1.5);
+  } else if (kind === "ghost") {
+    ctx.globalAlpha = 0.75; ctx.fillStyle = "#e0f2fe";
+    ctx.beginPath(); ctx.arc(px, py - 4, 8, Math.PI, 0); ctx.lineTo(px + 8, py + 8);
+    for (let i = 0; i < 4; i++) ctx.lineTo(px + 8 - (i + 0.5) * 4, py + (i % 2 ? 8 : 5));
+    ctx.lineTo(px - 8, py + 8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#0a0a0a"; ctx.fillRect(px - 3, py - 5, 2, 3); ctx.fillRect(px + 2, py - 5, 2, 3);
+  } else if (kind === "dragon") {
+    ctx.fillStyle = "#16a34a";
+    roundRect(ctx, px - 9, py - 2, 18, 9, 4, true, false);
+    ctx.beginPath(); ctx.arc(px + 9, py - 5, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#15803d";   // wings
+    const flap = Math.sin(t * 10) * 4;
+    ctx.beginPath(); ctx.moveTo(px - 4, py - 1); ctx.lineTo(px - 10, py - 12 - flap); ctx.lineTo(px + 2, py - 4); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(px + 2, py - 1); ctx.lineTo(px + 6, py - 12 - flap); ctx.lineTo(px + 6, py - 4); ctx.fill();
+    ctx.fillStyle = "#f97316"; ctx.beginPath(); ctx.arc(px + 15, py - 5, 2 + Math.sin(t * 9), 0, Math.PI * 2); ctx.fill(); // breath
+    ctx.fillStyle = "#0a0a0a"; ctx.fillRect(px + 10, py - 6, 1.5, 1.5);
+  } else if (kind === "robot") {
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillRect(px - 7, py - 6, 14, 14);
+    ctx.fillStyle = "#0ea5e9"; ctx.fillRect(px - 4, py - 3, 3, 3); ctx.fillRect(px + 1, py - 3, 3, 3);
+    ctx.fillStyle = "#ef4444"; ctx.beginPath(); ctx.arc(px, py - 10, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#64748b"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(px, py - 6); ctx.lineTo(px, py - 9); ctx.stroke();
+  }
+  ctx.restore();
+}
 
 function drawCharacter(ctx, x, y, appearance, opts = {}) {
   const a = Object.assign({}, DEFAULT_APPEARANCE, appearance || {});
   const facing = opts.facing || "down";
   const walking = opts.walking || 0;
 
+  drawPet(ctx, x, y, a.pet, facing);
+
   // Shadow
   ctx.fillStyle = "rgba(0,0,0,.35)";
   ctx.beginPath();
   ctx.ellipse(x, y + 14, 14, 5, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  drawAura(ctx, x, y, a.aura);
 
   // Legs
   const legSwing = Math.sin(walking * 0.3) * 3;
@@ -107,6 +253,39 @@ function drawCharacter(ctx, x, y, appearance, opts = {}) {
       ctx.lineTo(x + 9, y - 18);
       ctx.closePath();
       ctx.fill();
+    } else if (a.hat === "cowboy") {
+      ctx.fillRect(x - 14, y - 19, 28, 3);
+      roundRect(ctx, x - 7, y - 28, 14, 10, 3, true, false);
+      ctx.fillStyle = shadeColor(a.hatColor, -40); ctx.fillRect(x - 7, y - 21, 14, 2);
+    } else if (a.hat === "wizard") {
+      ctx.beginPath(); ctx.moveTo(x - 12, y - 18); ctx.lineTo(x + 12, y - 18); ctx.lineTo(x + 2, y - 40); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#fde68a"; ctx.font = "8px sans-serif"; ctx.textAlign = "center"; ctx.fillText("★", x, y - 26);
+    } else if (a.hat === "halo") {
+      ctx.strokeStyle = "#fde68a"; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.ellipse(x, y - 27 + Math.sin(Date.now() / 300), 9, 3, 0, 0, Math.PI * 2); ctx.stroke();
+    } else if (a.hat === "horns") {
+      ctx.fillStyle = a.hatColor;
+      ctx.beginPath(); ctx.moveTo(x - 9, y - 16); ctx.lineTo(x - 12, y - 27); ctx.lineTo(x - 4, y - 19); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x + 9, y - 16); ctx.lineTo(x + 12, y - 27); ctx.lineTo(x + 4, y - 19); ctx.fill();
+    } else if (a.hat === "headphones") {
+      ctx.strokeStyle = a.hatColor; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(x, y - 13, 11, Math.PI, 0); ctx.stroke();
+      ctx.fillStyle = a.hatColor; roundRect(ctx, x - 13, y - 16, 5, 7, 2, true, false); roundRect(ctx, x + 8, y - 16, 5, 7, 2, true, false);
+    } else if (a.hat === "bandana") {
+      ctx.fillRect(x - 9, y - 19, 18, 5);
+      ctx.beginPath(); ctx.moveTo(x + 8, y - 17); ctx.lineTo(x + 15, y - 12); ctx.lineTo(x + 9, y - 14); ctx.fill();
+    } else if (a.hat === "party") {
+      ctx.beginPath(); ctx.moveTo(x - 7, y - 18); ctx.lineTo(x + 7, y - 18); ctx.lineTo(x, y - 34); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.fillRect(x - 3, y - 25, 6, 2);
+      ctx.fillStyle = "#f472b6"; ctx.beginPath(); ctx.arc(x, y - 34, 2.5, 0, Math.PI * 2); ctx.fill();
+    } else if (a.hat === "chef") {
+      ctx.fillStyle = "#fafaf9";
+      ctx.fillRect(x - 8, y - 22, 16, 5);
+      ctx.beginPath(); ctx.arc(x - 5, y - 26, 5, 0, Math.PI * 2); ctx.arc(x, y - 28, 6, 0, Math.PI * 2); ctx.arc(x + 5, y - 26, 5, 0, Math.PI * 2); ctx.fill();
+    } else if (a.hat === "pirate") {
+      ctx.fillStyle = "#0a0a0a";
+      ctx.beginPath(); ctx.moveTo(x - 15, y - 18); ctx.quadraticCurveTo(x, y - 34, x + 15, y - 18); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.font = "bold 8px sans-serif"; ctx.textAlign = "center"; ctx.fillText("☠", x, y - 21);
     }
   }
 
@@ -121,6 +300,61 @@ function drawCharacter(ctx, x, y, appearance, opts = {}) {
     ctx.fillRect(x - 5, y - 13, 2, 2);
   } else {
     ctx.fillRect(x + 3, y - 13, 2, 2);
+  }
+
+  // Accessories (face) — skipped when facing away
+  if (a.accessory && a.accessory !== "none" && facing !== "up") {
+    const ex = facing === "left" ? -2 : facing === "right" ? 2 : 0;
+    if (a.accessory === "glasses") {
+      ctx.strokeStyle = "#0a0a0a"; ctx.lineWidth = 1;
+      ctx.strokeRect(x - 6 + ex, y - 14, 5, 4); ctx.strokeRect(x + 1 + ex, y - 14, 5, 4);
+      ctx.beginPath(); ctx.moveTo(x - 1 + ex, y - 12); ctx.lineTo(x + 1 + ex, y - 12); ctx.stroke();
+    } else if (a.accessory === "sunglasses") {
+      ctx.fillStyle = "#0a0a0a";
+      ctx.fillRect(x - 7 + ex, y - 15, 6, 4); ctx.fillRect(x + 1 + ex, y - 15, 6, 4);
+      ctx.fillRect(x - 1 + ex, y - 14, 2, 1);
+    } else if (a.accessory === "eyepatch") {
+      ctx.fillStyle = "#0a0a0a";
+      ctx.fillRect(x + 1 + ex, y - 15, 5, 5);
+      ctx.strokeStyle = "#0a0a0a"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x - 9, y - 16); ctx.lineTo(x + 9, y - 12); ctx.stroke();
+    } else if (a.accessory === "mask") {
+      ctx.fillStyle = "#e5e7eb";
+      roundRect(ctx, x - 7 + ex, y - 10, 14, 6, 2, true, false);
+    } else if (a.accessory === "monocle") {
+      ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(x + 3 + ex, y - 12, 3.5, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x + 6 + ex, y - 10); ctx.lineTo(x + 8 + ex, y - 3); ctx.stroke();
+    } else if (a.accessory === "mustache") {
+      ctx.fillStyle = a.hairColor === "#fafaf9" ? "#a3a3a3" : a.hairColor;
+      ctx.beginPath(); ctx.ellipse(x - 3 + ex, y - 8, 4, 1.6, 0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x + 3 + ex, y - 8, 4, 1.6, -0.3, 0, Math.PI * 2); ctx.fill();
+    } else if (a.accessory === "scarf") {
+      ctx.fillStyle = "#dc2626";
+      roundRect(ctx, x - 9, y - 5, 18, 4, 2, true, false);
+      ctx.fillRect(x + 4, y - 3, 4, 9);
+    } else if (a.accessory === "chain") {
+      ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x - 6, y - 3); ctx.quadraticCurveTo(x, y + 4, x + 6, y - 3); ctx.stroke();
+      ctx.fillStyle = "#fbbf24"; ctx.beginPath(); ctx.arc(x, y + 1, 2, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // Emote (floats up and fades)
+  if (opts.emote && opts.emote.id) {
+    const age = Date.now() - (opts.emote.ts || 0);
+    if (age >= 0 && age < EMOTE_TTL) {
+      const e = EMOTES.find(m => m.id === opts.emote.id);
+      if (e) {
+        const k = age / EMOTE_TTL;
+        const pop = age < 200 ? easeOutBack(age / 200) : 1;
+        ctx.save();
+        ctx.globalAlpha = k > 0.75 ? (1 - k) / 0.25 : 1;
+        ctx.font = `${Math.round(22 * pop)}px sans-serif`; ctx.textAlign = "center";
+        ctx.fillText(e.icon, x + 18, y - 30 - k * 22);
+        ctx.restore();
+      }
+    }
   }
 }
 
@@ -207,14 +441,22 @@ function drawBubble(ctx, x, by, text, alpha, scale, isNewest) {
   ctx.restore();
 }
 
-function drawNameAndBubble(ctx, x, y, name, msgs, isYou) {
+// Name tag: your own name is gold, everyone else white — unless they bought a
+// name colour. Staff get a badge in front of the name (role comes from the
+// server-stamped presence, so it can't be faked).
+const ROLE_TAG = { owner: "👑 ", admin: "🛡️ " };
+function drawNameAndBubble(ctx, x, y, name, msgs, isYou, appearance, role) {
   ctx.font = "bold 11px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillStyle = isYou ? "#fbbf24" : "#fff";
+  const custom = appearance && appearance.nameColor;
+  let color = custom || (isYou ? "#fbbf24" : "#fff");
+  if (custom === "rainbow") color = `hsl(${(Date.now() / 12) % 360},100%,65%)`;
+  ctx.fillStyle = color;
   ctx.strokeStyle = "#000";
   ctx.lineWidth = 3;
-  ctx.strokeText(name, x, y - 26);
-  ctx.fillText(name, x, y - 26);
+  const label = (ROLE_TAG[role] || "") + name;
+  ctx.strokeText(label, x, y - 26);
+  ctx.fillText(label, x, y - 26);
   drawChatStack(ctx, x, y, msgs);
 }
 
@@ -709,11 +951,13 @@ function houseHash(name) {
 const HOUSE_WALLS = ["#e7e5e4", "#fde68a", "#bfdbfe", "#fecaca", "#d9f99d", "#e9d5ff", "#cffafe", "#fed7aa"];
 const HOUSE_ROOFS = ["#7f1d1d", "#1e3a8a", "#3f2210", "#166534", "#4c1d95", "#7c2d12", "#0f172a", "#831843"];
 
-function drawHouse(ctx, r, name, isYou, mood) {
+// `style` is the owner's paint job ({ wall, roof }) bought at FURNITURELAND;
+// without one the colours are derived from the name as before.
+function drawHouse(ctx, r, name, isYou, style) {
   const t = Date.now();
   const h = houseHash(name);
-  const wall = isYou ? "#fef9c3" : HOUSE_WALLS[h % HOUSE_WALLS.length];
-  const roof = isYou ? "#b45309" : HOUSE_ROOFS[(h >> 3) % HOUSE_ROOFS.length];
+  const wall = (style && style.wall) || (isYou ? "#fef9c3" : HOUSE_WALLS[h % HOUSE_WALLS.length]);
+  const roof = (style && style.roof) || (isYou ? "#b45309" : HOUSE_ROOFS[(h >> 3) % HOUSE_ROOFS.length]);
   const eaveY = r.y + 34;
 
   // Ground shadow
@@ -1513,5 +1757,6 @@ window.GFX = {
   drawCharacter, drawNameAndBubble, drawChatStack, drawBuildingBox, drawTower, drawHouse,
   CHAT_STACK_MAX, CHAT_TTL,
   drawFurniture, roundRect, roundFill, roundStroke, shadeColor,
-  DEFAULT_APPEARANCE,
+  DEFAULT_APPEARANCE, EMOTES, EMOTE_TTL, drawAura, drawPet,
+  HOUSE_WALLS, HOUSE_ROOFS,
 };

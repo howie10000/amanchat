@@ -23,6 +23,25 @@ A multiplayer browser game built on the idea you sent your friend:
   - ⚔️ **Quest House** — Top-down combat for money
   - 💼 **Workplace** — Pizza delivery, typing test, whack-a-mole
   - 💬 **Social Plaza** — Hangout / mayor announcements
+- **Staff system** — three roles: 👑 **owner** > 🛡️ **admin** > player.
+  - Owners are set **in the server save file only** (never from the game):
+    either `OWNERS=alice,bob` in the server's environment, or
+    `roles/owners/<name>: true` inside the JSON blob in `data.db`. The legacy
+    `mayor` account is always an owner.
+  - Owners open the **Staff panel** (top-right button, or the Town Hall desk)
+    to promote / demote admins, and can delete accounts.
+  - Owners and admins can **ban** (account + the IP it last used, timed or
+    permanent — the player is kicked live and can't log in or register
+    alts), **mute** (chat bubbles are stripped server-side and DMs are
+    refused), give / take money, teleport to houses and edit the plaza
+    announcement. Nobody can act on someone of equal or higher rank; every
+    rule is enforced by the server, not the UI.
+- **Cosmetics** at Trim & Style — 14 hats, 9 face/neck accessories, 8 auras
+  (sparkle, fire, rainbow…), 7 pets that trot behind you, and name colours.
+  Paid items are bought once and everyone in town sees them.
+- **Emotes** — press `G` (or the 😀 button) for 16 emotes that pop above your head.
+- **House paint** — FURNITURELAND's paint shop repaints your walls and roof.
+- **Daily bonus** — First Bank pays a bonus every 20h that grows with your streak.
 - **Wayfinding** — press `M` for the town map. Pick your house, a friend's
   house, or any shop and hit **Guide me**: a gold arrow, a dotted ground trail
   and a minimap marker lead you there. Every residential row is a named street

@@ -12,6 +12,7 @@
 //   PORT      listen port                 (default 8080, matches nginx proxy_pass)
 //   DB_PATH   sqlite file                 (default ./data.db)
 //   STATIC_DIR static files to serve      (default .. — the game's index.html/js/style.css)
+//   OWNERS    comma-separated owner usernames (also: roles/owners/<name>: true in the save)
 
 const express = require('express');
 const http = require('http');
@@ -167,6 +168,56 @@ setInterval(() => {
     try { store.snapshot(); } catch (e) { console.error('[snapshot]', e); }
 }, 2000);
 
+// ---------------------------------------------------------------- ROLES
+// owner > admin > user.
+//
+// Owners are set in the save file only (never over the wire): either the
+// OWNERS env var ("alice,bob") or `roles/owners/<name>: true` in the JSON
+// blob stored in data.db. The legacy "mayor" account is always an owner.
+// Admins live at `roles/admins/<name>: true` and are managed by owners from
+// the in-game Staff panel. Bans/mutes are at `bans/<name>` / `mutes/<name>`.
+const ENV_OWNERS = new Set(
+    (process.env.OWNERS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+);
+if (!store.get('roles')) store.put('roles', { owners: {}, admins: {} });
+
+function roleOf(user) {
+    if (!user) return 'user';
+    if (user === 'mayor' || ENV_OWNERS.has(user) || store.get('roles/owners/' + user)) return 'owner';
+    if (store.get('roles/admins/' + user)) return 'admin';
+    return 'user';
+}
+const ROLE_RANK = { user: 0, admin: 1, owner: 2 };
+function outranks(actor, target) { return ROLE_RANK[roleOf(actor)] > ROLE_RANK[roleOf(target)]; }
+function isStaff(user) { return roleOf(user) !== 'user'; }
+
+// Returns the active ban for a user (clearing it if it has expired), or null.
+function activeBan(user) {
+    const b = store.get('bans/' + user);
+    if (!b) return null;
+    if (b.until && b.until < Date.now()) { store.delete('bans/' + user); return null; }
+    return b;
+}
+function activeIpBan(ip) {
+    if (!ip) return null;
+    const b = store.get('banned_ips/' + ipKey(ip));
+    if (!b) return null;
+    if (b.until && b.until < Date.now()) { store.delete('banned_ips/' + ipKey(ip)); return null; }
+    return b;
+}
+function activeMute(user) {
+    const m = store.get('mutes/' + user);
+    if (!m) return null;
+    if (m.until && m.until < Date.now()) { store.delete('mutes/' + user); return null; }
+    return m;
+}
+// Store keys can't contain "/" — IPs never do, but keep it defensive.
+function ipKey(ip) { return String(ip).replace(/[\/]/g, '_'); }
+function fmtBan(b) {
+    const until = b.until ? ' until ' + new Date(b.until).toLocaleString() : ' (permanent)';
+    return 'You are banned' + until + (b.reason ? ': ' + b.reason : '.');
+}
+
 // ---------------------------------------------------------------- AUTH
 
 function authRegister(user, pass) {
@@ -190,8 +241,9 @@ const clients = new Set();     // Set<Client>
 const byUser = new Map();      // user -> Client
 
 class Client {
-    constructor(ws) {
+    constructor(ws, ip) {
         this.ws = ws;
+        this.ip = ip || '';
         this.user = '';
         this.presence = null;
     }
@@ -221,7 +273,8 @@ function pushTo(user, msg) {
 function broadcastPresence() {
     const users = {};
     for (const c of clients) {
-        if (c.user && c.presence) users[c.user] = c.presence;
+        // Role is stamped server-side so a client can't fake a staff badge.
+        if (c.user && c.presence) users[c.user] = Object.assign({}, c.presence, { role: roleOf(c.user) });
     }
     const msg = JSON.stringify({ event: 'presence', users });
     for (const c of clients) {
@@ -231,15 +284,38 @@ function broadcastPresence() {
 }
 setInterval(broadcastPresence, 66); // ~15Hz presence broadcast (was 100ms/10Hz)
 
-// canWrite enforces the writing rules (identical to the Go backend).
-function canWrite(user, pathStr) {
-    if (user === 'mayor') return true;
+// canWrite enforces the writing rules. `op` is the RPC op (put/patch/post/del)
+// so role rules can distinguish e.g. "give money" from "delete account".
+function canWrite(user, pathStr, op) {
     const parts = Store.splitPath(pathStr);
     if (parts.length === 0) return false;
-    switch (parts[0]) {
+    const role = roleOf(user);
+    const top = parts[0];
+
+    // ----- staff-only trees -----
+    if (top === 'roles') {
+        // owners are save-file only; admins are managed by owners.
+        return role === 'owner' && parts.length === 3 && parts[1] === 'admins' && parts[2] !== user;
+    }
+    if (top === 'bans' || top === 'mutes') {
+        if (!isStaff(user) || parts.length < 2) return false;
+        return outranks(user, parts[1]);          // can't touch equals or superiors
+    }
+    if (top === 'banned_ips') return role === 'owner';
+    if (top === 'meta') return false;             // server-written only (IPs)
+    if (top === 'mayor') return isStaff(user);    // announcement
+
+    // Owners keep the old all-powerful "mayor" behaviour.
+    if (role === 'owner') return true;
+
+    switch (top) {
         case 'users':
         case 'players':
-            return parts.length >= 2 && parts[1] === user;
+            if (parts.length < 2) return false;
+            if (parts[1] === user) return true;
+            // Admins may edit other players (give money etc.) but not wipe
+            // accounts and not touch other staff.
+            return role === 'admin' && op !== 'del' && !isStaff(parts[1]);
         case 'inbox':
             return true; // recipients manage own inbox; senders may post into others'
         case 'dm_threads':
@@ -264,10 +340,44 @@ function canWrite(user, pathStr) {
         }
         case 'catalog':
             return true; // any authed user may seed catalog
-        case 'mayor':
-            return false;
         default:
             return false;
+    }
+}
+
+// Moderation side-effects that need server state (a target's IP, their live
+// socket): run after the store write itself succeeded.
+function afterModWrite(actor, pathStr, val, op) {
+    const parts = Store.splitPath(pathStr);
+    if (parts.length < 2) return;
+    const target = parts[1];
+    if (parts[0] === 'bans') {
+        if (op === 'del') {
+            // Lifting a ban also lifts the IP ban that came with it.
+            for (const [k, v] of Object.entries(store.get('banned_ips') || {})) {
+                if (v && v.user === target) store.delete('banned_ips/' + k);
+            }
+            return;
+        }
+        const ban = store.get('bans/' + target) || {};
+        ban.by = actor; ban.ts = ban.ts || Date.now();
+        const ip = store.get('meta/ips/' + target);
+        if (ip) {
+            ban.ip = ip;
+            store.put('banned_ips/' + ipKey(ip), { user: target, until: ban.until || 0, by: actor });
+        }
+        store.put('bans/' + target, ban);
+        const c = byUser.get(target);
+        if (c) {
+            try { c.ws.send(JSON.stringify({ event: 'kicked', reason: 'banned', message: fmtBan(ban) })); } catch (e) {}
+            try { c.ws.close(); } catch (e) {}
+        }
+    } else if (parts[0] === 'mutes') {
+        const mute = op === 'del' ? null : Object.assign({ by: actor, ts: Date.now() }, store.get('mutes/' + target) || {});
+        if (mute) store.put('mutes/' + target, mute);
+        pushTo(target, { event: 'mute', data: mute });
+    } else if (parts[0] === 'roles' && parts[1] === 'admins' && parts.length >= 3) {
+        pushTo(parts[2], { event: 'role', role: roleOf(parts[2]) });
     }
 }
 
@@ -315,8 +425,11 @@ function afterWrite(pathStr, val) {
 
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
 
-wss.on('connection', (ws) => {
-    const c = new Client(ws);
+wss.on('connection', (ws, req) => {
+    // nginx sets X-Forwarded-For / X-Real-IP (deploy/nginx-northpvp.conf).
+    const fwd = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    const ip = fwd || req.headers['x-real-ip'] || (req.socket && req.socket.remoteAddress) || '';
+    const c = new Client(ws, ip);
     clients.add(c);
 
     const pingInterval = setInterval(() => {
@@ -356,46 +469,64 @@ function handleMessage(c, msg) {
             if (user.length < 2 || user.length > 16 || pass.length < 3) {
                 return replyErr('invalid credentials');
             }
+            // Site bans: by account, and by the IP the banned account last used.
+            const ipBan = activeIpBan(c.ip);
+            if (ipBan && ipBan.user !== user && !isStaff(user)) {
+                return replyErr('This network is banned from Neighborhood.');
+            }
             try {
                 if (register) authRegister(user, pass);
                 else authLogin(user, pass);
             } catch (e) {
                 return replyErr(e.message);
             }
+            const ban = activeBan(user);
+            if (ban) return replyErr(fmtBan(ban));
             setUser(c, user);
-            reply({ user, data: store.get('users/' + user) });
+            if (c.ip) store.put('meta/ips/' + user, c.ip);
+            reply({ user, data: store.get('users/' + user), role: roleOf(user), mute: activeMute(user) });
             break;
         }
 
         case 'get': {
+            const parts = Store.splitPath(msg.path);
+            if (parts[0] === 'meta' && !isStaff(c.user)) return replyErr('forbidden');
             reply(store.get(msg.path));
             break;
         }
 
         case 'put': {
             if (!c.user) return replyErr('not authed');
-            if (!canWrite(c.user, msg.path)) return replyErr('forbidden');
+            if (!canWrite(c.user, msg.path, 'put')) return replyErr('forbidden');
             store.put(msg.path, msg.value);
             afterWrite(msg.path, msg.value);
+            afterModWrite(c.user, msg.path, msg.value, 'put');
             reply(null);
             break;
         }
 
         case 'patch': {
             if (!c.user) return replyErr('not authed');
-            if (!canWrite(c.user, msg.path)) return replyErr('forbidden');
+            if (!canWrite(c.user, msg.path, 'patch')) return replyErr('forbidden');
             if (!msg.value || typeof msg.value !== 'object' || Array.isArray(msg.value)) {
                 return replyErr('patch value must be object');
             }
             store.patch(msg.path, msg.value);
             afterWrite(msg.path, msg.value);
+            afterModWrite(c.user, msg.path, msg.value, 'patch');
             reply(null);
             break;
         }
 
         case 'post': { // Firebase-style push (auto-id)
             if (!c.user) return replyErr('not authed');
-            if (!canWrite(c.user, msg.path)) return replyErr('forbidden');
+            if (!canWrite(c.user, msg.path, 'post')) return replyErr('forbidden');
+            {
+                // Muted players can't DM or push chat-like inbox entries.
+                const parts = Store.splitPath(msg.path);
+                const isChat = parts[0] === 'dm_threads' || (parts[0] === 'inbox' && msg.value && msg.value.kind === 'dm');
+                if (isChat && activeMute(c.user)) return replyErr('You are muted.');
+            }
             const genId = store.push(msg.path, msg.value);
             afterWrite(msg.path + '/' + genId, msg.value);
             reply({ name: genId });
@@ -404,16 +535,25 @@ function handleMessage(c, msg) {
 
         case 'del': {
             if (!c.user) return replyErr('not authed');
-            if (!canWrite(c.user, msg.path)) return replyErr('forbidden');
+            if (!canWrite(c.user, msg.path, 'del')) return replyErr('forbidden');
             store.delete(msg.path);
+            afterModWrite(c.user, msg.path, null, 'del');
             reply(null);
             break;
         }
 
         case 'presence': {
             if (!c.user) return replyErr('not authed');
-            c.presence = (msg.data && typeof msg.data === 'object') ? msg.data : null;
+            const p = (msg.data && typeof msg.data === 'object') ? msg.data : null;
+            if (p && activeMute(c.user)) { p.msgs = []; p.msg = ''; }
+            c.presence = p;
             reply(null);
+            break;
+        }
+
+        case 'whoami': {
+            if (!c.user) return replyErr('not authed');
+            reply({ user: c.user, role: roleOf(c.user), mute: activeMute(c.user) });
             break;
         }
 

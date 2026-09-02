@@ -30,15 +30,20 @@ function runPizzaGame() {
     cars.push({ x: 540, y: 40 + Math.random() * 200, w: 60, h: 28, speed: 2.5 + Math.random() * 2 });
   }
   let spawnT = 0;
-  function step() {
+  let lastTs = performance.now();
+  function step(ts) {
     if (!document.getElementById("pizzaCanvas")) return;
     if (dead || won) return;
-    spawnT++;
+    // Time-based: `fu` is how many 60Hz frames elapsed, so the game plays the
+    // same on a 30fps laptop and a 144Hz monitor.
+    if (typeof ts !== "number") ts = performance.now();
+    const fu = window.gameCore.frameUnits(ts, lastTs); lastTs = ts;
+    spawnT += fu;
     if (spawnT > 50 - Math.min(30, elapsed)) { spawn(); spawnT = 0; }
     // input
     const k = window.gameCore.keys;
-    if (k["w"] || k["arrowup"]) py -= 4;
-    if (k["s"] || k["arrowdown"]) py += 4;
+    if (k["w"] || k["arrowup"]) py -= 4 * fu;
+    if (k["s"] || k["arrowdown"]) py += 4 * fu;
     py = Math.max(20, Math.min(260, py));
     elapsed = Math.floor((Date.now() - start) / 1000);
     t = LIMIT - elapsed;
@@ -48,7 +53,7 @@ function runPizzaGame() {
       left > 0 ? `Drop-off in ${left}s` : "Drop-off reached!";
     if (elapsed >= DELIVER_AT) { won = true; finish(); return; }
 
-    cars.forEach(c => c.x -= c.speed);
+    cars.forEach(c => c.x -= c.speed * fu);
     cars = cars.filter(c => c.x > -80);
 
     // collisions
@@ -192,18 +197,21 @@ function runWhack() {
     }
   };
   let popT = 0;
-  function step() {
+  let lastTs = performance.now();
+  function step(ts) {
     if (!document.getElementById("whackCanvas")) return;
     t = 20 - Math.floor((Date.now() - start) / 1000);
     document.getElementById("whackTime").textContent = Math.max(0, t) + "s";
     if (t <= 0) { finish(); return; }
-    popT++;
+    if (typeof ts !== "number") ts = performance.now();
+    const fu = window.gameCore.frameUnits(ts, lastTs); lastTs = ts;
+    popT += fu;
     if (popT > 30) {
       popT = 0;
       const empty = holes.filter(h => h.mole === 0);
       if (empty.length) empty[Math.floor(Math.random()*empty.length)].mole = 60 + Math.random() * 30;
     }
-    holes.forEach(h => { if (h.mole > 0) h.mole--; });
+    holes.forEach(h => { if (h.mole > 0) h.mole -= fu; });
     // draw
     c.fillStyle = "#15803d"; c.fillRect(0, 0, 540, 320);
     for (const h of holes) {

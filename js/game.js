@@ -21,6 +21,8 @@ document.querySelectorAll(".actBtn").forEach(b => {
     else if (a === "inv") openInventory();
     else if (a === "build") toggleBuildMode();
     else if (a === "map") openTownMap();
+    else if (a === "emotes") openEmotes();
+    else if (a === "staff") openStaffPanel();
     else if (a === "help") openHelp();
   };
 });
@@ -33,6 +35,7 @@ function openHelp() {
     <div>M — town map &amp; directions (guides you to any place or person)</div>
     <div>ESC — close menu / clear route / leave building</div>
     <div>T — chat bubble (up to 3 stack above your head)</div>
+    <div>G — emotes (wave, laugh, dance… everyone nearby sees it)</div>
     <div>I — inventory (toggle)</div>
     <h3 class="section">GETTING AROUND</h3>
     <div>Lost? Press <b>M</b>, pick a destination, hit <b>Guide me</b>. A gold arrow
@@ -55,8 +58,29 @@ function openHelp() {
     <h3 class="section">SOCIAL</h3>
     <div>Friends panel — chat, quest, duel, and give a house key (🔑)</div>
     <div>Messenger — instant DMs</div>
+    <h3 class="section">LOOKING GOOD</h3>
+    <div>Trim &amp; Style sells hats, glasses, auras, pets and name colours. Everyone sees them.</div>
+    <div>FURNITURELAND has a paint shop — repaint your house walls and roof.</div>
+    <div>First Bank pays a <b>daily bonus</b> that grows with your login streak.</div>
+    <h3 class="section">STAFF</h3>
+    <div>👑 owners and 🛡️ admins keep the town civil. They can mute and ban. Owners promote admins from the Staff panel.</div>
   `);
 }
+
+// ---------- EMOTES ----------
+function openEmotes() {
+  let html = `<p class="muted">Pick an emote — it floats above your head for a couple of seconds and everyone nearby sees it. Hotkey: <b>G</b>.</p><div class="emoteGrid">`;
+  for (const e of GFX.EMOTES) {
+    html += `<button class="emoteBtn" onclick="doEmote('${e.id}')"><span>${e.icon}</span>${e.label}</button>`;
+  }
+  html += `</div>`;
+  openMenu("EMOTES", html);
+}
+window.doEmote = (id) => {
+  state.emote = { id, ts: Date.now() };
+  closeMenu();
+  pushPresence();
+};
 
 // ---------- Key handling ----------
 function handleKey(e) {
@@ -65,7 +89,8 @@ function handleKey(e) {
   if (document.activeElement === document.getElementById("chatBox")) {
     if (k === "enter") {
       const v = document.getElementById("chatBox").value.trim();
-      if (v) { pushChatMessage(v); pushPresence(); }
+      if (v && isMuted()) toast(muteText(state.mute), 3000);
+      else if (v) { pushChatMessage(v); pushPresence(); }
       document.getElementById("chatBox").value = "";
       document.getElementById("chatInput").classList.add("hidden");
       document.getElementById("chatBox").blur();
@@ -84,8 +109,11 @@ function handleKey(e) {
   }
   if (k === "t") {
     e.preventDefault();
+    if (isMuted()) { toast(muteText(state.mute), 3000); return; }
     document.getElementById("chatInput").classList.remove("hidden");
     document.getElementById("chatBox").focus();
+  } else if (k === "g") {
+    openEmotes();
   } else if (k === "q") {
     gameSocial.openSidePanelDMs();
   } else if (k === "i") {
@@ -455,9 +483,46 @@ function openFurnitureCatalog() {
     </div>`;
   }
   html += `</div>`;
+  html += paintShopHtml();
   openMenu(`FURNITURELAND — MARKET (restocks in ${minsLeft}m)`, html, true);
   drawCatalogPreviews();
 }
+
+// ---------- PAINT SHOP (house exterior) ----------
+// Repaint the walls or roof of your house for everyone to see. Stored at
+// users/<me>/houseStyle and read by drawHouse via the user cache.
+const PAINT_PRICE = 300;
+const PAINT_WALLS = ["#fef9c3", "#e7e5e4", "#fde68a", "#bfdbfe", "#fecaca", "#d9f99d", "#e9d5ff", "#cffafe", "#fed7aa",
+                     "#f472b6", "#a78bfa", "#38bdf8", "#4ade80", "#f97316", "#1f2937", "#0a0a0a", "#fafaf9"];
+const PAINT_ROOFS = ["#b45309", "#7f1d1d", "#1e3a8a", "#3f2210", "#166534", "#4c1d95", "#7c2d12", "#0f172a", "#831843",
+                     "#dc2626", "#2563eb", "#059669", "#fbbf24", "#a855f7", "#f472b6", "#0a0a0a", "#e5e7eb"];
+function paintShopHtml() {
+  const st = state.data.houseStyle || {};
+  const sw = (arr, key) => arr.map(c =>
+    `<div class="swatch ${st[key] === c ? "selected" : ""}" title="${c}" style="background:${c}" onclick="buyPaint('${key}','${c}')"></div>`).join("");
+  return `<h3 class="section">🎨 PAINT SHOP — $${PAINT_PRICE} per coat</h3>
+    <p class="muted">Repaint your house so friends can spot it from the street. Everyone sees the new colours.</p>
+    <div><b>Walls</b></div><div class="paintRow">${sw(PAINT_WALLS, "wall")}</div>
+    <div><b>Roof</b></div><div class="paintRow">${sw(PAINT_ROOFS, "roof")}</div>
+    ${(st.wall || st.roof) ? `<button class="menuBtn gray" onclick="buyPaint('reset')">Strip paint (free)</button>` : ""}`;
+}
+window.buyPaint = async (key, color) => {
+  const st = Object.assign({}, state.data.houseStyle || {});
+  if (key === "reset") {
+    delete st.wall; delete st.roof;
+  } else {
+    if (st[key] === color) { toast("Already that colour."); return; }
+    if ((state.data.money || 0) < PAINT_PRICE) { toast("Not enough money."); return; }
+    state.data.money -= PAINT_PRICE;
+    st[key] = color;
+  }
+  state.data.houseStyle = st;
+  if (state._userCache && state._userCache[state.user]) state._userCache[state.user].houseStyle = st;
+  await fbPatch(`users/${state.user}`, { money: state.data.money, houseStyle: st });
+  updateHUD();
+  toast(key === "reset" ? "Paint stripped." : `Fresh coat on the ${key}!`);
+  openFurnitureCatalog();
+};
 window.buyFurn = async (id) => {
   const def = FURNITURE_CATALOG[id]; if (!def) return;
   if (state.data.money < def.price) { toast("Not enough money."); return; }
@@ -517,22 +582,55 @@ window.rollLootbox = async (tier) => {
 };
 
 // ---------- BANK ----------
+// Daily bonus: claimable every 20h. Log in on consecutive days to grow the
+// streak (a 48h gap resets it). Day 7+ pays the cap.
+const DAILY_COOLDOWN = 20 * 3600000, DAILY_STREAK_WINDOW = 48 * 3600000;
+function dailyBonusAmount(streak) { return Math.min(900, 150 + 125 * Math.max(0, streak - 1)); }
+function dailyBonusReady() { return Date.now() - (state.data.lastDaily || 0) >= DAILY_COOLDOWN; }
+function nextDailyStreak() {
+  const last = state.data.lastDaily || 0;
+  return (Date.now() - last <= DAILY_STREAK_WINDOW) ? (state.data.dailyStreak || 0) + 1 : 1;
+}
 async function openBankMain() {
   const interest = Math.floor((state.data.money || 0) * 0.05);
   const last = state.data.lastInterest || 0;
   const next = Math.max(0, 120 - Math.floor((Date.now() - last) / 1000));
+  const ready = dailyBonusReady();
+  const streak = nextDailyStreak();
+  const wait = Math.max(0, DAILY_COOLDOWN - (Date.now() - (state.data.lastDaily || 0)));
+  const waitTxt = `${Math.floor(wait / 3600000)}h ${Math.floor((wait % 3600000) / 60000)}m`;
   openMenu("FIRST BANK", `
     <div class="center">
       <div class="bigNum">$${state.data.money}</div>
       <p class="muted">Your balance</p>
     </div>
     <hr class="div">
+    <h3 class="section">🎁 DAILY BONUS</h3>
+    <p>Come back every day and the bonus grows. Streak: <b>${state.data.dailyStreak || 0} day${(state.data.dailyStreak || 0) === 1 ? "" : "s"}</b>
+      ${ready ? `· claiming now makes it <b>day ${streak}</b> for <b>$${dailyBonusAmount(streak)}</b>` : ""}</p>
+    <button class="menuBtn gold" ${ready ? "" : "disabled"} onclick="claimDaily()">
+      ${ready ? `CLAIM $${dailyBonusAmount(streak)}` : `NEXT BONUS IN ${waitTxt}`}</button>
     <h3 class="section">INTEREST</h3>
     <p>Earn 5% of balance every 2 minutes.</p>
     <p>Available: <b>$${interest}</b> ${next > 0 ? `<span class="muted">(in ${next}s)</span>` : ""}</p>
     <button class="menuBtn green" ${next > 0 ? "disabled" : ""} onclick="claimInterest()">CLAIM INTEREST</button>
   `);
 }
+async function claimDaily() {
+  if (!dailyBonusReady()) { toast("Not yet — come back later."); return; }
+  const streak = nextDailyStreak();
+  const amt = dailyBonusAmount(streak);
+  state.data.money = (state.data.money || 0) + amt;
+  state.data.dailyStreak = streak;
+  state.data.lastDaily = Date.now();
+  await fbPatch(`users/${state.user}`, { money: state.data.money, dailyStreak: streak, lastDaily: state.data.lastDaily });
+  updateHUD();
+  toast(`🎁 Daily bonus: +$${amt} (day ${streak} streak)`, 3500);
+  if (typeof celebrate === "function" && streak >= 3) celebrate();
+  openBankMain();
+}
+window.claimDaily = claimDaily;
+window.dailyBonusReady = dailyBonusReady;
 async function claimInterest() {
   const last = state.data.lastInterest || 0;
   if (Date.now() - last < 120000) {
@@ -604,29 +702,79 @@ function openDuelChallenge() {
   openMenu("DUEL CHALLENGE", html);
 }
 
-// ---------- BARBER ----------
+// ---------- BARBER / COSMETICS ----------
+// Free basics plus a paid catalogue. Purchases are one-off and live at
+// users/<me>/cosmetics as { "hat:cowboy": true, ... }; the equipped choice is
+// part of `appearance`, which presence already ships to everyone.
+const COSMETICS = {
+  hat: [
+    { id: "none", name: "None", price: 0 }, { id: "cap", name: "Cap", price: 0 }, { id: "tophat", name: "Top Hat", price: 0 },
+    { id: "beanie", name: "Beanie", price: 0 }, { id: "crown", name: "Crown", price: 0 },
+    { id: "bandana", name: "Bandana", price: 300 }, { id: "party", name: "Party Hat", price: 350 }, { id: "cowboy", name: "Cowboy", price: 400 },
+    { id: "chef", name: "Chef", price: 450 }, { id: "headphones", name: "Headphones", price: 500 }, { id: "wizard", name: "Wizard", price: 600 },
+    { id: "pirate", name: "Pirate", price: 800 }, { id: "horns", name: "Horns", price: 900 }, { id: "halo", name: "Halo", price: 1200 },
+  ],
+  accessory: [
+    { id: "none", name: "None", price: 0 }, { id: "glasses", name: "Glasses", price: 250 }, { id: "scarf", name: "Scarf", price: 300 },
+    { id: "mask", name: "Mask", price: 300 }, { id: "mustache", name: "Mustache", price: 350 }, { id: "sunglasses", name: "Shades", price: 400 },
+    { id: "eyepatch", name: "Eyepatch", price: 500 }, { id: "monocle", name: "Monocle", price: 700 }, { id: "chain", name: "Gold Chain", price: 1500 },
+  ],
+  aura: [
+    { id: "none", name: "None", price: 0 }, { id: "sparkle", name: "Sparkle", price: 2500 }, { id: "hearts", name: "Hearts", price: 3000 },
+    { id: "fire", name: "Fire", price: 5000 }, { id: "electric", name: "Electric", price: 6000 }, { id: "shadow", name: "Shadow", price: 7500 },
+    { id: "gold", name: "Money Rain", price: 10000 }, { id: "rainbow", name: "Rainbow", price: 15000 },
+  ],
+  pet: [
+    { id: "none", name: "None", price: 0 }, { id: "duck", name: "Duck", price: 2000 }, { id: "cat", name: "Cat", price: 3500 },
+    { id: "dog", name: "Dog", price: 3500 }, { id: "ghost", name: "Ghost", price: 6000 }, { id: "robot", name: "Robot", price: 8000 },
+    { id: "dragon", name: "Dragon", price: 20000 },
+  ],
+  nameColor: [
+    { id: "", name: "Default", price: 0 }, { id: "#38bdf8", name: "Sky", price: 1000 }, { id: "#4ade80", name: "Lime", price: 1000 },
+    { id: "#f472b6", name: "Pink", price: 1000 }, { id: "#a78bfa", name: "Violet", price: 1000 }, { id: "#f97316", name: "Orange", price: 1000 },
+    { id: "#ef4444", name: "Red", price: 2000 }, { id: "#fbbf24", name: "Gold", price: 5000 }, { id: "rainbow", name: "Rainbow", price: 25000 },
+  ],
+};
+const COSMETIC_LABELS = { hat: "HATS", accessory: "FACE & NECK", aura: "AURAS", pet: "PETS", nameColor: "NAME COLOUR" };
+function ownsCosmetic(key, id) {
+  const def = COSMETICS[key].find(c => c.id === id);
+  if (!def || def.price === 0) return true;
+  return !!((state.data.cosmetics || {})[`${key}:${id}`]);
+}
+
 function openBarber() {
-  const a = JSON.parse(JSON.stringify(state.appearance || GFX.DEFAULT_APPEARANCE));
+  const a = Object.assign({}, GFX.DEFAULT_APPEARANCE, JSON.parse(JSON.stringify(state.appearance || {})));
   const skinColors = ["#f5d0a9","#e2b48c","#c68863","#8d5524","#6e3b1d","#fde68a","#fbbf24","#a3a3a3"];
   const hairColors = ["#3f2210","#7c2d12","#fcd34d","#dc2626","#3b82f6","#a855f7","#f97316","#16a34a","#fafaf9","#0a0a0a"];
   const shirtColors = ["#3b82f6","#ef4444","#10b981","#fbbf24","#a855f7","#ec4899","#0ea5e9","#1f2937","#fafaf9"];
   const pantsColors = ["#1e293b","#7c4a18","#0f172a","#475569","#1e3a8a","#3f2210","#0a0a0a","#9ca3af"];
   const hatColors = ["#dc2626","#3b82f6","#fbbf24","#16a34a","#a855f7","#0a0a0a","#fafaf9"];
   const hairs = ["bald","short","long","mohawk","afro","buzz"];
-  const hats = ["none","cap","tophat","beanie","crown"];
 
   const swatchHTML = (arr, key) => arr.map(c =>
     `<div class="swatch ${a[key] === c ? "selected":""}" data-key="${key}" data-val="${c}" style="background:${c}"></div>`).join("");
   const optionHTML = (arr, key) => arr.map(o =>
     `<button class="optionBtn ${a[key] === o ? "selected":""}" data-key="${key}" data-val="${o}">${o}</button>`).join("");
+  const cosHTML = (key) => `<div class="cosGrid">` + COSMETICS[key].map(c => {
+    const owned = ownsCosmetic(key, c.id);
+    const sel = (a[key] || (key === "nameColor" ? "" : "none")) === c.id;
+    const preview = key === "nameColor"
+      ? `<div style="height:44px;display:flex;align-items:center;justify-content:center;font-weight:800;color:${c.id === "rainbow" ? "#fff" : (c.id || "#fff")};${c.id === "rainbow" ? "background:linear-gradient(90deg,#ef4444,#fbbf24,#4ade80,#38bdf8,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;" : ""}">${escapeHtml(state.user)}</div>`
+      : `<canvas data-cos="${key}" data-id="${c.id}" width="96" height="44"></canvas>`;
+    return `<div class="cosCard ${sel ? "selected" : ""} ${owned ? "" : "locked"}" data-cos="${key}" data-id="${c.id}">
+      ${preview}<div>${c.name}</div>
+      ${owned ? (c.price ? `<div class="owned">owned</div>` : "") : `<div class="price">🔒 $${c.price}</div>`}
+    </div>`;
+  }).join("") + `</div>`;
 
   openMenu("TRIM & STYLE", `
     <div style="display:flex;gap:20px;">
-      <div style="flex:0 0 220px;">
+      <div style="flex:0 0 220px;position:sticky;top:0;align-self:flex-start;">
         <canvas id="barberPreview" width="200" height="200" style="background:#1f2735;border-radius:10px;"></canvas>
         <button class="menuBtn green" style="width:100%;margin-top:10px;" onclick="saveBarber()">SAVE LOOK</button>
+        <p class="muted" style="margin-top:8px;">Locked items: click to buy. Bought items are yours forever and everyone in town sees them.</p>
       </div>
-      <div style="flex:1;">
+      <div style="flex:1;min-width:0;">
         <h3 class="section">SKIN</h3>
         <div class="swatchRow" data-group="skin">${swatchHTML(skinColors, "skin")}</div>
         <h3 class="section">HAIR STYLE</h3>
@@ -637,9 +785,17 @@ function openBarber() {
         <div class="swatchRow">${swatchHTML(shirtColors, "shirt")}</div>
         <h3 class="section">PANTS</h3>
         <div class="swatchRow">${swatchHTML(pantsColors, "pants")}</div>
-        <h3 class="section">HAT</h3>
-        <div class="optionRow">${optionHTML(hats, "hat")}</div>
+        <h3 class="section">HATS</h3>
+        ${cosHTML("hat")}
         <div class="swatchRow">${swatchHTML(hatColors, "hatColor")}</div>
+        <h3 class="section">FACE &amp; NECK</h3>
+        ${cosHTML("accessory")}
+        <h3 class="section">AURAS</h3>
+        ${cosHTML("aura")}
+        <h3 class="section">PETS</h3>
+        ${cosHTML("pet")}
+        <h3 class="section">NAME COLOUR</h3>
+        ${cosHTML("nameColor")}
       </div>
     </div>
   `, true);
@@ -652,6 +808,9 @@ function openBarber() {
     c.save(); c.translate(100, 130); c.scale(3.5, 3.5);
     GFX.drawCharacter(c, 0, 0, a, { facing: "down" });
     c.restore();
+    c.save(); c.translate(100, 30); c.scale(1.6, 1.6);
+    GFX.drawNameAndBubble(c, 0, 26, state.user, null, true, a, state.role);
+    c.restore();
     // Sync selected highlights
     document.querySelectorAll(".swatch").forEach(el => {
       el.classList.toggle("selected", a[el.dataset.key] === el.dataset.val);
@@ -659,18 +818,68 @@ function openBarber() {
     document.querySelectorAll(".optionBtn").forEach(el => {
       el.classList.toggle("selected", a[el.dataset.key] === el.dataset.val);
     });
+    document.querySelectorAll(".cosCard").forEach(el => {
+      const key = el.dataset.cos;
+      el.classList.toggle("selected", (a[key] || (key === "nameColor" ? "" : "none")) === el.dataset.id);
+    });
   }
+  // Card previews: draw just the relevant piece on a neutral dummy
+  document.querySelectorAll("#menuBody canvas[data-cos]").forEach(cv => {
+    const key = cv.dataset.cos, id = cv.dataset.id;
+    const c = cv.getContext("2d");
+    const dummy = Object.assign({}, GFX.DEFAULT_APPEARANCE, { hair: "short", [key]: id, hatColor: a.hatColor });
+    c.save(); c.translate(48, 30); c.scale(1.5, 1.5);
+    GFX.drawCharacter(c, 0, 0, dummy, { facing: "down" });
+    c.restore();
+  });
+  // keep aura/pet previews alive while the menu is open
+  const previewTimer = setInterval(() => {
+    const m = document.getElementById("menu");
+    if (!document.getElementById("barberPreview") || m.classList.contains("hidden")) { clearInterval(previewTimer); return; }
+    document.querySelectorAll("#menuBody canvas[data-cos='aura'], #menuBody canvas[data-cos='pet']").forEach(cv => {
+      const c = cv.getContext("2d"); c.clearRect(0, 0, cv.width, cv.height);
+      const dummy = Object.assign({}, GFX.DEFAULT_APPEARANCE, { [cv.dataset.cos]: cv.dataset.id });
+      c.save(); c.translate(48, 30); c.scale(1.5, 1.5);
+      GFX.drawCharacter(c, 0, 0, dummy, { facing: "down" });
+      c.restore();
+    });
+    refresh();
+  }, 66);
   document.querySelectorAll(".swatch").forEach(el => {
     el.onclick = () => { a[el.dataset.key] = el.dataset.val; refresh(); };
   });
   document.querySelectorAll(".optionBtn").forEach(el => {
     el.onclick = () => { a[el.dataset.key] = el.dataset.val; refresh(); };
   });
+  document.querySelectorAll(".cosCard").forEach(el => {
+    el.onclick = async () => {
+      const key = el.dataset.cos, id = el.dataset.id;
+      if (!ownsCosmetic(key, id)) {
+        const def = COSMETICS[key].find(c => c.id === id);
+        if ((state.data.money || 0) < def.price) { toast(`Need $${def.price} for the ${def.name}.`); return; }
+        if (!confirm(`Buy ${def.name} for $${def.price}? It's yours forever.`)) return;
+        state.data.money -= def.price;
+        state.data.cosmetics = state.data.cosmetics || {};
+        state.data.cosmetics[`${key}:${id}`] = true;
+        await fbPatch(`users/${state.user}`, { money: state.data.money, cosmetics: state.data.cosmetics });
+        updateHUD();
+        toast(`Bought ${def.name}!`);
+        el.classList.remove("locked");
+        const tag = el.querySelector(".price"); if (tag) { tag.className = "owned"; tag.textContent = "owned"; }
+        if (typeof celebrate === "function" && def.price >= 5000) celebrate();
+      }
+      a[key] = id; refresh();
+    };
+  });
   refresh();
   window._barberDraft = a;
 }
 window.saveBarber = async () => {
   const a = window._barberDraft;
+  // Never trust the draft for paid items — strip anything not owned.
+  for (const key of Object.keys(COSMETICS)) {
+    if (a[key] != null && !ownsCosmetic(key, a[key])) a[key] = key === "nameColor" ? "" : "none";
+  }
   state.appearance = a;
   state.data.appearance = a;
   await fbPatch(`users/${state.user}`, { appearance: a });
@@ -691,39 +900,171 @@ async function openPlazaBoard() {
   `);
 }
 
-// ---------- MAYOR ADMIN ----------
+// ---------- TOWN HALL DESK / STAFF PANEL ----------
+// Roles: owner > admin > user. Owners are set in the server's save file (see
+// server-node/server.js — OWNERS env or roles/owners in the data blob); they
+// promote/demote admins here. Both can ban, mute, give money and teleport.
+// The server enforces every one of these rules; the UI just hides what you
+// can't do so the panel isn't a wall of buttons that fail.
 async function openMayorDesk() {
   if (!state.isMayor) {
     const ann = (await fbGet("mayor/announcement")) || "(no announcement)";
     openMenu("MAYOR'S DESK", `
-      <p>Only the Mayor can use this desk. Latest announcement:</p>
+      <p>Only town staff can use this desk. Latest announcement:</p>
       <div style="padding:14px;background:#0a0e15;border:1px solid #2a3344;border-radius:8px;">${escapeHtml(ann)}</div>
     `);
     return;
   }
-  const users = (await fbGet("users")) || {};
-  const ann = (await fbGet("mayor/announcement")) || "";
-  let userRows = "";
-  for (const u of Object.keys(users).sort()) {
-    if (u === "mayor") continue;
-    userRows += `<div class="invItem">
-      <div class="info"><b>${u}</b> — $${users[u].money || 0}</div>
-      <div class="flexRow">
-        <button class="menuBtn green" onclick="mayorGive('${u}',500)">+$500</button>
-        <button class="menuBtn" onclick="mayorTeleport('${u}')">House #${users[u].houseIndex}</button>
-        <button class="menuBtn red" onclick="mayorDelete('${u}')">Delete</button>
-      </div>
+  openStaffPanel();
+}
+
+const ROLE_RANK = { user: 0, admin: 1, owner: 2 };
+let _staff = null; // cached data for the open panel: { users, roles, bans, mutes, filter }
+function staffRoleOf(u) {
+  const roles = (_staff && _staff.roles) || {};
+  if (u === "mayor" || (roles.owners && roles.owners[u])) return "owner";
+  if (roles.admins && roles.admins[u]) return "admin";
+  return "user";
+}
+function iOutrank(u) { return ROLE_RANK[state.role] > ROLE_RANK[staffRoleOf(u)]; }
+function fmtUntil(ts) { return ts ? new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "permanent"; }
+
+async function openStaffPanel() {
+  if (!state.isMayor) { toast("Staff only."); return; }
+  const [users, roles, bans, mutes, ann] = await Promise.all([
+    fbGet("users"), fbGet("roles"), fbGet("bans"), fbGet("mutes"), fbGet("mayor/announcement"),
+  ]);
+  _staff = { users: users || {}, roles: roles || {}, bans: bans || {}, mutes: mutes || {}, ann: ann || "", filter: (_staff && _staff.filter) || "" };
+  const isOwner = state.role === "owner";
+  openMenu(`${state.role === "owner" ? "👑 OWNER" : "🛡️ ADMIN"} — STAFF PANEL`, `
+    <h3 class="section">ANNOUNCEMENT (shown at the Town Plaza)</h3>
+    <div class="flexRow">
+      <input id="annInput" value="${escapeHtml(_staff.ann).replace(/"/g, "&quot;")}"
+        style="flex:1;padding:8px;background:#0a0e15;color:white;border:1px solid #2a3344;border-radius:6px;" />
+      <button class="menuBtn" onclick="mayorAnnounce()">Save</button>
+    </div>
+    <h3 class="section">PLAYERS</h3>
+    <p class="muted">${isOwner
+      ? "You can promote players to admin, and ban / mute / pay anyone below you. Owners are set in the server save file."
+      : "You can ban, mute, teleport to and pay regular players. Only owners can promote admins or delete accounts."}</p>
+    <input class="staffSearch" id="staffSearch" placeholder="Search players…" value="${escapeHtml(_staff.filter)}"
+      oninput="staffFilter(this.value)" />
+    <div id="staffList"></div>
+    <h3 class="section">ACTIVE BANS</h3>
+    <div id="staffBans"></div>
+    <h3 class="section">ACTIVE MUTES</h3>
+    <div id="staffMutes"></div>
+  `, true);
+  renderStaffLists();
+  // keep the "Staff" button state right if our role changed
+  setRole(state.role);
+}
+window.openStaffPanel = openStaffPanel;
+window.staffFilter = (v) => { if (_staff) { _staff.filter = v; renderStaffLists(); } };
+
+function renderStaffLists() {
+  if (!_staff) return;
+  const now = Date.now();
+  const list = document.getElementById("staffList");
+  const f = (_staff.filter || "").trim().toLowerCase();
+  const names = Object.keys(_staff.users).sort((a, b) => {
+    const d = ROLE_RANK[staffRoleOf(b)] - ROLE_RANK[staffRoleOf(a)];
+    return d || a.localeCompare(b);
+  }).filter(u => u !== state.user && (!f || u.includes(f)));
+  let html = "";
+  for (const u of names.slice(0, 60)) {
+    const ud = _staff.users[u] || {};
+    const role = staffRoleOf(u);
+    const ban = _staff.bans[u]; const banned = ban && (!ban.until || ban.until > now);
+    const mute = _staff.mutes[u]; const muted = mute && (!mute.until || mute.until > now);
+    const online = !!state.others[u];
+    const can = iOutrank(u);
+    let btns = "";
+    if (can) {
+      btns += banned
+        ? `<button class="menuBtn green" onclick="staffUnban('${u}')">Unban</button>`
+        : `<button class="menuBtn red" onclick="staffBan('${u}')">Ban</button>`;
+      btns += muted
+        ? `<button class="menuBtn green" onclick="staffUnmute('${u}')">Unmute</button>`
+        : `<button class="menuBtn gray" onclick="staffMute('${u}')">Mute</button>`;
+      btns += `<button class="menuBtn gold" onclick="staffGive('${u}')">+$</button>`;
+    }
+    btns += `<button class="menuBtn" onclick="mayorTeleport('${u}')" title="Teleport to their house">🏠 ${ud.houseIndex != null ? gameWorld.houseAddress(ud.houseIndex) : "?"}</button>`;
+    if (state.role === "owner") {
+      if (role === "user") btns += `<button class="menuBtn" style="background:linear-gradient(180deg,#3b82f6,#1d4ed8)" onclick="staffPromote('${u}')">Make Admin</button>`;
+      else if (role === "admin") btns += `<button class="menuBtn gray" onclick="staffDemote('${u}')">Remove Admin</button>`;
+      if (role !== "owner") btns += `<button class="menuBtn red" onclick="mayorDelete('${u}')">Delete</button>`;
+    }
+    html += `<div class="staffRow">
+      <div class="who"><span class="statusDot ${online ? "online" : ""}"></span> <b>${u}</b>
+        ${role !== "user" ? `<span class="roleTag ${role}">${role.toUpperCase()}</span>` : ""}
+        ${banned ? `<span class="roleTag banned">BANNED</span>` : ""}${muted ? `<span class="roleTag muted">MUTED</span>` : ""}
+        <small>$${ud.money || 0} · joined ${ud.createdAt ? new Date(ud.createdAt).toLocaleDateString() : "?"}</small></div>
+      <div class="btns">${btns}</div>
     </div>`;
   }
-  openMenu("MAYOR ADMIN PANEL ★", `
-    <h3 class="section">ANNOUNCEMENT</h3>
-    <input id="annInput" value="${(ann+"").replace(/"/g,"&quot;")}"
-      style="width:100%;padding:8px;background:#0a0e15;color:white;border:1px solid #2a3344;border-radius:6px;" />
-    <button class="menuBtn" style="margin-top:6px;" onclick="mayorAnnounce()">Save</button>
-    <h3 class="section">CITIZENS (${Object.keys(users).length - (users.mayor?1:0)})</h3>
-    ${userRows || "<p>No citizens yet.</p>"}
-  `, true);
+  if (names.length > 60) html += `<p class="muted">Showing 60 of ${names.length} — narrow the search.</p>`;
+  list.innerHTML = html || `<p class="muted">No players match.</p>`;
+
+  const bansEl = document.getElementById("staffBans");
+  const activeBans = Object.entries(_staff.bans).filter(([, b]) => b && (!b.until || b.until > now));
+  bansEl.innerHTML = activeBans.length ? activeBans.map(([u, b]) => `<div class="staffRow">
+      <div class="who"><b>${u}</b><small>by ${b.by || "?"} · ${fmtUntil(b.until)}${b.reason ? " · " + escapeHtml(b.reason) : ""}${b.ip ? " · IP banned" : ""}</small></div>
+      <div class="btns">${iOutrank(u) ? `<button class="menuBtn green" onclick="staffUnban('${u}')">Unban</button>` : ""}</div>
+    </div>`).join("") : `<p class="muted">Nobody is banned.</p>`;
+
+  const mutesEl = document.getElementById("staffMutes");
+  const activeMutes = Object.entries(_staff.mutes).filter(([, m]) => m && (!m.until || m.until > now));
+  mutesEl.innerHTML = activeMutes.length ? activeMutes.map(([u, m]) => `<div class="staffRow">
+      <div class="who"><b>${u}</b><small>by ${m.by || "?"} · until ${fmtUntil(m.until)}${m.reason ? " · " + escapeHtml(m.reason) : ""}</small></div>
+      <div class="btns">${iOutrank(u) ? `<button class="menuBtn green" onclick="staffUnmute('${u}')">Unmute</button>` : ""}</div>
+    </div>`).join("") : `<p class="muted">Nobody is muted.</p>`;
 }
+
+async function staffDo(fn, okMsg) {
+  try { await fn(); if (okMsg) toast(okMsg); }
+  catch (e) { toast("Server refused: " + (e.message || e), 3500); }
+  openStaffPanel();
+}
+window.staffBan = (u) => {
+  const reason = prompt(`Ban ${u} from the site. Reason (shown to them):`, "Breaking the rules");
+  if (reason === null) return;
+  const hrs = prompt("Ban length in hours (0 = permanent):", "24");
+  if (hrs === null) return;
+  const h = Math.max(0, parseFloat(hrs) || 0);
+  const until = h ? Date.now() + h * 3600000 : 0;
+  staffDo(() => fbPut(`bans/${u}`, { reason: reason.slice(0, 140), until, by: state.user, ts: Date.now() }),
+    `Banned ${u} ${h ? `for ${h}h` : "permanently"}.`);
+};
+window.staffUnban = (u) => staffDo(() => fbDelete(`bans/${u}`), `Unbanned ${u}.`);
+window.staffMute = (u) => {
+  const reason = prompt(`Mute ${u}. Reason:`, "Spam");
+  if (reason === null) return;
+  const mins = prompt("Mute length in minutes (0 = until unmuted):", "30");
+  if (mins === null) return;
+  const m = Math.max(0, parseFloat(mins) || 0);
+  const until = m ? Date.now() + m * 60000 : 0;
+  staffDo(() => fbPut(`mutes/${u}`, { reason: reason.slice(0, 140), until, by: state.user, ts: Date.now() }),
+    `Muted ${u} ${m ? `for ${m} min` : "indefinitely"}.`);
+};
+window.staffUnmute = (u) => staffDo(() => fbDelete(`mutes/${u}`), `Unmuted ${u}.`);
+window.staffGive = (u) => {
+  const amt = parseInt(prompt(`Give money to ${u}. Amount (negative to take):`, "500"));
+  if (!amt) return;
+  staffDo(async () => {
+    const ud = await fbGet(`users/${u}`); if (!ud) throw new Error("no such user");
+    await fbPatch(`users/${u}`, { money: Math.max(0, (ud.money || 0) + amt) });
+  }, `${amt > 0 ? "Gave" : "Took"} $${Math.abs(amt)} ${amt > 0 ? "to" : "from"} ${u}.`);
+};
+window.staffPromote = (u) => {
+  if (!confirm(`Make ${u} an ADMIN? They'll be able to ban, mute and pay players.`)) return;
+  staffDo(() => fbPut(`roles/admins/${u}`, true), `${u} is now an admin.`);
+};
+window.staffDemote = (u) => {
+  if (!confirm(`Remove ${u}'s admin role?`)) return;
+  staffDo(() => fbDelete(`roles/admins/${u}`), `${u} is no longer an admin.`);
+};
+
 window.mayorAnnounce = async () => {
   const v = document.getElementById("annInput").value;
   await fbPut("mayor/announcement", v);
@@ -733,7 +1074,7 @@ window.mayorGive = async (u, amt) => {
   const ud = await fbGet(`users/${u}`); if (!ud) return;
   await fbPatch(`users/${u}`, { money: (ud.money || 0) + amt });
   toast(`Gave ${u} $${amt}.`);
-  openMayorDesk();
+  openStaffPanel();
 };
 window.mayorTeleport = (u) => {
   const ud = state._userCache?.[u];
@@ -746,12 +1087,12 @@ window.mayorTeleport = (u) => {
   toast(`Teleported to ${u}'s house.`);
 };
 window.mayorDelete = async (u) => {
-  if (!confirm("Delete user " + u + "?")) return;
+  if (!confirm("Delete user " + u + "? This wipes their house, money and inventory.")) return;
   await fbDelete(`users/${u}`);
   await fbDelete(`players/${u}`);
   await fbDelete(`inbox/${u}`);
   toast(`Deleted ${u}.`);
-  openMayorDesk();
+  openStaffPanel();
 };
 
 // ---------- MAIN UPDATE ----------
@@ -774,7 +1115,7 @@ function update() {
     if (keys["a"] || keys["arrowleft"]) dx -= 1;
     if (keys["d"] || keys["arrowright"]) dx += 1;
     const m = Math.hypot(dx, dy) || 1;
-    const speed = 2.65; // player walking speed (matches the duel/dungeon value)
+    const speed = WALK_SPEED; // shared walking speed (core.js), per 60Hz tick
     if (m > 0.001 && (dx || dy)) {
       const nx = state.pos.x + (dx/m) * speed;
       const ny = state.pos.y + (dy/m) * speed;

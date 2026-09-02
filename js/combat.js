@@ -249,7 +249,7 @@ function updateDungeon() {
   if (keys["d"] || keys["arrowright"]) dx += 1;
   const m = Math.hypot(dx, dy) || 1;
   if (dx || dy) {
-    const speed = 2.65; // same walking speed as the overworld
+    const speed = WALK_SPEED; // same walking speed as the overworld (core.js)
     const nx = state.pos.x + (dx/m) * speed;
     const ny = state.pos.y + (dy/m) * speed;
     moveWithWalls(state.pos, nx, ny, 12);
@@ -599,7 +599,7 @@ function drawDungeon() {
       const px = typeof p.dispX === "number" ? p.dispX : p.x;
       const py = typeof p.dispY === "number" ? p.dispY : p.y;
       GFX.drawCharacter(ctx, px, py, p.appearance, { facing: p.facing });
-      GFX.drawNameAndBubble(ctx, px, py, state.party.partnerId, p.msg, false);
+      GFX.drawNameAndBubble(ctx, px, py, state.party.partnerId, p.msgs || p.msg, false, p.appearance, p.role);
     }
   }
 
@@ -681,7 +681,7 @@ function updateDuel() {
   if (keys["d"] || keys["arrowright"]) dx += 1;
   const m = Math.hypot(dx, dy) || 1;
   if (m > 0 && (dx || dy)) {
-    const speed = 2.65; // same walking speed as the overworld
+    const speed = WALK_SPEED; // same walking speed as the overworld (core.js)
     state.pos.x += (dx/m) * speed; state.pos.y += (dy/m) * speed;
     state.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
   }
@@ -781,7 +781,7 @@ function drawDuel() {
     const ox = typeof opp.dispX === "number" ? opp.dispX : opp.x;
     const oy = typeof opp.dispY === "number" ? opp.dispY : opp.y;
     GFX.drawCharacter(ctx, ox, oy, opp.appearance, { facing: opp.facing });
-    GFX.drawNameAndBubble(ctx, ox, oy, state.duel.opponent, opp.msg, false);
+    GFX.drawNameAndBubble(ctx, ox, oy, state.duel.opponent, opp.msgs || opp.msg, false, opp.appearance, opp.role);
   }
   GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance,
                      { facing: state.facing, walking: state.walking });
