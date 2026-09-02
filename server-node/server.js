@@ -36,8 +36,15 @@ const server = http.createServer(app);
 // ---------------------------------------------------------------- DATABASE
 
 const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
+// Plain rollback journal, not WAL: the whole database is a few KB and each
+// snapshot writes well under 1 KB, so WAL's non-blocking writes buy nothing
+// while its -wal/-shm sidecar files (32 KB + up to 4 MB) sit next to the db
+// forever after a hard kill. Switching modes here also absorbs any leftover
+// WAL from an older run. 1 KB pages keep slack to a minimum for a tiny file;
+// the page size only takes effect on the VACUUM below.
+db.pragma('journal_mode = DELETE');
 db.pragma('synchronous = NORMAL');
+db.pragma('page_size = 1024');
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS kv (
@@ -165,7 +172,10 @@ class Store {
         const rows = db.prepare(`SELECT key, value FROM kv`).all();
         if (!rows.length) { console.log('[store] fresh database'); return; }
         for (const r of rows) this.root[r.key] = decodeValue(r.value);
-        console.log(`[store] loaded ${rows.length} top-level keys`);
+        // Reclaim free pages and apply the page size; on a few-KB file this
+        // is instant and keeps the file at its minimum after deletions.
+        db.exec('VACUUM');
+        console.log(`[store] loaded ${rows.length} top-level keys (${db.pragma('page_count', { simple: true }) * db.pragma('page_size', { simple: true })} bytes on disk)`);
     }
 
     _writeKey(k) {
@@ -683,6 +693,7 @@ function handleMessage(c, msg) {
 function shutdown() {
     console.log('shutting down; final snapshot...');
     try { store.snapshot(); } catch (e) {}
+    try { db.close(); } catch (e) {}
     process.exit(0);
 }
 process.on('SIGINT', shutdown);

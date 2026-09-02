@@ -33,7 +33,8 @@ A multiplayer browser game built on the idea you sent your friend:
     furniture catalog is no longer stored (clients build it from code), empty
     fields are dropped, ended duels expire and DM threads keep their last 200
     messages. An old single-blob `data.db` is migrated automatically on the
-    first start (47 KB → under 1 KB for the current town).
+    first start (47 KB → under 1 KB for the current town). The journal mode
+    is DELETE, so there are never `-wal` / `-shm` sidecar files next to it.
   - Owners open the **Staff panel** (top-right button, or the Town Hall desk)
     to promote / demote admins, and can delete accounts.
   - Owners and admins can **ban** (account + the IP it last used, timed or

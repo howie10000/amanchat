@@ -24,6 +24,7 @@ if (!list && !names.length) {
 }
 
 const db = new Database(DB_PATH);
+db.pragma('journal_mode = DELETE'); // same as server.js — no -wal/-shm sidecars
 db.exec(`CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value BLOB NOT NULL)`);
 
 function decode(v) { return Buffer.isBuffer(v) ? JSON.parse(zlib.brotliDecompressSync(v).toString()) : JSON.parse(v); }
