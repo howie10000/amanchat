@@ -330,9 +330,11 @@ function drawInterior() {
     GFX.drawNameAndBubble(ctx, px, py, u, p.msgs || p.msg, false, p.appearance, p.role);
   }
   // You
+  if (state.invisible) ctx.globalAlpha = 0.35;   // staff invisibility — ghosted on your own screen
   GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance,
                     { facing: state.facing, walking: state.walking, emote: state.emote });
   GFX.drawNameAndBubble(ctx, state.pos.x, state.pos.y, state.user, state.msgs, true, state.appearance, state.role);
+  ctx.globalAlpha = 1;
 
   // Build mode preview
   if (state.area === "interior_home" && state.placeMode) {

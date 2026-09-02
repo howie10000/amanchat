@@ -631,9 +631,13 @@ function drawNeighborhood() {
     GFX.drawCharacter(ctx, px, py, p.appearance, { facing: p.facing, emote: p.emote });
     GFX.drawNameAndBubble(ctx, px, py, u, p.msgs || p.msg, false, p.appearance, p.role);
   }
+  // When a staff member is invisible, nobody else's presence carries them, and
+  // on their own screen they're drawn ghosted so they don't forget.
+  if (state.invisible) ctx.globalAlpha = 0.35;
   GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance,
                     { facing: state.facing, walking: state.walking, emote: state.emote });
   GFX.drawNameAndBubble(ctx, state.pos.x, state.pos.y, state.user, state.msgs, true, state.appearance, state.role);
+  ctx.globalAlpha = 1;
 
   ctx.restore();
   drawInteractionPrompt();

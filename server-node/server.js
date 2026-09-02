@@ -459,8 +459,13 @@ function pushTo(user, msg) {
 function broadcastPresence() {
     const users = {};
     for (const c of clients) {
+        if (!c.user || !c.presence) continue;
+        // Staff who've gone invisible are dropped from EVERY broadcast — no
+        // other client ever hears about them (they still render themselves,
+        // ghosted, from local state).
+        if (c.presence.invisible) continue;
         // Role is stamped server-side so a client can't fake a staff badge.
-        if (c.user && c.presence) users[c.user] = Object.assign({}, c.presence, { role: roleOf(c.user) });
+        users[c.user] = Object.assign({}, c.presence, { role: roleOf(c.user) });
     }
     const msg = JSON.stringify({ event: 'presence', users });
     for (const c of clients) {
@@ -988,6 +993,7 @@ function handleMessage(c, msg) {
             if (!c.user) return replyErr('not authed');
             const p = (msg.data && typeof msg.data === 'object') ? msg.data : null;
             if (p && activeMute(c.user)) { p.msgs = []; p.msg = ''; }
+            if (p) p.invisible = !!p.invisible && isStaff(c.user);   // only staff may hide
             c.presence = p;
             reply(null);
             break;

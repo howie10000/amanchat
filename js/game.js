@@ -258,6 +258,8 @@ function handleKey(e) {
     toggleDoorLock();
   } else if (k === "r" && state.area === "interior_home" && state.interiorOf === state.user && (state.buildMode || state.placeMode)) {
     rotateBuildTarget();
+  } else if (k === "v" && state.isMayor) {
+    toggleInvisible();
   } else if (k === "e") {
     tryInteract();
   } else if (k === "escape") {
@@ -1288,6 +1290,9 @@ async function openStaffPanel() {
         style="flex:1;padding:8px;background:#0a0e15;color:white;border:1px solid #2a3344;border-radius:6px;" />
       <button class="menuBtn gold" onclick="mayorAnnounce()">Post</button>
     </div>` : ""}
+    <h3 class="section">👻 INVISIBILITY</h3>
+    <p class="muted">Vanish from every other player's screen. On your own screen you stay faintly visible. Hotkey: <b>V</b>.</p>
+    <button class="menuBtn" onclick="toggleInvisible();closeMenu();">${state.invisible ? "TURN VISIBLE" : "GO INVISIBLE"}</button>
     <h3 class="section">🏛️ MAYOR'S TREASURY</h3>
     <div id="treasuryBox"><p class="muted">Loading…</p></div>
     <h3 class="section">PLAYERS</h3>

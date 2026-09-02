@@ -21,6 +21,7 @@ const state = {
   role: "user",        // "user" | "admin" | "owner" — stamped by the server on auth
   isMayor: false,      // true for any staff (admin/owner); legacy name kept for old call sites
   mute: null,          // { by, reason, until } while muted, else null
+  invisible: false,    // staff-only: hidden from everyone else's screen
   emote: null,         // { id, ts } — floating emote above the head
   pos: { x: 512, y: 400 }, vel: { x:0, y:0 },
   facing: "down", walking: 0,
@@ -265,6 +266,11 @@ const ROLE_BADGE = { owner: "👑", admin: "🛡️", user: "" };
 function setRole(role) {
   state.role = role || "user";
   state.isMayor = state.role !== "user";
+  if (!state.isMayor && state.invisible) {   // lost staff -> can't stay hidden
+    state.invisible = false;
+    const hi = document.getElementById("hudInvis"); if (hi) hi.style.display = "none";
+    if (state.user) pushPresence();
+  }
   const nameEl = document.getElementById("hudName");
   if (nameEl && state.user) {
     nameEl.textContent = state.user + (ROLE_BADGE[state.role] ? " " + ROLE_BADGE[state.role] : "");
@@ -373,8 +379,20 @@ async function pushPresence() {
     facing: state.facing,
     hp: state.hp,
     emote: state.emote,
+    // Staff-only; the server drops an invisible client from every broadcast.
+    invisible: state.invisible || undefined,
   }).catch(() => {});
 }
+
+// Staff: vanish from everyone else's screen (you stay ghosted on your own).
+window.toggleInvisible = async () => {
+  if (typeof assertStaffRole === "function" ? !(await assertStaffRole()) : !state.isMayor) return;
+  state.invisible = !state.invisible;
+  pushPresence();
+  toast(state.invisible ? "👻 You are now <b>INVISIBLE</b> to other players." : "You are visible again.", 3500);
+  const hi = document.getElementById("hudInvis");
+  if (hi) hi.style.display = state.invisible ? "flex" : "none";
+};
 function startPresenceLoop() {
   pushPresence();
   setInterval(pushPresence, 66); // ~15Hz client push (server also broadcasts ~15Hz)

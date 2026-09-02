@@ -147,6 +147,23 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     assert(r.ok && r.data.money === m0 - onShelf.price && r.data.inventory[onShelf.id] === 1, `shelf item deducts its price ($${onShelf.price}) and lands in inventory`);
     assert(!(await tryRpc(bob, 'buy', { kind: 'furniture', item: 'nope' })).ok, 'unknown furniture id rejected');
 
+    console.log('staff invisibility');
+    const lastPresence = (c) => { for (let i = c.events.length - 1; i >= 0; i--) if (c.events[i].event === 'presence') return c.events[i].users || {}; return {}; };
+    await bob.rpc('presence', { data: { x: 1, y: 1, area: 'neighborhood' } });
+    await owner.rpc('presence', { data: { x: 2, y: 2, area: 'neighborhood' } });
+    await sleep(200);
+    assert(lastPresence(bob).boss, 'bob sees the owner before they hide');
+    await owner.rpc('presence', { data: { x: 2, y: 2, area: 'neighborhood', invisible: true } });
+    await sleep(200);
+    assert(!lastPresence(bob).boss, 'once the owner goes invisible, bob no longer receives them');
+    assert(!lastPresence(alice).boss, 'nobody receives an invisible staffer');
+    await bob.rpc('presence', { data: { x: 1, y: 1, area: 'neighborhood', invisible: true } });
+    await sleep(200);
+    assert(lastPresence(alice).bob, 'a non-staff player CANNOT hide (the flag is ignored)');
+    await owner.rpc('presence', { data: { x: 2, y: 2, area: 'neighborhood' } });
+    await sleep(200);
+    assert(lastPresence(bob).boss, 'the owner reappears when they turn visible again');
+
     console.log('buy: lootbox');
     m0 = await money(bob, 'bob');
     r = await tryRpc(bob, 'buy', { kind: 'lootbox', item: 'rare' });
