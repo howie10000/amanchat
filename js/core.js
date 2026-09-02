@@ -324,6 +324,16 @@ function startNotifyLoop() {
     state.mute = m.data || null;
     toast(state.mute ? muteText(state.mute) : "🔊 You have been unmuted.", 5000);
   });
+  // Balance changed by something other than our own action (staff set/gave
+  // money, a duel settled) — the server is the only writer, so just adopt it.
+  NET.on("money", (m) => {
+    if (typeof m.money !== "number" || !state.data) return;
+    const before = state.data.money || 0;
+    state.data.money = m.money;
+    updateHUD();
+    const d = m.money - before;
+    if (m.reason === "staff" && d !== 0) toast(d > 0 ? `💰 Staff gave you $${d.toLocaleString()}.` : `💸 Staff took $${(-d).toLocaleString()}.`, 4000);
+  });
   // Promoted / demoted while online
   NET.on("role", (m) => {
     setRole(m.role);

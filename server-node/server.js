@@ -667,6 +667,11 @@ function settleDuel(id) {
 function afterWrite(pathStr, val) {
     const parts = Store.splitPath(pathStr);
     if (parts.length === 0) return;
+    // Staff changed someone's balance: tell that player live so their HUD
+    // updates without a relog (their own client is not allowed to write it).
+    if (parts[0] === 'users' && parts.length === 2 && val && typeof val.money === 'number') {
+        pushTo(parts[1], { event: 'money', money: store.get('users/' + parts[1] + '/money'), reason: 'staff' });
+    }
     switch (parts[0]) {
         case 'inbox':
             if (parts.length >= 2) pushTo(parts[1], { event: 'notify', path: pathStr, data: val });

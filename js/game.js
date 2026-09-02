@@ -908,8 +908,8 @@ async function openStaffPanel() {
     </div>
     <h3 class="section">PLAYERS</h3>
     <p class="muted">${isOwner
-      ? "You can promote players to admin, and ban / mute / pay anyone below you. Owners are set in the server save file."
-      : "You can ban, mute, teleport to and pay regular players. Only owners can promote admins or delete accounts."}</p>
+      ? "You can promote players to admin, and ban / mute anyone below you, and add to or set any player's balance. Owners are set in the server save file."
+      : "You can ban, mute and teleport to regular players, and add to or set their balance. Only owners can promote admins or delete accounts."}</p>
     <input class="staffSearch" id="staffSearch" placeholder="Search players…" value="${escapeHtml(_staff.filter)}"
       oninput="staffFilter(this.value)" />
     <div id="staffList"></div>
@@ -950,7 +950,8 @@ function renderStaffLists() {
       btns += muted
         ? `<button class="menuBtn green" onclick="staffUnmute('${u}')">Unmute</button>`
         : `<button class="menuBtn gray" onclick="staffMute('${u}')">Mute</button>`;
-      btns += `<button class="menuBtn gold" onclick="staffGive('${u}')">+$</button>`;
+      btns += `<button class="menuBtn gold" onclick="staffGive('${u}')" title="Add to (or take from) their balance">+ $</button>`;
+      btns += `<button class="menuBtn gold" onclick="staffSet('${u}')" title="Set their balance to an exact amount">Set $</button>`;
     }
     btns += `<button class="menuBtn" onclick="mayorTeleport('${u}')" title="Teleport to their house">🏠 ${ud.houseIndex != null ? gameWorld.houseAddress(ud.houseIndex) : "?"}</button>`;
     if (state.role === "owner") {
@@ -1012,12 +1013,20 @@ window.staffMute = (u) => {
 };
 window.staffUnmute = (u) => staffDo(() => fbDelete(`mutes/${u}`), `Unmuted ${u}.`);
 window.staffGive = (u) => {
-  const amt = parseInt(prompt(`Give money to ${u}. Amount (negative to take):`, "500"));
+  const amt = parseInt(prompt(`Add money to ${u}. Amount (negative to take away):`, "500"));
   if (!amt) return;
   staffDo(async () => {
-    const ud = await fbGet(`users/${u}`); if (!ud) throw new Error("no such user");
-    await fbPatch(`users/${u}`, { money: Math.max(0, (ud.money || 0) + amt) });
-  }, `${amt > 0 ? "Gave" : "Took"} $${Math.abs(amt)} ${amt > 0 ? "to" : "from"} ${u}.`);
+    const cur = (await fbGet(`users/${u}/money`)) || 0;
+    await fbPatch(`users/${u}`, { money: Math.max(0, cur + amt) });
+  }, `${amt > 0 ? "Gave" : "Took"} $${Math.abs(amt).toLocaleString()} ${amt > 0 ? "to" : "from"} ${u}.`);
+};
+window.staffSet = async (u) => {
+  const cur = (await fbGet(`users/${u}/money`)) || 0;
+  const v = prompt(`Set ${u}'s balance. They have $${cur.toLocaleString()} now. New exact amount:`, String(cur));
+  if (v === null) return;
+  const amt = Math.floor(parseFloat(String(v).replace(/[^0-9.\-]/g, "")));
+  if (!Number.isFinite(amt) || amt < 0) { toast("Enter a whole number of dollars, 0 or more."); return; }
+  staffDo(() => fbPatch(`users/${u}`, { money: amt }), `Set ${u}'s balance to $${amt.toLocaleString()}.`);
 };
 window.staffPromote = (u) => {
   if (!confirm(`Make ${u} an ADMIN? They'll be able to ban, mute and pay players.`)) return;
