@@ -300,6 +300,10 @@ function shade(hex, amt) {
 const FURNITURE_CATALOG = {};
 for (const it of items) FURNITURE_CATALOG[it.id] = it;
 
-window.FURNITURE_CATALOG = FURNITURE_CATALOG;
-window.FURNITURE_LIST = items;
-console.log(`[furniture] catalog built — ${items.length} items`);
+const FURNITURE_LIST = items;
+if (typeof window !== "undefined") {
+  window.FURNITURE_CATALOG = FURNITURE_CATALOG;
+  window.FURNITURE_LIST = FURNITURE_LIST;
+  console.log(`[furniture] catalog built — ${items.length} items`);
+}
+if (typeof module !== "undefined") module.exports = { FURNITURE_CATALOG, FURNITURE_LIST };

@@ -26,6 +26,14 @@ const PORT = process.env.PORT || 8080;
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data.db');
 const STATIC_DIR = process.env.STATIC_DIR || path.join(__dirname, '..');
 
+// Shared with the client (docs/SERVER-AUTHORITY.md): prices, tables and the
+// hour-seeded market shelf come from the same file the browser loads, so the
+// server never disagrees with what the player was shown.
+const ECON = require(path.join(STATIC_DIR, 'js', 'shared', 'economy.js'));
+const { FURNITURE_CATALOG, FURNITURE_LIST } = require(path.join(STATIC_DIR, 'js', 'furniture.js'));
+const GAMES = require('./games.js');
+const HOUSE_COUNT = 60;
+
 const app = express();
 app.use(cors({ origin: '*' }));
 app.get('/healthz', (req, res) => res.type('text/plain').send('ok'));
@@ -410,6 +418,74 @@ function broadcastPresence() {
 }
 setInterval(broadcastPresence, 66); // ~15Hz presence broadcast (was 100ms/10Hz)
 
+// ---------------------------------------------------------------- SERVER AUTHORITY
+// Fields of users/<me> a player may never write directly: every change to
+// them goes through an op below (bank/buy/earn/fish/casino/furniture_set) or
+// a server-side settlement. Staff editing OTHER players keep their powers.
+const PROTECTED_FIELDS = new Set(['money', 'inventory', 'cosmetics', 'vegasFloor', 'dailyStreak', 'lastDaily',
+    'lastInterest', 'fishInventory', 'houseStyle', 'furniture', 'houseIndex', 'createdAt']);
+const PAID_APPEARANCE_KEYS = Object.keys(ECON.COSMETIC_DEFAULTS); // hat, accessory, aura, pet, nameColor
+const DEFAULT_APPEARANCE = {
+    skin: '#f5d0a9', hair: 'short', hairColor: '#3f2210', shirt: '#3b82f6', pants: '#1e293b',
+    hat: 'none', hatColor: '#dc2626', accessory: 'none', aura: 'none', pet: 'none', nameColor: '',
+};
+const MAX_PLACED_FURNITURE = 200;
+
+// Only owners (and the server itself) may touch protected fields of a record;
+// a player is restricted on their own record.
+function protectedFor(actor, target) { return actor === target && roleOf(actor) !== 'owner'; }
+function hasProtectedKey(val) {
+    if (!val || typeof val !== 'object' || Array.isArray(val)) return false;
+    return Object.keys(val).some(k => PROTECTED_FIELDS.has(k));
+}
+
+function ownsCosmetic(u, key, id) {
+    const def = (ECON.COSMETICS[key] || []).find(c => c.id === id);
+    if (!def || def.price === 0) return true;
+    return !!((u && u.cosmetics) || {})[`${key}:${id}`];
+}
+// Paid cosmetic fields are validated against ownership; unowned picks reset
+// to the default. Everything else (skin, hair, colours) is the player's call.
+function sanitizeAppearance(u, a) {
+    if (!a || typeof a !== 'object' || Array.isArray(a)) return Object.assign({}, DEFAULT_APPEARANCE);
+    const out = {};
+    for (const [k, v] of Object.entries(a)) {
+        if (typeof v !== 'string' || v.length > 32) continue;
+        out[k] = v;
+    }
+    for (const key of PAID_APPEARANCE_KEYS) {
+        if (out[key] != null && !ownsCosmetic(u, key, out[key])) out[key] = ECON.COSMETIC_DEFAULTS[key];
+    }
+    return out;
+}
+
+function freeHouseIndex() {
+    const users = store.get('users') || {};
+    const taken = new Set(Object.values(users).map(u => u && u.houseIndex).filter(i => i != null));
+    const free = [];
+    for (let i = 0; i < HOUSE_COUNT; i++) if (!taken.has(i)) free.push(i);
+    return free.length ? free[Math.floor(Math.random() * free.length)] : (Object.keys(users).length % HOUSE_COUNT);
+}
+function newUserRecord() {
+    return {
+        money: 300, houseIndex: freeHouseIndex(),
+        inventory: {}, furniture: [], friends: {},
+        keys: {}, locked: false,
+        appearance: Object.assign({}, DEFAULT_APPEARANCE),
+        seenTutorial: false,
+        fishInventory: {},
+        createdAt: Date.now(),
+    };
+}
+// The caller's record, created on the spot if a legacy account has none.
+function userRec(user) {
+    let u = store.get('users/' + user);
+    if (!u || typeof u !== 'object') { u = newUserRecord(); store.put('users/' + user, u); }
+    return u;
+}
+function moneyOf(u) { return Math.max(0, Math.floor(+u.money || 0)); }
+function setMoney(user, u, m) { u.money = Math.max(0, Math.floor(m)); store.put('users/' + user + '/money', u.money); return u.money; }
+
 // canWrite enforces the writing rules. `op` is the RPC op (put/patch/post/del)
 // so role rules can distinguish e.g. "give money" from "delete account".
 function canWrite(user, pathStr, op) {
@@ -417,6 +493,12 @@ function canWrite(user, pathStr, op) {
     if (parts.length === 0) return false;
     const role = roleOf(user);
     const top = parts[0];
+
+    // ----- protected fields of your own record -----
+    if ((top === 'users' || top === 'players') && parts.length >= 2 && protectedFor(user, parts[1])) {
+        if (parts.length === 2 && op === 'del') return false;            // can't wipe your own record
+        if (parts.length >= 3 && PROTECTED_FIELDS.has(parts[2])) return false;
+    }
 
     // ----- staff-only trees -----
     if (top === 'roles') {
@@ -439,6 +521,9 @@ function canWrite(user, pathStr, op) {
         case 'players':
             if (parts.length < 2) return false;
             if (parts[1] === user) return true;
+            // Friend-request acceptance writes the reciprocal entry into the
+            // other player's `friends` — the one field anyone may touch.
+            if (parts.length >= 3 && parts[2] === 'friends' && op !== 'del') return true;
             // Admins may edit other players (give money etc.) but not wipe
             // accounts and not touch other staff.
             return role === 'admin' && op !== 'del' && !isStaff(parts[1]);
@@ -507,6 +592,65 @@ function afterModWrite(actor, pathStr, val, op) {
     }
 }
 
+// Duel rules for a client write (put/patch) at duels/<id>[/field]: only the
+// two participants may write (canWrite), the stake can't change once set,
+// `settled` is server-only, and `winner` may only be the opponent (concede)
+// or yourself once the opponent's hp has reached 0.
+function checkDuelWrite(user, parts, val, op) {
+    if (parts[0] !== 'duels' || parts.length < 2) return null;
+    const id = parts[1];
+    const existing = store.get('duels/' + id);
+    const fields = parts.length === 2
+        ? ((val && typeof val === 'object' && !Array.isArray(val)) ? val : {})
+        : { [parts[2]]: val };
+    if (parts.length > 3) return null; // nested writes carry no settlement fields
+    if ('settled' in fields) return 'forbidden';
+    if (existing && existing.settled) return 'duel already settled';
+    if ('stake' in fields) {
+        const s = fields.stake;
+        if (!Number.isInteger(s) || s < 0) return 'bad stake';
+        if (existing && existing.stake != null && existing.stake !== s) return 'stake is fixed';
+        if (op === 'put' || !existing) {
+            // creating a duel: both sides must be able to cover it
+            const [a, b] = id.split('__');
+            const ua = store.get('users/' + a), ub = store.get('users/' + b);
+            if (!ua || !ub) return 'unknown player';
+            if (moneyOf(ua) < s || moneyOf(ub) < s) return 'a player cannot cover the stake';
+        }
+    }
+    if ('winner' in fields && fields.winner != null) {
+        const w = fields.winner;
+        const doc = Object.assign({}, existing || {}, fields);
+        const p1 = doc.p1, p2 = doc.p2;
+        if (w !== p1 && w !== p2) return 'winner must be a participant';
+        if (w === user) {
+            const opp = p1 === user ? p2 : p1;
+            const oppHp = doc['hp_' + opp];
+            if (!(typeof oppHp === 'number' && oppHp <= 0)) return 'cannot claim a win while the opponent is standing';
+        }
+    }
+    return null;
+}
+
+// Moves the stake from loser to winner exactly once when a duel ends.
+function settleDuel(id) {
+    const d = store.get('duels/' + id);
+    if (!d || d.status !== 'ended' || !d.winner || d.settled) return;
+    const winner = d.winner, loser = d.p1 === winner ? d.p2 : d.p1;
+    if (!loser || (winner !== d.p1 && winner !== d.p2)) return;
+    const stake = Math.max(0, Math.floor(+d.stake || 0));
+    const uw = store.get('users/' + winner), ul = store.get('users/' + loser);
+    d.settled = true;
+    store.put('duels/' + id + '/settled', true);
+    if (!uw || !ul || !stake) return;
+    const moved = Math.min(stake, moneyOf(ul));
+    setMoney(loser, ul, moneyOf(ul) - moved);
+    setMoney(winner, uw, moneyOf(uw) + moved);
+    d.settledAmount = moved;
+    store.put('duels/' + id + '/settledAmount', moved);
+    for (const [u, rec] of [[winner, uw], [loser, ul]]) pushTo(u, { event: 'money', money: rec.money, reason: 'duel', duelId: id });
+}
+
 // afterWrite pushes events to relevant connected users based on the path.
 function afterWrite(pathStr, val) {
     const parts = Store.splitPath(pathStr);
@@ -527,6 +671,7 @@ function afterWrite(pathStr, val) {
                 for (const u of parts[1].split('__')) {
                     pushTo(u, { event: 'duel', duelId: parts[1], path: pathStr, data: val });
                 }
+                settleDuel(parts[1]);
             }
             break;
         case 'matches':
@@ -612,7 +757,9 @@ function handleMessage(c, msg) {
             if (c.ip) store.put('meta/ips/' + user, c.ip);
             const role = roleOf(user);
             if (role !== 'user' || register) console.log(`[auth] ${user} ${register ? 'registered' : 'logged in'} role=${role}`);
-            reply({ user, data: store.get('users/' + user), role, mute: activeMute(user) });
+            // The server owns the player record: created here on registration
+            // (money 300, a random free lot) and never `put` by the client.
+            reply({ user, data: userRec(user), role, mute: activeMute(user) });
             break;
         }
 
@@ -626,9 +773,31 @@ function handleMessage(c, msg) {
         case 'put': {
             if (!c.user) return replyErr('not authed');
             if (!canWrite(c.user, msg.path, 'put')) return replyErr('forbidden');
-            store.put(msg.path, msg.value);
-            afterWrite(msg.path, msg.value);
-            afterModWrite(c.user, msg.path, msg.value, 'put');
+            let value = msg.value;
+            {
+                const parts = Store.splitPath(msg.path);
+                if ((parts[0] === 'users' || parts[0] === 'players') && parts.length >= 2 && protectedFor(c.user, parts[1])) {
+                    if (parts.length === 2) {
+                        // Whole-record put: no protected keys allowed, and the
+                        // ones on file are carried over so a put can't wipe them.
+                        if (hasProtectedKey(value)) return replyErr('forbidden');
+                        if (!value || typeof value !== 'object' || Array.isArray(value)) return replyErr('forbidden');
+                        const cur = userRec(c.user);
+                        value = Object.assign({}, value);
+                        for (const k of PROTECTED_FIELDS) if (cur[k] !== undefined) value[k] = cur[k];
+                        if (value.appearance !== undefined) value.appearance = sanitizeAppearance(cur, value.appearance);
+                    } else if (parts.length === 3 && parts[2] === 'appearance') {
+                        value = sanitizeAppearance(userRec(c.user), value);
+                    } else if (parts.length >= 4 && parts[2] === 'appearance' && PAID_APPEARANCE_KEYS.includes(parts[3])) {
+                        if (!ownsCosmetic(userRec(c.user), parts[3], value)) value = ECON.COSMETIC_DEFAULTS[parts[3]];
+                    }
+                }
+                const duelErr = checkDuelWrite(c.user, parts, value, 'put');
+                if (duelErr) return replyErr(duelErr);
+            }
+            store.put(msg.path, value);
+            afterWrite(msg.path, value);
+            afterModWrite(c.user, msg.path, value, 'put');
             reply(null);
             break;
         }
@@ -639,9 +808,24 @@ function handleMessage(c, msg) {
             if (!msg.value || typeof msg.value !== 'object' || Array.isArray(msg.value)) {
                 return replyErr('patch value must be object');
             }
-            store.patch(msg.path, msg.value);
-            afterWrite(msg.path, msg.value);
-            afterModWrite(c.user, msg.path, msg.value, 'patch');
+            let value = msg.value;
+            {
+                const parts = Store.splitPath(msg.path);
+                if ((parts[0] === 'users' || parts[0] === 'players') && parts.length >= 2 && protectedFor(c.user, parts[1])) {
+                    if (parts.length === 2) {
+                        if (hasProtectedKey(value)) return replyErr('forbidden');
+                        if (value.appearance !== undefined) value = Object.assign({}, value, { appearance: sanitizeAppearance(userRec(c.user), value.appearance) });
+                    } else if (parts.length === 3 && parts[2] === 'appearance') {
+                        const cur = userRec(c.user);
+                        value = sanitizeAppearance(cur, Object.assign({}, cur.appearance || {}, value));
+                    }
+                }
+                const duelErr = checkDuelWrite(c.user, parts, value, 'patch');
+                if (duelErr) return replyErr(duelErr);
+            }
+            store.patch(msg.path, value);
+            afterWrite(msg.path, value);
+            afterModWrite(c.user, msg.path, value, 'patch');
             reply(null);
             break;
         }
@@ -690,10 +874,225 @@ function handleMessage(c, msg) {
             break;
         }
 
+        // ----- server-authoritative economy ops (docs/SERVER-AUTHORITY.md) -----
+        case 'bank': case 'buy': case 'furniture_set': case 'earn': case 'fish': case 'casino': {
+            if (!c.user) return replyErr('not authed');
+            let out;
+            try { out = ECONOMY_OPS[op](c.user, msg); }
+            catch (e) { return replyErr(e && e.message ? e.message : String(e)); }
+            reply(out);
+            break;
+        }
+
         default:
             replyErr('unknown op: ' + op);
     }
 }
+
+// ---------------------------------------------------------------- ECONOMY OPS
+// Each handler mutates the caller's record through the store and returns the
+// reply data; every reply carries the caller's new `money`. Throw to reject.
+const earnLast = new Map();   // `${user}:${source}` -> last accepted ts
+const fishLast = new Map();   // user -> last catch ts
+
+function nonNegInt(v) { const n = Number(v); return Number.isInteger(n) && n >= 0 ? n : null; }
+
+const ECONOMY_OPS = {
+    bank(user, msg) {
+        const u = userRec(user), now = Date.now();
+        if (msg.action === 'interest') {
+            const last = +u.lastInterest || 0;
+            if (now - last < ECON.INTEREST_COOLDOWN) throw new Error(`Come back in ${Math.ceil((ECON.INTEREST_COOLDOWN - (now - last)) / 1000)}s`);
+            const gained = Math.floor(moneyOf(u) * ECON.INTEREST_RATE);
+            if (gained <= 0) throw new Error('Need some balance to earn interest.');
+            setMoney(user, u, moneyOf(u) + gained);
+            u.lastInterest = now; store.put(`users/${user}/lastInterest`, now);
+            return { money: u.money, gained, lastInterest: now };
+        }
+        if (msg.action === 'daily') {
+            const last = +u.lastDaily || 0;
+            if (now - last < ECON.DAILY_COOLDOWN) throw new Error('Not yet — come back later.');
+            const streak = (now - last <= ECON.DAILY_STREAK_WINDOW) ? ((+u.dailyStreak || 0) + 1) : 1;
+            const gained = ECON.dailyBonusAmount(streak);
+            setMoney(user, u, moneyOf(u) + gained);
+            u.dailyStreak = streak; u.lastDaily = now;
+            store.put(`users/${user}/dailyStreak`, streak);
+            store.put(`users/${user}/lastDaily`, now);
+            return { money: u.money, gained, dailyStreak: streak, lastDaily: now };
+        }
+        throw new Error('Unknown bank action.');
+    },
+
+    buy(user, msg) {
+        const u = userRec(user);
+        // The rpc envelope owns `id`, so the purchase id arrives as `item`
+        // (net.js netBuy); `itemId` is accepted too.
+        const rawId = msg.item != null ? msg.item : msg.itemId;
+        const id = rawId == null ? '' : String(rawId);
+        const pay = (price) => {
+            if (moneyOf(u) < price) throw new Error('Not enough money.');
+            setMoney(user, u, moneyOf(u) - price);
+        };
+        const addInv = (itemId) => {
+            const inv = (u.inventory && typeof u.inventory === 'object') ? u.inventory : {};
+            inv[itemId] = (inv[itemId] || 0) + 1;
+            u.inventory = inv; store.put(`users/${user}/inventory`, inv);
+            return inv;
+        };
+        switch (msg.kind) {
+            case 'furniture': {
+                const def = FURNITURE_CATALOG[id];
+                if (!def) throw new Error('No such item.');
+                if (!ECON.marketStock(FURNITURE_LIST, Date.now()).some(f => f.id === id)) throw new Error('That item is not on the shelf this hour.');
+                pay(def.price);
+                return { money: u.money, inventory: addInv(id), item: id };
+            }
+            case 'lootbox': {
+                const cfg = ECON.LOOTBOX_CFG[id];
+                if (!cfg) throw new Error('No such box.');
+                pay(cfg.price);
+                const pick = ECON.rollLootbox(id, FURNITURE_LIST);
+                return { money: u.money, inventory: addInv(pick.id), item: pick.id };
+            }
+            case 'cosmetic': {
+                const i = id.indexOf(':');
+                const key = id.slice(0, i), itemId = id.slice(i + 1);
+                const def = i > 0 && ECON.COSMETICS[key] && ECON.COSMETICS[key].find(c => c.id === itemId);
+                if (!def) throw new Error('No such cosmetic.');
+                const cos = (u.cosmetics && typeof u.cosmetics === 'object') ? u.cosmetics : {};
+                if (def.price > 0 && !cos[id]) {
+                    pay(def.price);
+                    cos[id] = true;
+                    u.cosmetics = cos; store.put(`users/${user}/cosmetics`, cos);
+                }
+                return { money: u.money, cosmetics: cos };
+            }
+            case 'paint': {
+                const st = Object.assign({}, (u.houseStyle && typeof u.houseStyle === 'object') ? u.houseStyle : {});
+                if (id === 'reset') { delete st.wall; delete st.roof; }
+                else {
+                    const i = id.indexOf(':');
+                    const key = id.slice(0, i), color = id.slice(i + 1);
+                    const list = key === 'wall' ? ECON.PAINT_WALLS : key === 'roof' ? ECON.PAINT_ROOFS : null;
+                    if (!list || !list.includes(color)) throw new Error('No such colour.');
+                    if (st[key] === color) throw new Error('Already that colour.');
+                    pay(ECON.PAINT_PRICE);
+                    st[key] = color;
+                }
+                u.houseStyle = st; store.put(`users/${user}/houseStyle`, st);
+                return { money: u.money, houseStyle: st };
+            }
+            case 'floor': {
+                const i = nonNegInt(rawId);
+                const cur = Math.max(0, Math.min(ECON.VEGAS_FLOOR_PRICES.length - 1, (+u.vegasFloor | 0)));
+                if (i == null || i >= ECON.VEGAS_FLOOR_PRICES.length) throw new Error('No such floor.');
+                if (i !== cur + 1) throw new Error(i <= cur ? 'Already unlocked.' : 'Unlock the floor below first.');
+                pay(ECON.VEGAS_FLOOR_PRICES[i]);
+                u.vegasFloor = i; store.put(`users/${user}/vegasFloor`, i);
+                return { money: u.money, vegasFloor: i };
+            }
+            default:
+                throw new Error('Unknown purchase kind.');
+        }
+    },
+
+    furniture_set(user, msg) {
+        const u = userRec(user);
+        const list = msg.furniture;
+        if (!Array.isArray(list)) throw new Error('furniture must be a list.');
+        if (list.length > MAX_PLACED_FURNITURE) throw new Error(`Max ${MAX_PLACED_FURNITURE} placed items.`);
+        const before = Array.isArray(u.furniture) ? u.furniture : [];
+        const inv = Object.assign({}, (u.inventory && typeof u.inventory === 'object') ? u.inventory : {});
+        // owned = in the box + already placed; placing draws from that total
+        const owned = {};
+        for (const [id, n] of Object.entries(inv)) owned[id] = (owned[id] || 0) + (Math.max(0, Math.floor(+n || 0)));
+        for (const f of before) if (f && f.id) owned[f.id] = (owned[f.id] || 0) + 1;
+        const placedNow = {};
+        const clean = list.map(f => {
+            if (!f || typeof f !== 'object' || !FURNITURE_CATALOG[f.id]) throw new Error('Unknown furniture item.');
+            const x = Number(f.x), y = Number(f.y);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error('Bad position.');
+            placedNow[f.id] = (placedNow[f.id] || 0) + 1;
+            const out = { id: f.id, x: Math.round(x), y: Math.round(y) };
+            if (f.rot != null) out.rot = f.rot;
+            return out;
+        });
+        const newInv = {};
+        for (const id of new Set([...Object.keys(owned), ...Object.keys(placedNow)])) {
+            const left = (owned[id] || 0) - (placedNow[id] || 0);
+            if (left < 0) throw new Error(`You don't own enough ${FURNITURE_CATALOG[id] ? FURNITURE_CATALOG[id].name : id}.`);
+            if (left > 0) newInv[id] = left;
+        }
+        u.inventory = newInv; u.furniture = clean;
+        store.put(`users/${user}/inventory`, newInv);
+        store.put(`users/${user}/furniture`, clean);
+        return { money: moneyOf(u), inventory: newInv, furniture: clean };
+    },
+
+    earn(user, msg) {
+        const u = userRec(user), now = Date.now();
+        const source = String(msg.source || '');
+        const cfg = ECON.EARN_CAPS[source];
+        if (!cfg) throw new Error('Unknown earn source.');
+        let cap = cfg.cap;
+        if (cfg.perStake != null) {
+            const stake = nonNegInt(msg.detail && msg.detail.stake);
+            if (stake == null || stake <= 0) throw new Error('Missing match stake.');
+            cap = cfg.perStake * stake;
+        }
+        const k = user + ':' + source;
+        const last = earnLast.get(k) || 0;
+        if (now - last < cfg.cooldown) throw new Error(`Too soon — try again in ${Math.ceil((cfg.cooldown - (now - last)) / 1000)}s.`);
+        const asked = Math.floor(Number(msg.amount));
+        if (!Number.isFinite(asked) || asked < 0) throw new Error('Bad amount.');
+        const gained = Math.min(asked, cap);
+        earnLast.set(k, now);
+        setMoney(user, u, moneyOf(u) + gained);
+        return { money: u.money, gained, cap };
+    },
+
+    fish(user, msg) {
+        const u = userRec(user), now = Date.now();
+        const inv = (u.fishInventory && typeof u.fishInventory === 'object') ? u.fishInventory : {};
+        if (msg.action === 'catch') {
+            const last = fishLast.get(user) || 0;
+            if (now - last < ECON.FISH_CATCH_COOLDOWN) throw new Error('The line is still out.');
+            fishLast.set(user, now);
+            const q = Math.max(0, Math.min(1, Number(msg.quality) || 0));
+            const fish = ECON.rollFish(q);
+            if (fish) {
+                inv[fish.name] = (inv[fish.name] || 0) + 1;
+                u.fishInventory = inv; store.put(`users/${user}/fishInventory`, inv);
+            }
+            // fish: the FISH_TABLE entry ({name, emoji, value, weight}) or null when the line snapped
+            return { money: moneyOf(u), fishInventory: inv, fish: fish || null, quality: ECON.fishQualityLabel(q) };
+        }
+        if (msg.action === 'sell') {
+            const fish = ECON.FISH_TABLE.find(f => f.name === msg.name);
+            const have = Math.max(0, Math.floor(+inv[msg.name] || 0));
+            let qty = nonNegInt(msg.qty == null ? have : msg.qty);
+            if (!fish || qty == null) throw new Error('No such fish.');
+            qty = Math.min(qty, have);
+            if (qty <= 0) throw new Error('Nothing to sell.');
+            const price = ECON.fishPriceNow(fish, now);
+            const gained = price * qty;
+            inv[msg.name] = have - qty;
+            if (inv[msg.name] <= 0) delete inv[msg.name];
+            u.fishInventory = inv; store.put(`users/${user}/fishInventory`, inv);
+            setMoney(user, u, moneyOf(u) + gained);
+            return { money: u.money, fishInventory: inv, gained, price, qty };
+        }
+        throw new Error('Unknown fish action.');
+    },
+
+    casino(user, msg) {
+        const u = userRec(user);
+        const game = String(msg.game || ''), action = String(msg.action || '');
+        const r = GAMES.play(user, game, action, msg, moneyOf(u));
+        if (r.delta) setMoney(user, u, moneyOf(u) + r.delta);
+        return Object.assign({}, r.data, { money: moneyOf(u) });
+    },
+};
 
 // ---------------------------------------------------------------- SHUTDOWN
 

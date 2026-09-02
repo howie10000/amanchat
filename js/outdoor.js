@@ -16,23 +16,24 @@ function menuOpen() {
   return m && !m.classList.contains("hidden");
 }
 
-async function awardMoney(amount) {
-  state.data.money = (state.data.money || 0) + amount;
-  await fbPatch(`users/${state.user}`, { money: state.data.money });
-  updateHUD();
+// Mini-game payouts go through the server's `earn` op, which caps the amount
+// per source and enforces a cooldown. Resolves with the amount actually
+// granted (0 if rejected) and refreshes the HUD from the server's balance.
+async function awardMoney(source, amount, detail) {
+  try {
+    const data = await netEarn(Object.assign({ source, amount }, detail ? { detail } : {}));
+    state.data.money = data.money;
+    updateHUD();
+    return data.gained;
+  } catch (e) {
+    toast(e.message);
+    return 0;
+  }
 }
 
 // ================= FISHING =================
-const FISH_TABLE = [
-  { name: "Old Boot", emoji: "🥾", value: 5,   weight: 14 },
-  { name: "Minnow",   emoji: "🐟", value: 25,  weight: 30 },
-  { name: "Bass",     emoji: "🐠", value: 60,  weight: 26 },
-  { name: "Salmon",   emoji: "🍣", value: 120, weight: 16 },
-  { name: "Pufferfish",emoji:"🐡", value: 200, weight: 9 },
-  { name: "Golden Koi",emoji:"✨🐟",value: 600, weight: 4 },
-  { name: "Kraken",   emoji: "🦑", value: 1500,weight: 1 },
-];
-const FISH_JUNK_NAMES = ["Old Boot", "Minnow"];
+// Fish table + hourly prices are shared with the server (js/shared/economy.js).
+const FISH_TABLE = ECON.FISH_TABLE;
 
 let _fishState = "idle"; // idle -> waiting -> bite -> reeling -> idle
 let _fishBiteTimer = null, _fishMissTimer = null, _fishReelTimer = null;
@@ -44,15 +45,9 @@ function clearFishTimers() {
   _fishBiteTimer = _fishMissTimer = _fishReelTimer = null;
 }
 
-// Deterministic per-hour price: every client computes the same number
-// without any server write, the same way TREES/dungeon mazes derive a
-// shared layout from a seed instead of syncing coordinates.
-function fishPriceNow(fish) {
-  const hourBucket = Math.floor(Date.now() / 3600000);
-  const rng = mulberry32(strToSeed(fish.name + ":" + hourBucket));
-  const mult = 0.5 + rng() * 1.3; // 0.5x - 1.8x of base value
-  return Math.max(1, Math.round(fish.value * mult));
-}
+// Deterministic per-hour price: every client (and the server, which sets the
+// actual sale price) computes the same number from the hour seed.
+function fishPriceNow(fish) { return ECON.fishPriceNow(fish, Date.now()); }
 
 function fishTabsHtml() {
   return `<div class="pillRow">
@@ -124,26 +119,15 @@ window.sellFish = async (name, qty) => {
   qty = Math.min(qty, have);
   const fish = FISH_TABLE.find(f => f.name === name);
   if (!fish || qty <= 0) return;
-  const price = fishPriceNow(fish);
-  inv[name] = have - qty;
-  if (inv[name] <= 0) delete inv[name];
-  state.data.fishInventory = inv;
-  state.data.money = (state.data.money || 0) + price * qty;
-  await fbPatch(`users/${state.user}`, { money: state.data.money, fishInventory: inv });
+  let data;
+  try { data = await netFish({ action: "sell", name, qty }); }
+  catch (e) { toast(e.message); return; }
+  state.data.money = data.money;
+  state.data.fishInventory = data.fishInventory || {};
   updateHUD();
-  toast(`Sold ${qty}x ${fish.name} for $${price * qty}`);
+  toast(`Sold ${qty}x ${fish.name} for $${data.gained}`);
   renderFishingMenu();
 };
-
-function rollFishWithQuality(quality) {
-  let table = FISH_TABLE;
-  if (quality === "perfect") table = FISH_TABLE.filter(f => !FISH_JUNK_NAMES.includes(f.name));
-  else if (quality === "poor") table = FISH_TABLE.filter(f => f.value <= 120);
-  const total = table.reduce((s, f) => s + f.weight, 0);
-  let r = Math.random() * total;
-  for (const f of table) { if ((r -= f.weight) <= 0) return f; }
-  return table[0];
-}
 
 function fishAction() {
   if (!menuOpen()) return;
@@ -218,15 +202,28 @@ function fishAction() {
       result.innerHTML = "";
       return;
     }
-    const fish = rollFishWithQuality(quality);
-    area.textContent = fish.emoji;
-    status.textContent = quality === "perfect" ? "Perfect reel!" : quality === "good" ? "Nice catch!" : "Barely landed it...";
-    status.style.color = "#22c55e";
-    const inv = state.data.fishInventory || (state.data.fishInventory = {});
-    inv[fish.name] = (inv[fish.name] || 0) + 1;
-    fbPatch(`users/${state.user}`, { fishInventory: inv });
-    result.innerHTML = `Caught a <b>${fish.name}</b> ${fish.emoji} — in your bucket now. Sell it at today's price in the Sell Catch tab!`;
-    updateHUD();
+    // The server rolls the fish from reel accuracy (0..1) and stores it.
+    status.textContent = "Reeling it in...";
+    status.style.color = "#38bdf8";
+    result.innerHTML = "";
+    const accuracy = Math.max(0, Math.min(1, 1 - dist / 50));
+    netFish({ action: "catch", quality: accuracy }).then(data => {
+      if (!menuOpen()) return;
+      const fish = typeof data.fish === "string" ? FISH_TABLE.find(f => f.name === data.fish) : data.fish;
+      if (data.fishInventory) state.data.fishInventory = data.fishInventory;
+      if (typeof data.money === "number") state.data.money = data.money;
+      if (!fish) { status.textContent = "Nothing on the line."; return; }
+      area.textContent = fish.emoji;
+      status.textContent = quality === "perfect" ? "Perfect reel!" : quality === "good" ? "Nice catch!" : "Barely landed it...";
+      status.style.color = "#22c55e";
+      result.innerHTML = `Caught a <b>${fish.name}</b> ${fish.emoji} — in your bucket now. Sell it at today's price in the Sell Catch tab!`;
+      updateHUD();
+    }).catch(e => {
+      area.textContent = "🎣";
+      status.textContent = "It got away...";
+      status.style.color = "#f87171";
+      toast(e.message);
+    });
   }
 }
 
@@ -310,8 +307,11 @@ function bballShoot() {
     if (status) status.textContent = `Made ${_bball.made}/5 — earned $${_bball.earned}`;
     const btn = document.getElementById("bballBtn");
     if (btn) { btn.textContent = "PLAY AGAIN"; btn.onclick = renderPracticeTab; }
-    if (_bball.earned > 0) awardMoney(_bball.earned);
-    if (_bball.made === 5) { toast("Perfect game! +$100 bonus 🏆"); awardMoney(100); }
+    // One earn call per game (the server's per-source cooldown would reject a second).
+    const perfect = _bball.made === 5;
+    if (perfect) toast("Perfect game! +$100 bonus 🏆");
+    const total = _bball.earned + (perfect ? 100 : 0);
+    if (total > 0) awardMoney("basketball", total);
   } else {
     if (status) status.textContent = `Shot ${_bball.shots + 1} of 5`;
   }
@@ -548,17 +548,23 @@ async function settleMatch(m) {
   const otherTeamName = myTeamName === m.teamA ? m.teamB : m.teamA;
   const won = m.winner === myTeamName;
   if (won) {
+    // Winners claim their share through the server's `earn` op (capped at
+    // 5 x stakePerPlayer per the contract). Losers' stakes are settled by the
+    // server, so the client no longer deducts anything itself.
     const myShooterCount = (shooters[myTeamName] || []).length || 1;
     const pot = m.stakePerPlayer * ((shooters[otherTeamName] || []).length || 0);
     const share = Math.round(pot / myShooterCount);
-    state.data.money = (state.data.money || 0) + share;
-    toast(`Your team won the match! +$${share}`);
+    const gained = share > 0 ? await awardMoney("team_match", share, { stake: m.stakePerPlayer }) : 0;
+    toast(`Your team won the match! +$${gained}`);
   } else {
-    state.data.money = Math.max(0, (state.data.money || 0) - m.stakePerPlayer);
     toast(`Your team lost the match. -$${m.stakePerPlayer}`);
+    // Pull the server-settled balance rather than guessing at it.
+    try {
+      const money = await fbGet(`users/${state.user}/money`);
+      if (typeof money === "number") state.data.money = money;
+    } catch (e) { /* HUD refreshes on next server reply */ }
+    updateHUD();
   }
-  await fbPatch(`users/${state.user}`, { money: state.data.money });
-  updateHUD();
 }
 
 // ---------------- NOTICE BOARD (leaderboard) ----------------

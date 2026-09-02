@@ -167,13 +167,12 @@ function onRightClick() {
     // Pick up furniture into inventory
     const idx = furnitureUnderMouse();
     if (idx >= 0) {
-      const f = state.interiorFurniture[idx];
-      state.interiorFurniture.splice(idx, 1);
-      state.data.inventory = state.data.inventory || {};
-      state.data.inventory[f.id] = (state.data.inventory[f.id] || 0) + 1;
-      saveFurniture();
-      fbPatch(`users/${state.user}`, { inventory: state.data.inventory });
-      toast("Picked up.");
+      const removed = state.interiorFurniture.splice(idx, 1)[0];
+      // The server moves the piece back into inventory (furniture_set reply).
+      saveFurniture().then(ok => {
+        if (ok) toast("Picked up.");
+        else state.interiorFurniture.splice(idx, 0, removed);
+      });
     }
   }
 }
@@ -197,8 +196,21 @@ function tryGrabFurniture() {
     state.dragOffset.y = state.mouse.y - f.y;
   }
 }
+// Sends the full placed-furniture list; the server reconciles inventory
+// (owned = inventory + placed) and returns both. Resolves true on success.
 async function saveFurniture() {
-  await fbPatch(`users/${state.user}`, { furniture: state.interiorFurniture });
+  try {
+    const data = await netFurnitureSet({ furniture: state.interiorFurniture });
+    if (data.furniture) state.interiorFurniture = data.furniture;
+    if (data.inventory) state.data.inventory = data.inventory;
+    state.data.furniture = state.interiorFurniture;
+    if (typeof data.money === "number") state.data.money = data.money;
+    updateHUD();
+    return true;
+  } catch (e) {
+    toast(e.message);
+    return false;
+  }
 }
 
 function toggleBuildMode() {
@@ -236,14 +248,17 @@ function placeFurnitureAtMouse() {
   let x = state.mouse.x, y = state.mouse.y;
   x = Math.max(room.x + def.w/2 + 4, Math.min(room.x + room.w - def.w/2 - 4, x));
   y = Math.max(room.y + def.h/2 + 4, Math.min(room.y + room.h - def.h/2 - 4, y));
-  state.interiorFurniture.push({ id, x, y });
-  inv[id]--;
-  if (inv[id] <= 0) delete inv[id];
-  state.data.inventory = inv;
-  saveFurniture();
-  fbPatch(`users/${state.user}`, { inventory: inv });
-  toast(`Placed ${def.name}.`);
+  const piece = { id, x, y };
+  state.interiorFurniture.push(piece);
   state.placeMode = null;
+  // Server decrements inventory (furniture_set reply); roll back if rejected.
+  saveFurniture().then(ok => {
+    if (ok) toast(`Placed ${def.name}.`);
+    else {
+      const i = state.interiorFurniture.indexOf(piece);
+      if (i >= 0) state.interiorFurniture.splice(i, 1);
+    }
+  });
 }
 
 // ---------- Interact (E) ----------
@@ -445,32 +460,11 @@ function drawCatalogPreviews() {
 
 // ---------- FURNITURE STORE ----------
 // The market carries a rotating shelf, not the whole warehouse. The stock is
-// a seeded shuffle keyed to the current hour, so every player sees the same
-// shelf, it restocks on the hour with no server writes, and legendaries are
-// only sometimes in.
-function mulberry32(seed) {
-  return function () {
-    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-function marketStock() {
-  const hour = Math.floor(Date.now() / 3600000);
-  const rng = mulberry32((hour * 2654435761) % 2147483647);
-  const pickFrom = (tier, n) => {
-    const pool = FURNITURE_LIST.filter(f => f.tier === tier).slice();
-    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
-    return pool.slice(0, n);
-  };
-  // legendaries rotate in and out: sometimes 2, usually 1, sometimes none
-  const roll = rng();
-  const nLegend = roll < 0.15 ? 2 : roll < 0.6 ? 1 : 0;
-  return [...pickFrom("legendary", nLegend), ...pickFrom("rare", 8), ...pickFrom("common", 12)];
-}
+// a seeded shuffle keyed to the current hour (ECON.marketStock, shared with
+// the server so it can validate purchases), so every player sees the same
+// shelf and it restocks on the hour with no server writes.
 function openFurnitureCatalog() {
-  const stock = marketStock();
+  const stock = ECON.marketStock(FURNITURE_LIST, Date.now());
   const minsLeft = Math.max(1, 60 - Math.floor((Date.now() % 3600000) / 60000));
   const nLegend = stock.filter(f => f.tier === "legendary").length;
   let html = `<p class="muted">The shelf restocks <b>every hour</b> — ${
@@ -496,58 +490,49 @@ function openFurnitureCatalog() {
 // ---------- PAINT SHOP (house exterior) ----------
 // Repaint the walls or roof of your house for everyone to see. Stored at
 // users/<me>/houseStyle and read by drawHouse via the user cache.
-const PAINT_PRICE = 300;
-const PAINT_WALLS = ["#fef9c3", "#e7e5e4", "#fde68a", "#bfdbfe", "#fecaca", "#d9f99d", "#e9d5ff", "#cffafe", "#fed7aa",
-                     "#f472b6", "#a78bfa", "#38bdf8", "#4ade80", "#f97316", "#1f2937", "#0a0a0a", "#fafaf9"];
-const PAINT_ROOFS = ["#b45309", "#7f1d1d", "#1e3a8a", "#3f2210", "#166534", "#4c1d95", "#7c2d12", "#0f172a", "#831843",
-                     "#dc2626", "#2563eb", "#059669", "#fbbf24", "#a855f7", "#f472b6", "#0a0a0a", "#e5e7eb"];
+// Prices/palettes live in js/shared/economy.js (ECON) so the server agrees.
 function paintShopHtml() {
   const st = state.data.houseStyle || {};
   const sw = (arr, key) => arr.map(c =>
     `<div class="swatch ${st[key] === c ? "selected" : ""}" title="${c}" style="background:${c}" onclick="buyPaint('${key}','${c}')"></div>`).join("");
-  return `<h3 class="section">🎨 PAINT SHOP — $${PAINT_PRICE} per coat</h3>
+  return `<h3 class="section">🎨 PAINT SHOP — $${ECON.PAINT_PRICE} per coat</h3>
     <p class="muted">Repaint your house so friends can spot it from the street. Everyone sees the new colours.</p>
-    <div><b>Walls</b></div><div class="paintRow">${sw(PAINT_WALLS, "wall")}</div>
-    <div><b>Roof</b></div><div class="paintRow">${sw(PAINT_ROOFS, "roof")}</div>
+    <div><b>Walls</b></div><div class="paintRow">${sw(ECON.PAINT_WALLS, "wall")}</div>
+    <div><b>Roof</b></div><div class="paintRow">${sw(ECON.PAINT_ROOFS, "roof")}</div>
     ${(st.wall || st.roof) ? `<button class="menuBtn gray" onclick="buyPaint('reset')">Strip paint (free)</button>` : ""}`;
 }
 window.buyPaint = async (key, color) => {
-  const st = Object.assign({}, state.data.houseStyle || {});
-  if (key === "reset") {
-    delete st.wall; delete st.roof;
-  } else {
+  const st = state.data.houseStyle || {};
+  if (key !== "reset") {
     if (st[key] === color) { toast("Already that colour."); return; }
-    if ((state.data.money || 0) < PAINT_PRICE) { toast("Not enough money."); return; }
-    state.data.money -= PAINT_PRICE;
-    st[key] = color;
+    if ((state.data.money || 0) < ECON.PAINT_PRICE) { toast("Not enough money."); return; }
   }
-  state.data.houseStyle = st;
-  if (state._userCache && state._userCache[state.user]) state._userCache[state.user].houseStyle = st;
-  await fbPatch(`users/${state.user}`, { money: state.data.money, houseStyle: st });
-  updateHUD();
-  toast(key === "reset" ? "Paint stripped." : `Fresh coat on the ${key}!`);
-  openFurnitureCatalog();
+  try {
+    const data = await netBuy({ kind: "paint", id: key === "reset" ? "reset" : `${key}:${color}` });
+    state.data.money = data.money;
+    state.data.houseStyle = data.houseStyle || {};
+    if (state._userCache && state._userCache[state.user]) state._userCache[state.user].houseStyle = state.data.houseStyle;
+    updateHUD();
+    toast(key === "reset" ? "Paint stripped." : `Fresh coat on the ${key}!`);
+    openFurnitureCatalog();
+  } catch (e) { toast(e.message); }
 };
 window.buyFurn = async (id) => {
   const def = FURNITURE_CATALOG[id]; if (!def) return;
   if (state.data.money < def.price) { toast("Not enough money."); return; }
-  state.data.money -= def.price;
-  state.data.inventory = state.data.inventory || {};
-  state.data.inventory[id] = (state.data.inventory[id] || 0) + 1;
-  await fbPatch(`users/${state.user}`, { money: state.data.money, inventory: state.data.inventory });
-  updateHUD();
-  toast(`Bought ${def.name}!`);
-  openFurnitureCatalog();
+  try {
+    const data = await netBuy({ kind: "furniture", id });
+    state.data.money = data.money;
+    if (data.inventory) state.data.inventory = data.inventory;
+    updateHUD();
+    toast(`Bought ${def.name}!`);
+    openFurnitureCatalog();
+  } catch (e) { toast(e.message); }
 };
 
 // ---------- LOOTBOX ----------
-const LOOTBOX_CFG = {
-  common:    { price: 100,  pool: "common",    label: "COMMON" },
-  rare:      { price: 400,  pool: "rare",      label: "RARE" },
-  legendary: { price: 1500, pool: "legendary", label: "LEGENDARY" },
-};
 async function openLootbox(tier) {
-  const cfg = LOOTBOX_CFG[tier];
+  const cfg = ECON.LOOTBOX_CFG[tier];
   openMenu(cfg.label + " MYSTERY BOX", `
     <div class="center">
       <p>Open a ${cfg.label} box for $${cfg.price}.</p>
@@ -558,21 +543,20 @@ async function openLootbox(tier) {
   `);
 }
 window.rollLootbox = async (tier) => {
-  const cfg = LOOTBOX_CFG[tier];
+  const cfg = ECON.LOOTBOX_CFG[tier];
+  if (!cfg) return;
   if (state.data.money < cfg.price) { toast("Not enough money."); return; }
-  state.data.money -= cfg.price;
-  // Pool selection
-  let pool;
-  if (tier === "common") pool = FURNITURE_LIST.filter(f => f.tier === "common");
-  else if (tier === "rare") pool = FURNITURE_LIST.filter(f => f.tier === "rare" || (f.tier === "common" && Math.random() < 0.3));
-  else pool = FURNITURE_LIST.filter(f => f.tier === "legendary" || (f.tier === "rare" && Math.random() < 0.5));
-  if (!pool.length) pool = FURNITURE_LIST;
-  const pick = pool[Math.floor(Math.random() * pool.length)];
-  state.data.inventory = state.data.inventory || {};
-  state.data.inventory[pick.id] = (state.data.inventory[pick.id] || 0) + 1;
-  await fbPatch(`users/${state.user}`, { money: state.data.money, inventory: state.data.inventory });
+  // The server rolls the item and charges the box.
+  let data;
+  try { data = await netBuy({ kind: "lootbox", id: tier }); }
+  catch (e) { toast(e.message); return; }
+  state.data.money = data.money;
+  if (data.inventory) state.data.inventory = data.inventory;
   updateHUD();
-  document.getElementById("lootResult").innerHTML =
+  const pick = FURNITURE_CATALOG[data.item];
+  const resEl = document.getElementById("lootResult");
+  if (!pick || !resEl) return;
+  resEl.innerHTML =
     `<div>You got <b style="color:${pick.tier==='legendary'?'#fbbf24':pick.tier==='rare'?'#3b82f6':'#cbd5e1'}">${pick.name}</b>!</div>
      <div><span class="tier ${pick.tier}">${pick.tier}</span></div>
      <canvas id="lootPreview" width="150" height="100" style="margin-top:12px;background:#0a0e15;border-radius:8px;"></canvas>`;
@@ -589,20 +573,20 @@ window.rollLootbox = async (tier) => {
 // ---------- BANK ----------
 // Daily bonus: claimable every 20h. Log in on consecutive days to grow the
 // streak (a 48h gap resets it). Day 7+ pays the cap.
-const DAILY_COOLDOWN = 20 * 3600000, DAILY_STREAK_WINDOW = 48 * 3600000;
-function dailyBonusAmount(streak) { return Math.min(900, 150 + 125 * Math.max(0, streak - 1)); }
-function dailyBonusReady() { return Date.now() - (state.data.lastDaily || 0) >= DAILY_COOLDOWN; }
+// Amounts/cooldowns come from ECON (shared with the server, which applies them).
+const dailyBonusAmount = (streak) => ECON.dailyBonusAmount(streak);
+function dailyBonusReady() { return Date.now() - (state.data.lastDaily || 0) >= ECON.DAILY_COOLDOWN; }
 function nextDailyStreak() {
   const last = state.data.lastDaily || 0;
-  return (Date.now() - last <= DAILY_STREAK_WINDOW) ? (state.data.dailyStreak || 0) + 1 : 1;
+  return (Date.now() - last <= ECON.DAILY_STREAK_WINDOW) ? (state.data.dailyStreak || 0) + 1 : 1;
 }
 async function openBankMain() {
-  const interest = Math.floor((state.data.money || 0) * 0.05);
+  const interest = Math.floor((state.data.money || 0) * ECON.INTEREST_RATE);
   const last = state.data.lastInterest || 0;
-  const next = Math.max(0, 120 - Math.floor((Date.now() - last) / 1000));
+  const next = Math.max(0, Math.ceil((ECON.INTEREST_COOLDOWN - (Date.now() - last)) / 1000));
   const ready = dailyBonusReady();
   const streak = nextDailyStreak();
-  const wait = Math.max(0, DAILY_COOLDOWN - (Date.now() - (state.data.lastDaily || 0)));
+  const wait = Math.max(0, ECON.DAILY_COOLDOWN - (Date.now() - (state.data.lastDaily || 0)));
   const waitTxt = `${Math.floor(wait / 3600000)}h ${Math.floor((wait % 3600000) / 60000)}m`;
   openMenu("FIRST BANK", `
     <div class="center">
@@ -623,32 +607,33 @@ async function openBankMain() {
 }
 async function claimDaily() {
   if (!dailyBonusReady()) { toast("Not yet — come back later."); return; }
-  const streak = nextDailyStreak();
-  const amt = dailyBonusAmount(streak);
-  state.data.money = (state.data.money || 0) + amt;
-  state.data.dailyStreak = streak;
-  state.data.lastDaily = Date.now();
-  await fbPatch(`users/${state.user}`, { money: state.data.money, dailyStreak: streak, lastDaily: state.data.lastDaily });
+  let data;
+  try { data = await netBank({ action: "daily" }); }
+  catch (e) { toast(e.message); return; }
+  state.data.money = data.money;
+  state.data.dailyStreak = data.dailyStreak;
+  state.data.lastDaily = data.lastDaily;
   updateHUD();
-  toast(`🎁 Daily bonus: +$${amt} (day ${streak} streak)`, 3500);
-  if (typeof celebrate === "function" && streak >= 3) celebrate();
+  toast(`🎁 Daily bonus: +$${data.gained} (day ${data.dailyStreak} streak)`, 3500);
+  if (typeof celebrate === "function" && data.dailyStreak >= 3) celebrate();
   openBankMain();
 }
 window.claimDaily = claimDaily;
 window.dailyBonusReady = dailyBonusReady;
 async function claimInterest() {
   const last = state.data.lastInterest || 0;
-  if (Date.now() - last < 120000) {
-    toast("Come back in " + Math.ceil((120000 - (Date.now() - last))/1000) + "s");
+  if (Date.now() - last < ECON.INTEREST_COOLDOWN) {
+    toast("Come back in " + Math.ceil((ECON.INTEREST_COOLDOWN - (Date.now() - last))/1000) + "s");
     return;
   }
-  const interest = Math.floor((state.data.money || 0) * 0.05);
-  if (interest <= 0) { toast("Need some balance to earn interest."); return; }
-  state.data.money += interest;
-  state.data.lastInterest = Date.now();
-  await fbPatch(`users/${state.user}`, { money: state.data.money, lastInterest: Date.now() });
+  if (Math.floor((state.data.money || 0) * ECON.INTEREST_RATE) <= 0) { toast("Need some balance to earn interest."); return; }
+  let data;
+  try { data = await netBank({ action: "interest" }); }
+  catch (e) { toast(e.message); return; }
+  state.data.money = data.money;
+  state.data.lastInterest = data.lastInterest;
   updateHUD();
-  toast(`+$${interest} interest`);
+  toast(`+$${data.gained} interest`);
   openBankMain();
 }
 window.claimInterest = claimInterest;
@@ -711,35 +696,7 @@ function openDuelChallenge() {
 // Free basics plus a paid catalogue. Purchases are one-off and live at
 // users/<me>/cosmetics as { "hat:cowboy": true, ... }; the equipped choice is
 // part of `appearance`, which presence already ships to everyone.
-const COSMETICS = {
-  hat: [
-    { id: "none", name: "None", price: 0 }, { id: "cap", name: "Cap", price: 0 }, { id: "tophat", name: "Top Hat", price: 0 },
-    { id: "beanie", name: "Beanie", price: 0 }, { id: "crown", name: "Crown", price: 0 },
-    { id: "bandana", name: "Bandana", price: 300 }, { id: "party", name: "Party Hat", price: 350 }, { id: "cowboy", name: "Cowboy", price: 400 },
-    { id: "chef", name: "Chef", price: 450 }, { id: "headphones", name: "Headphones", price: 500 }, { id: "wizard", name: "Wizard", price: 600 },
-    { id: "pirate", name: "Pirate", price: 800 }, { id: "horns", name: "Horns", price: 900 }, { id: "halo", name: "Halo", price: 1200 },
-  ],
-  accessory: [
-    { id: "none", name: "None", price: 0 }, { id: "glasses", name: "Glasses", price: 250 }, { id: "scarf", name: "Scarf", price: 300 },
-    { id: "mask", name: "Mask", price: 300 }, { id: "mustache", name: "Mustache", price: 350 }, { id: "sunglasses", name: "Shades", price: 400 },
-    { id: "eyepatch", name: "Eyepatch", price: 500 }, { id: "monocle", name: "Monocle", price: 700 }, { id: "chain", name: "Gold Chain", price: 1500 },
-  ],
-  aura: [
-    { id: "none", name: "None", price: 0 }, { id: "sparkle", name: "Sparkle", price: 2500 }, { id: "hearts", name: "Hearts", price: 3000 },
-    { id: "fire", name: "Fire", price: 5000 }, { id: "electric", name: "Electric", price: 6000 }, { id: "shadow", name: "Shadow", price: 7500 },
-    { id: "gold", name: "Money Rain", price: 10000 }, { id: "rainbow", name: "Rainbow", price: 15000 },
-  ],
-  pet: [
-    { id: "none", name: "None", price: 0 }, { id: "duck", name: "Duck", price: 2000 }, { id: "cat", name: "Cat", price: 3500 },
-    { id: "dog", name: "Dog", price: 3500 }, { id: "ghost", name: "Ghost", price: 6000 }, { id: "robot", name: "Robot", price: 8000 },
-    { id: "dragon", name: "Dragon", price: 20000 },
-  ],
-  nameColor: [
-    { id: "", name: "Default", price: 0 }, { id: "#38bdf8", name: "Sky", price: 1000 }, { id: "#4ade80", name: "Lime", price: 1000 },
-    { id: "#f472b6", name: "Pink", price: 1000 }, { id: "#a78bfa", name: "Violet", price: 1000 }, { id: "#f97316", name: "Orange", price: 1000 },
-    { id: "#ef4444", name: "Red", price: 2000 }, { id: "#fbbf24", name: "Gold", price: 5000 }, { id: "rainbow", name: "Rainbow", price: 25000 },
-  ],
-};
+const COSMETICS = ECON.COSMETICS; // catalogue lives in js/shared/economy.js
 const COSMETIC_LABELS = { hat: "HATS", accessory: "FACE & NECK", aura: "AURAS", pet: "PETS", nameColor: "NAME COLOUR" };
 function ownsCosmetic(key, id) {
   const def = COSMETICS[key].find(c => c.id === id);
@@ -860,13 +817,14 @@ function openBarber() {
     el.onclick = async () => {
       const key = el.dataset.cos, id = el.dataset.id;
       if (!ownsCosmetic(key, id)) {
-        const def = COSMETICS[key].find(c => c.id === id);
+        const def = ECON.COSMETICS[key].find(c => c.id === id);
         if ((state.data.money || 0) < def.price) { toast(`Need $${def.price} for the ${def.name}.`); return; }
         if (!confirm(`Buy ${def.name} for $${def.price}? It's yours forever.`)) return;
-        state.data.money -= def.price;
-        state.data.cosmetics = state.data.cosmetics || {};
-        state.data.cosmetics[`${key}:${id}`] = true;
-        await fbPatch(`users/${state.user}`, { money: state.data.money, cosmetics: state.data.cosmetics });
+        let data;
+        try { data = await netBuy({ kind: "cosmetic", id: `${key}:${id}` }); }
+        catch (e) { toast(e.message); return; }
+        state.data.money = data.money;
+        state.data.cosmetics = data.cosmetics || Object.assign({}, state.data.cosmetics, { [`${key}:${id}`]: true });
         updateHUD();
         toast(`Bought ${def.name}!`);
         el.classList.remove("locked");

@@ -101,7 +101,8 @@
     return new Promise((resolve, reject) => {
       pending.set(id, { resolve, reject });
       try {
-        ws.send(JSON.stringify(Object.assign({ id, op }, args || {})));
+        // protocol fields last so an op argument can never clobber the rpc id
+        ws.send(JSON.stringify(Object.assign({}, args || {}, { id, op })));
       } catch (e) {
         pending.delete(id);
         reject(e);
@@ -127,6 +128,17 @@
 
   // Presence — fast lane, no fbPut roundtrip; sends a single op the server uses for broadcast.
   window.netPresence = (data) => rpc("presence", { data });
+  // Server-authoritative economy ops (see docs/SERVER-AUTHORITY.md).
+  window.netCasino = (data) => rpc("casino", data);
+  // `id` is the rpc envelope field, so the purchase id travels as `item`.
+  window.netBuy    = (data) => rpc("buy", Object.assign({}, data, { item: data && data.id }));
+
+  // Server-authoritative economy ops (see docs/SERVER-AUTHORITY.md). Each
+  // resolves with the op's `data` (always includes the caller's new `money`).
+  window.netBank = (data) => rpc("bank", data);
+  window.netEarn = (data) => rpc("earn", data);
+  window.netFish = (data) => rpc("fish", data);
+  window.netFurnitureSet = (data) => rpc("furniture_set", data);
 
   // For dev console / debugging
   window.fb = { fbGet: window.fbGet, fbPut: window.fbPut, fbPatch: window.fbPatch, fbPost: window.fbPost, fbDelete: window.fbDelete };

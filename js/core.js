@@ -111,37 +111,12 @@ async function doAuth(register) {
   msg.textContent = "Connecting...";
   try {
     const res = await fbAuth(user, pass, register);
+    // The server creates the user record on registration (money, house lot,
+    // createdAt) and returns it in res.data — the client never writes it.
     let data = res?.data;
-    if (register) {
-      // brand-new user — create the game record now.
-      // Pick a random FREE house lot rather than "count of users" (which
-      // collided after deletions and always filled slots in registration
-      // order). Falls back to a hash-based slot if every lot is somehow taken.
-      const allUsers = (await fbGet("users")) || {};
-      const taken = new Set(Object.values(allUsers).map(u => u && u.houseIndex).filter(i => i != null));
-      const total = (window.gameWorld && gameWorld.HOUSE_COUNT) || 60;
-      const free = [];
-      for (let i = 0; i < total; i++) if (!taken.has(i)) free.push(i);
-      const houseIndex = free.length
-        ? free[Math.floor(Math.random() * free.length)]
-        : (Object.keys(allUsers).length % total);
-      data = {
-        money: 300, houseIndex,
-        inventory: {}, furniture: [], friends: {},
-        keys: {}, locked: false,
-        appearance: GFX.DEFAULT_APPEARANCE,
-        seenTutorial: false,
-        fishInventory: {},
-        createdAt: Date.now(),
-      };
-      await fbPut(`users/${user}`, data);
-    }
-    if (!data) {
-      // shouldn't happen for login, but recover gracefully
-      data = { money: 300, houseIndex: 0, inventory: {}, furniture: [], friends: {}, appearance: GFX.DEFAULT_APPEARANCE, fishInventory: {} };
-      await fbPut(`users/${user}`, data);
-    }
+    if (!data) throw new Error("Server returned no user record.");
     if (!data.fishInventory) data.fishInventory = {};
+    if (!data.appearance) data.appearance = GFX.DEFAULT_APPEARANCE;
     msg.textContent = "";
     enterGame(user, data, res && res.role, res && res.mute);
   } catch (e) {

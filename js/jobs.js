@@ -1,5 +1,21 @@
 /* JOBS — pizza delivery, typing, whack-a-mole */
 
+// Payouts go through the server's `earn` op (capped per source, with a
+// cooldown). `render(gained)` produces the result HTML for the amount the
+// server actually granted; the element may already be gone if the menu closed.
+function payJob(source, amount, resultId, render) {
+  netEarn({ source, amount }).then(data => {
+    state.data.money = data.money;
+    updateHUD();
+    const el = document.getElementById(resultId);
+    if (el) el.innerHTML = render(data.gained);
+  }).catch(e => {
+    toast(e.message);
+    const el = document.getElementById(resultId);
+    if (el) el.innerHTML = `<span style="color:#ef4444">${escapeHtml(e.message)}</span>`;
+  });
+}
+
 function openPizzaJob() {
   openMenu("PIZZA DELIVERY", `
     <p>Survive the traffic to reach the drop-off. Delivery pays $80, plus $5 for every second left on the clock.</p>
@@ -86,10 +102,7 @@ function runPizzaGame() {
       document.getElementById("pizzaResult").innerHTML = `<span style="color:#ef4444">CRASHED! No pay.</span>`;
     } else {
       const pay = 80 + Math.max(0, t) * 5;
-      state.data.money += pay;
-      fbPatch(`users/${state.user}`, { money: state.data.money });
-      updateHUD();
-      document.getElementById("pizzaResult").innerHTML = `<span style="color:#10b981">DELIVERED! +$${pay}</span>`;
+      payJob("pizza", pay, "pizzaResult", gained => `<span style="color:#10b981">DELIVERED! +$${gained}</span>`);
     }
     document.getElementById("pizzaCanvas").parentElement.insertAdjacentHTML(
       "beforeend",
@@ -153,12 +166,9 @@ function openTypingJob() {
     if (!resultEl) return;   // menu already closed — nothing to score
     inp.disabled = true;
     const pay = correct * 4;
-    state.data.money += pay;
-    fbPatch(`users/${state.user}`, { money: state.data.money });
-    updateHUD();
-    resultEl.innerHTML =
-      `<span style="color:#10b981">+$${pay}</span> earned (${correct} words).
-       <div style="margin-top:8px;"><button class="menuBtn" onclick="openTypingJob()">Play again</button></div>`;
+    payJob("typing", pay, "typingResult", gained =>
+      `<span style="color:#10b981">+$${gained}</span> earned (${correct} words).
+       <div style="margin-top:8px;"><button class="menuBtn" onclick="openTypingJob()">Play again</button></div>`);
   }
 }
 
@@ -232,10 +242,7 @@ function runWhack() {
   function finish() {
     cancelAnimationFrame(raf);
     const pay = score * 6;
-    state.data.money += pay;
-    fbPatch(`users/${state.user}`, { money: state.data.money });
-    updateHUD();
-    document.getElementById("whackResult").innerHTML = `<span style="color:#10b981">+$${pay}</span>`;
+    payJob("whack", pay, "whackResult", gained => `<span style="color:#10b981">+$${gained}</span>`);
     document.getElementById("whackCanvas").parentElement.insertAdjacentHTML(
       "beforeend",
       `<div class="center" style="margin-top:10px;"><button class="menuBtn" onclick="openWhackJob()">Play again</button></div>`

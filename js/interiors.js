@@ -15,7 +15,7 @@ const INTERIORS = {
     floors: [
       { name: "THE STRIP", short: "LOBBY", tagline: "Slots & quick bets — where every night starts",
         price: 0, level: "Lobby",
-        floor: "#5c1414", wall: "#1c0a0c", trim: "#fcd34d", neon: "#fcd34d", accent: "#b91c1c",
+        floor: "#3a0c0c", wall: "#120607", trim: "#fcd34d", neon: "#fcd34d", accent: "#b91c1c",
         hotspots: [
           { x: 210, y: 210, label: "LUCKY 7s SLOTS", action: "casino_slots" },
           { x: 470, y: 210, label: "COIN FLIP", action: "casino_coinflip" },
@@ -23,7 +23,7 @@ const INTERIORS = {
         ] },
       { name: "THE EMERALD ROOM", short: "EMERALD", tagline: "Table games under crystal chandeliers",
         price: 2500, level: "Floor 2",
-        floor: "#0f3d24", wall: "#04170d", trim: "#fcd34d", neon: "#4ade80", accent: "#166534",
+        floor: "#0a2a18", wall: "#031009", trim: "#fcd34d", neon: "#4ade80", accent: "#166534",
         hotspots: [
           { x: 210, y: 210, label: "BLACKJACK", action: "casino_blackjack" },
           { x: 470, y: 210, label: "ROULETTE", action: "casino_roulette" },
@@ -31,7 +31,7 @@ const INTERIORS = {
         ] },
       { name: "THE VELVET LOUNGE", short: "VELVET", tagline: "High-roller games, low lights, deep sofas",
         price: 10000, level: "Floor 3",
-        floor: "#2e0854", wall: "#14071f", trim: "#e9d5ff", neon: "#c084fc", accent: "#6d28d9",
+        floor: "#1f0538", wall: "#0d0415", trim: "#e9d5ff", neon: "#c084fc", accent: "#6d28d9",
         hotspots: [
           { x: 180, y: 200, label: "CRASH", action: "casino_crash" },
           { x: 390, y: 200, label: "PLINKO", action: "casino_plinko" },
@@ -40,7 +40,7 @@ const INTERIORS = {
         ] },
       { name: "THE DIAMOND MEZZANINE", short: "DIAMOND", tagline: "Members only — keno, baccarat and mines",
         price: 30000, level: "Floor 4",
-        floor: "#6b1240", wall: "#1f0512", trim: "#fbcfe8", neon: "#f472b6", accent: "#be185d",
+        floor: "#4a0c2c", wall: "#15040c", trim: "#fbcfe8", neon: "#f472b6", accent: "#be185d",
         hotspots: [
           { x: 260, y: 210, label: "KENO", action: "casino_keno" },
           { x: 510, y: 210, label: "BACCARAT", action: "casino_baccarat" },
@@ -48,7 +48,7 @@ const INTERIORS = {
         ] },
       { name: "THE PENTHOUSE", short: "PENTHOUSE", tagline: "Sky deck. The big money. The whole town at your feet",
         price: 75000, level: "Floor 40",
-        floor: "#0a3a57", wall: "#04182a", trim: "#bae6fd", neon: "#38bdf8", accent: "#0369a1",
+        floor: "#072a40", wall: "#03111d", trim: "#bae6fd", neon: "#38bdf8", accent: "#0369a1",
         glass: true,
         hotspots: [
           { x: 220, y: 300, label: "HORSE RACING", action: "casino_horses" },
@@ -208,7 +208,10 @@ function interiorRoom() {
 // floor doesn't immediately park you on the elevator pad.
 // Against the east wall, well clear of the door-side spawn point (512, 540)
 // so arriving on a floor never parks you on the elevator pad.
-const ELEVATOR = { x: 906, y: 400, label: "ELEVATOR", action: "casino_elevator" };
+// The elevator is a door set INTO the east wall, seen side-on, on every
+// floor; the pad sits on the floor in front of it. x is pulled in from the
+// wall so the pad doesn't spill outside the room.
+const ELEVATOR = { x: 852, y: 372, label: "ELEVATOR", action: "casino_elevator" };
 function currentHotspots() {
   const def = INTERIORS[state.area];
   if (!def) return [];
@@ -435,10 +438,34 @@ function drawHotspot(h) {
   // is what E actually reaches.
   const t = Date.now() / 400;
   const active = hotspotAtPlayer() === h;
+  const casino = state.area === "interior_casino";
+  const py = h.y + HOTSPOT_PAD_DY;
+  if (casino) {
+    // Vegas: a soft gold pool of light with a hairline ring, matching the
+    // black & gold of the elevator menu rather than a flat yellow disc.
+    const g = ctx.createRadialGradient(h.x, py, 6, h.x, py, HOTSPOT_RADIUS);
+    g.addColorStop(0, `rgba(212,160,23,${active ? 0.34 : 0.18})`);
+    g.addColorStop(1, "rgba(212,160,23,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(h.x, py, HOTSPOT_RADIUS, HOTSPOT_RADIUS * 0.62, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = active ? "#f5d270" : "rgba(212,160,23,0.75)"; ctx.lineWidth = active ? 2 : 1;
+    ctx.beginPath(); ctx.ellipse(h.x, py, HOTSPOT_RADIUS - 6, (HOTSPOT_RADIUS - 6) * 0.62, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = "rgba(245,222,179,0.35)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.ellipse(h.x, py, HOTSPOT_RADIUS - 12, (HOTSPOT_RADIUS - 12) * 0.62, 0, 0, Math.PI * 2); ctx.stroke();
+    // serif brass nameplate
+    ctx.font = "bold 10px Georgia, 'Times New Roman', serif";
+    const w = ctx.measureText(h.label).width + 34;
+    GFX.roundFill(ctx, h.x - w / 2, h.y + 80, w, 20, 3, "#0a0806");
+    ctx.strokeStyle = active ? "#f5d270" : "#d4a017"; ctx.lineWidth = 1;
+    GFX.roundStroke(ctx, h.x - w / 2, h.y + 80, w, 20, 3);
+    ctx.fillStyle = active ? "#f5d270" : "#f5deb3"; ctx.textAlign = "center";
+    ctx.fillText("◆ " + h.label + " ◆", h.x, h.y + 94);
+    return;
+  }
   ctx.fillStyle = `rgba(251,191,36,${(active ? 0.3 : 0.14) + Math.sin(t) * 0.06})`;
-  ctx.beginPath(); ctx.ellipse(h.x, h.y + HOTSPOT_PAD_DY, HOTSPOT_RADIUS, HOTSPOT_RADIUS * 0.62, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(h.x, py, HOTSPOT_RADIUS, HOTSPOT_RADIUS * 0.62, 0, 0, Math.PI*2); ctx.fill();
   ctx.strokeStyle = active ? "#fde047" : "#fbbf24"; ctx.lineWidth = active ? 3 : 2;
-  ctx.beginPath(); ctx.ellipse(h.x, h.y + HOTSPOT_PAD_DY, HOTSPOT_RADIUS, HOTSPOT_RADIUS * 0.62, 0, 0, Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(h.x, py, HOTSPOT_RADIUS, HOTSPOT_RADIUS * 0.62, 0, 0, Math.PI*2); ctx.stroke();
   // Label below
   ctx.fillStyle = "rgba(0,0,0,.75)";
   GFX.roundFill(ctx, h.x - 80, h.y + 80, 160, 22, 6, "rgba(0,0,0,.75)");
@@ -474,7 +501,7 @@ function drawVegasFloor(floor, room) {
     drawSlotBank(210, 200);
     drawCoinFlipStand(470, 200);
     drawScratchKiosk(730, 200);
-    drawVelvetRope(room.x + 60, room.y + 330, room.w - 120);
+    drawVelvetRope(room.x + 60, room.y + 330, room.w - 250);
     drawPottedPalm(room.x + 60, room.y + 420);
     drawPottedPalm(room.x + room.w - 200, room.y + 420);
   } else if (floor === 1) {
@@ -484,7 +511,7 @@ function drawVegasFloor(floor, room) {
     drawBlackjackTable(210, 210);
     drawRouletteTable(470, 205);
     drawCrapsTable(730, 210);
-    drawVelvetRope(room.x + 60, room.y + 330, room.w - 120);
+    drawVelvetRope(room.x + 60, room.y + 330, room.w - 250);
     drawDealerStand(room.x + 190, room.y + 425, neon);
   } else if (floor === 2) {
     drawDrapes(room, "#3b0764", "#c084fc");
@@ -500,7 +527,7 @@ function drawVegasFloor(floor, room) {
     drawKenoBoard(260, 195, neon);
     drawBaccaratTable(510, 210);
     drawMinesCabinet(760, 195, neon);
-    drawVelvetRope(room.x + 60, room.y + 330, room.w - 120);
+    drawVelvetRope(room.x + 60, room.y + 330, room.w - 250);
     drawDiamondDisplay(room.x + 190, room.y + 430, neon);
   } else {
     drawHorseTrack(220, 300);
@@ -548,11 +575,23 @@ function drawCasinoCarpet(room, f, neon, accent) {
   ctx.fillRect(room.x + room.w / 2 - rw / 2, room.y + room.h - 200, 2, 200);
   ctx.fillRect(room.x + room.w / 2 + rw / 2 - 2, room.y + room.h - 200, 2, 200);
   ctx.restore();
-  // gold border + pinstripe
-  ctx.strokeStyle = "#d4a017"; ctx.lineWidth = 4;
-  ctx.strokeRect(room.x + 10, room.y + 10, room.w - 20, room.h - 20);
-  ctx.strokeStyle = "rgba(252,211,77,0.45)"; ctx.lineWidth = 1;
-  ctx.strokeRect(room.x + 17, room.y + 17, room.w - 34, room.h - 34);
+  // gold vignette from the top, like the menu's header glow
+  const tg = ctx.createRadialGradient(room.x + room.w / 2, room.y, 40, room.x + room.w / 2, room.y, room.w * 0.55);
+  tg.addColorStop(0, "rgba(212,160,23,0.16)"); tg.addColorStop(1, "rgba(212,160,23,0)");
+  ctx.fillStyle = tg; ctx.fillRect(room.x, room.y, room.w, room.h * 0.5);
+  // double gold frame with a dark inset, the same treatment as the menu box
+  ctx.strokeStyle = "#d4a017"; ctx.lineWidth = 2;
+  ctx.strokeRect(room.x + 8, room.y + 8, room.w - 16, room.h - 16);
+  ctx.strokeStyle = "#0a0806"; ctx.lineWidth = 3;
+  ctx.strokeRect(room.x + 12, room.y + 12, room.w - 24, room.h - 24);
+  ctx.strokeStyle = "rgba(212,160,23,0.5)"; ctx.lineWidth = 1;
+  ctx.strokeRect(room.x + 15, room.y + 15, room.w - 30, room.h - 30);
+  // corner medallions
+  for (const [cx, cy] of [[room.x + 8, room.y + 8], [room.x + room.w - 8, room.y + 8], [room.x + 8, room.y + room.h - 8], [room.x + room.w - 8, room.y + room.h - 8]]) {
+    ctx.fillStyle = "#0a0806"; ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#d4a017"; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = "#d4a017"; ctx.beginPath(); ctx.moveTo(cx, cy - 3); ctx.lineTo(cx + 3, cy); ctx.lineTo(cx, cy + 3); ctx.lineTo(cx - 3, cy); ctx.closePath(); ctx.fill();
+  }
 }
 
 // Upper wall: panelled wainscot band, brass rail, and a neon cove light that
@@ -841,45 +880,63 @@ function drawSkyDeckGlass(room) {
   ctx.fillRect(gx, gy + gh - 6, gw, 2);
 }
 
-// Brass art-deco elevator. The indicator names the room, the sunburst above
-// the doors is the classic hotel "which floor is the car on" dial.
+// Brass art-deco elevator set into the EAST WALL, seen side-on: a recessed
+// alcove cut through the wall, tall brass doors facing into the room, the
+// sunburst "which floor is the car on" dial above, a landing mat in front.
+// (x, y) is the pad centre passed in; the door is drawn at the wall.
 function drawElevator(x, y, neon, floor, f) {
   const floors = INTERIORS.interior_casino.floors;
-  // surround
-  ctx.fillStyle = "#2a1d0a"; ctx.fillRect(x - 52, y - 96, 104, 112);
-  ctx.strokeStyle = "#d4a017"; ctx.lineWidth = 3; ctx.strokeRect(x - 52, y - 96, 104, 112);
-  ctx.strokeStyle = "rgba(245,222,179,0.5)"; ctx.lineWidth = 1; ctx.strokeRect(x - 47, y - 91, 94, 102);
-  // doors (brushed brass, parted slightly)
-  const door = ctx.createLinearGradient(x - 40, 0, x + 40, 0);
-  door.addColorStop(0, "#8a6a1c"); door.addColorStop(0.5, "#d4a017"); door.addColorStop(1, "#8a6a1c");
+  const room = interiorRoom();
+  const wx = room.x + room.w;          // inner face of the east wall
+  const top = y - 118, h = 124;        // alcove spans the wall thickness
+  const t = Date.now();
+  // alcove cut into the wall (dark shaft behind the doors)
+  ctx.fillStyle = "#0a0806"; ctx.fillRect(wx - 22, top, 52, h);
+  const shaft = ctx.createLinearGradient(wx - 22, 0, wx + 30, 0);
+  shaft.addColorStop(0, "rgba(212,160,23,0.10)"); shaft.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = shaft; ctx.fillRect(wx - 22, top, 52, h);
+  // gold architrave around the opening
+  ctx.strokeStyle = "#d4a017"; ctx.lineWidth = 3; ctx.strokeRect(wx - 22, top, 52, h);
+  ctx.strokeStyle = "rgba(245,222,179,0.5)"; ctx.lineWidth = 1; ctx.strokeRect(wx - 18, top + 4, 44, h - 8);
+  // brass doors, drawn foreshortened (we see them at an angle): two tall
+  // leaves with a dark seam, inlaid panels, a slight vertical sheen
+  const door = ctx.createLinearGradient(0, top + 10, 0, top + h - 10);
+  door.addColorStop(0, "#f5d270"); door.addColorStop(0.5, "#b8860b"); door.addColorStop(1, "#7a5a0c");
   ctx.fillStyle = door;
-  ctx.fillRect(x - 40, y - 70, 36, 84);
-  ctx.fillRect(x + 4, y - 70, 36, 84);
-  ctx.fillStyle = "#0a0a0a"; ctx.fillRect(x - 4, y - 70, 8, 84);
-  // door inlays
+  ctx.fillRect(wx - 16, top + 10, 18, h - 20);
+  ctx.fillRect(wx + 6, top + 10, 18, h - 20);
+  ctx.fillStyle = "#0a0806"; ctx.fillRect(wx + 2, top + 10, 4, h - 20);
   ctx.strokeStyle = "rgba(0,0,0,0.35)"; ctx.lineWidth = 1;
-  for (const dx of [-40, 4]) { ctx.strokeRect(x + dx + 5, y - 62, 26, 30); ctx.strokeRect(x + dx + 5, y - 26, 26, 34); }
-  // sunburst dial
-  ctx.strokeStyle = "#d4a017"; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(x, y - 74, 18, Math.PI, 0); ctx.stroke();
+  for (const dx of [-16, 6]) { ctx.strokeRect(wx + dx + 3, top + 16, 12, 38); ctx.strokeRect(wx + dx + 3, top + 60, 12, 40); }
+  // brass handles
+  ctx.fillStyle = "#f5deb3"; ctx.fillRect(wx - 1, top + 58, 1.5, 12); ctx.fillRect(wx + 7.5, top + 58, 1.5, 12);
+  // sunburst dial above the door
+  const dy = top - 12;
+  ctx.fillStyle = "#0a0806"; ctx.beginPath(); ctx.arc(wx + 4, dy, 20, Math.PI, 0); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "#d4a017"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(wx + 4, dy, 20, Math.PI, 0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(wx - 16, dy); ctx.lineTo(wx + 24, dy); ctx.stroke();
   for (let i = 0; i < floors.length; i++) {
     const a = Math.PI + (i / (floors.length - 1)) * Math.PI;
     ctx.fillStyle = i === floor ? neon : "rgba(245,222,179,0.45)";
-    ctx.beginPath(); ctx.arc(x + Math.cos(a) * 14, y - 74 + Math.sin(a) * 14, i === floor ? 2.6 : 1.6, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(wx + 4 + Math.cos(a) * 15, dy + Math.sin(a) * 15, i === floor ? 2.6 : 1.5, 0, Math.PI * 2); ctx.fill();
   }
   const na = Math.PI + (floor / (floors.length - 1)) * Math.PI;
   ctx.strokeStyle = neon; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(x, y - 74); ctx.lineTo(x + Math.cos(na) * 12, y - 74 + Math.sin(na) * 12); ctx.stroke();
-  // room name plate
-  ctx.fillStyle = "#0a0a0a"; GFX.roundFill(ctx, x - 44, y - 116, 88, 16, 3, "#0a0a0a");
-  ctx.strokeStyle = "#d4a017"; ctx.lineWidth = 1; GFX.roundStroke(ctx, x - 44, y - 116, 88, 16, 3);
-  ctx.fillStyle = neon; ctx.font = "bold 9px sans-serif"; ctx.textAlign = "center";
-  ctx.fillText((f && f.short) || "LOBBY", x, y - 104);
-  // call button, lit
-  ctx.save(); ctx.shadowColor = "#fde047"; ctx.shadowBlur = 8;
-  ctx.fillStyle = "#fde047"; ctx.beginPath(); ctx.arc(x + 62, y - 40, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(wx + 4, dy); ctx.lineTo(wx + 4 + Math.cos(na) * 12, dy + Math.sin(na) * 12); ctx.stroke();
+  // room name plate over the dial
+  GFX.roundFill(ctx, wx - 40, dy - 42, 88, 16, 3, "#0a0806");
+  ctx.strokeStyle = "#d4a017"; ctx.lineWidth = 1; GFX.roundStroke(ctx, wx - 40, dy - 42, 88, 16, 3);
+  ctx.fillStyle = neon; ctx.font = "bold 9px Georgia, serif"; ctx.textAlign = "center";
+  ctx.fillText((f && f.short) || "LOBBY", wx + 4, dy - 30);
+  // call button on the wall beside the door, lit
+  ctx.fillStyle = "#3b2a10"; ctx.fillRect(wx - 34, y - 44, 8, 16);
+  ctx.save(); ctx.shadowColor = "#fde047"; ctx.shadowBlur = 8 + 4 * Math.sin(t / 300);
+  ctx.fillStyle = "#fde047"; ctx.beginPath(); ctx.arc(wx - 30, y - 40, 3, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
-  ctx.fillStyle = "#d4a017"; ctx.fillRect(x + 58, y - 30, 8, 14);
+  // landing mat on the floor in front of the doors
+  ctx.fillStyle = "rgba(212,160,23,0.16)";
+  ctx.beginPath(); ctx.moveTo(wx - 4, y - 6); ctx.lineTo(wx - 4, y + 6); ctx.lineTo(x - 30, y + 30); ctx.lineTo(x - 30, y - 30); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "rgba(212,160,23,0.45)"; ctx.lineWidth = 1; ctx.stroke();
 }
 
 // ---- ground floor ----

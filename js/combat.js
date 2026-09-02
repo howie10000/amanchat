@@ -395,9 +395,13 @@ async function endDungeon(victory) {
   if (_endingDungeon) return;
   _endingDungeon = true;
   if (victory) {
-    state.data.money += state.questReward;
-    await fbPatch(`users/${state.user}`, { money: state.data.money });
-    toast(`Quest complete! +$${state.questReward}`);
+    // Reward is granted by the server's `earn` op (capped per tier + cooldown).
+    const tier = (state.dungeon && state.dungeon.tier) || "easy";
+    try {
+      const data = await netEarn({ source: `quest_${tier}`, amount: state.questReward });
+      state.data.money = data.money;
+      toast(`Quest complete! +$${data.gained}`);
+    } catch (e) { toast(e.message); }
   } else {
     toast("Defeated! Returning to town.");
   }
@@ -735,14 +739,13 @@ async function endDuel(won, alreadyEnded) {
   if (!alreadyEnded) {
     await fbPatch(`duels/${id}`, { status: "ended", winner: won ? state.user : opp });
   }
-  if (won) {
-    state.data.money += stake * 2;
-    toast(`Won the duel! +$${stake * 2}`);
-  } else {
-    state.data.money = Math.max(0, state.data.money - stake);
-    toast(`Lost the duel. -$${stake}`);
-  }
-  await fbPatch(`users/${state.user}`, { money: state.data.money });
+  // The server settles the stake once when the duel doc flips to "ended";
+  // the client only refreshes its displayed balance afterwards.
+  toast(won ? `Won the duel! +$${stake}` : `Lost the duel. -$${stake}`);
+  try {
+    const money = await fbGet(`users/${state.user}/money`);
+    if (typeof money === "number") state.data.money = money;
+  } catch (e) { /* balance refreshes on the next server reply */ }
   updateHUD();
   state.duel = null;
   state.hp = 100;

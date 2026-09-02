@@ -5,27 +5,59 @@
    MEZZ: Keno, Baccarat, Mines
    SKY:  Horse Racing, Mega Jackpot Slots, Wheel of Fortune
 
-   Every game moves money through takeBet()/payWin() so the displayed balance
-   and the server record can't drift apart, and every animation is driven by
-   casinoRaf() so it dies with the menu instead of running forever. */
+   Every game is server-authoritative (docs/SERVER-AUTHORITY.md): the client
+   sends the bet, the server rolls the outcome and settles the money, and the
+   client only animates what it was told and displays the returned balance.
+   Every animation is driven by casinoRaf() so it dies with the menu instead
+   of running forever — and money from an already-received reply is applied
+   even if the animation is aborted. */
 
 // ---------- money ----------
-async function takeBet(amount) {
+// Local UX check only — never writes money. The server re-validates.
+function takeBet(amount) {
   amount = Math.floor(amount);
   if (!amount || amount < 1) { toast("Enter a bet."); return false; }
   if ((state.data.money || 0) < amount) { toast("Not enough money."); return false; }
-  state.data.money -= amount;
-  await fbPatch(`users/${state.user}`, { money: state.data.money });
-  updateHUD();
   return true;
 }
-async function payWin(amount) {
-  amount = Math.floor(amount);
-  if (amount <= 0) return;
-  state.data.money = (state.data.money || 0) + amount;
-  await fbPatch(`users/${state.user}`, { money: state.data.money });
-  updateHUD();
+// One casino round-trip. Resolves with reply.data; rejects with Error(err).
+function casinoRpc(game, action, args) {
+  if (typeof window.netCasino !== "function") return Promise.reject(new Error("Not connected."));
+  return window.netCasino(Object.assign({ game, action }, args || {}));
 }
+// Display the balance the server just told us about.
+function applyMoney(data) {
+  if (data && typeof data.money === "number") { state.data.money = data.money; updateHUD(); }
+}
+// While a result is still animating, show the balance with the stake gone
+// but the win not yet credited so the HUD doesn't spoil the reels.
+function showStake(data) {
+  if (data && typeof data.money === "number") {
+    state.data.money = data.money - Math.max(0, Math.floor(data.payout || 0));
+    updateHUD();
+  }
+}
+function casinoFail(e) { toast((e && e.message) || "Casino error."); }
+
+// ---------- cards from the server ----------
+// The server may send cards as {r,s} (rank as "A".."K"/"10" or 0..12 index),
+// {rank,suit}, or a string like "10♥"/"AS". Normalise to {r:"A".."K", s:"♠♥♦♣"}.
+const SUIT_MAP = { S: "♠", H: "♥", D: "♦", C: "♣", s: "♠", h: "♥", d: "♦", c: "♣",
+  spades: "♠", hearts: "♥", diamonds: "♦", clubs: "♣", "♠": "♠", "♥": "♥", "♦": "♦", "♣": "♣" };
+const RANK_ORDER = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
+function normCard(c) {
+  if (c == null || c.hidden) return null;
+  let r, s;
+  if (typeof c === "string") { s = c.slice(-1); r = c.slice(0, -1); }
+  else { r = c.r != null ? c.r : c.rank; s = c.s != null ? c.s : c.suit; }
+  if (typeof r === "number") r = RANK_ORDER[r] || String(r);
+  r = String(r).toUpperCase(); if (r === "T") r = "10";
+  return { r, s: SUIT_MAP[s] || SUIT_MAP[String(s).toLowerCase()] || String(s) };
+}
+function normHand(h) { return Array.isArray(h) ? h.map(normCard).filter(Boolean) : []; }
+function rankIdx(r) { return Math.max(0, RANK_ORDER.indexOf(r)); }
+// Index-rank form used by Higher/Lower and Video Poker.
+function idxCard(c) { const n = normCard(c); return n ? { r: rankIdx(n.r), s: n.s } : null; }
 
 // ---------- small shared helpers ----------
 function setEl(id, html) { const e = document.getElementById(id); if (e) e.innerHTML = html; }
@@ -300,7 +332,7 @@ async function spinSlotGrid(cfg) {
   if (!_slot || _slot.spinning) return;
   const bet = readBet(cfg.betId);
   if (cfg.minBet && bet < cfg.minBet) { toast(`Minimum bet is $${cfg.minBet}.`); return; }
-  if (!(await takeBet(bet))) return;
+  if (!takeBet(bet)) return;
   if (!document.getElementById("slotCanvas")) return;
 
   _slot.spinning = true;
@@ -309,11 +341,30 @@ async function spinSlotGrid(cfg) {
   const btn = document.getElementById("slotBtn");
   if (btn) btn.disabled = true;
 
+  // The server rolls the grid and settles the money; we animate to it.
+  let data;
+  try {
+    data = await casinoRpc(cfg.rows > 1 ? "jackpot" : "slots", "spin", { bet });
+  } catch (e) {
+    casinoFail(e);
+    _slot.spinning = false;
+    setEl("slotResult", "");
+    if (btn) btn.disabled = false;
+    return;
+  }
+  showStake(data);
+  if (!_slot || !document.getElementById("slotCanvas")) { applyMoney(data); return; }
+
   // Final grid; each reel keeps its result at the top of the strip and
   // free-spins over repeating filler until its stop time comes up.
   const rows = _slot.rows;
+  const symOf = (s) => cfg.symbols.find(x => x.sym === s) || cfg.symbols[cfg.symbols.length - 1];
   const grid = [];
-  for (let r = 0; r < rows; r++) { grid[r] = []; for (let c = 0; c < 3; c++) grid[r][c] = pickWeighted(cfg.symbols); }
+  for (let r = 0; r < rows; r++) {
+    grid[r] = [];
+    const srow = (data.grid && data.grid[r]) || [];
+    for (let c = 0; c < 3; c++) grid[r][c] = symOf(srow[c]);
+  }
   const FILLER = 14;
   _slot.grid = grid;
   _slot.cols = [0, 1, 2].map(col => ({
@@ -355,9 +406,12 @@ async function spinSlotGrid(cfg) {
     drawSlotFrame();
     return !allDone;
   });
+  applyMoney(data); // settled by the server — applies even if the menu was closed mid-spin
+  if (!_slot) return;
   for (const reel of _slot.cols) reel.p = 0;
 
-  // Score the lines this machine runs
+  // Re-derive the winning lines from the grid for the highlight; the money
+  // itself is whatever the server paid.
   const wins = [];
   for (const line of _slot.lines) {
     const first = grid[line.cells[0][0]][line.cells[0][1]];
@@ -373,9 +427,8 @@ async function spinSlotGrid(cfg) {
     const b = cfg.bonus(grid);
     if (b) { totalMult += b.mult; bonusDetail = `<span style="color:#ef4444">${b.label} ${b.mult}&times;</span>`; }
   }
-  const payout = Math.floor(bet * totalMult);
+  const payout = Math.floor(data.payout || 0);
   if (payout > 0) {
-    await payWin(payout);
     const detail = wins.map(w => `<span style="color:${w.line.color}">${w.sym.sym}${w.sym.sym}${w.sym.sym} ${w.line.label} ${w.mult}&times;</span>`).join(" &nbsp;·&nbsp; ") || bonusDetail;
     setEl("slotResult", win(`+$${payout}`) + `<div class="winDetail">${detail}</div>`);
     if (totalMult >= 50) { toast("🎉 BIG WIN! 🎉", 4000); celebrate(); }
@@ -469,18 +522,25 @@ function drawCoin(spin, face) {
 }
 window.flipCoin = async (call) => {
   const bet = readBet("cfBet");
-  if (!(await takeBet(bet))) return;
-  const result = Math.random() < 0.5 ? "heads" : "tails";
+  if (!takeBet(bet)) return;
+  if (window._cfBusy) return;
+  window._cfBusy = true;
   setEl("cfResult", `<span class="cSpin">Flipping…</span>`);
+  let data;
+  try { data = await casinoRpc("coinflip", "flip", { bet, call }); }
+  catch (e) { casinoFail(e); setEl("cfResult", ""); window._cfBusy = false; return; }
+  showStake(data);
+  const result = data.result === "tails" ? "tails" : "heads";
   const t0 = performance.now(), DUR = 1500;
   await animate(ts => {
     const k = clamp01((ts - t0) / DUR);
     drawCoin(easeOutCubic(k) * Math.PI * 11, result);
     return k < 1;
   });
-  if (result === call) {
-    const p = Math.floor(bet * 1.95);
-    await payWin(p);
+  applyMoney(data);
+  window._cfBusy = false;
+  const p = Math.floor(data.payout || 0);
+  if (p > 0) {
     setEl("cfResult", win(`${result.toUpperCase()} — +$${p}`));
   } else {
     setEl("cfResult", lose(`${result.toUpperCase()} — -$${bet}`));
@@ -530,8 +590,17 @@ function renderScratch() {
 }
 window.buyScratch = async () => {
   const bet = readBet("scBet");
-  if (!(await takeBet(bet))) return;
-  _scratch = { bet, cells: Array.from({ length: 9 }, () => ({ sym: pickWeighted(SCRATCH_PRIZES), revealed: false, winner: false })), done: false };
+  if (!takeBet(bet)) return;
+  if (_scratch && !_scratch.done) { toast("Scratch this card first."); return; }
+  let data;
+  try { data = await casinoRpc("scratch", "buy", { bet }); }
+  catch (e) { casinoFail(e); return; }
+  // The card is settled the moment it's bought; the panels only hide it.
+  applyMoney(data);
+  const symOf = (s) => SCRATCH_PRIZES.find(p => p.sym === s) || SCRATCH_PRIZES[SCRATCH_PRIZES.length - 1];
+  const cells = Array.isArray(data.cells) ? data.cells : [];
+  _scratch = { bet, payout: Math.floor(data.payout || 0),
+    cells: Array.from({ length: 9 }, (_, i) => ({ sym: symOf(cells[i]), revealed: false, winner: false })), done: false };
   setEl("scratchResult", `<span class="cSpin">Scratch all nine panels…</span>`);
   const b = document.getElementById("scBtn");
   if (b) b.textContent = "SCRATCH THEM";
@@ -553,12 +622,13 @@ async function finishScratch() {
   for (const p of SCRATCH_PRIZES) {
     if (p.mult > 0 && (counts[p.sym] || 0) >= 3 && (!best || p.mult > best.mult)) best = p;
   }
-  if (best) {
+  const payout = _scratch.payout;
+  if (best && payout > 0) {
     for (const c of _scratch.cells) if (c.sym.sym === best.sym) c.winner = true;
-    const payout = Math.floor(_scratch.bet * best.mult);
-    await payWin(payout);
     if (best.mult >= 12) celebrate();
     setEl("scratchResult", win(`Three ${best.sym} — +$${payout}!`));
+  } else if (payout > 0) {
+    setEl("scratchResult", win(`+$${payout}!`));
   } else {
     setEl("scratchResult", lose(`No match. -$${_scratch.bet}`));
   }
@@ -720,10 +790,9 @@ function placeRouletteBet(el) {
   if (!_roul || _roul.spinning) return;
   const amt = readBet("roulBet");
   if (amt < 1) { toast("Enter a bet."); return; }
-  if ((state.data.money || 0) < amt) { toast("Not enough money."); return; }
-  state.data.money -= amt;
-  fbPatch(`users/${state.user}`, { money: state.data.money });
-  updateHUD();
+  // Chips are only committed when the wheel spins; keep the stack affordable.
+  const down = _roul.bets.reduce((s, b) => s + b.amt, 0);
+  if ((state.data.money || 0) < down + amt) { toast("Not enough money."); return; }
   _roul.bets.push({ bet: el.dataset.bet, amt, payout: parseInt(el.dataset.payout) });
   el.classList.add("selected");
   renderRouletteBets();
@@ -743,7 +812,6 @@ window.clearRouletteBets = () => {
   if (!_roul || _roul.spinning || !_roul.bets.length) return;
   const refund = _roul.bets.reduce((s, b) => s + b.amt, 0);
   _roul.bets = [];
-  payWin(refund);
   document.querySelectorAll("#menuBody [data-bet].selected").forEach(e => e.classList.remove("selected"));
   renderRouletteBets();
   toast(`Chips returned: $${refund}`);
@@ -751,8 +819,24 @@ window.clearRouletteBets = () => {
 window.spinRoulette = async () => {
   if (!_roul || _roul.spinning) return;
   if (!_roul.bets.length) { toast("Place at least one bet."); return; }
+  const total = _roul.bets.reduce((s, b) => s + b.amt, 0);
+  if (!takeBet(total)) return;
   _roul.spinning = true;
-  const winNum = Math.floor(Math.random() * 37);
+  setEl("roulResult", `<span class="cSpin">No more bets…</span>`);
+  // "num:17" -> {type:"num", value:17}; outside bets -> {type:"red", value:null}
+  const bets = _roul.bets.map(b => b.bet.startsWith("num:")
+    ? { type: "num", value: parseInt(b.bet.slice(4)), amount: b.amt }
+    : { type: b.bet, value: null, amount: b.amt });
+  let data;
+  try { data = await casinoRpc("roulette", "spin", { bets }); }
+  catch (e) {
+    casinoFail(e);
+    _roul.spinning = false;
+    setEl("roulResult", "");
+    return;
+  }
+  showStake(data);
+  const winNum = Math.max(0, Math.min(36, data.number | 0));
   const idx = WHEEL_ORDER.indexOf(winNum);
   const seg = (Math.PI * 2) / WHEEL_ORDER.length;
 
@@ -770,7 +854,6 @@ window.spinRoulette = async () => {
   const B0 = Bf + Math.PI * 2 * 14;             // ball runs the other way
   const Rout = ROUL_SIZE / 2 - 26, Rin = ROUL_SIZE / 2 - 60;
 
-  setEl("roulResult", `<span class="cSpin">No more bets…</span>`);
   const t0 = performance.now(), DUR = 6200;
   await animate(ts => {
     const k = clamp01((ts - t0) / DUR);
@@ -784,20 +867,10 @@ window.spinRoulette = async () => {
     return k < 1;
   });
 
+  applyMoney(data);
+  if (!_roul) return;
   const col = numColor(winNum);
-  let winnings = 0;
-  for (const b of _roul.bets) {
-    let won = false;
-    if (b.bet.startsWith("num:")) won = parseInt(b.bet.slice(4)) === winNum;
-    else if (b.bet === "red") won = col === "red";
-    else if (b.bet === "black") won = col === "black";
-    else if (b.bet === "even") won = winNum !== 0 && winNum % 2 === 0;
-    else if (b.bet === "odd") won = winNum % 2 === 1;
-    else if (b.bet === "low") won = winNum >= 1 && winNum <= 18;
-    else if (b.bet === "high") won = winNum >= 19 && winNum <= 36;
-    if (won) winnings += b.amt * b.payout;
-  }
-  if (winnings > 0) await payWin(winnings);
+  const winnings = Math.floor(data.payout || 0);
   const hitStraight = _roul.bets.some(b => b.bet === "num:" + winNum);
   if (hitStraight) celebrate();
   _roul.history = [winNum].concat(_roul.history || []).slice(0, 12);
@@ -896,11 +969,16 @@ function drawDiceTable(dice) {
 window.rollDice = async (call) => {
   if (_dice && _dice.rolling) return;
   const bet = readBet("diceBet");
-  if (!(await takeBet(bet))) return;
+  if (!takeBet(bet)) return;
   _dice.rolling = true;
-  const a = 1 + Math.floor(Math.random() * 6), b = 1 + Math.floor(Math.random() * 6);
-  const total = a + b;
   setEl("diceResult", `<span class="cSpin">Rolling…</span>`);
+  let data;
+  try { data = await casinoRpc("dice", "roll", { bet, call }); }
+  catch (e) { casinoFail(e); setEl("diceResult", ""); _dice.rolling = false; return; }
+  showStake(data);
+  const dv = Array.isArray(data.dice) ? data.dice : [1, 1];
+  const a = Math.max(1, Math.min(6, dv[0] | 0)), b = Math.max(1, Math.min(6, dv[1] | 0));
+  const total = a + b;
 
   // Two dice thrown in from the top-right: they fall (shrinking from a big
   // "close to camera" size), skid across the felt, then settle.
@@ -941,22 +1019,20 @@ window.rollDice = async (call) => {
     drawDiceTable(dice);
     return k < 1;
   });
+  applyMoney(data);
+  _dice.rolling = false;
   drawDiceTable([
     { x: DICE_W * 0.38, y: DICE_H * 0.62, s: 1, rot: 0.2, face: a },
     { x: DICE_W * 0.62, y: DICE_H * 0.62, s: 1, rot: -0.15, face: b },
   ]);
 
-  let payout = 0, note = "";
-  if (call === "seven") { if (total === 7) payout = bet * 4; }
-  else if (call === "under") { if (total < 7) payout = bet * 2; else if (total === 7) { payout = bet; note = " (push)"; } }
-  else { if (total > 7) payout = bet * 2; else if (total === 7) { payout = bet; note = " (push)"; } }
+  const payout = Math.floor(data.payout || 0);
+  const note = (call !== "seven" && total === 7 && payout === bet) ? " (push)" : "";
   if (payout > 0) {
-    await payWin(payout);
     setEl("diceResult", `<b class="diceTotal">${total}</b> ` + win(`+$${payout}${note}`));
   } else {
     setEl("diceResult", `<b class="diceTotal">${total}</b> ` + lose(`-$${bet}`));
   }
-  _dice.rolling = false;
 };
 
 // =====================================================================
@@ -1101,42 +1177,109 @@ function drawCrash(mult, exploded, boomT) {
     c.fillText("CRASHED", cv.width / 2, 76);
   }
 }
+// Multiplier-vs-time curve. The server uses the SAME formula against its own
+// clock (elapsed since the `startedAt` it recorded), so keep them in sync.
+const CRASH_RATE = 0.42, CRASH_MAX = 60;
+function crashMultAt(secs) { return Math.pow(Math.E, CRASH_RATE * secs); }
+// Did a cashout/status reply say the rocket already blew?
+function crashBusted(data) {
+  const s = String(data.status || "").toLowerCase();
+  return s === "bust" || s === "busted" || s === "crashed" || s === "boom" || s === "lost";
+}
+let _crashNoPoll = false; // set once the server says it has no "status" action
 window.crashAction = async () => {
   if (_crash && _crash.running) { cashOutCrash(); return; }
+  if (_crash && _crash.pending) return;
   const bet = readBet("crashBet");
-  if (!(await takeBet(bet))) return;
-  // 1/(1-u) curve with a 3% instant bust — that pair is the house edge.
-  const u = Math.random();
-  const crashAt = u < 0.03 ? 1.0 : Math.min(60, Math.max(1.01, 0.97 / (1 - u)));
-  _crash = { bet, mult: 1, crashAt, running: true, stop: null };
+  if (!takeBet(bet)) return;
   const btn = document.getElementById("crashBtn");
+  if (btn) btn.disabled = true;
+  _crash = { bet, mult: 1, crashAt: null, running: false, pending: true, stop: null, settling: false };
+  let data;
+  try { data = await casinoRpc("crash", "start", { bet }); }
+  catch (e) { casinoFail(e); _crash = null; if (btn) btn.disabled = false; return; }
+  applyMoney(data); // stake taken
+  if (btn) btn.disabled = false;
+  if (!_crash) return;
+  _crash.pending = false;
+  _crash.running = true;
   if (btn) { btn.textContent = "CASH OUT"; btn.className = "menuBtn green bigBtn"; }
   setEl("crashResult", "");
+  // The server crashes the rocket on its own clock; we mirror the curve from
+  // the moment the reply landed and ask it periodically whether we're still
+  // flying, so a bust shows up without a cashout attempt.
   const t0 = performance.now();
-  _crash.stop = casinoRaf(ts => {
-    if (!_crash || !_crash.running) return false;
-    if (!document.getElementById("crashCanvas")) { _crash = null; return false; }
+  const round = _crash;
+  let lastPoll = t0;
+  round.stop = casinoRaf(ts => {
+    if (_crash !== round || !round.running) return false;
+    if (!document.getElementById("crashCanvas")) {
+      // Menu closed mid-flight: settle with the server so the stake isn't lost.
+      cashOutCrash();
+      return false;
+    }
     const secs = (ts - t0) / 1000;
-    _crash.mult = Math.pow(Math.E, 0.42 * secs);   // smooth exponential climb
-    if (_crash.mult >= _crash.crashAt) { bustCrash(); return false; }
-    drawCrash(_crash.mult, false, 0);
+    round.mult = crashMultAt(secs);   // smooth exponential climb
+    if (round.mult >= CRASH_MAX) { cashOutCrash(); return false; }
+    if (!_crashNoPoll && ts - lastPoll > 300) { lastPoll = ts; pollCrash(round); }
+    drawCrash(round.mult, false, 0);
     return true;
-  });
+  }, () => { if (_crash === round && round.running) cashOutCrash(); });
 };
+async function pollCrash(round) {
+  if (round.polling) return;
+  round.polling = true;
+  let data;
+  try { data = await casinoRpc("crash", "status"); }
+  catch (e) {
+    // No such action on this server (or a dropped socket): stop asking; the
+    // cashout reply still carries the verdict.
+    _crashNoPoll = true;
+    round.polling = false;
+    return;
+  }
+  round.polling = false;
+  if (_crash !== round || !round.running) return;
+  if (crashBusted(data)) {
+    applyMoney(data);
+    bustCrash(data.crashPoint);
+  }
+}
 async function cashOutCrash() {
-  if (!_crash || !_crash.running) return;
-  _crash.running = false;
-  if (_crash.stop) _crash.stop();
-  const p = Math.floor(_crash.bet * _crash.mult);
-  await payWin(p);
-  if (_crash.mult >= 5) celebrate();
-  setEl("crashResult", win(`Cashed out at ${_crash.mult.toFixed(2)}× — +$${p}`));
-  drawCrash(_crash.mult, false, 0);
+  if (!_crash || !_crash.running || _crash.settling) return;
+  const round = _crash;
+  round.settling = true;
+  const shown = round.mult;
+  let data;
+  try { data = await casinoRpc("crash", "cashout"); }
+  catch (e) {
+    // Most likely the round already ended server-side; treat as a bust so
+    // the UI doesn't hang in "CASH OUT", the balance was already settled.
+    casinoFail(e);
+    if (_crash === round) bustCrash(round.crashAt);
+    return;
+  }
+  if (_crash !== round) { applyMoney(data); return; }
+  round.settling = false;
+  applyMoney(data);
+  if (crashBusted(data)) { bustCrash(data.crashPoint); return; }
+  round.running = false;
+  if (round.stop) round.stop();
+  const mult = typeof data.mult === "number" ? data.mult : shown;
+  round.mult = mult;
+  round.crashAt = typeof data.crashPoint === "number" ? data.crashPoint : mult;
+  const p = Math.floor(data.payout || 0);
+  if (mult >= 5) celebrate();
+  setEl("crashResult", win(`Cashed out at ${mult.toFixed(2)}× — +$${p}`));
+  drawCrash(mult, false, 0);
   endCrashRound();
 }
-function bustCrash() {
-  if (!_crash) return;
+function bustCrash(crashPoint) {
+  if (!_crash || !_crash.running) return;
   _crash.running = false;
+  _crash.settling = false;
+  if (_crash.stop) _crash.stop();
+  _crash.crashAt = typeof crashPoint === "number" ? crashPoint : (_crash.crashAt || _crash.mult);
   setEl("crashResult", lose(`Blew up at ${_crash.crashAt.toFixed(2)}× — lost $${_crash.bet}.`));
   const t0 = performance.now();
   casinoRaf(ts => {
@@ -1147,7 +1290,7 @@ function bustCrash() {
   endCrashRound();
 }
 function endCrashRound() {
-  window._crashHistory.unshift(_crash.crashAt);
+  window._crashHistory.unshift(_crash.crashAt || 1);
   window._crashHistory = window._crashHistory.slice(0, 10);
   renderCrashHistory();
   const btn = document.getElementById("crashBtn");
@@ -1229,6 +1372,10 @@ function plinkoPegXY(row, i) {
 const PLINKO_PEG_R = 5, PLINKO_BALL_R = 9;
 // Funnel walls track the triangle's edges so a wide carom rolls back into
 // the peg field instead of falling down an open gutter to an edge bucket.
+function plinkoSlotX(slot) {
+  const spacing = PLINKO_W / (PLINKO_ROWS + 3);
+  return PLINKO_W / 2 + (slot - PLINKO_ROWS / 2) * spacing;
+}
 function plinkoFunnelHalf(y) {
   const topY = plinkoPegXY(1, 0).y, botY = plinkoPegXY(PLINKO_ROWS, 0).y;
   const spacing = PLINKO_W / (PLINKO_ROWS + 3);
@@ -1267,6 +1414,17 @@ function stepPlinko(dt) {
           }
         }
       }
+      // steer toward the slot the server assigned: a gentle sideways bias that
+      // grows row by row so the carom still looks like a carom, then a firm
+      // pull under the last row so it drops into the right bucket
+      if (ball.target != null) {
+        const tx = plinkoSlotX(ball.target);
+        const botY = plinkoPegXY(PLINKO_ROWS, 0).y;
+        const k = clamp01((ball.y - 30) / (botY - 30));
+        const gain = ball.y > botY ? 14 : 1.5 + 6 * k;
+        ball.vx += (tx - ball.x) * gain * h;
+        if (ball.y > botY) ball.vx *= Math.max(0, 1 - 4 * h);
+      }
       // funnel walls kick the ball back toward the pegs, never let it ride
       const lim = plinkoFunnelHalf(ball.y);
       if (ball.x < PLINKO_W / 2 - lim) { ball.x = PLINKO_W / 2 - lim; ball.vx = Math.max(Math.abs(ball.vx) * 0.5, 70); }
@@ -1297,12 +1455,11 @@ function stepPlinko(dt) {
 function settlePlinkoBall(ball, silent) {
   const idx = _plinko.balls.indexOf(ball);
   if (idx >= 0) _plinko.balls.splice(idx, 1);
-  const spacing = PLINKO_W / (PLINKO_ROWS + 3);
-  let slot = Math.round((ball.x - PLINKO_W / 2) / spacing + PLINKO_ROWS / 2);
-  slot = Math.max(0, Math.min(ball.slots.length - 1, slot));
-  const mult = ball.slots[slot];
-  const p = Math.floor(ball.bet * mult);
-  if (p > 0) payWin(p);
+  // Money was settled by the server at drop time; the slot and payout here
+  // are the ones it assigned, not where the chip visually came to rest.
+  const slot = Math.max(0, Math.min(ball.slots.length - 1, ball.target | 0));
+  const mult = ball.mult != null ? ball.mult : ball.slots[slot];
+  const p = ball.payout != null ? ball.payout : Math.floor(ball.bet * mult);
   if (silent) return;
   if (mult >= 7) celebrate();
   setEl("plinkoResult", p >= ball.bet ? win(`${mult}× — +$${p}`) : lose(`${mult}× — $${p} back of $${ball.bet}`));
@@ -1349,20 +1506,37 @@ function drawPlinko() {
   }
 }
 window.dropPlinko = async () => {
-  if (!_plinko) return;
+  if (!_plinko || !document.getElementById("plinkoCanvas")) return;
   const bet = readBet("plinkoBet");
-  if (!(await takeBet(bet))) return;
-  if (!_plinko || !document.getElementById("plinkoCanvas")) { payWin(bet); return; }
+  if (!takeBet(bet)) return;
   // The risk table is locked in per ball at drop time, so switching risk
   // mid-flight can't reprice a chip already on the board.
-  _plinko.balls.push({
-    x: PLINKO_W / 2 + (Math.random() - 0.5) * 6,
-    y: 6,
-    vx: (Math.random() - 0.5) * 10,
-    vy: 0,
-    bet,
-    slots: PLINKO_RISKS[_plinko.risk].slots,
-  });
+  const risk = _plinko.risk;
+  const slots = PLINKO_RISKS[risk].slots;
+  let data;
+  try { data = await casinoRpc("plinko", "drop", { bet, risk, balls: 1 }); }
+  catch (e) { casinoFail(e); return; }
+  // Settled the moment the server replies; the chip is just the show.
+  applyMoney(data);
+  if (!_plinko || !document.getElementById("plinkoCanvas")) return;
+  const targets = Array.isArray(data.slots) ? data.slots : [];
+  const mults = Array.isArray(data.mults) ? data.mults : [];
+  const n = Math.max(1, targets.length);
+  const per = Math.floor((data.payout || 0) / n);
+  for (let i = 0; i < n; i++) {
+    const target = Math.max(0, Math.min(slots.length - 1, targets[i] | 0));
+    _plinko.balls.push({
+      x: PLINKO_W / 2 + (Math.random() - 0.5) * 6,
+      y: 6,
+      vx: (Math.random() - 0.5) * 10,
+      vy: 0,
+      bet,
+      slots,
+      target,
+      mult: mults[i] != null ? mults[i] : slots[target],
+      payout: i === n - 1 ? Math.floor(data.payout || 0) - per * (n - 1) : per,
+    });
+  }
 };
 
 // =====================================================================
@@ -1380,7 +1554,7 @@ function openHighLow() {
   _hl = null;
   openMenu("🔼 HIGHER OR LOWER", `
     <div class="center">
-      <p class="muted">Call the next card. Every correct call grows the pot 1.6×. Bank whenever you like — a wrong call takes the lot, and a tie goes to the house.</p>
+      <p class="muted">Call the next card. Each correct call grows the pot by the true odds of that call — a risky call on a 7 pays big, a safe call on a 2 pays little. Bank whenever you like; a wrong call takes the lot, and a tie goes to the house.</p>
       <div class="hlRow">
         <div><div class="muted">CURRENT</div><div id="hlCard">${hlCardHtml("?", "♠", true)}</div></div>
         <div class="hlArrow">→</div>
@@ -1391,11 +1565,23 @@ function openHighLow() {
       <div id="hlControls">${betBar("hlBet", 100)}<button class="menuBtn gold bigBtn" onclick="hlStart()">DEAL</button></div>
     </div>`);
 }
-function hlDraw() { return { r: Math.floor(Math.random() * HL_RANKS.length), s: HL_SUITS[Math.floor(Math.random() * 4)] }; }
+// Pot per the server's multiplier (falls back to the 1.6^streak curve).
+function hlPot(bet, data, streak) {
+  return Math.floor(bet * (data && typeof data.mult === "number" ? data.mult : Math.pow(1.6, streak)));
+}
+function hlLastCard(data) {
+  const cards = Array.isArray(data.cards) ? data.cards : [];
+  return idxCard(cards[cards.length - 1]) || { r: 0, s: "♠" };
+}
 window.hlStart = async () => {
+  if (_hl) return;
   const bet = readBet("hlBet");
-  if (!(await takeBet(bet))) return;
-  _hl = { bet, pot: bet, card: hlDraw(), streak: 0 };
+  if (!takeBet(bet)) return;
+  let data;
+  try { data = await casinoRpc("highlow", "start", { bet }); }
+  catch (e) { casinoFail(e); return; }
+  applyMoney(data);
+  _hl = { bet, pot: hlPot(bet, data, 0), card: hlLastCard(data), streak: 0, busy: false };
   setEl("hlResult", "");
   hlRender();
 };
@@ -1415,28 +1601,46 @@ function hlReset(bet) {
   setEl("hlPot", "Place a bet to start.");
   _hl = null;
 }
-window.hlGuess = (dir) => {
+window.hlGuess = async (dir) => {
+  if (!_hl || _hl.busy) return;
+  _hl.busy = true;
+  let data;
+  try { data = await casinoRpc("highlow", "guess", { dir }); }
+  catch (e) { casinoFail(e); if (_hl) _hl.busy = false; return; }
+  applyMoney(data);
   if (!_hl) return;
-  const next = hlDraw();
+  _hl.busy = false;
+  const next = hlLastCard(data);
   setEl("hlNext", hlCardHtml(HL_RANKS[next.r], next.s, false));
-  const correct = dir === "higher" ? next.r > _hl.card.r : next.r < _hl.card.r;
-  if (!correct) {
-    setEl("hlResult", lose(next.r === _hl.card.r
-      ? `Tie on ${HL_RANKS[next.r]} — house takes it. Lost $${_hl.pot}.`
-      : `Wrong — lost $${_hl.pot}.`));
+  const status = String(data.status || "playing").toLowerCase();
+  if (status !== "playing") {
+    const p = Math.floor(data.payout || 0);
+    if (p > 0) {
+      // server closed the run in our favour (e.g. a streak cap) — it's banked
+      setEl("hlResult", win(`Banked $${p} after a ${_hl.streak + 1} streak.`));
+    } else {
+      setEl("hlResult", lose(next.r === _hl.card.r
+        ? `Tie on ${HL_RANKS[next.r]} — house takes it. Lost $${_hl.pot}.`
+        : `Wrong — lost $${_hl.pot}.`));
+    }
     hlReset(_hl.bet);
     return;
   }
   _hl.card = next;
   _hl.streak++;
-  _hl.pot = Math.floor(_hl.pot * 1.6);
+  _hl.pot = hlPot(_hl.bet, data, _hl.streak);
   setEl("hlResult", win(`Correct! Pot is now $${_hl.pot}.`));
   setTimeout(() => { if (_hl) hlRender(); }, 600);
 };
 window.hlBank = async () => {
+  if (!_hl || _hl.busy) return;
+  _hl.busy = true;
+  let data;
+  try { data = await casinoRpc("highlow", "bank"); }
+  catch (e) { casinoFail(e); if (_hl) _hl.busy = false; return; }
+  applyMoney(data);
   if (!_hl) return;
-  const p = _hl.pot, streak = _hl.streak, bet = _hl.bet;
-  await payWin(p);
+  const p = Math.floor(data.payout || 0), streak = _hl.streak, bet = _hl.bet;
   if (streak >= 5) celebrate();
   setEl("hlResult", win(`Banked $${p} after a ${streak} streak.`));
   hlReset(bet);
@@ -1452,11 +1656,11 @@ const VP_PAYTABLE = [
   ["Three of a Kind", 3], ["Two Pair", 2], ["Jacks or Better", 1],
 ];
 let _vp = null;
-function vpDeck() {
-  const d = [];
-  for (const s of HL_SUITS) for (let r = 0; r < 13; r++) d.push({ r, s });
-  for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }
-  return d;
+// Five index-rank cards from a server hand, padded so a short reply can't blank the table.
+function vpHandFrom(list) {
+  const h = (Array.isArray(list) ? list : []).map(idxCard).filter(Boolean);
+  while (h.length < 5) h.push({ r: 0, s: "♠" });
+  return h.slice(0, 5);
 }
 function openVideoPoker() {
   _vp = null;
@@ -1507,18 +1711,30 @@ window.vpToggleHold = (i) => {
   vpRender();
 };
 window.vpDeal = async () => {
+  if (_vp && _vp.stage === "draw") return;
   const bet = readBet("vpBet");
-  if (!(await takeBet(bet))) return;
-  const deck = vpDeck();
-  _vp = { bet, deck, hand: deck.splice(0, 5), hold: [false, false, false, false, false], stage: "draw" };
+  if (!takeBet(bet)) return;
+  let data;
+  try { data = await casinoRpc("videopoker", "deal", { bet }); }
+  catch (e) { casinoFail(e); return; }
+  applyMoney(data);
+  _vp = { bet, hand: vpHandFrom(data.hand), hold: [false, false, false, false, false], stage: "draw" };
   setEl("vpResult", `<span class="cSpin">Pick your holds, then draw.</span>`);
   setEl("vpControls", `<button class="menuBtn gold bigBtn" onclick="vpDraw()">DRAW</button>`);
   vpRender();
 };
 window.vpDraw = async () => {
-  if (!_vp || _vp.stage !== "draw") return;
+  if (!_vp || _vp.stage !== "draw" || _vp.busy) return;
+  _vp.busy = true;
+  const round = _vp;
+  let data;
+  try { data = await casinoRpc("videopoker", "draw", { holds: _vp.hold.slice() }); }
+  catch (e) { casinoFail(e); round.busy = false; return; }
+  applyMoney(data);
+  if (_vp !== round) return;
   const drawn = [];
-  for (let i = 0; i < 5; i++) if (!_vp.hold[i]) { _vp.hand[i] = _vp.deck.pop(); drawn.push(i); }
+  const newHand = vpHandFrom(data.hand);
+  for (let i = 0; i < 5; i++) if (!_vp.hold[i]) { _vp.hand[i] = newHand[i]; drawn.push(i); }
   _vp.stage = "done";
   setEl("vpControls", "");
   setEl("vpResult", `<span class="cSpin">Drawing…</span>`);
@@ -1532,14 +1748,17 @@ window.vpDraw = async () => {
     vpRender({ backs, flips: new Set([i]) });
   }
   await waitMs(300);
-  if (!_vp) return;
-  const res = vpScore(_vp.hand);
-  if (res) {
-    vpRender({ winners: vpWinningCards(_vp.hand, res[0]) });
-    const payout = Math.floor(_vp.bet * res[1]);
-    await payWin(payout);
-    if (res[1] >= 25) celebrate();
-    setEl("vpResult", win(`${res[0]} — +$${payout}`));
+  if (_vp !== round) return;
+  _vp.busy = false;
+  const payout = Math.floor(data.payout || 0);
+  // hand name from the server if it gave one, else scored locally for the highlight
+  const serverName = typeof data.result === "string" ? data.result : data.result && data.result.name;
+  const local = vpScore(_vp.hand);
+  const name = (serverName && VP_PAYTABLE.some(([n]) => n === serverName)) ? serverName : (local ? local[0] : serverName);
+  if (payout > 0) {
+    vpRender({ winners: name ? vpWinningCards(_vp.hand, name) : new Set([0, 1, 2, 3, 4]) });
+    if (payout >= _vp.bet * 25) celebrate();
+    setEl("vpResult", win(`${name || "Winner"} — +$${payout}`));
   } else {
     vpRender();
     setEl("vpResult", lose(`No hand. -$${_vp.bet}`));
@@ -1578,7 +1797,7 @@ function vpScore(hand) {
 // =====================================================================
 let bjState = null;
 function openBlackjack() {
-  bjState = { deck: shuffleDeck(), player: [], dealer: [], status: "betting", bet: 0 };
+  bjState = { player: [], dealer: [], status: "betting", bet: 0 };
   openMenu("🂡 BLACKJACK", `
     <p class="muted center">Blackjack pays 3:2 · dealer stands on 17 · <b>5-card Charlie</b>: five cards without busting wins on the spot.</p>
     <div class="bjTable">
@@ -1600,19 +1819,18 @@ function openBlackjack() {
       </div>
     </div>`);
 }
-function shuffleDeck() {
-  const suits = ["♠", "♥", "♦", "♣"]; const ranks = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
-  const d = [];
-  for (const s of suits) for (const r of ranks) d.push({ s, r });
-  for (let i = d.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [d[i], d[j]] = [d[j], d[i]];
-  }
-  return d;
+// The dealer's hole card comes back hidden (missing/null) until the hand
+// ends; keep a placeholder in slot 1 so the face-down card still renders.
+const BJ_HOLE = { r: "?", s: "?", hole: true };
+function bjDealerHand(list) {
+  const h = normHand(list);
+  while (h.length < 2) h.push(BJ_HOLE);
+  return h;
 }
 function handScore(hand) {
   let total = 0, aces = 0;
   for (const c of hand) {
+    if (c.hole) continue;
     if (c.r === "A") { aces++; total += 11; }
     else if (["J", "Q", "K"].includes(c.r)) total += 10;
     else total += parseInt(c.r);
@@ -1630,7 +1848,7 @@ function renderBJ(hidden, fx) {
     el.innerHTML = "";
     hand.forEach((c, i) => {
       const div = document.createElement("div");
-      const isHidden = hideFirst && i === 1;
+      const isHidden = (hideFirst && i === 1) || !!c.hole;
       div.className = "bjCard" + ((c.s === "♥" || c.s === "♦") && !isHidden ? " red" : "") + (isHidden ? " back" : "");
       if (dealLast && i === hand.length - 1) div.classList.add("dealIn");
       if (fx.flipHole && handId === "bjDealer" && i === 1) div.classList.add("flipIn");
@@ -1643,81 +1861,148 @@ function renderBJ(hidden, fx) {
   renderHand("bjPlayer", "bjPlayerScore", bjState.player, false, fx.dealPlayer);
   renderHand("bjDealer", "bjDealerScore", bjState.dealer, hidden, fx.dealDealer);
 }
-window.bjDeal = async () => {
-  const bet = readBet("bjBet");
-  if (!(await takeBet(bet))) return;
-  bjState = { deck: shuffleDeck(), player: [], dealer: [], status: "play", bet };
-  setEl("bjStatus", "");
-  setEl("bjActions", "");
-  // deal round the table one card at a time, like a real shoe
-  const order = ["player", "dealer", "player", "dealer"];
-  for (const who of order) {
-    bjState[who].push(bjState.deck.pop());
-    renderBJ(true, who === "player" ? { dealPlayer: true } : { dealDealer: true });
-    await waitMs(260);
-  }
-  setEl("bjActions", `
+const BJ_BUTTONS = `
     <div class="btnRow">
       <button class="menuBtn green bigBtn" onclick="bjHit()">HIT</button>
       <button class="menuBtn gold bigBtn" onclick="bjStand()">STAND</button>
       <button class="menuBtn bigBtn" onclick="bjDouble()">DOUBLE</button>
-    </div>`);
-  if (handScore(bjState.player) === 21) {
-    bjState.status = "done";
+    </div>`;
+function bjOver(data) {
+  const s = String(data.status || "playing").toLowerCase();
+  return s !== "playing" && s !== "play";
+}
+window.bjDeal = async () => {
+  if (bjState && (bjState.status === "play" || bjState.busy)) return;
+  const bet = readBet("bjBet");
+  if (!takeBet(bet)) return;
+  let data;
+  try { data = await casinoRpc("blackjack", "deal", { bet }); }
+  catch (e) { casinoFail(e); return; }
+  applyMoney(data);
+  bjState = { player: [], dealer: [], status: "play", bet, busy: true };
+  const round = bjState;
+  setEl("bjStatus", "");
+  setEl("bjActions", "");
+  const P = normHand(data.player), D = bjDealerHand(data.dealer);
+  // deal round the table one card at a time, like a real shoe
+  const order = [["player", P[0]], ["dealer", D[0]], ["player", P[1]], ["dealer", D[1]]];
+  for (const [who, card] of order) {
+    if (bjState !== round) return;
+    if (card) bjState[who].push(card);
+    renderBJ(true, who === "player" ? { dealPlayer: true } : { dealDealer: true });
+    await waitMs(260);
+  }
+  if (bjState !== round) return;
+  // any extra cards the server already dealt (defensive)
+  for (let i = 2; i < P.length; i++) bjState.player.push(P[i]);
+  bjState.busy = false;
+  if (bjOver(data)) {
     await waitMs(400);
-    renderBJ(false, { flipHole: true });
-    if (handScore(bjState.dealer) === 21) finishBJ("PUSH — both blackjack", bjState.bet);
-    else finishBJ("BLACKJACK! pays 3:2", Math.floor(bjState.bet * 2.5));
+    if (bjState !== round) return;
+    await bjSettle(data, false);
+  } else {
+    setEl("bjActions", BJ_BUTTONS);
   }
 };
-// Five cards without busting is an instant win — the 5-card Charlie.
-function bjCharlie() {
-  if (bjState.player.length < 5 || handScore(bjState.player) > 21) return false;
-  bjState.status = "done";
-  renderBJ(false, { flipHole: true });
-  finishBJ("5-CARD CHARLIE!", bjState.bet * 2);
-  return true;
+// Replace our hand with the server's newest card(s) and slide them in.
+function bjSyncPlayer(data) {
+  const P = normHand(data.player);
+  if (P.length > bjState.player.length) {
+    bjState.player = P;
+    renderBJ(true, { dealPlayer: true });
+  }
 }
-window.bjHit = () => {
-  if (!bjState || bjState.status !== "play") return;
-  bjState.player.push(bjState.deck.pop());
-  renderBJ(true, { dealPlayer: true });
-  if (handScore(bjState.player) > 21) { bjState.status = "done"; finishBJ("BUST", 0); }
-  else bjCharlie();
+window.bjHit = async () => {
+  if (!bjState || bjState.status !== "play" || bjState.busy) return;
+  bjState.busy = true;
+  const round = bjState;
+  let data;
+  try { data = await casinoRpc("blackjack", "hit"); }
+  catch (e) { casinoFail(e); round.busy = false; return; }
+  applyMoney(data);
+  if (bjState !== round) return;
+  bjSyncPlayer(data);
+  bjState.busy = false;
+  if (bjOver(data)) await bjSettle(data, true);
 };
 window.bjDouble = async () => {
-  if (!bjState || bjState.status !== "play") return;
-  if (!(await takeBet(bjState.bet))) return;
-  bjState.bet *= 2;
-  bjState.player.push(bjState.deck.pop());
-  renderBJ(true, { dealPlayer: true });
-  if (handScore(bjState.player) > 21) { bjState.status = "done"; finishBJ("BUST", 0); }
-  else if (!bjCharlie()) bjStand();
+  if (!bjState || bjState.status !== "play" || bjState.busy) return;
+  if (!takeBet(bjState.bet)) return;
+  bjState.busy = true;
+  const round = bjState;
+  let data;
+  try { data = await casinoRpc("blackjack", "double"); }
+  catch (e) { casinoFail(e); round.busy = false; return; }
+  applyMoney(data);
+  if (bjState !== round) return;
+  bjState.bet = typeof data.bet === "number" ? data.bet : bjState.bet * 2;
+  bjSyncPlayer(data);
+  bjState.busy = false;
+  await bjSettle(data, true);
 };
 window.bjStand = async () => {
-  if (!bjState || (bjState.status !== "play" && bjState.status !== "dealer")) return;
-  bjState.status = "dealer";
-  setEl("bjActions", "");
-  // the slow flip is the whole point — let the hole card breathe
-  setEl("bjStatus", `<span class="cSpin">Dealer checks the hole card…</span>`);
-  await waitMs(650);
-  renderBJ(false, { flipHole: true });
-  await waitMs(850);
-  while (handScore(bjState.dealer) < 17) {
-    bjState.dealer.push(bjState.deck.pop());
-    renderBJ(false, { dealDealer: true });
-    await waitMs(700);
-  }
-  bjState.status = "done";
-  const ps = handScore(bjState.player), ds = handScore(bjState.dealer);
-  if (ps > 21) finishBJ("BUST", 0);
-  else if (ds > 21) finishBJ("DEALER BUSTS — YOU WIN", bjState.bet * 2);
-  else if (ps > ds) finishBJ("YOU WIN!", bjState.bet * 2);
-  else if (ps === ds) finishBJ("PUSH", bjState.bet);
-  else finishBJ("DEALER WINS", 0);
+  if (!bjState || bjState.status !== "play" || bjState.busy) return;
+  bjState.busy = true;
+  const round = bjState;
+  let data;
+  try { data = await casinoRpc("blackjack", "stand"); }
+  catch (e) { casinoFail(e); round.busy = false; return; }
+  applyMoney(data);
+  if (bjState !== round) return;
+  bjState.busy = false;
+  await bjSettle(data, true);
 };
-async function finishBJ(msg, payout) {
-  await payWin(payout);
+// The hand is over (server says so): flip the hole card, deal out the
+// dealer's extra cards one at a time, then post the result. Money is
+// already settled — this is purely the show.
+async function bjSettle(data, slow) {
+  const round = bjState;
+  round.status = "dealer";
+  round.busy = true;
+  setEl("bjActions", "");
+  const P = normHand(data.player);
+  if (P.length) round.player = P;
+  const D = normHand(data.dealer);
+  const status = String(data.status || "").toLowerCase();
+  const payout = Math.floor(data.payout || 0);
+  const ps = handScore(round.player);
+  const playerBust = ps > 21 && payout === 0;
+  if (D.length >= 2 && !playerBust) {
+    round.dealer = round.dealer.slice(0, 1).concat(D.slice(1, 2));
+    if (slow) {
+      // the slow flip is the whole point — let the hole card breathe
+      setEl("bjStatus", `<span class="cSpin">Dealer checks the hole card…</span>`);
+      await waitMs(650);
+      if (bjState !== round) return;
+    }
+    renderBJ(false, { flipHole: true });
+    if (D.length > 2) {
+      await waitMs(850);
+      for (let i = 2; i < D.length; i++) {
+        if (bjState !== round) return;
+        round.dealer.push(D[i]);
+        renderBJ(false, { dealDealer: true });
+        await waitMs(700);
+      }
+    }
+  } else if (D.length >= 2) {
+    round.dealer = D; // bust: hole stays face-down like a real table
+    renderBJ(true);
+  }
+  if (bjState !== round) return;
+  round.status = "done";
+  round.busy = false;
+  const ds = handScore(round.dealer);
+  let msg;
+  if (status === "blackjack") msg = "BLACKJACK! pays 3:2";
+  else if (status === "push") msg = (ps === 21 && round.player.length === 2) ? "PUSH — both blackjack" : "PUSH";
+  else if (status === "won" || status === "win") {
+    msg = ds > 21 ? "DEALER BUSTS — YOU WIN" : (round.player.length >= 5 && ps <= 21 && ps <= ds) ? "5-CARD CHARLIE!" : "YOU WIN!";
+  } else if (ps > 21) msg = "BUST";
+  else msg = "DEALER WINS";
+  finishBJ(msg, payout);
+}
+function finishBJ(msg, payout) {
   const net = payout - bjState.bet;
   if (msg.startsWith("BLACKJACK") || msg.startsWith("5-CARD")) celebrate();
   setEl("bjStatus", `${msg} ` + (net > 0 ? win(`+$${net}`) : net < 0 ? lose(`-$${-net}`) : `<span class="muted">even</span>`));
@@ -1728,19 +2013,21 @@ window.openBlackjack = openBlackjack;
 // =====================================================================
 // WHEEL OF FORTUNE
 // =====================================================================
+// MUST match WHEEL_WEDGES in server-node/games.js (the server decides the
+// segment; this table is only for drawing). Sums to 11.4x = 95% RTP.
 const WHEEL_WEDGES = [
   { mult: 0, color: "#475569", label: "BUST" },
   { mult: 1.5, color: "#16a34a", label: "1.5×" },
   { mult: 0, color: "#475569", label: "BUST" },
-  { mult: 2, color: "#3b82f6", label: "2×" },
-  { mult: 0, color: "#475569", label: "BUST" },
-  { mult: 1.5, color: "#16a34a", label: "1.5×" },
-  { mult: 5, color: "#a855f7", label: "5×" },
+  { mult: 1.2, color: "#0ea5e9", label: "1.2×" },
   { mult: 0, color: "#475569", label: "BUST" },
   { mult: 2, color: "#3b82f6", label: "2×" },
   { mult: 0, color: "#475569", label: "BUST" },
+  { mult: 1.2, color: "#0ea5e9", label: "1.2×" },
+  { mult: 0, color: "#475569", label: "BUST" },
   { mult: 1.5, color: "#16a34a", label: "1.5×" },
-  { mult: 20, color: "#fbbf24", label: "20×" },
+  { mult: 0, color: "#475569", label: "BUST" },
+  { mult: 4, color: "#fbbf24", label: "4×" },
 ];
 let _fortune = null;
 const FORT_SIZE = 340;
@@ -1750,7 +2037,7 @@ function openWheel() {
     .map(w => `<span class="pill" style="border-color:${w.color};color:${w.color}">${w.label}</span>`).join("");
   openMenu("🎡 WHEEL OF FORTUNE", `
     <div class="center">
-      <p class="muted">One spin, twelve wedges. Half of them bust — but 20× is on there.</p>
+      <p class="muted">One spin, twelve wedges. Half of them bust — but 4× is on there.</p>
       <canvas id="fortuneCanvas" width="${FORT_SIZE}" height="${FORT_SIZE}"></canvas>
       <div class="pillRow center">${legend}</div>
       <div id="wheelResult" class="gameResult"></div>
@@ -1797,17 +2084,23 @@ function drawFortune() {
 window.spinWheel = async () => {
   if (!_fortune || _fortune.spinning) return;
   const bet = readBet("wheelBet");
-  if (!(await takeBet(bet))) return;
+  if (!takeBet(bet)) return;
   _fortune.spinning = true;
-  const idx = Math.floor(Math.random() * WHEEL_WEDGES.length);
+  setEl("wheelResult", `<span class="cSpin">Spinning…</span>`);
+  let data;
+  try { data = await casinoRpc("wheel", "spin", { bet }); }
+  catch (e) { casinoFail(e); setEl("wheelResult", ""); if (_fortune) _fortune.spinning = false; return; }
+  showStake(data);
+  if (!_fortune || !document.getElementById("fortuneCanvas")) { applyMoney(data); return; }
+  const idx = Math.max(0, Math.min(WHEEL_WEDGES.length - 1, data.segment | 0));
   const wedge = WHEEL_WEDGES[idx];
+  const payoutW = Math.floor(data.payout || 0);
   const seg = (Math.PI * 2) / WHEEL_WEDGES.length;
   const A0 = _fortune.ang;
   // Land anywhere inside the winning wedge, not dead centre — a finish that
   // crawls up to a boundary is where all the suspense lives.
   const off = (Math.random() * 0.88 - 0.44) * seg;
   const Af = A0 + Math.PI * 2 * 7 + (Math.PI * 2 - idx * seg) - (A0 % (Math.PI * 2)) + off;
-  setEl("wheelResult", `<span class="cSpin">Spinning…</span>`);
   const t0 = performance.now(), DUR = 5200;
   await animate(ts => {
     const k = clamp01((ts - t0) / DUR);
@@ -1815,10 +2108,11 @@ window.spinWheel = async () => {
     drawFortune();
     return k < 1;
   });
+  applyMoney(data);
+  if (!_fortune) return;
   _fortune.spinning = false;
-  if (wedge.mult > 0) {
-    const p = Math.floor(bet * wedge.mult);
-    await payWin(p);
+  if (payoutW > 0) {
+    const p = payoutW;
     if (wedge.mult >= 20) celebrate();
     setEl("wheelResult", win(`${wedge.label} — +$${p}!`));
   } else {
@@ -1917,19 +2211,32 @@ function drawRace(progress, winner, pick) {
 window.startRace = async (pick) => {
   if (_race && _race.running) return;
   const bet = readBet("raceBet");
-  if (!(await takeBet(bet))) return;
+  if (!takeBet(bet)) return;
   _race.running = true;
   setEl("raceResult", `<span class="cSpin">And they're off — you're on ${HORSES[pick].name}…</span>`);
+  let data;
+  try { data = await casinoRpc("horses", "race", { bet, horse: pick }); }
+  catch (e) { casinoFail(e); setEl("raceResult", ""); if (_race) _race.running = false; return; }
+  showStake(data);
+  if (!_race || !document.getElementById("raceCanvas")) { applyMoney(data); return; }
 
-  // Draw the winner from the true odds, then build finishing times around it.
-  let roll = Math.random(), winner = HORSES.length - 1;
-  for (let i = 0; i < HORSES.length; i++) {
-    const p = horseWinChance(i);
-    if (roll < p) { winner = i; break; }
-    roll -= p;
+  // The server drew the winner (and the finishing order); build finishing
+  // times around that so the field crosses the line the way it was told.
+  const horseIdx = (v) => typeof v === "number" ? v : HORSES.findIndex(h => h.name === v);
+  let winner = horseIdx(data.winner);
+  const order = Array.isArray(data.order) ? data.order.map(horseIdx) : [];
+  const validOrder = order.length === HORSES.length && order.every(i => i >= 0 && i < HORSES.length) && new Set(order).size === HORSES.length;
+  if (winner < 0 || winner >= HORSES.length) winner = validOrder ? order[0] : 0;
+  let durs;
+  if (validOrder) {
+    const times = HORSES.map(() => 6.2 + Math.random() * 2.4).sort((a, b) => a - b);
+    durs = new Array(HORSES.length);
+    order.forEach((h, k) => { durs[h] = times[k]; });
+    durs[winner] = Math.min(...durs.filter((_, i) => i !== winner)) - (0.15 + Math.random() * 0.5);
+  } else {
+    durs = HORSES.map(() => 6.2 + Math.random() * 2.4);
+    durs[winner] = Math.min(...durs.filter((_, i) => i !== winner)) - (0.15 + Math.random() * 0.5);
   }
-  const durs = HORSES.map(() => 6.2 + Math.random() * 2.4);
-  durs[winner] = Math.min(...durs.filter((_, i) => i !== winner)) - (0.15 + Math.random() * 0.5);
   const phase = HORSES.map(() => Math.random() * Math.PI * 2);
 
   const t0 = performance.now();
@@ -1944,12 +2251,13 @@ window.startRace = async (pick) => {
     drawRace(progress, null, pick);
     return secs < durs[winner];
   });
+  applyMoney(data);
+  if (!_race) return;
   const finalProg = HORSES.map((_, i) => i === winner ? 1 : clamp01(durs[winner] / durs[i]));
   drawRace(finalProg, winner, pick);
   _race.running = false;
-  if (winner === pick) {
-    const p = Math.floor(bet * HORSES[pick].odds);
-    await payWin(p);
+  const p = Math.floor(data.payout || 0);
+  if (p > 0) {
     if (HORSES[pick].odds >= 9) celebrate();
     setEl("raceResult", win(`${HORSES[winner].name} takes it — +$${p}!`));
   } else {
@@ -2032,25 +2340,29 @@ window.kenoDraw = async () => {
   if (!_keno || _keno.running) return;
   if (!_keno.picks.size) { toast("Pick at least one number."); return; }
   const bet = readBet("kenoBet");
-  if (!(await takeBet(bet))) return;
+  if (!takeBet(bet)) return;
   _keno.running = true;
   _keno.drawn.clear(); _keno.hits.clear();
   setEl("kenoResult", `<span class="cSpin">Drawing…</span>`);
-  // draw 10 unique numbers, revealed one at a time
-  const pool = Array.from({ length: 40 }, (_, i) => i + 1);
-  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
-  for (const n of pool.slice(0, 10)) {
+  const round = _keno;
+  let data;
+  try { data = await casinoRpc("keno", "draw", { bet, picks: [..._keno.picks].sort((a, b) => a - b) }); }
+  catch (e) { casinoFail(e); setEl("kenoResult", ""); round.running = false; return; }
+  applyMoney(data);
+  if (_keno !== round) return;
+  // the server's draw, revealed one number at a time
+  const drawn = Array.isArray(data.drawn) ? data.drawn : [];
+  for (const n of drawn) {
     await waitMs(260);
-    if (!_keno) return;
+    if (_keno !== round) return;
     _keno.drawn.add(n);
     if (_keno.picks.has(n)) _keno.hits.add(n);
     renderKeno();
   }
-  const hits = _keno.hits.size;
-  const mult = (KENO_PAYTABLES[_keno.picks.size] || {})[hits] || 0;
-  const p = Math.floor(bet * mult);
+  const hits = typeof data.hits === "number" ? data.hits : _keno.hits.size;
+  const mult = typeof data.mult === "number" ? data.mult : ((KENO_PAYTABLES[_keno.picks.size] || {})[hits] || 0);
+  const p = Math.floor(data.payout || 0);
   if (p > 0) {
-    await payWin(p);
     if (mult >= 20) celebrate();
     setEl("kenoResult", win(`${hits} hit${hits === 1 ? "" : "s"} — ${mult}× — +$${p}`));
   } else {
@@ -2099,39 +2411,34 @@ function renderBac(pHand, bHand, flipIdx) {
 window.bacDeal = async (side) => {
   if (!_bac || _bac.running) return;
   const bet = readBet("bacBet");
-  if (!(await takeBet(bet))) return;
+  if (!takeBet(bet)) return;
   _bac.running = true;
   setEl("bacResult", `<span class="cSpin">Dealing…</span>`);
-  const deck = vpDeck().map(c => ({ r: VP_RANKS[c.r], s: c.s }));
+  const round = _bac;
+  let data;
+  try { data = await casinoRpc("baccarat", "deal", { bet, side }); }
+  catch (e) { casinoFail(e); setEl("bacResult", ""); round.running = false; return; }
+  applyMoney(data);
+  if (_bac !== round) return;
+  // The server dealt the whole coup (third-card tableau included); turn the
+  // cards over in table order: P, B, P, B, then any third cards.
+  const SP = normHand(data.player), SB = normHand(data.banker);
   const P = [], B = [];
-  const deal = async (hand, tag) => {
-    hand.push(deck.pop());
+  const deal = async (hand, src, tag) => {
+    const c = src[hand.length]; if (!c) return;
+    hand.push(c);
     renderBac(P, B, tag + (hand.length - 1));
     await waitMs(450);
   };
-  await deal(P, "p"); await deal(B, "b"); await deal(P, "p"); await deal(B, "b");
+  await deal(P, SP, "p"); await deal(B, SB, "b"); await deal(P, SP, "p"); await deal(B, SB, "b");
+  if (SP.length > 2) await deal(P, SP, "p");
+  if (SB.length > 2) await deal(B, SB, "b");
+  if (_bac !== round) return;
 
-  let pt = bacTotal(P), bt = bacTotal(B);
-  // naturals stand; otherwise player draws on 0–5, banker follows the tableau
-  if (pt < 8 && bt < 8) {
-    let pThird = null;
-    if (pt <= 5) { await deal(P, "p"); pThird = bacCardVal(P[2]); pt = bacTotal(P); }
-    const bankerDraws = pThird === null
-      ? bt <= 5
-      : bt <= 2 ? true
-      : bt === 3 ? pThird !== 8
-      : bt === 4 ? (pThird >= 2 && pThird <= 7)
-      : bt === 5 ? (pThird >= 4 && pThird <= 7)
-      : bt === 6 ? (pThird === 6 || pThird === 7)
-      : false;
-    if (bankerDraws) { await deal(B, "b"); bt = bacTotal(B); }
-  }
-
-  const outcome = pt > bt ? "player" : bt > pt ? "banker" : "tie";
-  let payout = 0;
-  if (side === outcome) payout = outcome === "tie" ? bet * 9 : outcome === "player" ? bet * 2 : Math.floor(bet * 1.95);
-  else if (outcome === "tie") payout = bet; // P/B bets push on a tie
-  if (payout > 0) await payWin(payout);
+  const pt = bacTotal(P), bt = bacTotal(B);
+  const w = String(data.winner || "").toLowerCase();
+  const outcome = (w === "player" || w === "banker" || w === "tie") ? w : (pt > bt ? "player" : bt > pt ? "banker" : "tie");
+  const payout = Math.floor(data.payout || 0);
   const net = payout - bet;
   if (side === "tie" && outcome === "tie") celebrate();
   const label = outcome === "tie" ? `TIE at ${pt}` : `${outcome.toUpperCase()} wins ${outcome === "player" ? pt : bt}–${outcome === "player" ? bt : pt}`;
@@ -2147,7 +2454,7 @@ window.bacDeal = async (side) => {
 const MINES_GRID = 25;
 let _mines = null;
 function openMines() {
-  _mines = { mines: 5, board: null, revealed: null, bet: 0, mult: 1, alive: false };
+  _mines = { mines: 5, board: null, revealed: null, bet: 0, mult: 1, alive: false, busy: false };
   openMenu("💣 MINES", `
     <div class="center">
       <p class="muted">Reveal gems, dodge the mines. Every safe tile grows the pot — cash out before you hit one.</p>
@@ -2193,54 +2500,93 @@ function renderMines(showAll, lastHit) {
     setEl("minesPot", `Pot <b class="cWin">$${pot}</b> · ${_mines.mult.toFixed(2)}× &nbsp;·&nbsp; 💎 ${found} found, ${gemsLeft} left · 💣 ${_mines.mines}`);
   }
 }
+// Fold a server reply into the local board: which cells are open, the
+// current multiplier, and (once the round ends) where the bombs were.
+function minesSync(data) {
+  if (Array.isArray(data.revealed)) {
+    _mines.revealed = new Array(MINES_GRID).fill(false);
+    for (const c of data.revealed) if (c >= 0 && c < MINES_GRID) _mines.revealed[c] = true;
+  }
+  if (typeof data.mult === "number") _mines.mult = data.mult;
+  if (Array.isArray(data.bombs)) {
+    _mines.board = new Array(MINES_GRID).fill(false);
+    for (const c of data.bombs) if (c >= 0 && c < MINES_GRID) _mines.board[c] = true;
+  }
+}
+function minesEndControls() {
+  setEl("minesControls", betBar("minesBet", _mines.bet) + `<button class="menuBtn gold bigBtn" onclick="minesStart()">PLAY AGAIN</button>`);
+  setEl("minesPot", "");
+}
 window.minesStart = async () => {
-  if (!_mines || _mines.alive) return;
+  if (!_mines || _mines.alive || _mines.busy) return;
   const bet = readBet("minesBet");
-  if (!(await takeBet(bet))) return;
+  if (!takeBet(bet)) return;
+  _mines.busy = true;
+  let data;
+  try { data = await casinoRpc("mines", "start", { bet, mines: _mines.mines }); }
+  catch (e) { casinoFail(e); if (_mines) _mines.busy = false; return; }
+  applyMoney(data);
+  if (!_mines) return;
+  _mines.busy = false;
   _mines.bet = bet; _mines.mult = 1; _mines.alive = true;
+  // the bombs stay on the server until the round ends; all we know is what's open
   _mines.board = new Array(MINES_GRID).fill(false);
   _mines.revealed = new Array(MINES_GRID).fill(false);
-  let placed = 0;
-  while (placed < _mines.mines) {
-    const i = Math.floor(Math.random() * MINES_GRID);
-    if (!_mines.board[i]) { _mines.board[i] = true; placed++; }
-  }
+  minesSync(data);
   setEl("minesResult", "");
-  setEl("minesControls", `<button class="menuBtn gold bigBtn" id="minesCashBtn" onclick="minesCash()">CASH OUT $${bet}</button>`);
+  setEl("minesControls", `<button class="menuBtn gold bigBtn" id="minesCashBtn" onclick="minesCash()">CASH OUT $${Math.floor(bet * _mines.mult)}</button>`);
   renderMines();
 };
-window.minesReveal = (i) => {
-  if (!_mines || !_mines.alive || _mines.revealed[i]) return;
+window.minesReveal = async (i) => {
+  if (!_mines || !_mines.alive || _mines.busy || _mines.revealed[i]) return;
+  _mines.busy = true;
+  let data;
+  try { data = await casinoRpc("mines", "pick", { cell: i }); }
+  catch (e) { casinoFail(e); if (_mines) _mines.busy = false; return; }
+  applyMoney(data);
+  if (!_mines || !_mines.alive) return;
+  _mines.busy = false;
+  minesSync(data);
   _mines.revealed[i] = true;
-  if (_mines.board[i]) {
+  const status = String(data.status || "playing").toLowerCase();
+  if (status === "boom" || status === "lost" || status === "bust") {
     _mines.alive = false;
+    if (!_mines.board[i]) _mines.board[i] = true;
     setEl("minesResult", lose(`Boom. -$${_mines.bet}`));
-    setEl("minesControls", betBar("minesBet", _mines.bet) + `<button class="menuBtn gold bigBtn" onclick="minesStart()">PLAY AGAIN</button>`);
-    setEl("minesPot", "");
+    minesEndControls();
     // let the blast land before the rest of the board turns over
     renderMines(false, i);
     setTimeout(() => { if (_mines && !_mines.alive) renderMines(true, i); }, 550);
     return;
   }
-  const opened = _mines.revealed.filter(Boolean).length;
-  const tilesLeft = MINES_GRID - opened + 1, safeLeft = tilesLeft - _mines.mines;
-  _mines.mult *= (tilesLeft / safeLeft) * 0.97;
+  if (status === "cashed" || status === "won") {
+    // cleared every safe tile — the server cashed us out
+    minesCashed(data);
+    return;
+  }
   renderMines(false, i);
   const btn = document.getElementById("minesCashBtn");
   if (btn) btn.textContent = `CASH OUT $${Math.floor(_mines.bet * _mines.mult)}`;
-  // cleared every safe tile — auto cash out
-  if (opened >= MINES_GRID - _mines.mines) minesCash();
 };
-window.minesCash = async () => {
-  if (!_mines || !_mines.alive) return;
+function minesCashed(data) {
   _mines.alive = false;
-  const p = Math.floor(_mines.bet * _mines.mult);
-  await payWin(p);
+  minesSync(data);
+  const p = Math.floor(data.payout || 0);
   if (_mines.mult >= 3) celebrate();
   setEl("minesResult", win(`Cashed out at ${_mines.mult.toFixed(2)}× — +$${p}`));
-  setEl("minesControls", betBar("minesBet", _mines.bet) + `<button class="menuBtn gold bigBtn" onclick="minesStart()">PLAY AGAIN</button>`);
-  setEl("minesPot", "");
+  minesEndControls();
   renderMines(true);
+}
+window.minesCash = async () => {
+  if (!_mines || !_mines.alive || _mines.busy) return;
+  _mines.busy = true;
+  let data;
+  try { data = await casinoRpc("mines", "cashout"); }
+  catch (e) { casinoFail(e); if (_mines) _mines.busy = false; return; }
+  applyMoney(data);
+  if (!_mines || !_mines.alive) return;
+  _mines.busy = false;
+  minesCashed(data);
 };
 
 // =====================================================================
@@ -2282,9 +2628,12 @@ window.unlockFloor = async (i) => {
   if (i !== highestUnlockedFloor() + 1) { toast("Unlock the floor below first."); return; }
   if ((state.data.money || 0) < f.price) { toast(`You need $${f.price.toLocaleString()} for ${f.name}.`); return; }
   if (!confirm(`Unlock ${f.name} for $${f.price.toLocaleString()}? This is permanent.`)) return;
-  state.data.money -= f.price;
-  state.data.vegasFloor = i;
-  await fbPatch(`users/${state.user}`, { money: state.data.money, vegasFloor: i });
+  if (typeof window.netBuy !== "function") { toast("Not connected."); return; }
+  let data;
+  try { data = await window.netBuy({ kind: "floor", id: i }); }
+  catch (e) { casinoFail(e); return; }
+  applyMoney(data);
+  state.data.vegasFloor = typeof data.vegasFloor === "number" ? data.vegasFloor : i;
   updateHUD();
   celebrate();
   toast(`🎉 Welcome to <b>${f.name}</b>. The elevator now goes there.`, 3500);

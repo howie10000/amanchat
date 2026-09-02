@@ -45,6 +45,17 @@ A multiplayer browser game built on the idea you sent your friend:
     refused), give / take money, teleport to houses and edit the plaza
     announcement. Nobody can act on someone of equal or higher rank; every
     rule is enforced by the server, not the UI.
+- **Server authority (anti-cheat)** — the server owns every number that
+  matters. Clients cannot write `money`, `inventory`, `cosmetics`,
+  `vegasFloor`, streaks, fish or house paint; every purchase, payout and
+  casino outcome is an RPC the server validates (`buy`, `bank`, `earn`,
+  `fish`, `furniture_set`, `casino`). All sixteen Vegas games are rolled in
+  `server-node/games.js` with the same paytables the client shows; the
+  client only animates the result. Mini-game payouts are capped and
+  rate-limited per source, duels are settled server-side once, and paid
+  cosmetics in `appearance` are checked against ownership. Full contract in
+  `docs/SERVER-AUTHORITY.md`; tests: `node server-node/games.test.js` and
+  `node server-node/authority.test.js <dir-with-node_modules> <port>`.
 - **Cosmetics** at Trim & Style — 14 hats, 9 face/neck accessories, 8 auras
   (sparkle, fire, rainbow…), 7 pets that trot behind you, and name colours.
   Paid items are bought once and everyone in town sees them.
