@@ -3068,11 +3068,143 @@ function shadeColor(hex, amt) {
   return "#" + ((r << 16) | (g << 8) | b).toString(16).padStart(6, "0");
 }
 
+// ---------- PIXEL SYMBOLS ----------
+// Chunky hand-drawn glyphs that match the game's blocky look instead of the
+// OS emoji font. Used by the Mega Jackpot reels/paytable, the Penthouse slot
+// prop, and the iMessage pop-in. rows: equal-length strings; each char keys
+// into PIXEL_PALETTE. Drawn centred and pixel-snapped.
+const PIXEL_PALETTE = {
+  " ": null,
+  K: "#0b1020", o: "#1e293b", // outline / dark shade
+  g: "#fde68a", G: "#f59e0b", H: "#b45309", // gold hi / mid / low
+  b: "#60a5fa", B: "#1d4ed8", N: "#172554", // lapis
+  w: "#f8fafc", i: "#0a0a0a", // white / pupil
+  t: "#5eead4", T: "#0d9488", D: "#134e4a", // teal
+  e: "#4ade80", // emerald
+  p: "#f9a8d4", P: "#ec4899", Q: "#9d174d", // pink hi / mid / low
+  y: "#fde047", // lotus centre
+  s: "#15803d", S: "#166534", // leaf / stem
+};
+const PIXEL_SYMBOLS = {
+  // Eye of Horus — white eye, blue liner, gold brow + the falcon markings.
+  eye: { rows: [
+    "                ",
+    "       GGGG      ",
+    "     GGH  HGG    ",
+    "   GG          G ",
+    " KKK            K",
+    "K   BBBBBBBB     ",
+    "K BB wwwwww BB   ",
+    " BB w iiii w BBBB",
+    "  B w iiii w B   ",
+    "   BBwwwwwwBB     ",
+    "    KBBBBBBK  G   ",
+    "     KKKK    GG   ",
+    "       K   GG     ",
+    "       KGGG       ",
+    "       H  G       ",
+    "      HH  GG      ",
+  ] },
+  // Ankh — looped cross, bevelled gold.
+  ankh: { rows: [
+    "      GGGG       ",
+    "     GHGGHG      ",
+    "    GG G  GG     ",
+    "    Gg G   G     ",
+    "    Gg G   G     ",
+    "    GG G  GG     ",
+    "  GGGGGGGGGGGG   ",
+    "  GHG GGGG GHG   ",
+    "     Gg  G       ",
+    "     Gg  G       ",
+    "     Gg  G       ",
+    "     Gg  G       ",
+    "     Gg  G       ",
+    "     GGGGG       ",
+    "     GHHHG       ",
+    "                 ",
+  ] },
+  // Scarab — beetle seen from above, gold rim over teal wing-cases.
+  scarab: { rows: [
+    "       GG        ",
+    "   G  Gtt G   G  ",
+    "    G GttG G  G  ",
+    "  G  GGTTGG   G  ",
+    "  GG TDttDT GG   ",
+    " G TDteeetDT  G  ",
+    "G  Dt eee tD   G ",
+    "G  Dt eee tD   G ",
+    " G TDt eee tDT G ",
+    "  G TDtttttDT G  ",
+    "   G TDTTTDT G   ",
+    "   GG T   T GG   ",
+    "  G   K   K   G  ",
+    " G    K   K    G ",
+    "      KK KK      ",
+    "                 ",
+  ] },
+  // Lotus — layered petals, gold-yellow heart, green pad.
+  lotus: { rows: [
+    "        p        ",
+    "   p    p    p   ",
+    "   pp   p   pp   ",
+    "  ppP  ppp  Ppp  ",
+    "  pPP p pPp p PP ",
+    " pPPQ pPyPp QPPp ",
+    " pPQ QPyyyPQ QPp ",
+    "  PPQ PyyyP QPP  ",
+    "   QPPPyyyPPPQ   ",
+    "    QPPP PPPQ    ",
+    "     QQPPPQQ     ",
+    "   s  QQQQQ   s  ",
+    "  ss   sss   ss  ",
+    " sSs  s S s  sSs ",
+    "   Ss   S   sS   ",
+    "     SSSSSSS     ",
+  ] },
+  // Speech bubble — for the iMessage-style DM pop-in.
+  speech: { rows: [
+    "                ",
+    "  BBBBBBBBBBBB  ",
+    " BbbbbbbbbbbbbB ",
+    " BbwwwwwwwwwwbB ",
+    " Bbwwwwwwwwwwbb ",
+    " BbwwKKKKKKwwbB ",
+    " BbwwwwwwwwwwbB ",
+    " BbwwKKKKKKwwbB ",
+    " BbwwwwwwwwwwbB ",
+    " BbwwKKKKwwwwbB ",
+    " BBbbbbbbbbbbBB ",
+    "  BB bbbbbbbb   ",
+    "  Bb b         ",
+    "  b            ",
+    "                ",
+    "                ",
+  ] },
+};
+function drawPixelSymbol(c, name, cx, cy, size) {
+  const spec = PIXEL_SYMBOLS[name];
+  if (!spec) return;
+  const rows = spec.rows, R = rows.length, COLS = rows[0].length;
+  const u = Math.max(1, Math.floor(size / Math.max(R, COLS)));
+  const ox = Math.round(cx - (COLS * u) / 2), oy = Math.round(cy - (R * u) / 2);
+  for (let r = 0; r < R; r++) {
+    const line = rows[r];
+    for (let col = 0; col < COLS; col++) {
+      const fill = PIXEL_PALETTE[line[col]];
+      if (!fill) continue;
+      c.fillStyle = fill;
+      c.fillRect(ox + col * u, oy + r * u, u, u);
+    }
+  }
+}
+
 window.GFX = {
   drawCharacter, drawNameAndBubble, drawChatStack, drawBuildingBox, drawTower, drawHouse,
   CHAT_STACK_MAX, CHAT_TTL,
   drawFurniture, roundRect, roundFill, roundStroke, shadeColor,
   DEFAULT_APPEARANCE, EMOTES, EMOTE_TTL, drawAura, drawPet,
   HOUSE_WALLS, HOUSE_ROOFS,
+  PIXEL_SYMBOLS, drawPixelSymbol,
   flame: TB.flame,
 };

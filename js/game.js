@@ -11,7 +11,11 @@ function openMenu(title, html, wide, theme) {
   box.classList.toggle("casino", theme === "casino" || (!theme && state.area === "interior_casino"));
   document.getElementById("menu").classList.remove("hidden");
 }
-function closeMenu() { document.getElementById("menu").classList.add("hidden"); }
+function closeMenu() {
+  document.getElementById("menu").classList.add("hidden");
+  // A phone app counts as "a menu" for callers like doEmote / guideMeTo.
+  if (typeof phoneBackHome === "function") phoneBackHome();
+}
 window.closeMenu = closeMenu;
 window.openMenu = openMenu;
 
@@ -21,22 +25,27 @@ document.querySelectorAll(".actBtn").forEach(b => {
     const a = b.dataset.act;
     if (a === "friends") gameSocial.openSidePanelFriends();
     else if (a === "dms") gameSocial.openSidePanelDMs();
-    else if (a === "directory") openDirectory();
-    else if (a === "inv") openInventory();
+    else if (a === "directory") phoneApp(openDirectory);
+    else if (a === "inv") phoneApp(openInventory);
     else if (a === "build") toggleBuildMode();
-    else if (a === "map") openTownMap();
-    else if (a === "emotes") openEmotes();
-    else if (a === "bugs") openBugReport();
+    else if (a === "map") phoneApp(openTownMap);
+    else if (a === "emotes") phoneApp(openEmotes);
+    else if (a === "bugs") phoneApp(openBugReport);
     else if (a === "staff") openStaffPanel();
-    else if (a === "help") openHelp();
+    else if (a === "help") phoneApp(openHelp);
   };
 });
 
 // ---------- Phone ----------
 // The action buttons live on a phone in the bottom-right corner. P (or the
-// home button) puts it away; the little tab brings it back. Clock is real.
+// home button) puts it away; the little tab brings it back. Apps render INSIDE
+// the phone screen (#phoneAppView), not as centre pop-ups. The ⤢ button blows
+// the whole phone up to the middle of the screen. Clock is real.
 const _phoneEl = document.getElementById("phone"), _phoneTab = document.getElementById("phoneTab");
+const _phoneHomeView = document.getElementById("phoneHomeView");
+const _phoneAppView = document.getElementById("phoneAppView");
 function phoneOpen() { return _phoneEl && !_phoneEl.classList.contains("closed"); }
+function phoneAppShowing() { return _phoneAppView && !_phoneAppView.classList.contains("hidden"); }
 function setPhone(open) {
   if (!_phoneEl) return;
   _phoneEl.classList.toggle("closed", !open);
@@ -44,9 +53,57 @@ function setPhone(open) {
   try { localStorage.setItem("phoneOpen", open ? "1" : "0"); } catch (e) {}
 }
 window.togglePhone = () => setPhone(!phoneOpen());
-document.getElementById("phoneHome").onclick = () => setPhone(false);
 _phoneTab.onclick = () => setPhone(true);
 try { if (localStorage.getItem("phoneOpen") === "0") setPhone(false); } catch (e) {}
+
+// Render arbitrary HTML into the phone's app screen (with a back bar).
+function phoneView(title, html) {
+  setPhone(true);
+  _phoneHomeView.classList.add("hidden");
+  _phoneAppView.classList.remove("hidden");
+  document.getElementById("spTitle").textContent = title;
+  const body = document.getElementById("spBody");
+  body.innerHTML = html;
+  body.scrollTop = 0;
+}
+function phoneBackHome() {
+  if (!phoneAppShowing()) return;
+  _phoneAppView.classList.add("hidden");
+  _phoneHomeView.classList.remove("hidden");
+  document.getElementById("spBody").innerHTML = "";
+}
+window.phoneView = phoneView;
+window.phoneBackHome = phoneBackHome;
+
+// The home button: first press backs out of an app, next press stows the phone.
+document.getElementById("phoneHome").onclick = () => {
+  if (phoneAppShowing()) { closeSidePanel(); return; }
+  setPhone(false);
+};
+document.getElementById("phoneBack").onclick = () => closeSidePanel();
+// Expand / shrink — blows the phone up to the centre of the screen and back.
+const _phoneExpand = document.getElementById("phoneExpand");
+_phoneExpand.onclick = () => {
+  const big = _phoneEl.classList.toggle("big");
+  _phoneExpand.textContent = big ? "⤡" : "⤢";
+  try { localStorage.setItem("phoneBig", big ? "1" : "0"); } catch (e) {}
+};
+try { if (localStorage.getItem("phoneBig") === "1") { _phoneEl.classList.add("big"); _phoneExpand.textContent = "⤡"; } } catch (e) {}
+
+// Route a phone app either into the phone screen (when launched from an app
+// icon) or, for shared entry points, the centre menu.
+let _routeToPhone = false;
+function uiPanel(title, html, wide) {
+  if (_routeToPhone) { _routeToPhone = false; phoneView(title, html); return; }
+  openMenu(title, html, wide);
+}
+function phoneApp(fn) {
+  _routeToPhone = true;
+  try { fn(); } finally { _routeToPhone = false; }
+}
+window.uiPanel = uiPanel;
+window.phoneApp = phoneApp;
+window.openDirectoryPhone = () => phoneApp(openDirectory);
 function tickPhoneClock() {
   const d = new Date();
   const hh = String(d.getHours()).padStart(2, "0"), mm = String(d.getMinutes()).padStart(2, "0");
@@ -63,7 +120,7 @@ new MutationObserver(() => {
 }).observe(document.getElementById("gameScreen"), { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
 
 function openHelp() {
-  openMenu("CONTROLS & GUIDE", `
+  uiPanel("CONTROLS & GUIDE", `
     <h3 class="section">MOVEMENT</h3>
     <div>WASD or Arrow keys — walk around</div>
     <div>E — interact / enter / use station</div>
@@ -112,7 +169,7 @@ function openEmotes() {
     html += `<button class="emoteBtn" onclick="doEmote('${e.id}')"><span>${e.icon}</span>${e.label}</button>`;
   }
   html += `</div>`;
-  openMenu("EMOTES", html);
+  uiPanel("EMOTES", html);
 }
 window.doEmote = (id) => {
   state.emote = { id, ts: Date.now() };
@@ -138,11 +195,17 @@ function handleKey(e) {
     }
     return;
   }
-  // IM input — let typing pass
-  if (document.activeElement && document.activeElement.tagName === "INPUT") return;
+  // Text field focused (search box, bug-report textarea, IM input) — let typing pass
+  if (document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
 
   if (!document.getElementById("menu").classList.contains("hidden")) {
     if (k === "escape") closeMenu();
+    return;
+  }
+  // A phone app is open on the phone screen — Esc backs out, other keys pass
+  // through to nothing (so you don't walk while reading Help).
+  if (phoneAppShowing()) {
+    if (k === "escape" || k === "p") closeSidePanel();
     return;
   }
   if (k === "t") {
@@ -460,7 +523,7 @@ function openTownMap() {
       </div>`;
     }
   }
-  openMenu("\ud83d\uddfa\ufe0f TOWN MAP & DIRECTIONS", html, true);
+  uiPanel("\ud83d\uddfa\ufe0f TOWN MAP", html, true);
 }
 window.openTownMap = openTownMap;
 
@@ -502,7 +565,7 @@ function openInventory() {
     }
     html += `</div>`;
   }
-  openMenu("INVENTORY", html, true);
+  uiPanel("INVENTORY", html, true);
   drawCatalogPreviews();
 }
 window.pickPlace = (id) => {
@@ -516,7 +579,7 @@ window.pickPlace = (id) => {
   toast("Click in the room to place · R to rotate · ESC to cancel.");
 };
 function drawCatalogPreviews() {
-  const cvs = document.querySelectorAll("#menuBody canvas[data-id]");
+  const cvs = document.querySelectorAll("#menuBody canvas[data-id], #spBody canvas[data-id]");
   cvs.forEach(cv => {
     const c = cv.getContext("2d");
     c.clearRect(0, 0, cv.width, cv.height);
@@ -1264,18 +1327,34 @@ async function renderStaffBugs() {
         </div>
       </div>`).join("");
 }
+// Re-verify with the server that we still hold a staff role before any
+// staff-only mutation. state.role is stamped at login but could be stale (or
+// tampered with); the server is the source of truth. Returns true if staff.
+async function assertStaffRole() {
+  try {
+    const who = await netWhoami();
+    setRole(who && who.role);
+  } catch (e) { toast("Couldn't reach the server."); return false; }
+  if (!state.isMayor) { toast("Staff only — your role has changed."); return false; }
+  return true;
+}
+window.assertStaffRole = assertStaffRole;
+
 window.bugSetStatus = async (author, id, status) => {
+  if (!await assertStaffRole()) return;
   try { await fbPatch(`bug_reports/${author}/${id}`, { status, triagedBy: state.user, triagedAt: Date.now() }); }
   catch (e) { toast("Server refused: " + (e.message || e)); return; }
   renderStaffBugs();
 };
 window.bugDelete = async (author, id) => {
   if (!confirm("Delete this bug report?")) return;
+  if (!await assertStaffRole()) return;
   try { await fbDelete(`bug_reports/${author}/${id}`); } catch (e) { toast(e.message); return; }
   renderStaffBugs();
 };
 
 async function staffDo(fn, okMsg) {
+  if (!await assertStaffRole()) return;
   try { await fn(); if (okMsg) toast(okMsg); }
   catch (e) { toast("Server refused: " + (e.message || e), 3500); }
   openStaffPanel();
@@ -1328,23 +1407,22 @@ window.staffDemote = (u) => {
 };
 
 window.mayorAnnounce = async () => {
+  if (!await assertStaffRole()) return;
   const v = document.getElementById("annInput").value;
   await fbPut("mayor/announcement", v);
   toast("Announcement saved.");
 };
 window.mayorGive = async (u, amt) => {
+  if (!await assertStaffRole()) return;
   const ud = await fbGet(`users/${u}`); if (!ud) return;
   await fbPatch(`users/${u}`, { money: (ud.money || 0) + amt });
   toast(`Gave ${u} $${amt}.`);
   openStaffPanel();
 };
 window.mayorTeleport = async (u) => {
-  // Teleport is a staff-only power. state.role is set from the server at login,
-  // but re-check with the server here so tampering with client state (or
-  // calling this from the console) can't move you around the map.
-  let role = "user";
-  try { role = (await netWhoami())?.role || "user"; } catch (e) {}
-  if (role === "user") { setRole("user"); toast("Staff only."); return; }
+  // Teleport is a staff-only power — re-check with the server so tampering with
+  // client state (or calling this from the console) can't move you around.
+  if (!await assertStaffRole()) return;
   const ud = state._userCache?.[u];
   if (!ud) return;
   const r = gameWorld.houseRect(ud.houseIndex);
@@ -1356,6 +1434,7 @@ window.mayorTeleport = async (u) => {
 };
 window.mayorDelete = async (u) => {
   if (!confirm("Delete user " + u + "? This wipes their house, money and inventory.")) return;
+  if (!await assertStaffRole()) return;
   await fbDelete(`users/${u}`);
   await fbDelete(`players/${u}`);
   await fbDelete(`inbox/${u}`);
@@ -1368,7 +1447,7 @@ window.mayorDelete = async (u) => {
 // house, or open a chat. Reads the user cache (refreshed every 4s in core.js).
 let _dirFilter = "";
 function openDirectory() {
-  openMenu("🌐 PLAYER DIRECTORY", `
+  uiPanel("🌐 PLAYER DIRECTORY", `
     <p class="muted">Search everyone in town. Add a friend, DM them, or route to their house.</p>
     <input class="staffSearch" id="dirSearch" placeholder="Search players…" value="${escapeHtml(_dirFilter)}"
       oninput="dirFilter(this.value)" autocomplete="off" />
@@ -1434,7 +1513,7 @@ window.directoryGuide = (u) => {
 // ---------- BUG REPORT APP ----------
 const BUG_CATEGORIES = ["Visual glitch", "Stuck / can't move", "Money / economy", "Chat / social", "Casino game", "Crash / freeze", "Other"];
 async function openBugReport() {
-  openMenu("🐞 REPORT A BUG", `
+  uiPanel("🐞 REPORT A BUG", `
     <p class="muted">Something broken or weird? Tell the devs. Your username, area and balance are attached automatically.</p>
     <h3 class="section">CATEGORY</h3>
     <select id="bugCat" class="staffSearch" style="margin-bottom:10px;">
@@ -1492,10 +1571,12 @@ function update() {
   if (state.area === "duel") { gameCombat.updateDuel(); return; }
 
   // movement allowed?
+  const ae = document.activeElement;
   const inputBlocked =
-    document.activeElement === document.getElementById("chatBox") ||
+    ae === document.getElementById("chatBox") ||
     !document.getElementById("menu").classList.contains("hidden") ||
-    document.activeElement?.tagName === "INPUT";
+    phoneAppShowing() ||
+    (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
 
   if (!inputBlocked) {
     let dx = 0, dy = 0;

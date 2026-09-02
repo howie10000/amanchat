@@ -429,11 +429,15 @@ function showMessagePop(n) {
   el.className = "msgPop";
   el.dataset.from = n.from || "";
   el.innerHTML = `
-    <div class="mpAvatar">${escapeHtml((n.from || "?").slice(0, 1).toUpperCase())}</div>
+    <canvas class="mpIcon" width="34" height="34"></canvas>
     <div class="mpBody">
-      <div class="mpName">${escapeHtml(n.from || "Message")}</div>
-      <div class="mpText">${escapeHtml(n.preview || "").slice(0, 90)}</div>
+      <div class="mpName">${escapeHtml(n.from || "Message")} <span class="mpApp">Messages</span></div>
+      <div class="mpBubble">${escapeHtml(n.preview || "").slice(0, 120)}</div>
     </div>`;
+  try {
+    const ic = el.querySelector(".mpIcon").getContext("2d");
+    if (window.GFX && GFX.drawPixelSymbol) GFX.drawPixelSymbol(ic, "speech", 17, 17, 32);
+  } catch (e) {}
   const dismiss = (open) => {
     clearTimeout(_msgPopTimers.get(el));
     _msgPopTimers.delete(el);

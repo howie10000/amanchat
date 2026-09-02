@@ -37,7 +37,9 @@
       <div class="hudRow muted" id="hudArea">Neighborhood</div>
     </div>
 
-    <!-- PHONE — the action bar lives on a GTA-style phone in the corner -->
+    <!-- PHONE — the action bar lives on a GTA-style phone in the corner.
+         Apps open INSIDE the phone screen (#phoneAppView); the ⤢ button blows
+         the whole phone up to the middle of the screen and back. -->
     <div id="phone">
       <div class="phoneBody">
         <div class="phoneNotch"></div>
@@ -45,23 +47,35 @@
           <div class="phoneStatus">
             <span class="sig">▂▄▆ NBHD</span>
             <span id="phoneClock">12:00</span>
-            <span class="bat">🔋</span>
+            <span class="statRight">
+              <button id="phoneExpand" title="Expand / shrink phone">⤢</button>
+              <span class="bat">🔋</span>
+            </span>
           </div>
-          <div class="phoneHero">
-            <div id="phoneBigClock">12:00</div>
-            <div id="phoneDate">Tuesday</div>
+          <div id="phoneHomeView">
+            <div class="phoneHero">
+              <div id="phoneBigClock">12:00</div>
+              <div id="phoneDate">Tuesday</div>
+            </div>
+            <div class="phoneApps">
+              <button class="actBtn app" data-act="friends"><span class="ico" style="--c:#22c55e">👥</span><span>Friends</span></button>
+              <button class="actBtn app" data-act="dms"><span class="ico" style="--c:#3b82f6">💬</span><span>Messages</span></button>
+              <button class="actBtn app" data-act="directory"><span class="ico" style="--c:#0ea5e9">🌐</span><span>Directory</span></button>
+              <button class="actBtn app" data-act="map"><span class="ico" style="--c:#f97316">🗺️</span><span>Map</span></button>
+              <button class="actBtn app" data-act="inv"><span class="ico" style="--c:#a855f7">🎒</span><span>Items</span></button>
+              <button class="actBtn app" data-act="emotes" title="Emotes (G)"><span class="ico" style="--c:#eab308">😀</span><span>Emotes</span></button>
+              <button class="actBtn app" data-act="build"><span class="ico" style="--c:#14b8a6">🔨</span><span>Build</span></button>
+              <button class="actBtn app" data-act="bugs" title="Report a bug"><span class="ico" style="--c:#ef4444">🐞</span><span>Report Bug</span></button>
+              <button class="actBtn app staff hidden" id="btnStaff" data-act="staff" title="Staff panel"><span class="ico" style="--c:#fbbf24">🛡️</span><span>Staff</span></button>
+              <button class="actBtn app" data-act="help"><span class="ico" style="--c:#64748b">❓</span><span>Help</span></button>
+            </div>
           </div>
-          <div class="phoneApps">
-            <button class="actBtn app" data-act="friends"><span class="ico" style="--c:#22c55e">👥</span><span>Friends</span></button>
-            <button class="actBtn app" data-act="dms"><span class="ico" style="--c:#3b82f6">💬</span><span>Messages</span></button>
-            <button class="actBtn app" data-act="directory"><span class="ico" style="--c:#0ea5e9">🌐</span><span>Directory</span></button>
-            <button class="actBtn app" data-act="map"><span class="ico" style="--c:#f97316">🗺️</span><span>Map</span></button>
-            <button class="actBtn app" data-act="inv"><span class="ico" style="--c:#a855f7">🎒</span><span>Items</span></button>
-            <button class="actBtn app" data-act="emotes" title="Emotes (G)"><span class="ico" style="--c:#eab308">😀</span><span>Emotes</span></button>
-            <button class="actBtn app" data-act="build"><span class="ico" style="--c:#14b8a6">🔨</span><span>Build</span></button>
-            <button class="actBtn app" data-act="bugs" title="Report a bug"><span class="ico" style="--c:#ef4444">🐞</span><span>Report Bug</span></button>
-            <button class="actBtn app staff hidden" id="btnStaff" data-act="staff" title="Staff panel"><span class="ico" style="--c:#fbbf24">🛡️</span><span>Staff</span></button>
-            <button class="actBtn app" data-act="help"><span class="ico" style="--c:#64748b">❓</span><span>Help</span></button>
+          <div id="phoneAppView" class="hidden">
+            <div class="phoneAppBar">
+              <button id="phoneBack" title="Back">‹</button>
+              <span id="spTitle">App</span>
+            </div>
+            <div id="spBody" class="phoneAppBody"></div>
           </div>
         </div>
         <button class="phoneHome" id="phoneHome" title="Put phone away (P)"></button>
@@ -89,15 +103,6 @@
         </div>
         <div id="menuBody"></div>
       </div>
-    </div>
-
-    <!-- Side panel (Friends / Messenger) -->
-    <div id="sidePanel" class="hidden">
-      <div class="spHeader">
-        <span id="spTitle">Friends</span>
-        <button class="closeBtn" onclick="closeSidePanel()">×</button>
-      </div>
-      <div id="spBody"></div>
     </div>
 
     <!-- Toast notifications -->

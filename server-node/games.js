@@ -64,11 +64,12 @@ const SLOT_SYMBOLS = [
 // per line). Every symbol pays, winning lines ADD (not multiply), so wins are
 // frequent but small — a full 3x3 board is the only true jackpot. Weights are
 // tuned a little tighter than that game so the house keeps an edge (~82% RTP).
+// Stable ascii ids (the client renders these as pixel art, keyed by id).
 const JACKPOT_SYMBOLS = [
-    { sym: '👁', weight: 44, mult: 0.5 },
-    { sym: '☥',  weight: 28, mult: 1.5 },
-    { sym: '🪲', weight: 16, mult: 2.5 },
-    { sym: '🪷', weight: 8,  mult: 3.5 },
+    { sym: 'eye_h', weight: 44, mult: 0.5 },
+    { sym: 'ankh',  weight: 28, mult: 1.5 },
+    { sym: 'scarb', weight: 16, mult: 2.5 },
+    { sym: 'lotus', weight: 8,  mult: 3.5 },
 ];
 const JACKPOT_FULLBOARD_MULT = 25; // flat bonus when all 9 cells match
 const SLOTS_MIN_BET = 10, JACKPOT_MIN_BET = 250;

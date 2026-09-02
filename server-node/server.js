@@ -532,12 +532,12 @@ function canWrite(user, pathStr, op) {
     if (top === 'banned_ips') return role === 'owner';
     if (top === 'meta') return false;             // server-written only (IPs)
     if (top === 'mayor') return isStaff(user);    // announcement
-    // Bug reports live under bug_reports/<author>/<id>. A player may file into
-    // their own subtree; only staff may triage (change status) or delete.
+    // Bug reports live under bug_reports/<author>/<id>. Staff may do anything
+    // (triage, delete); a player may only file into / amend their own subtree.
     if (top === 'bug_reports') {
-        if (parts.length < 2) return isStaff(user);
-        if (parts[1] === user) return op === 'post' || op === 'patch';
-        return isStaff(user);
+        if (isStaff(user)) return true;
+        if (parts.length >= 2 && parts[1] === user) return op === 'post' || op === 'patch';
+        return false;
     }
 
     // Owners keep the old all-powerful "mayor" behaviour.

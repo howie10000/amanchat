@@ -2,20 +2,20 @@
 
 let imPollTimer = null;
 
+// Friends / Messenger now render inside the phone screen (window.phoneView),
+// not a floating side panel.
 function openSidePanelFriends() {
-  document.getElementById("sidePanel").classList.remove("hidden");
-  document.getElementById("spTitle").textContent = "FRIENDS";
+  window.phoneView("FRIENDS", "");
   renderFriendsList();
 }
 function openSidePanelDMs() {
-  document.getElementById("sidePanel").classList.remove("hidden");
-  document.getElementById("spTitle").textContent = "MESSENGER";
+  window.phoneView("MESSENGER", "");
   renderDMList();
 }
 function closeSidePanel() {
-  document.getElementById("sidePanel").classList.add("hidden");
   if (imPollTimer) { clearInterval(imPollTimer); imPollTimer = null; }
   state.dmThread = null;
+  if (window.phoneBackHome) window.phoneBackHome();
 }
 window.closeSidePanel = closeSidePanel;
 
@@ -27,7 +27,7 @@ async function renderFriendsList() {
         style="flex:1;padding:7px;background:#0a0e15;border:1px solid #2a3344;color:white;border-radius:6px;" />
       <button class="menuBtn" onclick="sendFriendRequest()">Add</button>
     </div>
-    <button class="menuBtn" style="width:100%;margin-bottom:10px;" onclick="closeSidePanel();openDirectory()">🌐 Search the player directory</button>
+    <button class="menuBtn" style="width:100%;margin-bottom:10px;" onclick="openDirectoryPhone()">🌐 Search the player directory</button>
     <div id="friendsList"></div>
   `;
   const list = document.getElementById("friendsList");

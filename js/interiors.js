@@ -1315,15 +1315,14 @@ function drawJackpotSlots(x, y) {
   GFX.roundFill(ctx, x - 78, y - 58, 156, 124, 10, "#7f1d1d");
   ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 4;
   GFX.roundStroke(ctx, x - 78, y - 58, 156, 124, 10);
-  // 3x3 window matching the actual game
+  // 3x3 window with the real Mega Jackpot pixel symbols shuffling
   ctx.fillStyle = "#0a0a0a";
   ctx.fillRect(x - 62, y - 30, 124, 76);
-  const syms = ["\ud83d\udc8e", "\ud83d\udd14", "\ud83c\udf52"];
+  const syms = ["eye", "ankh", "scarab", "lotus"];
+  const step = Math.floor(Date.now() / 700);
   for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
-    ctx.font = "18px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(syms[(r + c + Math.floor(Date.now() / 700)) % 3], x - 40 + c * 40, y - 12 + r * 25);
+    GFX.drawPixelSymbol(ctx, syms[(r * 2 + c + step) % 4], x - 40 + c * 40, y - 5 + r * 25, 24);
   }
-  ctx.textBaseline = "alphabetic";
   const glow = 0.4 + 0.5 * Math.abs(Math.sin(Date.now() / 350));
   ctx.fillStyle = `rgba(251,191,36,${glow})`;
   ctx.fillRect(x - 78, y - 74, 156, 16);
