@@ -251,6 +251,9 @@ async function pushPresence() {
   netPresence({
     x: state.pos.x, y: state.pos.y,
     area,
+    // Which floor of the VEGAS tower you're on, so people on other floors
+    // aren't drawn in your room (see interiors.js drawInterior).
+    floor: area === "interior_casino" ? (state.casinoFloor || 0) : undefined,
     msgs: state.msgs,
     msg: state.msgs.length ? state.msgs[0].text : "",
     appearance: state.appearance,

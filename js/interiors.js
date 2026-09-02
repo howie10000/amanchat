@@ -300,12 +300,13 @@ function drawInterior() {
   for (const [u, p] of Object.entries(state.others)) {
     let myArea = state.area;
     if (state.area === "interior_home") myArea = `inside:${state.interiorOf}`;
-    if (p.area === myArea) {
-      const px = typeof p.dispX === "number" ? p.dispX : p.x;
-      const py = typeof p.dispY === "number" ? p.dispY : p.y;
-      GFX.drawCharacter(ctx, px, py, p.appearance, { facing: p.facing, emote: p.emote });
-      GFX.drawNameAndBubble(ctx, px, py, u, p.msgs || p.msg, false, p.appearance, p.role);
-    }
+    if (p.area !== myArea) continue;
+    // VEGAS is one area with several floors: only show people on your floor.
+    if (state.area === "interior_casino" && (p.floor || 0) !== (state.casinoFloor || 0)) continue;
+    const px = typeof p.dispX === "number" ? p.dispX : p.x;
+    const py = typeof p.dispY === "number" ? p.dispY : p.y;
+    GFX.drawCharacter(ctx, px, py, p.appearance, { facing: p.facing, emote: p.emote });
+    GFX.drawNameAndBubble(ctx, px, py, u, p.msgs || p.msg, false, p.appearance, p.role);
   }
   // You
   GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance,
