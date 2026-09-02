@@ -947,8 +947,8 @@ function renderStaffLists() {
     const role = staffRoleOf(u);
     const ban = _staff.bans[u]; const banned = ban && (!ban.until || ban.until > now);
     const mute = _staff.mutes[u]; const muted = mute && (!mute.until || mute.until > now);
-    const online = me || !!state.others[u];
     const me = u === state.user;
+    const online = me || !!state.others[u];
     const can = iOutrank(u);
     let btns = "";
     if (me) {
