@@ -3071,4 +3071,5 @@ window.GFX = {
   drawFurniture, roundRect, roundFill, roundStroke, shadeColor,
   DEFAULT_APPEARANCE, EMOTES, EMOTE_TTL, drawAura, drawPet,
   HOUSE_WALLS, HOUSE_ROOFS,
+  flame: TB.flame,
 };

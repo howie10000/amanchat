@@ -88,7 +88,7 @@ const HOOPS = [
 ];
 const BALL_SPOT = { x: COURT.x + COURT.w/2, y: COURT.y + COURT.h/2, r: 90 };
 // Town notice board (center) — leaderboard / who's online
-const NOTICE = { x: 2170, y: 1330, w: 60, h: 70 };
+const NOTICE = { x: 2150, y: 1318, w: 100, h: 82 };
 const NOTICE_SPOT = { x: NOTICE.x + NOTICE.w/2, y: NOTICE.y + NOTICE.h + 30, r: 74 };
 const ACTIVITY_SPOTS = [
   { spot: FISH_SPOT,   type: "fishing",     label: "GO FISHING" },
@@ -1180,11 +1180,15 @@ function drawPark() {
   for (let yy = sy0; yy < sy1; yy += 80) ctx.fillRect(P.x, yy, P.w, Math.min(40, P.y + P.h - yy));
   // clover blotches
   ctx.fillStyle = "rgba(0,0,0,.05)";
-  for (let gx = Math.max(P.x, Math.floor(_cam.x / 128) * 128); gx < Math.min(P.x + P.w, _cam.x + _cam.w + 128); gx += 128)
-    for (let gy = Math.max(P.y, Math.floor(_cam.y / 128) * 128); gy < Math.min(P.y + P.h, _cam.y + _cam.h + 128); gy += 128) {
+  // The lattice is a fixed world-space 128px grid; clamping the start to the
+  // park edge used to shift every blotch whenever the camera crossed it.
+  ctx.save(); ctx.beginPath(); ctx.rect(P.x, P.y, P.w, P.h); ctx.clip();
+  for (let gx = Math.max(Math.floor(P.x / 128) * 128, Math.floor(_cam.x / 128) * 128 - 128); gx < Math.min(P.x + P.w, _cam.x + _cam.w + 128); gx += 128)
+    for (let gy = Math.max(Math.floor(P.y / 128) * 128, Math.floor(_cam.y / 128) * 128 - 128); gy < Math.min(P.y + P.h, _cam.y + _cam.h + 128); gy += 128) {
       const h = hash2(gx, gy);
       ctx.beginPath(); ctx.ellipse(gx + h * 100, gy + ((h * 5) % 1) * 100, 30, 18, h * 3, 0, Math.PI*2); ctx.fill();
     }
+  ctx.restore();
 
   // winding paths (gravel with edging) from each gate to the fountain
   const F = FOUNTAIN;
@@ -1883,52 +1887,80 @@ function drawAmphitheater() {
 // =====================================================================
 function drawNoticeBoard() {
   const n = NOTICE;
-  if (!onScreen(n.x + n.w / 2, n.y + n.h / 2, 120)) return;
-  const t = Date.now() / 1000;
-  ctx.fillStyle = "rgba(0,0,0,.28)"; ctx.beginPath(); ctx.ellipse(n.x + n.w / 2 + 4, n.y + n.h + 12, n.w * 0.7, 7, 0, 0, Math.PI*2); ctx.fill();
-  // legs
-  ctx.fillStyle = "#3f2210"; ctx.fillRect(n.x + 5, n.y + n.h - 6, 7, 20); ctx.fillRect(n.x + n.w - 12, n.y + n.h - 6, 7, 20);
-  ctx.fillStyle = "#5b3210"; ctx.fillRect(n.x + 5, n.y + n.h - 6, 2, 20); ctx.fillRect(n.x + n.w - 12, n.y + n.h - 6, 2, 20);
-  // frame
-  ctx.fillStyle = "#7c4a18"; ctx.fillRect(n.x - 3, n.y, n.w + 6, n.h);
-  ctx.fillStyle = "#a16207"; ctx.fillRect(n.x - 3, n.y, 2, n.h); ctx.fillRect(n.x - 3, n.y, n.w + 6, 2);
-  ctx.strokeStyle = "#3f2210"; ctx.lineWidth = 2; ctx.strokeRect(n.x - 3, n.y, n.w + 6, n.h);
-  // cork
-  ctx.fillStyle = "#c8a165"; ctx.fillRect(n.x + 4, n.y + 6, n.w - 8, n.h - 12);
-  ctx.fillStyle = "rgba(0,0,0,.08)"; for (let i = 0; i < 12; i++) ctx.fillRect(n.x + 6 + ((i * 37) % (n.w - 14)), n.y + 8 + ((i * 23) % (n.h - 18)), 3, 2);
-  // pinned papers
-  const papers = [
-    { x: 7, y: 9, w: 20, h: 24, c: "#fef3c7", rot: -0.08, pin: "#dc2626" },
-    { x: 31, y: 11, w: 22, h: 18, c: "#e0f2fe", rot: 0.06, pin: "#2563eb" },
-    { x: 9, y: 36, w: 18, h: 20, c: "#fce7f3", rot: 0.05, pin: "#16a34a" },
-    { x: 30, y: 33, w: 24, h: 24, c: "#fefce8", rot: -0.04, pin: "#f59e0b" },
+  if (!onScreen(n.x + n.w / 2, n.y + n.h / 2, 140)) return;
+  const t = Date.now();
+  const cx = n.x + n.w / 2, base = n.y + n.h;
+  // ground shadow
+  ctx.fillStyle = "rgba(0,0,0,.28)"; ctx.beginPath(); ctx.ellipse(cx + 4, base + 22, n.w * 0.7, 8, 0, 0, Math.PI*2); ctx.fill();
+  // stone footing + oak posts
+  for (const px of [n.x + 8, n.x + n.w - 16]) {
+    ctx.fillStyle = "#57534e"; ctx.fillRect(px - 3, base + 14, 14, 8);
+    ctx.fillStyle = "#3f2a1a"; ctx.fillRect(px, base - 10, 8, 26);
+    ctx.fillStyle = "#5b3a1e"; ctx.fillRect(px, base - 10, 3, 26);
+    ctx.fillStyle = "#1c1917"; ctx.fillRect(px - 1, base + 2, 10, 2);
+  }
+  // dark oak frame with iron-banded corners (matches the guild's quest board)
+  ctx.fillStyle = "#5b3a1e"; ctx.fillRect(n.x, n.y, n.w, n.h);
+  ctx.fillStyle = "#7c4a18"; ctx.fillRect(n.x, n.y, n.w, 3); ctx.fillRect(n.x, n.y, 3, n.h);
+  ctx.strokeStyle = "#2c1a0c"; ctx.lineWidth = 2; ctx.strokeRect(n.x, n.y, n.w, n.h);
+  ctx.fillStyle = "#57534e";
+  for (const [ix, iy] of [[n.x - 1, n.y - 1], [n.x + n.w - 6, n.y - 1], [n.x - 1, n.y + n.h - 6], [n.x + n.w - 6, n.y + n.h - 6]]) {
+    ctx.fillRect(ix, iy, 7, 7);
+    ctx.fillStyle = "#1c1917"; ctx.fillRect(ix + 2, iy + 2, 3, 3); ctx.fillStyle = "#57534e";
+  }
+  // inner panel: aged wood boards
+  const ix = n.x + 6, iy = n.y + 18, iw = n.w - 12, ih = n.h - 24;
+  ctx.fillStyle = "#3f2a1a"; ctx.fillRect(ix, iy, iw, ih);
+  ctx.fillStyle = "rgba(0,0,0,.25)"; for (let yy = iy + 12; yy < iy + ih; yy += 12) ctx.fillRect(ix, yy, iw, 1);
+  ctx.fillStyle = "rgba(255,255,255,.05)"; for (let yy = iy + 4; yy < iy + ih; yy += 12) ctx.fillRect(ix, yy, iw, 1);
+  // pinned parchments (same style as the guild's "QUESTS" board, but more of them)
+  const notes = [
+    [4, 4, 22, 20, "#fef3c7", -0.06, "#dc2626"], [30, 3, 26, 16, "#fde68a", 0.04, "#dc2626"],
+    [60, 5, 24, 22, "#fed7aa", -0.03, "#dc2626"], [6, 28, 26, 18, "#fef3c7", 0.05, "#dc2626"],
+    [36, 24, 20, 24, "#fef3c7", -0.05, "#dc2626"], [60, 31, 24, 18, "#fde68a", 0.07, "#dc2626"],
   ];
-  for (const p of papers) {
-    ctx.save(); ctx.translate(n.x + p.x + p.w / 2, n.y + p.y + p.h / 2); ctx.rotate(p.rot);
-    ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.fillRect(-p.w / 2 + 1, -p.h / 2 + 1, p.w, p.h);
-    ctx.fillStyle = p.c; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-    ctx.fillStyle = "rgba(0,0,0,.35)"; for (let i = 0; i < 3; i++) ctx.fillRect(-p.w / 2 + 3, -p.h / 2 + 5 + i * 4, p.w - 6 - (i * 3) % 6, 1);
-    ctx.fillStyle = p.pin; ctx.beginPath(); ctx.arc(0, -p.h / 2 + 2, 2, 0, Math.PI*2); ctx.fill();
+  for (const [nx, ny, nw, nh, col, rot, pin] of notes) {
+    ctx.save(); ctx.translate(ix + nx + nw / 2, iy + ny + nh / 2); ctx.rotate(rot);
+    ctx.fillStyle = "rgba(0,0,0,.3)"; ctx.fillRect(-nw / 2 + 1.5, -nh / 2 + 1.5, nw, nh);
+    ctx.fillStyle = col; ctx.fillRect(-nw / 2, -nh / 2, nw, nh);
+    // curled bottom corner
+    ctx.fillStyle = "rgba(0,0,0,.12)"; ctx.beginPath(); ctx.moveTo(nw / 2, nh / 2 - 4); ctx.lineTo(nw / 2, nh / 2); ctx.lineTo(nw / 2 - 4, nh / 2); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,.35)";
+    for (let l = 5; l < nh - 3; l += 3) ctx.fillRect(-nw / 2 + 3, -nh / 2 + l, nw - 6 - ((l * 5) % 7), 1);
+    ctx.fillStyle = pin; ctx.beginPath(); ctx.arc(0, -nh / 2 + 2, 1.8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.5)"; ctx.beginPath(); ctx.arc(-0.5, -nh / 2 + 1.5, 0.7, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
-  // header plaque
-  ctx.fillStyle = "#1f2937"; ctx.fillRect(n.x + 4, n.y + 6, n.w - 8, 10);
-  ctx.fillStyle = "#fbbf24"; ctx.font = "bold 7px sans-serif"; ctx.textAlign = "center";
-  ctx.fillText("★ TOP PLAYERS ★", n.x + n.w / 2, n.y + 13.5);
-  // little shingle roof
-  ctx.fillStyle = "#5b3210";
-  ctx.beginPath(); ctx.moveTo(n.x - 10, n.y + 2); ctx.lineTo(n.x + n.w / 2, n.y - 16); ctx.lineTo(n.x + n.w + 10, n.y + 2); ctx.closePath(); ctx.fill();
+  // header plaque with gold lettering
+  ctx.fillStyle = "#1f2937"; ctx.fillRect(n.x + 6, n.y + 5, n.w - 12, 11);
+  ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 1; ctx.strokeRect(n.x + 6.5, n.y + 5.5, n.w - 13, 10);
+  ctx.fillStyle = "#fde68a"; ctx.font = "bold 7px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("★ TOWN NOTICES ★", cx, n.y + 11);
+  ctx.textBaseline = "alphabetic";
+  // shingled roof
+  ctx.fillStyle = "#2c1a0c";
+  ctx.beginPath(); ctx.moveTo(n.x - 12, n.y + 2); ctx.lineTo(cx, n.y - 22); ctx.lineTo(n.x + n.w + 12, n.y + 2); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#5b3a1e";
+  ctx.beginPath(); ctx.moveTo(n.x - 10, n.y); ctx.lineTo(cx, n.y - 19); ctx.lineTo(n.x + n.w + 10, n.y); ctx.closePath(); ctx.fill();
   ctx.fillStyle = "#7c4a18";
-  ctx.beginPath(); ctx.moveTo(n.x - 10, n.y + 2); ctx.lineTo(n.x + n.w / 2, n.y - 16); ctx.lineTo(n.x + n.w / 2, n.y + 2); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = "rgba(0,0,0,.2)"; for (let i = 1; i < 4; i++) { const yy = n.y + 2 - i * 4; ctx.fillRect(n.x - 10 + i * 6, yy, n.w + 20 - i * 12, 1); }
-  // gold "NOTICE" title above
-  GFX.roundFill(ctx, n.x + n.w / 2 - 40, n.y + n.h + 18, 80, 16, 4, "rgba(0,0,0,.55)");
+  ctx.beginPath(); ctx.moveTo(n.x - 10, n.y); ctx.lineTo(cx, n.y - 19); ctx.lineTo(cx, n.y); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "rgba(0,0,0,.22)";
+  for (let i = 1; i < 5; i++) { const yy = n.y - i * 4; const inset = i * (n.w + 20) / 10; ctx.fillRect(n.x - 10 + inset, yy, n.w + 20 - inset * 2, 1); }
+  // lantern hanging from the peak
+  ctx.fillStyle = "#1c1917"; ctx.fillRect(cx - 1, n.y - 19, 2, 5);
+  ctx.fillStyle = "#3f2a1a"; ctx.fillRect(cx - 4, n.y - 14, 8, 3);
+  GFX.flame(ctx, cx, n.y - 6, 5, t, 2);
+  // torches on the posts, like the guild entrance
+  for (const s of [-1, 1]) {
+    const px = cx + s * (n.w / 2 + 10);
+    ctx.fillStyle = "#5b3a1e"; ctx.fillRect(px - 2, n.y + 22, 4, 16);
+    ctx.fillStyle = "#3f2a1a"; ctx.fillRect(px - 4, n.y + 20, 8, 4);
+    GFX.flame(ctx, px, n.y + 20, 6, t, s * 4);
+  }
+  // sign below
+  GFX.roundFill(ctx, cx - 42, base + 26, 84, 16, 4, "rgba(0,0,0,.55)");
   ctx.fillStyle = "#fef3c7"; ctx.font = "bold 9px Georgia, serif"; ctx.textAlign = "center";
-  ctx.fillText("NOTICE BOARD", n.x + n.w / 2, n.y + n.h + 30);
-  // small lamp over the board, softly glowing
-  const fl = 0.75 + 0.25 * Math.sin(t * 3);
-  ctx.fillStyle = "#1f2937"; ctx.fillRect(n.x + n.w / 2 - 6, n.y - 14, 12, 3);
-  ctx.fillStyle = `rgba(255,220,130,${fl})`; ctx.beginPath(); ctx.arc(n.x + n.w / 2, n.y - 9, 2.5, 0, Math.PI*2); ctx.fill();
+  ctx.fillText("NOTICE BOARD", cx, base + 38);
 }
 
 // =====================================================================
