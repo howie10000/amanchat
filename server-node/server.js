@@ -42,7 +42,7 @@ db.pragma('synchronous = NORMAL');
 db.exec(`
     CREATE TABLE IF NOT EXISTS kv (
         key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
+        value BLOB NOT NULL
     );
     CREATE TABLE IF NOT EXISTS auth (
         user TEXT PRIMARY KEY,
@@ -53,33 +53,144 @@ db.exec(`
 
 // ---------------------------------------------------------------- KV STORE
 // Hierarchical in-memory store with Firebase-like semantics ("users/bob/money").
-// Mutations are journaled to a single JSON blob in sqlite, snapshotted every 2s.
+//
+// Persistence: one sqlite row per TOP-LEVEL key ("users", "inbox", ...), each
+// stored as a brotli-compressed JSON blob, and only the keys touched since the
+// last snapshot are rewritten (every 2s). The old format was the entire tree
+// as one uncompressed JSON row rewritten on every change — 94% of which was a
+// copy of the furniture catalog the client already ships in its own code.
+//
+//   * `catalog` is never persisted (it's derived from js/furniture.js).
+//   * Empty containers / default flags are dropped at save time ("compact");
+//     every client read path already treats a missing field as empty.
+//   * Ended duels and finished matches are pruned; DM threads keep their
+//     last DM_KEEP messages.
+//   * A legacy `__root__` row is migrated on first start, then VACUUMed away.
+
+const zlib = require('zlib');
+const DM_KEEP = 200;              // messages kept per DM thread
+const DUEL_TTL = 60 * 60 * 1000;  // ended duels older than this are dropped
+const EPHEMERAL_KEYS = new Set(['catalog']);
+
+function encodeValue(obj) {
+    return zlib.brotliCompressSync(Buffer.from(JSON.stringify(obj)), {
+        params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 6, [zlib.constants.BROTLI_PARAM_MODE]: zlib.constants.BROTLI_MODE_TEXT },
+    });
+}
+function decodeValue(v) {
+    if (Buffer.isBuffer(v)) return JSON.parse(zlib.brotliDecompressSync(v).toString());
+    return JSON.parse(v); // legacy plain-text row
+}
+
+// Drops fields that carry no information. Mirrors what the client assumes
+// when a field is absent, so this is lossless from the game's point of view.
+function isEmptyish(v) {
+    if (v == null || v === false || v === '') return true;
+    if (Array.isArray(v)) return v.length === 0;
+    if (typeof v === 'object') return Object.keys(v).length === 0;
+    return false;
+}
+function compactUser(u) {
+    if (!u || typeof u !== 'object') return u;
+    const out = {};
+    for (const [k, v] of Object.entries(u)) {
+        if (k === 'money' || k === 'houseIndex') { out[k] = v; continue; }
+        if (k === 'seenTutorial') { if (v) out[k] = true; continue; }
+        if (isEmptyish(v)) continue;
+        out[k] = v;
+    }
+    return out;
+}
+function compactTree(root) {
+    const now = Date.now();
+    const out = {};
+    for (const [k, v] of Object.entries(root)) {
+        if (EPHEMERAL_KEYS.has(k)) continue;
+        if (isEmptyish(v)) continue;
+        if (k === 'users') {
+            const users = {};
+            for (const [name, u] of Object.entries(v)) users[name] = compactUser(u);
+            out[k] = users;
+        } else if (k === 'duels') {
+            const duels = {};
+            for (const [id, d] of Object.entries(v)) {
+                if (d && d.status === 'ended' && (now - (d.startedAt || 0)) > DUEL_TTL) continue;
+                duels[id] = d;
+            }
+            if (!isEmptyish(duels)) out[k] = duels;
+        } else if (k === 'dm_threads') {
+            const threads = {};
+            for (const [id, t] of Object.entries(v)) {
+                const msgs = Object.entries((t && t.messages) || {});
+                if (!msgs.length) continue;
+                msgs.sort((a, b) => (a[1].ts || 0) - (b[1].ts || 0));
+                threads[id] = Object.assign({}, t, { messages: Object.fromEntries(msgs.slice(-DM_KEEP)) });
+            }
+            if (!isEmptyish(threads)) out[k] = threads;
+        } else if (k === 'inbox') {
+            const inbox = {};
+            for (const [name, box] of Object.entries(v)) if (!isEmptyish(box)) inbox[name] = box;
+            if (!isEmptyish(inbox)) out[k] = inbox;
+        } else {
+            out[k] = v;
+        }
+    }
+    return out;
+}
 
 class Store {
     constructor() {
         this.root = {};
-        this.dirty = false;
+        this.dirtyKeys = new Set();   // top-level keys to rewrite on next snapshot
+        this.dirtyAll = false;        // root replaced/cleared: rewrite everything
         this._load();
     }
 
     _load() {
-        const row = db.prepare(`SELECT value FROM kv WHERE key = '__root__'`).get();
-        if (!row) {
-            console.log('[store] fresh database');
+        const legacy = db.prepare(`SELECT value FROM kv WHERE key = '__root__'`).get();
+        if (legacy) {
+            const before = Buffer.byteLength(legacy.value);
+            this.root = compactTree(JSON.parse(legacy.value));
+            db.transaction(() => {
+                db.prepare(`DELETE FROM kv`).run();
+                for (const k of Object.keys(this.root)) this._writeKey(k);
+            })();
+            this.dirtyAll = false;
+            let after = 0;
+            for (const r of db.prepare(`SELECT value FROM kv`).all()) after += r.value.length;
+            db.exec('VACUUM');
+            console.log(`[store] migrated legacy blob: ${before} -> ${after} bytes on disk (${Object.keys(this.root).length} keys)`);
             return;
         }
-        this.root = JSON.parse(row.value);
-        console.log(`[store] loaded ${Object.keys(this.root).length} top-level keys`);
+        const rows = db.prepare(`SELECT key, value FROM kv`).all();
+        if (!rows.length) { console.log('[store] fresh database'); return; }
+        for (const r of rows) this.root[r.key] = decodeValue(r.value);
+        console.log(`[store] loaded ${rows.length} top-level keys`);
+    }
+
+    _writeKey(k) {
+        if (EPHEMERAL_KEYS.has(k)) return;
+        const v = this.root[k];
+        if (v === undefined) { db.prepare(`DELETE FROM kv WHERE key = ?`).run(k); return; }
+        const compacted = compactTree({ [k]: v })[k];
+        if (compacted === undefined) { db.prepare(`DELETE FROM kv WHERE key = ?`).run(k); return; }
+        db.prepare(`INSERT INTO kv(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
+            .run(k, encodeValue(compacted));
     }
 
     snapshot() {
-        if (!this.dirty) return;
-        const blob = JSON.stringify(this.root);
-        db.prepare(`
-            INSERT INTO kv(key, value) VALUES('__root__', ?)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value
-        `).run(blob);
-        this.dirty = false;
+        if (!this.dirtyAll && this.dirtyKeys.size === 0) return;
+        const keys = this.dirtyAll
+            ? new Set([...Object.keys(this.root), ...db.prepare(`SELECT key FROM kv`).all().map(r => r.key)])
+            : this.dirtyKeys;
+        db.transaction(() => { for (const k of keys) this._writeKey(k); })();
+        this.dirtyKeys = new Set();
+        this.dirtyAll = false;
+    }
+
+    _touch(parts) {
+        if (parts.length === 0) this.dirtyAll = true;
+        else this.dirtyKeys.add(parts[0]);
     }
 
     static splitPath(p) {
@@ -102,7 +213,7 @@ class Store {
         const parts = Store.splitPath(path);
         if (parts.length === 0) {
             if (val && typeof val === 'object' && !Array.isArray(val)) this.root = val;
-            this.dirty = true;
+            this._touch(parts);
             return;
         }
         let cur = this.root;
@@ -111,7 +222,7 @@ class Store {
             cur = cur[p];
         }
         cur[parts[parts.length - 1]] = val;
-        this.dirty = true;
+        this._touch(parts);
     }
 
     patch(path, patchObj) {
@@ -122,14 +233,14 @@ class Store {
             cur = cur[p];
         }
         Object.assign(cur, patchObj);
-        this.dirty = true;
+        this._touch(parts);
     }
 
     delete(path) {
         const parts = Store.splitPath(path);
         if (parts.length === 0) {
             this.root = {};
-            this.dirty = true;
+            this._touch(parts);
             return;
         }
         let cur = this.root;
@@ -138,7 +249,7 @@ class Store {
             cur = cur[p];
         }
         delete cur[parts[parts.length - 1]];
-        this.dirty = true;
+        this._touch(parts);
     }
 
     // Firebase-style push (auto-id child). Returns the generated id.

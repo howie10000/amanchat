@@ -25,9 +25,15 @@ A multiplayer browser game built on the idea you sent your friend:
   - 💬 **Social Plaza** — Hangout / mayor announcements
 - **Staff system** — three roles: 👑 **owner** > 🛡️ **admin** > player.
   - Owners are set **in the server save file only** (never from the game):
-    either `OWNERS=alice,bob` in the server's environment, or
-    `roles/owners/<name>: true` inside the JSON blob in `data.db`. The legacy
-    `mayor` account is always an owner.
+    run `node server-node/set-owner.js aman howie` on the box that holds
+    `data.db` (stop the server first), or set `OWNERS=alice,bob` in the
+    server's environment. The legacy `mayor` account is always an owner.
+  - Save format: `data.db` holds one brotli-compressed row per top-level
+    key (`users`, `inbox`, …) and only rewrites the keys that changed. The
+    furniture catalog is no longer stored (clients build it from code), empty
+    fields are dropped, ended duels expire and DM threads keep their last 200
+    messages. An old single-blob `data.db` is migrated automatically on the
+    first start (47 KB → under 1 KB for the current town).
   - Owners open the **Staff panel** (top-right button, or the Town Hall desk)
     to promote / demote admins, and can delete accounts.
   - Owners and admins can **ban** (account + the IP it last used, timed or

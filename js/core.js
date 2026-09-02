@@ -13,7 +13,7 @@ const VIEW_OY = (canvas.height - 640) / 2;
 
 // Player walking speed in px per simulation tick (60 ticks/s — see loop()).
 // Shared by the overworld, interiors, dungeon and duel so they all feel the same.
-const WALK_SPEED = 2.0;
+const WALK_SPEED = 5.0;
 
 const state = {
   area: "interior_home",
@@ -158,15 +158,9 @@ async function enterGame(user, data, role, mute) {
   state.appearance = data.appearance || GFX.DEFAULT_APPEARANCE;
   state.friends = data.friends || {};
 
-  // seed catalog if missing or out-of-date
-  let cnt = (await fbGet("catalog/count")) || 0;
-  if (cnt < FURNITURE_LIST.length) {
-    await fbPut("catalog/furniture", FURNITURE_CATALOG);
-    await fbPut("catalog/count", FURNITURE_LIST.length);
-  }
-  // load catalog so all clients agree on it (server-stored equals client-side gen)
-  const cat = await fbGet("catalog/furniture");
-  if (cat) Object.assign(FURNITURE_CATALOG, cat);
+  // The furniture catalog is built deterministically from js/furniture.js on
+  // every client, so it no longer round-trips through the server (it used to
+  // be 94% of the save file).
 
   document.getElementById("loginScreen").classList.add("hidden");
   document.getElementById("gameScreen").classList.remove("hidden");
