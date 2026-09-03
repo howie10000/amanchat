@@ -1699,7 +1699,7 @@ function renderDirectory() {
   const users = state._userCache || {};
   const f = _dirFilter.trim().toLowerCase();
   const names = Object.keys(users)
-    .filter(u => u !== state.user && u !== "mayor")
+    .filter(u => u !== state.user)
     .filter(u => !f || u.includes(f))
     .sort((a, b) => {
       const oa = !!state.others[a], ob = !!state.others[b];

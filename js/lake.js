@@ -25,6 +25,7 @@
   const DOCK_TIP = { x: LAKE.x, y: LAKE.y + LAKE.ry - 6 - 120 + 18 };
   const BOBBER = { x: LAKE.x + 26, y: LAKE.y + 40 };
   const SHORE = { x: LAKE.x, y: LAKE.y + LAKE.ry + 40 }; // where the fisher stands normally
+  const CINE_TAIL_MS = 2600;                            // lunge + FIGHT card after the rise
   const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
   const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
   const easeOut = t => 1 - Math.pow(1 - t, 3);
@@ -160,7 +161,9 @@
         const n = boss ? boss.participants : 0;
         toast(`🏆 <b>${def.name} has been slain</b> by ${n} fighter${n === 1 ? "" : "s"}!`, 6000);
       } else if (m.kind === "gone") {
+        const wasUp = was && was !== "dead";
         boss = null; attacks = []; hooker = false;
+        if (m.reason === "timeout" && wasUp) toast(`🌊 <b>${def.name}</b> sank back into the depths unbeaten. The lake goes quiet…`, 6000);
       }
     });
     NET.on("kraken_reward", (m) => {
@@ -192,7 +195,9 @@
   function startKrakenCinematic(kind) {
     if (state.area !== "neighborhood") return;
     hooker = true;
-    cine = { kind: kind === "serpent" ? "serpent" : "kraken", t0: now(), dur: K.RISE_MS, looked: false, emoted: false };
+    // The rise takes RISE_MS; the hooker's cutscene runs on past it for the
+    // lunge-at-the-camera finale and the FIGHT card (CINE_TAIL_MS).
+    cine = { kind: kind === "serpent" ? "serpent" : "kraken", t0: now(), dur: K.RISE_MS + CINE_TAIL_MS, looked: false, emoted: false };
     state.pos.x = DOCK_TIP.x; state.pos.y = DOCK_TIP.y; state.facing = "up";
     if (typeof pushPresence === "function") pushPresence();
   }
@@ -223,6 +228,7 @@
       if (ct >= cine.dur) endCine();
     } else if (boss && boss.status === "rising" && nearLake(-200)) {
       focus = { x: LAKE.x, y: LAKE.y + 20 }; zoom = 1.08;
+      if (bossT() > 4500 && shakeT <= 0) shake(2 + 4 * clamp01((bossT() - 4500) / 6000), 6);   // rumble for onlookers
     }
     camWant = zoom;
     camZoom += (camWant - camZoom) * 0.08;
@@ -694,8 +700,10 @@
         const kk = clamp01((t - a.at) / (a.end - a.at)), rr = a.r * kk;
         ctx.strokeStyle = `rgba(224,242,254,${0.9 * (1 - kk * 0.6)})`; ctx.lineWidth = 12 * (1 - kk * 0.5);
         ctx.beginPath(); ctx.ellipse(a.x, a.y, rr, rr * 0.75, 0, 0, TAU); ctx.stroke();
+        // (a radius below zero throws in canvas and used to kill the draw loop)
+        const ri = Math.max(0, rr - 14);
         ctx.strokeStyle = `rgba(56,189,248,${0.6 * (1 - kk)})`; ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.ellipse(a.x, a.y, rr - 14, (rr - 14) * 0.75, 0, 0, TAU); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(a.x, a.y, ri, ri * 0.75, 0, 0, TAU); ctx.stroke();
       } else if (a.type === "lunge") {
         ctx.save(); ctx.translate(a.x, a.y); ctx.rotate(a.angle);
         if (a.done) {
@@ -731,6 +739,7 @@
     }
   }
   function ring(x, y, r, k) {
+    r = Math.max(0, r || 0); k = clamp01(k);
     ctx.fillStyle = `rgba(239,68,68,${0.12 + 0.18 * k})`;
     ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.55, 0, 0, TAU); ctx.fill();
     ctx.fillStyle = "rgba(239,68,68,.35)";
@@ -865,6 +874,9 @@
     let dolly = 0, pitch = 0;
     if (kind === "kraken") { dolly = ct > 8000 ? -1.6 * easeOut(clamp01((ct - 8000) / 2500)) : 0; pitch = ct > 8000 ? -40 * easeOut(clamp01((ct - 8000) / 2500)) : 0; }
     else { dolly = ct > 5000 && ct < 8200 ? -1.2 * easeOut(clamp01((ct - 5000) / 1500)) : ct >= 8200 ? -1.6 : 0; pitch = ct > 5200 && ct < 8000 ? -70 * Math.sin(clamp01((ct - 5200) / 2800) * Math.PI) : ct >= 8200 ? -30 : 0; }
+    // the lunge: 0..1 over the first 1.5s after the rise — the head comes for the camera
+    const lunge = ct > K.RISE_MS ? easeIn(clamp01((ct - K.RISE_MS) / 1500)) : 0;
+    if (lunge > 0) { pitch += 20 * lunge; shake(6 + 14 * lunge, 4); }
     const sh = shakeT > 0 ? shakeA : 0;
     C3.cam.z = dolly + Math.sin(t / 1300) * 0.05;
     C3.cam.x = Math.sin(t / 2100) * 0.08 + (Math.random() - 0.5) * sh * 0.04;
@@ -914,7 +926,7 @@
     { const g = ctx.createLinearGradient(0, hy, 0, H); g.addColorStop(0, `rgba(255,255,255,${0.18 - 0.1 * storm})`); g.addColorStop(0.3, "rgba(255,255,255,0)"); ctx.fillStyle = g; ctx.fillRect(0, hy, W, H - hy); }
     if (flash > 0.05) { ctx.fillStyle = `rgba(255,255,255,${0.25 * flash})`; ctx.fillRect(0, hy, W, H - hy); }
     // ---- the beast ----
-    if (kind === "kraken") drawKraken3D(ct, t, surf); else drawSerpent3D(ct, t);
+    if (kind === "kraken") drawKraken3D(ct, t, lunge); else drawSerpent3D(ct, t, lunge);
     // ---- 3D splash particles ----
     for (const p of cutFx) {
       p.X += p.vx; p.Y += p.vy; p.Z += p.vz; p.vy -= 0.04; p.life++;
@@ -983,6 +995,38 @@
       if (bob) { ctx.strokeStyle = "rgba(226,232,240,.9)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(tipX, tipY); ctx.quadraticCurveTo((tipX + bob.x) / 2, Math.max(tipY, bob.y) + (bend ? 2 : 22), bob.x, bob.y - 0.16 * bob.s); ctx.stroke(); }
       if (kind === "kraken" && ct > 2000 && ct < 3600) { ctx.fillStyle = "#fde047"; ctx.font = `bold ${Math.round(26 * sc)}px sans-serif`; ctx.textAlign = "center"; ctx.fillText("!", me.x + 24 * sc, me.y - 44 * sc + Math.sin(t / 80) * 3); }
     }
+    // ---- dread: a heartbeat vignette that quickens as the beast rises ----
+    if (ct > 3400 && ct < K.RISE_MS + 200) {
+      const build = clamp01((ct - 3400) / 7000);
+      const bpm = 0.9 + build * 2.2;
+      const beat = Math.pow(Math.max(0, Math.sin(t / 1000 * bpm * Math.PI)), 10);
+      const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.85);
+      vg.addColorStop(0, "rgba(120,0,20,0)"); vg.addColorStop(1, `rgba(120,0,20,${(0.18 + 0.45 * build) * (0.35 + 0.65 * beat)})`);
+      ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+      if (ct > 4600 && ct < 8000 && Math.floor(t / 420) % 2 === 0) {
+        ctx.fillStyle = "rgba(239,68,68,.9)"; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("⚠  SOMETHING IS COMING  ⚠", W / 2, 68);
+      }
+    }
+    // ---- the finale: it lunges at the camera, then the FIGHT card ----
+    if (ct > K.RISE_MS) {
+      const k = clamp01((ct - K.RISE_MS) / 1500);
+      const flashK = clamp01((ct - K.RISE_MS - 1500) / 500);
+      const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.2, W / 2, H / 2, H * 0.8);
+      vg.addColorStop(0, "rgba(160,0,20,0)"); vg.addColorStop(1, `rgba(160,0,20,${0.55 * k})`);
+      ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+      if (flashK > 0) {
+        ctx.fillStyle = `rgba(255,255,255,${flashK * 0.95})`; ctx.fillRect(0, 0, W, H);
+        const cardK = clamp01((ct - K.RISE_MS - 1700) / 400);
+        if (cardK > 0) {
+          ctx.save(); ctx.translate(W / 2, H / 2); ctx.scale(0.6 + 0.4 * easeOutBack(cardK), 0.6 + 0.4 * easeOutBack(cardK));
+          ctx.fillStyle = "#7f1d1d"; ctx.font = "bold 92px Georgia, 'Times New Roman', serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText("FIGHT!", 3, 3); ctx.fillStyle = "#ef4444"; ctx.fillText("FIGHT!", 0, 0);
+          ctx.font = "bold 18px sans-serif"; ctx.fillStyle = "#1c0a04"; ctx.fillText(`${kind === "kraken" ? "cut the tentacles" : "break the coils"} · then the head · dodge everything red`, 0, 66);
+          ctx.textBaseline = "alphabetic"; ctx.restore();
+        }
+      }
+    }
     // ---- rain in the cutscene ----
     if (weather.rain > 0 || storm > 0) {
       const r = Math.max(weather.rain, storm * 0.9);
@@ -995,8 +1039,8 @@
     // letterbox + captions
     ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, 46); ctx.fillRect(0, H - 46, W, 46);
     const caption = kind === "kraken"
-      ? (ct < 2000 ? "A quiet evening at the pond…" : ct < 3600 ? "…something's on the line." : ct < 4600 ? "The sky turns." : ct < 8000 ? "Tentacles." : ct < 10200 ? "" : "It's angry. RUN — and fight.")
-      : (ct < 2000 ? "A quiet evening at the pond…" : ct < 3500 ? "…the line is being dragged." : ct < 5000 ? "Something long circles under the boat." : ct < 8200 ? "" : ct < 10200 ? "" : "Break its coils, then the head.");
+      ? (ct < 2000 ? "A quiet evening at the pond…" : ct < 3600 ? "…something's on the line." : ct < 4600 ? "The sky turns. The water goes still." : ct < 8000 ? "Tentacles. It has seen you." : ct < K.RISE_MS ? "" : ct < K.RISE_MS + 1500 ? "IT'S COMING FOR THE DOCK —" : "")
+      : (ct < 2000 ? "A quiet evening at the pond…" : ct < 3500 ? "…the line is being dragged." : ct < 5000 ? "Something long circles under the boat." : ct < 8200 ? "" : ct < K.RISE_MS ? "" : ct < K.RISE_MS + 1500 ? "IT'S COMING FOR THE DOCK —" : "");
     if (caption) { ctx.fillStyle = "#e5e7eb"; ctx.font = "italic 15px Georgia, serif"; ctx.textAlign = "center"; ctx.fillText(caption, W / 2, H - 18); }
   }
   function ring3(X, Z, r) {
@@ -1023,14 +1067,16 @@
     }
     ctx.lineCap = "butt";
   }
-  function drawKraken3D(ct, t, surf) {
+  function drawKraken3D(ct, t, lunge) {
+    lunge = lunge || 0;
     // tentacle bases around (0, 0, 20): far ones first (painter's order)
     const bases = [[-9, 26], [7, 27], [-12, 19], [11, 20], [-5, 15], [5, 14]].map((b, i) => ({ X: b[0], Z: b[1], i })).sort((a, b) => b.Z - a.Z);
     const headE = easeOutBack(clamp01((ct - 8000) / 2800));
-    // head first if it's behind the front tentacles (it sits at Z ~ 21)
+    // head first if it's behind the front tentacles (it sits at Z ~ 21); during
+    // the lunge it rushes the camera (Z 21 -> 4) with the beak wide open
     const drawHead = () => {
       if (headE <= 0) return;
-      const HZ = 21, top = 7.5 * headE - 1.5, wy = waterY(HZ);
+      const HZ = 21 - 17 * lunge, top = 7.5 * headE - 1.5 + 2 * lunge, wy = waterY(HZ);
       const c = proj(0, top - 4.2, HZ); if (!c) return;
       ctx.save(); ctx.beginPath(); ctx.rect(0, 0, C3.W, wy + 2); ctx.clip();
       const rx = 6.4 * c.s, ry = 5.2 * c.s;
@@ -1041,9 +1087,10 @@
       ctx.fillStyle = "rgba(240,171,252,.35)";
       for (const [sx, sy, r] of [[-0.6, -0.5, 0.35], [0.4, -0.9, 0.3], [0.7, -0.2, 0.25], [-0.2, -1.2, 0.2], [0.1, 0.1, 0.3]]) { ctx.beginPath(); ctx.arc(c.x + sx * rx, c.y + sy * ry, r * c.s, 0, TAU); ctx.fill(); }
       drawEyes(c.x, c.y - ry * 0.35, rx * 0.42, rx * 0.19, ry * 0.26, { x: 0, y: 0.6 }, false, ct > 9800, t);
-      const open = 0.08 * c.s + 0.1 * c.s * Math.abs(Math.sin(t / 400));
+      const open = 0.08 * c.s + 0.1 * c.s * Math.abs(Math.sin(t / 400)) + 0.6 * c.s * lunge;
       ctx.fillStyle = "#1c0a2e";
-      ctx.beginPath(); ctx.moveTo(c.x - 0.18 * c.s, c.y + ry * 0.35 - open); ctx.lineTo(c.x + 0.18 * c.s, c.y + ry * 0.35 - open); ctx.lineTo(c.x, c.y + ry * 0.55 - open); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(c.x - (0.18 + 0.5 * lunge) * c.s, c.y + ry * 0.35 - open); ctx.lineTo(c.x + (0.18 + 0.5 * lunge) * c.s, c.y + ry * 0.35 - open); ctx.lineTo(c.x, c.y + ry * 0.55 + open); ctx.closePath(); ctx.fill();
+      if (lunge > 0.2) { ctx.fillStyle = "#fafaf9"; for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(c.x + i * 0.14 * c.s - 0.05 * c.s, c.y + ry * 0.35 - open); ctx.lineTo(c.x + i * 0.14 * c.s, c.y + ry * 0.35 - open + 0.22 * c.s * lunge); ctx.lineTo(c.x + i * 0.14 * c.s + 0.05 * c.s, c.y + ry * 0.35 - open); ctx.closePath(); ctx.fill(); } }
       ctx.restore();
       // foam at the waterline
       ctx.strokeStyle = `rgba(255,255,255,${headE < 1 ? 0.9 : 0.5})`; ctx.lineWidth = 3; ring3(0, HZ, 6.8 + Math.sin(t / 250) * 0.3);
@@ -1067,7 +1114,8 @@
     }
     if (!headDrawn) drawHead();
   }
-  function drawSerpent3D(ct, t) {
+  function drawSerpent3D(ct, t, lunge) {
+    lunge = lunge || 0;
     // 0-2 calm · 2-5 bobber dragged, shadow circles · 5-8.2 bursts out in an arc · 8.2+ dives; coils + head rise
     if (ct > 3200 && ct < 5300) {
       // a long dark shape circling beneath the surface
@@ -1121,14 +1169,15 @@
       }
       const he = easeOutBack(clamp01((ct - 9000) / 1600));
       if (he > 0) {
-        const HZ = 20, neckH = 9 * he;
-        const pts = []; for (let s = 0; s <= 10; s++) { const u = s / 10; pts.push({ X: Math.sin(u * 2 + t / 900) * 0.8, Y: neckH * u, Z: HZ - u * 1.5 }); }
+        // during the lunge the neck whips forward and the head fills the frame
+        const HZ = 20, neckH = 9 * he - 5.5 * lunge, headZ = HZ - 1.5 - 14 * lunge;
+        const pts = []; for (let s = 0; s <= 10; s++) { const u = s / 10; pts.push({ X: Math.sin(u * 2 + t / 900) * 0.8, Y: neckH * u, Z: HZ - u * (1.5 + 14 * lunge) }); }
         tube3(pts, 2.0, 1.6, "#0f766e", "#a7f3d0");
-        const top = pts[pts.length - 1], hq = proj(top.X, top.Y + 0.6, top.Z), jq = proj(top.X, top.Y - 0.9, top.Z - 1.2);
+        const top = pts[pts.length - 1], hq = proj(top.X, top.Y + 0.6, headZ), jq = proj(top.X, top.Y - 0.9, headZ - 1.2);
         if (hq && jq) {
           ctx.fillStyle = "#0f766e"; ctx.beginPath(); ctx.moveTo(hq.x - 1.6 * hq.s, hq.y); ctx.quadraticCurveTo(hq.x, hq.y - 2.2 * hq.s, hq.x + 1.6 * hq.s, hq.y); ctx.quadraticCurveTo(hq.x + 1.1 * hq.s, hq.y + 1.6 * hq.s, hq.x, hq.y + 2.4 * hq.s); ctx.quadraticCurveTo(hq.x - 1.1 * hq.s, hq.y + 1.6 * hq.s, hq.x - 1.6 * hq.s, hq.y); ctx.closePath(); ctx.fill();
           ctx.fillStyle = "#e7e5e4"; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(hq.x + s * 0.9 * hq.s, hq.y - 1.2 * hq.s); ctx.quadraticCurveTo(hq.x + s * 1.9 * hq.s, hq.y - 2.4 * hq.s, hq.x + s * 1.3 * hq.s, hq.y - 3.2 * hq.s); ctx.quadraticCurveTo(hq.x + s * 1.4 * hq.s, hq.y - 2.2 * hq.s, hq.x + s * 0.5 * hq.s, hq.y - 1.5 * hq.s); ctx.closePath(); ctx.fill(); }
-          const open = (0.3 + 0.3 * Math.abs(Math.sin(t / 420))) * hq.s;
+          const open = (0.3 + 0.3 * Math.abs(Math.sin(t / 420)) + 1.2 * lunge) * hq.s;
           ctx.fillStyle = "#1c0a0a"; ctx.beginPath(); ctx.moveTo(hq.x - 0.9 * hq.s, hq.y + 0.9 * hq.s); ctx.quadraticCurveTo(hq.x, hq.y + 1.1 * hq.s + open, hq.x + 0.9 * hq.s, hq.y + 0.9 * hq.s); ctx.lineTo(hq.x, hq.y + 2.2 * hq.s + open * 0.6); ctx.closePath(); ctx.fill();
           ctx.fillStyle = "#fafaf9"; for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.moveTo(hq.x + i * 0.24 * hq.s - 0.08 * hq.s, hq.y + 0.95 * hq.s); ctx.lineTo(hq.x + i * 0.24 * hq.s, hq.y + 1.3 * hq.s + open * 0.3); ctx.lineTo(hq.x + i * 0.24 * hq.s + 0.08 * hq.s, hq.y + 0.95 * hq.s); ctx.closePath(); ctx.fill(); }
           drawEyes(hq.x, hq.y - 0.4 * hq.s, 0.8 * hq.s, 0.34 * hq.s, 0.4 * hq.s, { x: 0, y: 0.7 }, false, true, t);
@@ -1207,10 +1256,10 @@
       a = clamp01((ct - 2400) / 400) * (ct > cine.dur - 500 ? clamp01((cine.dur - ct) / 500) : 1);
     } else if (cine.kind === "kraken" && ct > 8400) {
       col = "#e9d5ff"; text = "THE KRAKEN"; sub = "it took the bait… and the boat";
-      a = clamp01((ct - 8400) / 500) * (ct > cine.dur - 400 ? clamp01((cine.dur - ct) / 400) : 1);
+      a = clamp01((ct - 8400) / 500) * clamp01((K.RISE_MS + 300 - ct) / 400);
     } else if (cine.kind === "serpent" && ct > 8600) {
       col = "#99f6e4"; text = "THE SEA SERPENT"; sub = "older than the town, hungrier than the lake";
-      a = clamp01((ct - 8600) / 500) * (ct > cine.dur - 400 ? clamp01((cine.dur - ct) / 400) : 1);
+      a = clamp01((ct - 8600) / 500) * clamp01((K.RISE_MS + 300 - ct) / 400);
     }
     if (!text || a <= 0) return;
     const pop = ct < 2800 && cine.kind === "catch" ? easeOutBack(clamp01((ct - 2400) / 400)) : 1;
@@ -1246,6 +1295,11 @@
     drawBossBar(t);
     drawFightHud();
     drawBanner(t);
+    // Bystanders near the lake: the ground shakes and a warning flashes while it rises.
+    if (boss && boss.status === "rising" && nearLake(320) && bossT() > 3400 && Math.floor(t / 450) % 2 === 0) {
+      ctx.fillStyle = "rgba(239,68,68,.92)"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("⚠  A SEA BEAST IS RISING FROM THE POND  ⚠", canvas.width / 2, 100);
+    }
     if (now() < stunUntil) {
       ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#fde68a"; ctx.font = "bold 22px sans-serif"; ctx.textAlign = "center";

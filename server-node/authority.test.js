@@ -270,23 +270,22 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     assert(r.ok && ECON.FISH_RARITIES.includes(r.data.rarity) && r.data.biteIn > 0 && r.data.castId, 'cast answers with rarity + bite delay only: ' + (r.ok && r.data.rarity));
     assert(!(await tryRpc(bob, 'fish', { action: 'cast' })).ok, 'casting over a pending line (rarity re-roll) rejected');
     assert(!(await tryRpc(bob, 'fish', { action: 'reel', landed: true })).ok, 'landing before the bite / minimum reel time rejected');
-    // that rejection consumed the cast; the next cast is inside the cooldown
-    assert(!(await tryRpc(bob, 'fish', { action: 'cast' })).ok, 'cast inside 4s cooldown rejected');
-    await sleep(ECON.FISH_CATCH_COOLDOWN + 100);
+    // that rejection consumed the cast and counts as a lost line: short wait
+    assert(!(await tryRpc(bob, 'fish', { action: 'cast' })).ok, 'cast right after a failed landing rejected (short cooldown)');
+    await sleep(ECON.FISH_LOST_COOLDOWN + 100);
     r = await tryRpc(bob, 'fish', { action: 'cast' });
-    assert(r.ok, 'cast after cooldown ok');
+    assert(r.ok, 'cast after the short cooldown ok');
     let cfg = ECON.REEL_CFG[r.data.rarity];
     await sleep(r.data.biteIn + cfg.minMs + 150);
     r = await tryRpc(bob, 'fish', { action: 'reel', landed: true });
-    assert(r.ok && r.data.fish && r.data.fishInventory[r.data.fish.name] === 1 && r.data.kraken === false, 'reel after the minimum time lands the fish: ' + (r.ok && r.data.fish.name));
+    assert(r.ok && r.data.fish && r.data.fishInventory[r.data.fish.name] === 1 && r.data.kraken === false && r.data.nextCastIn === 0, 'reel after the minimum time lands the fish: ' + (r.ok && r.data.fish.name));
     const fname = r.data.fish.name;
-    await sleep(ECON.FISH_CATCH_COOLDOWN + 100);
     r = await tryRpc(bob, 'fish', { action: 'cast' });
+    assert(r.ok, 'a landed fish can be followed by a cast straight away');
     r = await tryRpc(bob, 'fish', { action: 'reel', landed: false });
-    assert(r.ok && r.data.lost === true && !r.data.fish, 'a lost reel banks nothing');
-    await sleep(ECON.FISH_CATCH_COOLDOWN + 100);
-    assert(!(await tryRpc(bob, 'fish', { action: 'cast' })).ok, 'giving up a line costs a longer cooldown');
-    await sleep(3100);
+    assert(r.ok && r.data.lost === true && !r.data.fish && r.data.nextCastIn === ECON.FISH_LOST_COOLDOWN, 'a lost reel banks nothing and reports the short wait');
+    assert(!(await tryRpc(bob, 'fish', { action: 'cast' })).ok, 'giving up a line waits before the next cast');
+    await sleep(ECON.FISH_LOST_COOLDOWN + 100);
     // staff pick: the owner chooses the catch, server-verified
     r = await tryRpc(owner, 'fish', { action: 'cast', pick: 'Moonlight Whale' });
     assert(r.ok && r.data.rarity === 'mythical', 'staff pick sets the catch (mythical rarity reported)');
@@ -366,7 +365,7 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     assert(r.ok && r.data.rarity !== 'kraken', 'a kraken cast never reveals itself before the fish is landed');
     await sleep(r.data.biteIn + ECON.REEL_CFG[r.data.rarity].minMs + 150);
     r = await tryRpc(owner, 'fish', { action: 'reel', landed: true });
-    assert(r.ok && r.data.kraken === true && r.data.beast === 'kraken', 'landing the fish wakes the kraken');
+    assert(r.ok && r.data.kraken === true && r.data.beast === 'kraken', 'landing the fish wakes the kraken: ' + (r.ok ? JSON.stringify({ kraken: r.data.kraken, beast: r.data.beast }) : r.err));
     r = await tryRpc(bob, 'kraken', { action: 'status' });
     assert(r.ok && r.data.kraken && r.data.kraken.kind === 'kraken' && r.data.kraken.status === 'rising' && r.data.kraken.parts.length === ECON.BEASTS.kraken.parts, 'everyone sees it rising');
     assert(!(await tryRpc(owner, 'fish', { action: 'cast', pick: 'serpent' })).ok, 'the serpent cannot be summoned while the kraken is up');
@@ -384,6 +383,20 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     r = await tryRpc(bob, 'kraken', { action: 'hit', part: 0, weapon: 'sword' });
     assert(r.ok && r.data.dmg === ECON.KRAKEN.HIT_DMG.sword && r.data.hp === r.data.maxHp - ECON.KRAKEN.HIT_DMG.sword, 'a sword hit in reach lands for ' + ECON.KRAKEN.HIT_DMG.sword);
     assert(!(await tryRpc(bob, 'kraken', { action: 'hit', part: 0, weapon: 'sword' })).ok, 'swinging faster than the weapon allows rejected');
+    // a second fighter joins (first hit): every part gets +50% max HP, keeping its fraction
+    {
+        const before = (await bob.rpc('kraken', { action: 'status' })).kraken;
+        const p0 = before.parts[0], head0 = before.head;
+        await alice.rpc('presence', { data: { x: tp.x - 60, y: tp.y + 40, area: 'neighborhood' } });
+        await sleep(100);
+        const ah = await tryRpc(alice, 'kraken', { action: 'hit', part: 0, weapon: 'sword' });
+        const after = (await bob.rpc('kraken', { action: 'status' })).kraken;
+        const expMax = Math.round(p0.maxHp * 1.5);
+        const expHp = Math.max(1, Math.round(p0.hp / p0.maxHp * expMax)) - ECON.KRAKEN.HIT_DMG.sword;
+        assert(ah.ok && after.hpMult === 1.5 && after.parts[0].maxHp === expMax && after.parts[0].hp === expHp, `second fighter scales the part to ${expMax} max, fraction kept (${after.parts[0].hp}/${after.parts[0].maxHp})`);
+        assert(after.head.maxHp === Math.round(head0.maxHp * 1.5) && after.head.hp === after.head.maxHp, 'the untouched head scales the same way');
+        assert(after.leavesIn > 0 && after.leavesIn <= ECON.KRAKEN.MAX_LIFE_MS, 'the beast reports when it will sink back');
+    }
     assert(!(await tryRpc(bob, 'put', { path: 'users/bob/fishInventory', value: { 'Golden Kraken Tentacle': 50 } })).ok, 'clients cannot write loot into their bucket');
 
     console.log('casino');

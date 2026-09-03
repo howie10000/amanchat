@@ -168,7 +168,7 @@ function visibleHouseUsers() {
   const users = state._userCache || {};
   const out = {};
   for (const [u, info] of Object.entries(users)) {
-    if (!info || info.houseIndex == null || u === "mayor") continue;
+    if (!info || info.houseIndex == null) continue;   // the mayor lives here too
     out[u] = info;
   }
   return out;

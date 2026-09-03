@@ -690,14 +690,22 @@ function loop(now) {
   if (dt > 250) dt = 250;
   _loopAcc += dt;
   let ticks = 0;
-  while (_loopAcc >= TICK_MS && ticks < MAX_TICKS_PER_FRAME) {
-    update();
-    interpolateOthers();
-    _loopAcc -= TICK_MS;
-    ticks++;
+  // One thrown error in a draw or update used to end the animation loop for
+  // good (the game "froze" until a reload). Log it and keep the loop alive.
+  try {
+    while (_loopAcc >= TICK_MS && ticks < MAX_TICKS_PER_FRAME) {
+      update();
+      interpolateOthers();
+      _loopAcc -= TICK_MS;
+      ticks++;
+    }
+    if (ticks === MAX_TICKS_PER_FRAME) _loopAcc = 0;
+    draw();
+  } catch (e) {
+    console.error("[loop]", e);
+    _loopAcc = 0;
+    try { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.setLineDash([]); } catch (e2) {}
   }
-  if (ticks === MAX_TICKS_PER_FRAME) _loopAcc = 0;
-  draw();
   requestAnimationFrame(loop);
 }
 

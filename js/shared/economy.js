@@ -315,7 +315,8 @@
     return FISH_TABLE.find(f => f.name === name) || LOOT_TABLE.find(f => f.name === name) || null;
   }
   function fishLuckPts(def) { return def ? (def.luckPts != null ? def.luckPts : (RARITY_INFO[def.rarity] || RARITY_INFO.common).luckPts) : 0; }
-  const FISH_CATCH_COOLDOWN = 4000;    // between the end of one reel and the next cast
+  const FISH_CATCH_COOLDOWN = 4000;    // base gate; a landed fish waives it, a lost/abandoned line waits FISH_LOST_COOLDOWN
+  const FISH_LOST_COOLDOWN = 2500;
   const FISH_CAST_TTL = 90000;         // a cast nobody reels expires
 
   // Deterministic per-hour price: 0.5x - 1.8x of base value.
@@ -452,12 +453,18 @@
       for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
       return pool.slice(0, n);
     };
+    // Stock is deliberately lumpy: a rotation might land 1 of something or a
+    // crate of 22, never the same "9 of 9" every time.
+    const stockOf = (rarity) => {
+      const table = { common: [1, 2, 3, 5, 6, 8, 9, 12, 15, 18, 22, 30], rare: [1, 1, 2, 3, 4, 5, 7, 9, 12], epic: [1, 1, 2, 3, 4, 6], legendary: [1, 1, 2, 3], mythical: [1, 1, 2] }[rarity];
+      return table[Math.floor(rng() * table.length)];
+    };
     const out = [];
-    for (const c of pick("common", 4)) out.push({ id: c.id, stock: 8 + Math.floor(rng() * 13) });
-    for (const c of pick("rare", 2 + (rng() < 0.4 ? 1 : 0))) out.push({ id: c.id, stock: 3 + Math.floor(rng() * 6) });
-    if (rng() < 0.55) for (const c of pick("epic", 1 + (rng() < 0.3 ? 1 : 0))) out.push({ id: c.id, stock: 1 + Math.floor(rng() * 3) });
-    if (rng() < 0.22) for (const c of pick("legendary", 1)) out.push({ id: c.id, stock: 1 + (rng() < 0.4 ? 1 : 0) });
-    if (rng() < 0.06) for (const c of pick("mythical", 1)) out.push({ id: c.id, stock: 1 });
+    for (const c of pick("common", 4)) out.push({ id: c.id, stock: stockOf("common") });
+    for (const c of pick("rare", 2 + (rng() < 0.4 ? 1 : 0))) out.push({ id: c.id, stock: stockOf("rare") });
+    if (rng() < 0.55) for (const c of pick("epic", 1 + (rng() < 0.3 ? 1 : 0))) out.push({ id: c.id, stock: stockOf("epic") });
+    if (rng() < 0.22) for (const c of pick("legendary", 1)) out.push({ id: c.id, stock: stockOf("legendary") });
+    if (rng() < 0.06) for (const c of pick("mythical", 1)) out.push({ id: c.id, stock: stockOf("mythical") });
     return out;
   }
   function seedShopRestockIn(now) { now = now == null ? Date.now() : now; return SEED_SHOP_PERIOD - (now % SEED_SHOP_PERIOD); }
@@ -502,7 +509,10 @@
   const KRAKEN = {
     RISE_MS: 11000,               // cinematic: the beast surfaces before it can be hit
     TENTACLES: 6,
-    BASE_HP: 2400, HP_PER_PLAYER: 1200, HEAD_FRAC: 0.45,
+    // Solo HP. Every extra fighter who lands a hit scales EVERY part's max HP
+    // (and current HP, keeping its fraction) by +50%, so bars never jump.
+    BASE_HP: 2400, HP_PER_PLAYER: 0.5, HEAD_FRAC: 0.45,
+    MAX_LIFE_MS: 15 * 60000,      // an unkilled beast sinks back after this
     ATTACK_EVERY_MS: 2000, SLAM_WARN_MS: 1000, SLAM_RADIUS: 54, SLAM_DMG: 34,
     ENRAGE_FRAC: 0.35, ENRAGE_SPEED: 0.6,   // below 35% hp attacks come 40% faster
     HIT_DMG: { sword: 55, pistol: 22 },
@@ -550,7 +560,7 @@
     return { x: LAKE.x + Math.cos(a) * LAKE.rx * k, y: LAKE.y + Math.sin(a) * LAKE.ry * k, a };
   }
   function krakenPartPos(i, n) { return beastPartPos("kraken", i, n); }
-  function krakenMaxHp(players) { return KRAKEN.BASE_HP + KRAKEN.HP_PER_PLAYER * Math.max(0, (players | 0) - 1); }
+  function krakenMaxHp(players) { return Math.round(KRAKEN.BASE_HP * (1 + KRAKEN.HP_PER_PLAYER * Math.max(0, (players | 0) - 1))); }
   function pickAttack(kind, rand) {
     rand = rand || Math.random;
     const deck = (BEASTS[kind] || BEASTS.kraken).attacks;
@@ -581,7 +591,7 @@
     mulberry32, strToSeed, marketStock,
     LAKE, LAKE_FIGHT_RADIUS, atLake,
     FISH_RARITIES, RARITY_INFO, FISH_TABLE, LOOT_TABLE, FISH_JUNK_NAMES, fishDef, fishLuckPts,
-    FISH_CATCH_COOLDOWN, FISH_CAST_TTL, fishPriceNow, fishQualityLabel,
+    FISH_CATCH_COOLDOWN, FISH_LOST_COOLDOWN, FISH_CAST_TTL, fishPriceNow, fishQualityLabel,
     REEL_CFG, REEL_START_PROGRESS, rarityWeights, rollRarity, rollFishOfRarity, rollFish, krakenChance, BEAST_KINDS, rollBeastKind,
     LUCK_MAX_LEVEL, luckEffects, luckDurationMs, activeLuck,
     FARM_PLOTS, CROPS, CROP_BY_ID, cropYield, SEED_SHOP_PERIOD, seedShopBucket, seedShopStock, seedShopRestockIn,

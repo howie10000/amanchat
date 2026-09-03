@@ -181,6 +181,23 @@ function setFishBtn(text, cls) {
   const b = document.getElementById("fishBtn");
   if (b) { b.textContent = text; b.className = "menuBtn bigBtn " + (cls || "green"); b.disabled = false; }
 }
+// A lost / abandoned line waits a moment before the next cast (the server
+// enforces it); show the countdown on the button instead of an error.
+let _castCdTimer = null;
+function castCooldownBtn(ms) {
+  clearInterval(_castCdTimer);
+  if (!(ms > 0)) return;
+  const until = Date.now() + ms;
+  const tick = () => {
+    const b = document.getElementById("fishBtn");
+    const left = until - Date.now();
+    if (!b || !menuOpen() || _fishState !== "idle") { clearInterval(_castCdTimer); return; }
+    if (left <= 0) { clearInterval(_castCdTimer); setFishBtn("CAST", "green"); return; }
+    b.disabled = true; b.className = "menuBtn bigBtn gray"; b.textContent = `CAST (${(left / 1000).toFixed(1)}s)`;
+  };
+  tick();
+  _castCdTimer = setInterval(tick, 100);
+}
 
 async function fishAction() {
   if (!menuOpen()) return;
@@ -208,7 +225,7 @@ async function fishAction() {
   } else if (_fishState === "waiting") {
     clearFishTimers(); _fishRaf = requestAnimationFrame(fishFrame);
     _fishState = "idle"; _cast = null;
-    netFish({ action: "reel", landed: false }).catch(() => {});
+    netFish({ action: "reel", landed: false }).then(d => castCooldownBtn(d && d.nextCastIn || 0)).catch(() => {});
     setFishStatus("You reeled in too early — the line came back empty.", "#f87171");
     setFishBtn("CAST", "green");
   } else if (_fishState === "bite") {
@@ -227,7 +244,7 @@ function onBite() {
   _fishMissTimer = setTimeout(() => {
     if (!menuOpen() || _fishState !== "bite") return;
     _fishState = "idle"; _cast = null;
-    netFish({ action: "reel", landed: false }).catch(() => {});
+    netFish({ action: "reel", landed: false }).then(d => castCooldownBtn(d && d.nextCastIn || 0)).catch(() => {});
     setFishStatus("Too slow — it spat the hook.", "#f87171");
     setFishBtn("CAST", "green");
   }, 950);
@@ -293,6 +310,7 @@ async function finishReel(landed) {
     _fishSplash = 400;
     setFishStatus("It got away…", "#f87171");
     setFishBtn("CAST", "green");
+    castCooldownBtn(d.nextCastIn || 0);
     return;
   }
   const fish = d.fish;

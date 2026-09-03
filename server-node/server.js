@@ -1129,12 +1129,13 @@ function spawnKraken(user, kind) {
     const now = Date.now();
     kind = ECON.BEASTS[kind] ? kind : 'kraken';
     const def = ECON.BEASTS[kind];
-    const n = Math.max(1, lakeClients().length);
-    const maxHp = ECON.krakenMaxHp(n);
+    // Solo-sized at spawn; every fighter who joins (first hit) scales it up.
+    const maxHp = ECON.krakenMaxHp(1);
     const headHp = Math.floor(maxHp * ECON.KRAKEN.HEAD_FRAC);
     const tentHp = Math.floor((maxHp - headHp) / def.parts);
     kraken = {
         id: pushId(), kind, status: 'rising', spawnedAt: now, spawnedBy: user, diedAt: 0,
+        baseHead: headHp, basePart: tentHp, hpMult: 1,
         maxHp: headHp + tentHp * def.parts,
         head: { hp: headHp, maxHp: headHp },
         parts: Array.from({ length: def.parts }, () => ({ hp: tentHp, maxHp: tentHp })),
@@ -1143,8 +1144,24 @@ function spawnKraken(user, kind) {
         lastBroadcast: 0, lastTick: 0, lastAttack: null,
         hitLast: new Map(),
     };
-    console.log(`[beast] ${kind} surfaced — hooked by ${user}, ${n} at the lake, ${kraken.maxHp} hp`);
+    console.log(`[beast] ${kind} surfaced — hooked by ${user}, ${lakeClients().length} at the lake, ${kraken.maxHp} hp solo-sized`);
     broadcastKraken('spawn');
+}
+// A new fighter joined (first hit): every part gets +50% max HP and keeps its
+// current FRACTION, so nobody's bar jumps — it just drains slower from here.
+function rescaleBeast() {
+    const n = Object.keys(kraken.damage).length;
+    const mult = 1 + ECON.KRAKEN.HP_PER_PLAYER * Math.max(0, n - 1);
+    if (mult === kraken.hpMult) return;
+    kraken.hpMult = mult;
+    const scale = (p, base) => {
+        const frac = p.maxHp > 0 ? p.hp / p.maxHp : 0;
+        p.maxHp = Math.round(base * mult);
+        p.hp = p.hp > 0 ? Math.max(1, Math.round(frac * p.maxHp)) : 0;
+    };
+    scale(kraken.head, kraken.baseHead);
+    for (const p of kraken.parts) scale(p, kraken.basePart);
+    kraken.maxHp = kraken.head.maxHp + kraken.parts.reduce((s, p) => s + p.maxHp, 0);
 }
 function beastEnraged() { return !!kraken && (kraken.head.hp + kraken.parts.reduce((s, p) => s + p.hp, 0)) / kraken.maxHp < ECON.KRAKEN.ENRAGE_FRAC; }
 // Build one telegraphed attack from the beast's deck, aimed at the players
@@ -1202,7 +1219,8 @@ function krakenView(now) {
     const hp = kraken.head.hp + kraken.parts.reduce((s, p) => s + p.hp, 0);
     const top = Object.entries(kraken.damage).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([u, d]) => ({ user: u, dmg: d }));
     return {
-        id: kraken.id, kind: kraken.kind, status: kraken.status, spawnedBy: kraken.spawnedBy, enraged: beastEnraged(),
+        id: kraken.id, kind: kraken.kind, status: kraken.status, spawnedBy: kraken.spawnedBy, enraged: beastEnraged(), hpMult: kraken.hpMult,
+        leavesIn: Math.max(0, ECON.KRAKEN.MAX_LIFE_MS - (now - kraken.spawnedAt)),
         elapsed: now - kraken.spawnedAt, riseMs: ECON.KRAKEN.RISE_MS,
         deadFor: kraken.diedAt ? now - kraken.diedAt : 0,
         hp, maxHp: kraken.maxHp, head: kraken.head, parts: kraken.parts,
@@ -1249,6 +1267,15 @@ function krakenDie(now) {
 function krakenTick() {
     if (!kraken) return;
     const now = Date.now();
+    // Nobody finished it in time: it sinks back, the weather clears, and the
+    // usual rest period applies before another can surface.
+    if (kraken.status !== 'dead' && now - kraken.spawnedAt > ECON.KRAKEN.MAX_LIFE_MS) {
+        console.log(`[beast] ${kraken.kind} sank back unbeaten`);
+        kraken = null;
+        krakenDiedAt = now;
+        broadcastKraken('gone', { reason: 'timeout' });
+        return;
+    }
     if (kraken.status === 'rising' && now - kraken.spawnedAt >= ECON.KRAKEN.RISE_MS) {
         kraken.status = 'alive';
         broadcastKraken('alive');
@@ -1675,7 +1702,7 @@ const ECONOMY_OPS = {
         const L = luck ? luck.level : 0;
         if (msg.action === 'cast') {
             const last = fishLast.get(user) || 0;
-            if (now - last < ECON.FISH_CATCH_COOLDOWN) throw new Error('The line is still out.');
+            if (now - last < ECON.FISH_CATCH_COOLDOWN) throw new Error(`Give it a second — cast again in ${Math.ceil((ECON.FISH_CATCH_COOLDOWN - (now - last)) / 1000)}s.`);
             // One line at a time: re-casting over a pending cast would let a
             // player re-roll until the rarity they like comes up.
             const pending = fishCasts.get(user);
@@ -1706,18 +1733,23 @@ const ECONOMY_OPS = {
             const cast = fishCasts.get(user);
             if (!cast) throw new Error('Cast your line first.');
             fishCasts.delete(user);
-            // Giving up on a line (to fish for a better rarity) waits longer than a landed one.
-            fishLast.set(user, msg.landed ? now : now + 3000);
-            if (!msg.landed) return { money: moneyOf(u), fishInventory: inv, fish: null, lost: true, rarity: cast.fish.rarity };
+            // A lost / abandoned / rejected line waits FISH_LOST_COOLDOWN before
+            // the next cast (so nobody re-rolls rarities for free); a landed
+            // fish can be followed by a cast straight away.
+            let nextCastIn = ECON.FISH_LOST_COOLDOWN;
+            fishLast.set(user, now + nextCastIn - ECON.FISH_CATCH_COOLDOWN);
+            if (!msg.landed) return { money: moneyOf(u), fishInventory: inv, fish: null, lost: true, rarity: cast.fish.rarity, nextCastIn };
             if (now - cast.at > ECON.FISH_CAST_TTL) throw new Error('That cast went stale — cast again.');
             const cfg = ECON.REEL_CFG[cast.fish.rarity] || ECON.REEL_CFG.common;
             if (now - cast.biteAt < cfg.minMs) throw new Error('Nobody reels that fast.');
+            nextCastIn = 0;
+            fishLast.set(user, now - ECON.FISH_CATCH_COOLDOWN);
             const fish = cast.fish;
             inv[fish.name] = (inv[fish.name] || 0) + 1;
             u.fishInventory = inv; store.put(`users/${user}/fishInventory`, inv);
             let spawned = null;
             if (cast.beast && !krakenBlocked()) { spawnKraken(user, cast.beast); spawned = cast.beast; }
-            return { money: moneyOf(u), fishInventory: inv, fish, rarity: fish.rarity, kraken: !!spawned, beast: spawned, luck: L };
+            return { money: moneyOf(u), fishInventory: inv, fish, rarity: fish.rarity, kraken: !!spawned, beast: spawned, luck: L, nextCastIn };
         }
         if (msg.action === 'sell') {
             const fish = ECON.fishDef(msg.name);
@@ -1919,6 +1951,7 @@ const ECONOMY_OPS = {
             if (target.hp <= 0) throw new Error('That part is already down.');
             if (Math.hypot(p.x - pos.x, p.y - pos.y) > ECON.KRAKEN.REACH[weapon] + 60) throw new Error('Out of reach.');
             kraken.hitLast.set(k, now);
+            if (!(kraken.damage[user] > 0)) { kraken.damage[user] = 0; rescaleBeast(); }
             const dmg = Math.min(target.hp, ECON.KRAKEN.HIT_DMG[weapon]);
             target.hp -= dmg;
             kraken.damage[user] = (kraken.damage[user] || 0) + dmg;
