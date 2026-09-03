@@ -256,18 +256,65 @@
     return [...pickFrom("legendary", nLegend), ...pickFrom("rare", 8), ...pickFrom("common", 12)];
   }
 
+  // ---------- the lake (shared geometry) ----------
+  // world.js draws the pond from this; the server uses it to decide who is
+  // "at the lake" during a Kraken fight and where each tentacle stands, so
+  // both sides agree on every position without a round-trip.
+  const LAKE = { x: 620, y: 1600, rx: 300, ry: 190 };
+  const LAKE_FIGHT_RADIUS = 620;   // px from the pond centre that counts as "at the lake"
+
   // ---------- fishing ----------
+  // Five rarity tiers. `weight` on a fish is its share WITHIN its tier; the
+  // tier itself is rolled first from RARITY_INFO.weight (shifted by luck).
+  const FISH_RARITIES = ["common", "rare", "epic", "legendary", "mythical"];
+  const RARITY_INFO = {
+    common:    { label: "Common",    color: "#94a3b8", weight: 62,  luckPts: 1 },
+    rare:      { label: "Rare",      color: "#3b82f6", weight: 24,  luckPts: 2 },
+    epic:      { label: "Epic",      color: "#a855f7", weight: 9.5, luckPts: 3 },
+    legendary: { label: "Legendary", color: "#fbbf24", weight: 3.5, luckPts: 5 },
+    mythical:  { label: "Mythical",  color: "#e879f9", weight: 1.0, luckPts: 8 },
+  };
   const FISH_TABLE = [
-    { name: "Old Boot", emoji: "🥾", value: 5,   weight: 14 },
-    { name: "Minnow",   emoji: "🐟", value: 25,  weight: 30 },
-    { name: "Bass",     emoji: "🐠", value: 60,  weight: 26 },
-    { name: "Salmon",   emoji: "🍣", value: 120, weight: 16 },
-    { name: "Pufferfish",emoji:"🐡", value: 200, weight: 9 },
-    { name: "Golden Koi",emoji:"✨🐟",value: 600, weight: 4 },
-    { name: "Kraken",   emoji: "🦑", value: 1500,weight: 1 },
+    // common
+    { name: "Old Boot",     emoji: "🥾", value: 5,    rarity: "common", weight: 10, junk: true },
+    { name: "Minnow",       emoji: "🐟", value: 25,   rarity: "common", weight: 26 },
+    { name: "Sardine",      emoji: "🐟", value: 30,   rarity: "common", weight: 22 },
+    { name: "Bluegill",     emoji: "🐠", value: 40,   rarity: "common", weight: 18 },
+    { name: "Carp",         emoji: "🐟", value: 50,   rarity: "common", weight: 14 },
+    { name: "Bass",         emoji: "🐠", value: 60,   rarity: "common", weight: 12 },
+    // rare
+    { name: "Salmon",       emoji: "🍣", value: 120,  rarity: "rare", weight: 30 },
+    { name: "Catfish",      emoji: "🐡", value: 160,  rarity: "rare", weight: 26 },
+    { name: "Rainbow Trout",emoji: "🌈", value: 180,  rarity: "rare", weight: 24 },
+    { name: "Pufferfish",   emoji: "🐡", value: 200,  rarity: "rare", weight: 20 },
+    // epic
+    { name: "Golden Koi",   emoji: "✨", value: 600,  rarity: "epic", weight: 30 },
+    { name: "Electric Eel", emoji: "⚡", value: 650,  rarity: "epic", weight: 26 },
+    { name: "Swordfish",    emoji: "🗡️", value: 700,  rarity: "epic", weight: 24 },
+    { name: "Anglerfish",   emoji: "🔦", value: 750,  rarity: "epic", weight: 20 },
+    // legendary
+    { name: "Marlin",       emoji: "🐬", value: 1800, rarity: "legendary", weight: 40 },
+    { name: "Ghost Pike",   emoji: "👻", value: 2200, rarity: "legendary", weight: 34 },
+    { name: "Crystal Carp", emoji: "💎", value: 2500, rarity: "legendary", weight: 26 },
+    // mythical
+    { name: "Leviathan Fry",  emoji: "🐉", value: 8000,  rarity: "mythical", weight: 45 },
+    { name: "Phoenix Fish",   emoji: "🔥", value: 9000,  rarity: "mythical", weight: 35 },
+    { name: "Moonlight Whale",emoji: "🌙", value: 12000, rarity: "mythical", weight: 20 },
   ];
-  const FISH_JUNK_NAMES = ["Old Boot", "Minnow"];
-  const FISH_CATCH_COOLDOWN = 4000;
+  // Things that live in the fish bucket but aren't fished up: Kraken drops
+  // (and the old pre-update "Kraken" catch, kept so legacy buckets still sell).
+  const LOOT_TABLE = [
+    { name: "Kraken Tentacle",        emoji: "🐙", value: 900,  rarity: "legendary", luckPts: 6,  loot: true },
+    { name: "Golden Kraken Tentacle", emoji: "✨🐙", value: 6000, rarity: "mythical",  luckPts: 12, loot: true, golden: true },
+    { name: "Kraken",                 emoji: "🦑", value: 1500, rarity: "legendary", luckPts: 5,  loot: true, legacy: true },
+  ];
+  const FISH_JUNK_NAMES = FISH_TABLE.filter(f => f.junk).map(f => f.name);
+  function fishDef(name) {
+    return FISH_TABLE.find(f => f.name === name) || LOOT_TABLE.find(f => f.name === name) || null;
+  }
+  function fishLuckPts(def) { return def ? (def.luckPts != null ? def.luckPts : (RARITY_INFO[def.rarity] || RARITY_INFO.common).luckPts) : 0; }
+  const FISH_CATCH_COOLDOWN = 4000;    // between the end of one reel and the next cast
+  const FISH_CAST_TTL = 90000;         // a cast nobody reels expires
 
   // Deterministic per-hour price: 0.5x - 1.8x of base value.
   function fishPriceNow(fish, now) {
@@ -277,25 +324,180 @@
     return Math.max(1, Math.round(fish.value * mult));
   }
 
-  // quality: 0..1 reel accuracy (1 = marker dead centre). Mirrors outdoor.js's
-  // thresholds on |marker - 50|: <=6 perfect, <=16 good, else poor — and a poor
-  // reel snaps the line half the time (returns null).
+  // Reel minigame tuning per rarity. The gauge is a vertical bar: a hook
+  // marker falls under `gravity` and each click gives it `impulse` upward;
+  // the target zone (`zone` of the bar tall) drifts at up to `zoneSpeed`
+  // bar-heights per second. Progress rises by `gain`/s inside the zone and
+  // drops by `loss`/s outside; full = landed, empty = lost. The server only
+  // accepts a landing after `minMs` — the fastest a perfect reel could take.
+  const REEL_CFG = {
+    // Tuned so an average clicker lands a common in ~2s and a mythical in
+    // ~10s of sweaty reeling (see the simulation in the update notes).
+    common:    { zone: 0.34, zoneSpeed: 0.18, gravity: 1.6, impulse: 0.55, gain: 0.34, loss: 0.25 },
+    rare:      { zone: 0.28, zoneSpeed: 0.24, gravity: 1.8, impulse: 0.58, gain: 0.27, loss: 0.28 },
+    epic:      { zone: 0.23, zoneSpeed: 0.30, gravity: 2.0, impulse: 0.60, gain: 0.22, loss: 0.30 },
+    legendary: { zone: 0.19, zoneSpeed: 0.36, gravity: 2.2, impulse: 0.62, gain: 0.18, loss: 0.28 },
+    mythical:  { zone: 0.16, zoneSpeed: 0.40, gravity: 2.3, impulse: 0.58, gain: 0.16, loss: 0.22 },
+    kraken:    { zone: 0.18, zoneSpeed: 0.45, gravity: 2.4, impulse: 0.60, gain: 0.15, loss: 0.25 },
+  };
+  // The gauge starts part-full so a player has a buffer; the server's floor is
+  // 90% of the time a flawless reel from that start would take.
+  const REEL_START_PROGRESS = 0.35;
+  for (const k of Object.keys(REEL_CFG)) REEL_CFG[k].minMs = Math.floor(0.9 * (1 - REEL_START_PROGRESS) * 1000 / REEL_CFG[k].gain);
+
+  // Rarity roll. Luck (0..LUCK_MAX_LEVEL, from a cooked meal) scales every
+  // non-common tier's weight up, so a lucky player sees more of the good stuff.
+  function rarityWeights(luckLevel) {
+    const L = Math.max(0, Math.min(LUCK_MAX_LEVEL, +luckLevel || 0));
+    const out = {};
+    for (const r of FISH_RARITIES) out[r] = RARITY_INFO[r].weight * (r === "common" ? 1 : 1 + 0.3 * L);
+    return out;
+  }
+  function rollRarity(luckLevel, rand) {
+    rand = rand || Math.random;
+    const w = rarityWeights(luckLevel);
+    const total = FISH_RARITIES.reduce((s, r) => s + w[r], 0);
+    let x = rand() * total;
+    for (const r of FISH_RARITIES) { if ((x -= w[r]) <= 0) return r; }
+    return "common";
+  }
+  function rollFishOfRarity(rarity, rand) {
+    rand = rand || Math.random;
+    const table = FISH_TABLE.filter(f => f.rarity === rarity);
+    const total = table.reduce((s, f) => s + f.weight, 0);
+    let x = rand() * total;
+    for (const f of table) { if ((x -= f.weight) <= 0) return f; }
+    return table[0];
+  }
+  function rollFish(luckLevel, rand) { return rollFishOfRarity(rollRarity(luckLevel, rand), rand); }
+  // Chance the hook that just landed a fish snags the Kraken instead. Only
+  // rolled once a fish has been reeled successfully — a lost fish never wakes it.
+  function krakenChance(rarity) {
+    return rarity === "mythical" ? 0.15 : rarity === "legendary" ? 0.08 : 0.03;
+  }
+  // Legacy quality label kept for old callers (the new reel has no "quality").
   function fishQualityLabel(quality) {
     const dist = (1 - Math.max(0, Math.min(1, +quality || 0))) * 50;
     return dist <= 6 ? "perfect" : dist <= 16 ? "good" : "poor";
   }
-  function rollFish(quality, rand) {
-    rand = rand || Math.random;
-    const label = typeof quality === "string" ? quality : fishQualityLabel(quality);
-    if (label === "poor" && rand() < 0.5) return null;
-    let table = FISH_TABLE;
-    if (label === "perfect") table = FISH_TABLE.filter(f => !FISH_JUNK_NAMES.includes(f.name));
-    else if (label === "poor") table = FISH_TABLE.filter(f => f.value <= 120);
-    const total = table.reduce((s, f) => s + f.weight, 0);
-    let r = rand() * total;
-    for (const f of table) { if ((r -= f.weight) <= 0) return f; }
-    return table[0];
+
+  // ---------- luck (from cooked meals) ----------
+  // A meal sets users/<me>/luck = { level, until, meal, emoji }. While active:
+  //   * fishing rolls rarer (rarityWeights)
+  //   * every VEGAS win pays an extra casinoBonus on top
+  //   * a lost single-roll VEGAS round is re-rolled once with rerollChance
+  const LUCK_MAX_LEVEL = 6;
+  function luckEffects(level) {
+    const L = Math.max(0, Math.min(LUCK_MAX_LEVEL, +level || 0));
+    return { level: L, fishWeightMult: 1 + 0.3 * L, casinoBonus: Math.min(0.30, 0.05 * L), rerollChance: Math.min(0.24, 0.04 * L) };
   }
+  function luckDurationMs(level) { return (10 + 4 * Math.max(1, Math.min(LUCK_MAX_LEVEL, +level || 1))) * 60000; }
+  function activeLuck(luck, now) {
+    now = now == null ? Date.now() : now;
+    if (!luck || typeof luck !== "object" || !(luck.until > now) || !(luck.level > 0)) return null;
+    return luck;
+  }
+
+  // ---------- farming ----------
+  // Seeds are bought at the rotating stall, planted in one of FARM_PLOTS beds
+  // on your personal farm, and harvested after growMs into `harvest` (sell,
+  // or cook for luck).
+  const FARM_PLOTS = 12;
+  const CROPS = [
+    { id: "carrot",      name: "Carrot",        emoji: "🥕", rarity: "common",    price: 25,   growMs: 2 * 60000,  yield: 3, value: 15,   luck: 1, color: "#f97316", top: "#22c55e" },
+    { id: "tomato",      name: "Tomato",        emoji: "🍅", rarity: "common",    price: 40,   growMs: 3 * 60000,  yield: 3, value: 25,   luck: 1, color: "#ef4444", top: "#16a34a" },
+    { id: "corn",        name: "Corn",          emoji: "🌽", rarity: "common",    price: 60,   growMs: 4 * 60000,  yield: 4, value: 30,   luck: 1, color: "#fde047", top: "#65a30d" },
+    { id: "strawberry",  name: "Strawberry",    emoji: "🍓", rarity: "rare",      price: 150,  growMs: 6 * 60000,  yield: 5, value: 60,   luck: 2, color: "#f43f5e", top: "#15803d" },
+    { id: "blueberry",   name: "Blueberry",     emoji: "🫐", rarity: "rare",      price: 180,  growMs: 7 * 60000,  yield: 6, value: 55,   luck: 2, color: "#3b82f6", top: "#166534" },
+    { id: "pumpkin",     name: "Pumpkin",       emoji: "🎃", rarity: "rare",      price: 220,  growMs: 8 * 60000,  yield: 2, value: 200,  luck: 2, color: "#ea580c", top: "#4d7c0f" },
+    { id: "dragonfruit", name: "Dragonfruit",   emoji: "🐲", rarity: "epic",      price: 600,  growMs: 12 * 60000, yield: 3, value: 400,  luck: 3, color: "#ec4899", top: "#84cc16" },
+    { id: "goldpepper",  name: "Golden Pepper", emoji: "🌶️", rarity: "epic",      price: 800,  growMs: 15 * 60000, yield: 4, value: 380,  luck: 3, color: "#fbbf24", top: "#16a34a" },
+    { id: "moonflower",  name: "Moonflower",    emoji: "🌙", rarity: "legendary", price: 2500, growMs: 25 * 60000, yield: 2, value: 2200, luck: 4, color: "#c4b5fd", top: "#4c1d95" },
+    { id: "clover",      name: "Lucky Clover",  emoji: "🍀", rarity: "legendary", price: 3000, growMs: 20 * 60000, yield: 3, value: 1500, luck: 5, color: "#4ade80", top: "#15803d" },
+    { id: "sunfruit",    name: "Sunfruit",      emoji: "☀️", rarity: "mythical",  price: 9000, growMs: 40 * 60000, yield: 2, value: 8000, luck: 6, color: "#fde68a", top: "#f97316" },
+  ];
+  const CROP_BY_ID = {};
+  for (const c of CROPS) CROP_BY_ID[c.id] = c;
+  function cropYield(crop, rand) { rand = rand || Math.random; return crop.yield + (rand() < 0.25 ? 1 : 0); }
+
+  // The seed stall rotates every 5 minutes (Grow-a-Garden style): which crops
+  // are on the shelf and how many of each is a seeded roll on the 5-minute
+  // bucket, so every client and the server agree without a write. Stock is
+  // GLOBAL — the server counts what everyone bought this bucket.
+  const SEED_SHOP_PERIOD = 5 * 60000;
+  function seedShopBucket(now) { return Math.floor((now == null ? Date.now() : now) / SEED_SHOP_PERIOD); }
+  function seedShopStock(now) {
+    const bucket = seedShopBucket(now);
+    const rng = mulberry32(((bucket * 2246822519) % 2147483647) + 7);
+    const pick = (rarity, n) => {
+      const pool = CROPS.filter(c => c.rarity === rarity).slice();
+      for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+      return pool.slice(0, n);
+    };
+    const out = [];
+    for (const c of pick("common", 3)) out.push({ id: c.id, stock: 8 + Math.floor(rng() * 13) });
+    for (const c of pick("rare", 1 + (rng() < 0.5 ? 1 : 0))) out.push({ id: c.id, stock: 3 + Math.floor(rng() * 6) });
+    if (rng() < 0.45) for (const c of pick("epic", 1)) out.push({ id: c.id, stock: 1 + Math.floor(rng() * 3) });
+    if (rng() < 0.18) for (const c of pick("legendary", 1)) out.push({ id: c.id, stock: 1 + (rng() < 0.4 ? 1 : 0) });
+    if (rng() < 0.05) for (const c of pick("mythical", 1)) out.push({ id: c.id, stock: 1 });
+    return out;
+  }
+  function seedShopRestockIn(now) { now = now == null ? Date.now() : now; return SEED_SHOP_PERIOD - (now % SEED_SHOP_PERIOD); }
+
+  // ---------- cooking ----------
+  // Up to COOK_MAX_ING ingredients (fish, Kraken tentacles, harvested crops)
+  // go in the pot; the meal's luck level comes from their combined points.
+  const COOK_MAX_ING = 4;
+  const MEAL_ADJ = ["Simple", "Hearty", "Gourmet", "Lucky", "Legendary", "Mythic"];
+  function ingredientInfo(kind, id) {
+    if (kind === "fish") { const d = fishDef(id); return d ? { kind, id, name: d.name, emoji: d.emoji, pts: fishLuckPts(d), rarity: d.rarity } : null; }
+    if (kind === "crop") { const c = CROP_BY_ID[id]; return c ? { kind, id, name: c.name, emoji: c.emoji, pts: c.luck, rarity: c.rarity } : null; }
+    return null;
+  }
+  function luckLevelForPts(pts) { return pts < 4 ? 1 : pts < 8 ? 2 : pts < 13 ? 3 : pts < 20 ? 4 : pts < 30 ? 5 : 6; }
+  // Returns { name, emoji, luck, pts, key } or null for an empty / bad pot.
+  function cookMeal(ings) {
+    if (!Array.isArray(ings) || !ings.length || ings.length > COOK_MAX_ING) return null;
+    const infos = ings.map(i => i && ingredientInfo(i.kind, i.id));
+    if (infos.some(i => !i)) return null;
+    const pts = infos.reduce((s, i) => s + i.pts, 0);
+    let level = luckLevelForPts(pts);
+    const golden = infos.some(i => i.id === "Golden Kraken Tentacle");
+    const tentacle = infos.some(i => i.kind === "fish" && /Tentacle/.test(i.id));
+    const fish = infos.filter(i => i.kind === "fish").length, crop = infos.length - fish;
+    let dish, emoji;
+    if (golden) { dish = "Golden Kraken Feast"; emoji = "✨🍲"; level = Math.max(level, 5); }
+    else if (tentacle) { dish = "Kraken Chowder"; emoji = "🐙"; level = Math.max(level, 3); }
+    else if (crop === 0) { dish = "Fish Stew"; emoji = "🍲"; }
+    else if (fish === 0) { dish = "Garden Salad"; emoji = "🥗"; }
+    else { dish = "Surf & Turf Platter"; emoji = "🍱"; }
+    const name = `${MEAL_ADJ[level - 1]} ${dish}`;
+    return { name, emoji, luck: level, pts, key: name.toLowerCase().replace(/[^a-z0-9]+/g, "-") };
+  }
+
+  // ---------- the Kraken (sea beast) ----------
+  const KRAKEN = {
+    RISE_MS: 11000,               // cinematic: tentacles then head, before it can be hit
+    TENTACLES: 6,
+    BASE_HP: 2400, HP_PER_PLAYER: 1200, HEAD_FRAC: 0.45,
+    ATTACK_EVERY_MS: 2400, SLAM_WARN_MS: 1000, SLAM_RADIUS: 54, SLAM_DMG: 34,
+    HIT_DMG: { sword: 55, pistol: 22 },
+    HIT_MIN_MS: { sword: 180, pistol: 250 },
+    REACH: { sword: 110, pistol: 340 },
+    DEAD_LINGER_MS: 15000,        // corpse stays (and rewards show) this long
+    RESPAWN_COOLDOWN_MS: 3 * 60000,
+    REWARD_MIN: 1, REWARD_MAX: 3, GOLDEN_CHANCE: 0.06, TOP_GOLDEN_BONUS: 0.06,
+  };
+  function krakenHeadPos() { return { x: LAKE.x, y: LAKE.y - 24 }; }
+  // Tentacles ring the pond from west over the top to east, leaving the dock
+  // (south) clear so the fishers have somewhere to stand.
+  function krakenPartPos(i, n) {
+    n = n || KRAKEN.TENTACLES;
+    const a = -Math.PI / 2 + (i - (n - 1) / 2) * (Math.PI * 1.5 / (n - 1));
+    return { x: LAKE.x + Math.cos(a) * LAKE.rx * 0.74, y: LAKE.y + Math.sin(a) * LAKE.ry * 0.74, a };
+  }
+  function krakenMaxHp(players) { return KRAKEN.BASE_HP + KRAKEN.HP_PER_PLAYER * Math.max(0, (players | 0) - 1); }
+  function atLake(x, y) { return Math.hypot((+x || 0) - LAKE.x, (+y || 0) - LAKE.y) <= LAKE_FIGHT_RADIUS; }
 
   return {
     COSMETICS, COSMETIC_DEFAULTS,
@@ -315,6 +517,13 @@
     clampCredit, creditTier, loanRate, loanLimit, loanTotalDue, loanAccrue,
     EARN_CAPS,
     mulberry32, strToSeed, marketStock,
-    FISH_TABLE, FISH_JUNK_NAMES, FISH_CATCH_COOLDOWN, fishPriceNow, fishQualityLabel, rollFish,
+    LAKE, LAKE_FIGHT_RADIUS, atLake,
+    FISH_RARITIES, RARITY_INFO, FISH_TABLE, LOOT_TABLE, FISH_JUNK_NAMES, fishDef, fishLuckPts,
+    FISH_CATCH_COOLDOWN, FISH_CAST_TTL, fishPriceNow, fishQualityLabel,
+    REEL_CFG, REEL_START_PROGRESS, rarityWeights, rollRarity, rollFishOfRarity, rollFish, krakenChance,
+    LUCK_MAX_LEVEL, luckEffects, luckDurationMs, activeLuck,
+    FARM_PLOTS, CROPS, CROP_BY_ID, cropYield, SEED_SHOP_PERIOD, seedShopBucket, seedShopStock, seedShopRestockIn,
+    COOK_MAX_ING, MEAL_ADJ, ingredientInfo, luckLevelForPts, cookMeal,
+    KRAKEN, krakenHeadPos, krakenPartPos, krakenMaxHp,
   };
 });

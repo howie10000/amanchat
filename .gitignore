@@ -25,3 +25,7 @@ Thumbs.db
 
 # Node
 node_modules/
+
+# local dev server db / launcher
+server-node/dev-fishing.db
+

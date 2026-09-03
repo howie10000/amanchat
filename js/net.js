@@ -144,6 +144,9 @@
   window.netFurnitureSet = (data) => rpc("furniture_set", data);
   window.netHome = (data) => rpc("home", data);          // server-checked house entry
   window.netTreasury = (data) => rpc("treasury", data);  // Mayor's Treasury (staff)
+  window.netFarm = (data) => rpc("farm", data);          // personal farm + rotating seed stall
+  window.netCook = (data) => rpc("cook", data);          // cooking pot: meals -> luck
+  window.netKraken = (data) => rpc("kraken", data);      // sea-beast boss fight (status / hit)
 
   // For dev console / debugging
   window.fb = { fbGet: window.fbGet, fbPut: window.fbPut, fbPatch: window.fbPatch, fbPost: window.fbPost, fbDelete: window.fbDelete };

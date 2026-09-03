@@ -64,7 +64,7 @@ function stopServer() {
 }
 process.on('exit', stopServer);
 // Watchdog: a hung RPC must not leave a server running forever.
-setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLog); stopServer(); process.exit(3); }, 60000).unref();
+setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLog); stopServer(); process.exit(3); }, 150000).unref();
 
 (async () => {
     for (let i = 0; i < 100 && !/listening on/.test(serverLog); i++) await sleep(100);
@@ -263,17 +263,111 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     assert(r.ok && r.data.gained === 150 && r.data.dailyStreak === 1 && r.data.money === m0 + 150, 'first daily pays 150, streak 1');
     assert(!(await tryRpc(bob, 'bank', { action: 'daily' })).ok, 'daily inside cooldown rejected');
 
-    console.log('fish');
-    r = await tryRpc(bob, 'fish', { action: 'catch', quality: 1 });
-    assert(r.ok && r.data.fish && r.data.fish.name && r.data.fishInventory[r.data.fish.name] === 1, 'perfect reel lands a fish: ' + (r.ok && r.data.fish.name));
-    assert(r.ok && !ECON.FISH_JUNK_NAMES.includes(r.data.fish.name), 'perfect reel never lands junk');
-    assert(!(await tryRpc(bob, 'fish', { action: 'catch', quality: 1 })).ok, 'catch inside 4s cooldown rejected');
+    console.log('fish (cast / reel)');
+    assert(!(await tryRpc(bob, 'fish', { action: 'reel', landed: true })).ok, 'reel without a cast rejected');
+    assert(!(await tryRpc(bob, 'fish', { action: 'cast', pick: 'Golden Koi' })).ok, 'players cannot pick their catch (staff only)');
+    r = await tryRpc(bob, 'fish', { action: 'cast' });
+    assert(r.ok && ECON.FISH_RARITIES.includes(r.data.rarity) && r.data.biteIn > 0 && r.data.castId, 'cast answers with rarity + bite delay only: ' + (r.ok && r.data.rarity));
+    assert(!(await tryRpc(bob, 'fish', { action: 'reel', landed: true })).ok, 'landing before the bite / minimum reel time rejected');
+    // that rejection consumed the cast; the next cast is inside the cooldown
+    assert(!(await tryRpc(bob, 'fish', { action: 'cast' })).ok, 'cast inside 4s cooldown rejected');
+    await sleep(ECON.FISH_CATCH_COOLDOWN + 100);
+    r = await tryRpc(bob, 'fish', { action: 'cast' });
+    assert(r.ok, 'cast after cooldown ok');
+    let cfg = ECON.REEL_CFG[r.data.rarity];
+    await sleep(r.data.biteIn + cfg.minMs + 150);
+    r = await tryRpc(bob, 'fish', { action: 'reel', landed: true });
+    assert(r.ok && r.data.fish && r.data.fishInventory[r.data.fish.name] === 1 && r.data.kraken === false, 'reel after the minimum time lands the fish: ' + (r.ok && r.data.fish.name));
     const fname = r.data.fish.name;
+    await sleep(ECON.FISH_CATCH_COOLDOWN + 100);
+    r = await tryRpc(bob, 'fish', { action: 'cast' });
+    r = await tryRpc(bob, 'fish', { action: 'reel', landed: false });
+    assert(r.ok && r.data.lost === true && !r.data.fish, 'a lost reel banks nothing');
+    // staff pick: the owner chooses the catch, server-verified
+    r = await tryRpc(owner, 'fish', { action: 'cast', pick: 'Moonlight Whale' });
+    assert(r.ok && r.data.rarity === 'mythical', 'staff pick sets the catch (mythical rarity reported)');
+    await sleep(r.data.biteIn + ECON.REEL_CFG.mythical.minMs + 150);
+    r = await tryRpc(owner, 'fish', { action: 'reel', landed: true });
+    assert(r.ok && r.data.fish.name === 'Moonlight Whale' && r.data.rarity === 'mythical', 'staff landed exactly the picked fish');
+    assert(!(await tryRpc(owner, 'fish', { action: 'cast', pick: 'Kraken Tentacle' })).ok, 'loot items cannot be picked as a catch');
     m0 = await money(bob, 'bob');
     r = await tryRpc(bob, 'fish', { action: 'sell', name: fname, qty: 5 });
-    const expect = ECON.fishPriceNow(ECON.FISH_TABLE.find(f => f.name === fname), Date.now());
+    const expect = ECON.fishPriceNow(ECON.fishDef(fname), Date.now());
     assert(r.ok && r.data.gained === expect && r.data.money === m0 + expect && !r.data.fishInventory[fname], 'sell clamps qty to what you hold and pays today\'s price');
     assert(!(await tryRpc(bob, 'fish', { action: 'sell', name: fname, qty: 1 })).ok, 'selling fish you do not have rejected');
+    assert(!(await tryRpc(bob, 'patch', { path: 'users/bob', value: { luck: { level: 6, until: Date.now() + 9e9 } } })).ok, 'clients cannot write luck');
+    assert(!(await tryRpc(bob, 'patch', { path: 'users/bob', value: { farm: { harvest: { sunfruit: 99 } } } })).ok, 'clients cannot write farm');
+    assert(!(await tryRpc(bob, 'patch', { path: 'users/bob', value: { meals: {} } })).ok, 'clients cannot write meals');
+
+    console.log('farm');
+    r = await tryRpc(bob, 'farm', { action: 'status' });
+    assert(r.ok && r.data.shop && r.data.shop.items.length >= 4 && r.data.shop.restockIn > 0 && r.data.shop.restockIn <= ECON.SEED_SHOP_PERIOD, 'farm status carries the rotating stall');
+    const stall = r.data.shop.items.find(i => ECON.CROP_BY_ID[i.id].price <= 60 && i.left >= 3);
+    assert(!!stall, 'a cheap seed is on the stall');
+    assert(!(await tryRpc(bob, 'farm', { action: 'buy', crop: 'sunfruit', qty: 1 })).ok || !r.data.shop.items.some(i => i.id === 'sunfruit'), 'seeds not on the stall cannot be bought');
+    assert(!(await tryRpc(bob, 'farm', { action: 'buy', crop: stall.id, qty: stall.left + 1 })).ok, 'buying more than the shared stock left is rejected');
+    m0 = await money(bob, 'bob');
+    r = await tryRpc(bob, 'farm', { action: 'buy', crop: stall.id, qty: 2 });
+    assert(r.ok && r.data.farm.seeds[stall.id] === 2 && r.data.money === m0 - 2 * ECON.CROP_BY_ID[stall.id].price, 'buying seeds charges the shelf price');
+    const aliceFarm = await alice.rpc("farm", { action: "status" });
+    assert(aliceFarm.shop.items.find(i => i.id === stall.id).left === stall.left - 2, 'stock is global: alice sees 2 fewer');
+    assert(!(await tryRpc(bob, 'farm', { action: 'plant', plot: 0, crop: 'sunfruit' })).ok, 'planting a seed you do not own rejected');
+    r = await tryRpc(bob, 'farm', { action: 'plant', plot: 0, crop: stall.id });
+    assert(r.ok && r.data.farm.plots[0].crop === stall.id && r.data.farm.seeds[stall.id] === 1, 'planting uses a seed and fills the bed');
+    assert(!(await tryRpc(bob, 'farm', { action: 'plant', plot: 0, crop: stall.id })).ok, 'a bed cannot be planted twice');
+    assert(!(await tryRpc(bob, 'farm', { action: 'harvest', plot: 0 })).ok, 'harvesting before it has grown rejected');
+    assert(!(await tryRpc(bob, 'farm', { action: 'sell', crop: stall.id, qty: 1 })).ok, 'selling crops you have not harvested rejected');
+    r = await tryRpc(bob, 'farm', { action: 'clear', plot: 0 });
+    assert(r.ok && !r.data.farm.plots[0], 'uprooting empties the bed');
+
+    console.log('cook / luck');
+    assert(!(await tryRpc(bob, 'cook', { action: 'cook', ingredients: [{ kind: 'fish', id: 'Moonlight Whale' }] })).ok, 'cooking fish you do not have rejected');
+    assert(!(await tryRpc(bob, 'cook', { action: 'cook', ingredients: [] })).ok, 'empty pot rejected');
+    const whaleMeal = ECON.cookMeal([{ kind: 'fish', id: 'Moonlight Whale' }]);
+    r = await tryRpc(owner, 'cook', { action: 'cook', ingredients: [{ kind: 'fish', id: 'Moonlight Whale' }] });
+    assert(r.ok && r.data.cooked.name === whaleMeal.name && r.data.meals[whaleMeal.key].n === 1 && !r.data.fishInventory['Moonlight Whale'], 'cooking consumes the fish and shelves the meal: ' + (r.ok && r.data.cooked.name));
+    assert(!(await tryRpc(owner, 'cook', { action: 'eat', meal: 'nope' })).ok, 'eating a meal you do not have rejected');
+    r = await tryRpc(owner, 'cook', { action: 'eat', meal: whaleMeal.key });
+    assert(r.ok && r.data.luck && r.data.luck.level === whaleMeal.luck && r.data.luck.until > Date.now() && !r.data.meals[whaleMeal.key], 'eating grants timed luck: level ' + (r.ok && r.data.luck.level));
+    {
+        // luck pays a bonus on casino wins (coinflip: 1.95x, net win 19 on a 20 bet)
+        const eff = ECON.luckEffects(whaleMeal.luck);
+        let sawWin = false, bonusOk = true;
+        for (let i = 0; i < 12 && !sawWin; i++) {
+            const c = await tryRpc(owner, 'casino', { game: 'coinflip', action: 'flip', bet: 20, call: 'heads' });
+            if (c.ok && c.data.win) { sawWin = true; bonusOk = c.data.luckBonus === Math.floor(19 * eff.casinoBonus) && c.data.luck && c.data.luck.level === whaleMeal.luck; }
+        }
+        assert(!sawWin || bonusOk, 'lucky casino win pays the luck bonus' + (sawWin ? '' : ' (no win in 12 flips — skipped)'));
+    }
+
+    console.log('kraken');
+    r = await tryRpc(bob, 'kraken', { action: 'status' });
+    assert(r.ok && r.data.kraken === null, 'no kraken to begin with');
+    assert(!(await tryRpc(bob, 'kraken', { action: 'hit', part: 0, weapon: 'sword' })).ok, 'hitting nothing rejected');
+    assert(!(await tryRpc(bob, 'fish', { action: 'cast', pick: 'kraken' })).ok, 'players cannot summon the kraken');
+    await sleep(ECON.FISH_CATCH_COOLDOWN + 100);
+    r = await tryRpc(owner, 'fish', { action: 'cast', pick: 'kraken' });
+    assert(r.ok && r.data.rarity !== 'kraken', 'a kraken cast never reveals itself before the fish is landed');
+    await sleep(r.data.biteIn + ECON.REEL_CFG[r.data.rarity].minMs + 150);
+    r = await tryRpc(owner, 'fish', { action: 'reel', landed: true });
+    assert(r.ok && r.data.kraken === true, 'landing the fish wakes the kraken');
+    r = await tryRpc(bob, 'kraken', { action: 'status' });
+    assert(r.ok && r.data.kraken && r.data.kraken.status === 'rising' && r.data.kraken.parts.length === ECON.KRAKEN.TENTACLES, 'everyone sees it rising');
+    assert(!(await tryRpc(bob, 'kraken', { action: 'hit', part: 0, weapon: 'sword' })).ok, 'cannot hit it while it rises');
+    assert(!(await tryRpc(owner, 'fish', { action: 'cast', pick: 'kraken' })).ok, 'a second kraken cannot be summoned while one is up');
+    const tp = ECON.krakenPartPos(0);
+    await bob.rpc('presence', { data: { x: tp.x - 60, y: tp.y + 40, area: 'neighborhood' } });
+    await alice.rpc('presence', { data: { x: 3000, y: 300, area: 'neighborhood' } });
+    await sleep(ECON.KRAKEN.RISE_MS + 400);
+    r = await tryRpc(bob, 'kraken', { action: 'status' });
+    assert(r.ok && r.data.kraken.status === 'alive', 'it is alive after the rise');
+    assert(!(await tryRpc(alice, 'kraken', { action: 'hit', part: 0, weapon: 'sword' })).ok, 'hits from across town rejected');
+    assert(!(await tryRpc(bob, 'kraken', { action: 'hit', part: 'head', weapon: 'sword' })).ok, 'the head is guarded while tentacles stand');
+    assert(!(await tryRpc(bob, 'kraken', { action: 'hit', part: 3, weapon: 'sword' })).ok, 'a tentacle out of reach cannot be hit');
+    r = await tryRpc(bob, 'kraken', { action: 'hit', part: 0, weapon: 'sword' });
+    assert(r.ok && r.data.dmg === ECON.KRAKEN.HIT_DMG.sword && r.data.hp === r.data.maxHp - ECON.KRAKEN.HIT_DMG.sword, 'a sword hit in reach lands for ' + ECON.KRAKEN.HIT_DMG.sword);
+    assert(!(await tryRpc(bob, 'kraken', { action: 'hit', part: 0, weapon: 'sword' })).ok, 'swinging faster than the weapon allows rejected');
+    assert(!(await tryRpc(bob, 'put', { path: 'users/bob/fishInventory', value: { 'Golden Kraken Tentacle': 50 } })).ok, 'clients cannot write loot into their bucket');
 
     console.log('casino');
     m0 = await money(bob, 'bob');

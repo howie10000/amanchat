@@ -169,6 +169,7 @@ async function enterGame(user, data, role, mute) {
   startNotifyLoop();
   wrapEconomyReplies();
   initDMBadge();
+  if (window.gameLake) gameLake.sync();   // is a Kraken already up at the pond?
   setInterval(refreshUserCache, 4000);
   if (state.mute) toast(muteText(state.mute), 5000);
   if (typeof dailyBonusReady === "function" && dailyBonusReady()) {
@@ -243,7 +244,7 @@ let _economyWrapped = false;
 function wrapEconomyReplies() {
   if (_economyWrapped) return;
   _economyWrapped = true;
-  for (const fn of ["netEarn", "netCasino", "netFish", "netBank", "netBuy"]) {
+  for (const fn of ["netEarn", "netCasino", "netFish", "netBank", "netBuy", "netFarm", "netCook"]) {
     const orig = window[fn];
     if (typeof orig !== "function" || orig._wrapped) continue;
     const wrapped = async (...args) => {
@@ -252,6 +253,13 @@ function wrapEconomyReplies() {
         if (typeof d.money === "number") state.data.money = d.money;
         if ("loan" in d) state.data.loan = d.loan || null;
         if (typeof d.bankBalance === "number") state.data.bankBalance = d.bankBalance;
+        // Fishing / farming / cooking replies carry the pantry + luck buff.
+        if ("luck" in d) state.data.luck = d.luck || null;
+        if (d.fishInventory && typeof d.fishInventory === "object") state.data.fishInventory = d.fishInventory;
+        if (d.farm && typeof d.farm === "object") state.data.farm = d.farm;
+        if (d.meals && typeof d.meals === "object") state.data.meals = d.meals;
+        if (d.luckReroll) toast("🍀 Your luck turned that loss around!", 2500);
+        if (d.luckBonus > 0) setTimeout(() => toast(`🍀 Lucky bonus <b>+$${(+d.luckBonus).toLocaleString()}</b> on that win!`, 2500), 900);
         updateHUD();
       }
       return d;
@@ -332,8 +340,9 @@ function updateHUD() {
     debtRow.style.display = owe > 0 ? "flex" : "none";
     if (owe > 0) document.getElementById("hudDebt").textContent = owe.toLocaleString();
   }
+  updateLuckHud();
   const labels = {
-    neighborhood: "Town", interior_home: "Home",
+    neighborhood: "Town", interior_home: "Home", interior_farm: "Your Farm",
     interior_casino: "VEGAS", interior_bank: "Bank",
     interior_furniture: "Furniture Store", interior_lootbox: "Mystery Boxes",
     interior_quest: "Adventurers Guild", interior_job: "Jobs Center",
@@ -344,6 +353,19 @@ function updateHUD() {
   };
   document.getElementById("hudArea").textContent = labels[state.area] || state.area;
 }
+// 🍀 luck row: level + time left on the meal buff (ticks once a second).
+function updateLuckHud() {
+  const row = document.getElementById("hudLuckRow");
+  if (!row || !state.data) return;
+  const l = (window.ECON && ECON.activeLuck) ? ECON.activeLuck(state.data.luck, Date.now()) : null;
+  if (!l) { row.style.display = "none"; return; }
+  const ms = Math.max(0, l.until - Date.now());
+  const m = Math.floor(ms / 60000), s = Math.floor((ms % 60000) / 1000);
+  row.style.display = "flex";
+  document.getElementById("hudLuck").textContent = `Luck ${l.level} · ${m}:${String(s).padStart(2, "0")}`;
+}
+setInterval(() => { if (state.data) updateLuckHud(); }, 1000);
+
 let toastTimer = null;
 function toast(text, dur = 2000) {
   const el = document.getElementById("toast");
@@ -358,6 +380,7 @@ async function pushPresence() {
   if (!state.user) return;
   let area = state.area;
   if (state.area === "interior_home") area = `inside:${state.interiorOf || state.user}`;
+  if (state.area === "interior_farm") area = `farm:${state.user}`;   // personal — nobody else is drawn there
   // Keep broadcasting a line a touch past its on-screen life so a viewer always
   // has a fresh copy for the whole bubble (they time it off their own clock via
   // mergeRemoteMsgs, which also stops a still-broadcast line from re-popping).

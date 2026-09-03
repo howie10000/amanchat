@@ -2099,8 +2099,88 @@ function drawGenericShop(ctx, b) {
   TB.plate(ctx, b.x + 10, b.y + 8, b.w - 20, 18, b.label, "#000c", b.signColor || "#fbbf24", b.signColor || "#fbbf24", "bold 12px sans-serif");
 }
 
+// ================= FARM BARN =================
+// A red gambrel barn with white trim, a hayloft door, a weathervane and a
+// grain silo beside it; split fence and a hay bale out front. The big double
+// doors are the entrance (door zone is the standard 22px half-width).
+function drawFarmBarn(ctx, b) {
+  const t = Date.now();
+  const cx = b.x + b.w / 2, base = b.y + b.h, half = b.doorHalf || 22;
+  const RED = "#b91c1c", RED_DK = "#7f1d1d", WHITE = "#fef3c7", ROOF = "#3f2210", ROOF_LT = "#5b3a1a";
+  TB.ground(ctx, b, half, { apron: "#a3824f", apronW: half * 2 + 60, mat: "#5b3a1a" });
+  // dirt yard + fence posts either side of the doors
+  ctx.fillStyle = "rgba(0,0,0,.12)"; ctx.fillRect(b.x - 10, base - 6, b.w + 20, 6);
+  for (const fx of [b.x - 18, b.x + b.w + 18]) {
+    ctx.fillStyle = "#a86a2a"; ctx.fillRect(fx - 3, base - 30, 6, 34);
+    ctx.fillStyle = "#c8863a"; ctx.fillRect(fx - 26, base - 24, 52, 4); ctx.fillRect(fx - 26, base - 12, 52, 4);
+  }
+  // silo on the east side
+  const sx = b.x + b.w - 26, sw = 48, sTop = b.y - 30;
+  ctx.fillStyle = "#9ca3af"; ctx.fillRect(sx, sTop + 10, sw, base - sTop - 10);
+  ctx.fillStyle = "#6b7280"; ctx.fillRect(sx, sTop + 10, 10, base - sTop - 10);
+  ctx.fillStyle = "#d1d5db"; ctx.fillRect(sx + 36, sTop + 10, 6, base - sTop - 10);
+  for (let y = sTop + 30; y < base; y += 26) { ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.fillRect(sx, y, sw, 2); }
+  ctx.fillStyle = "#7f1d1d"; ctx.beginPath(); ctx.ellipse(sx + sw / 2, sTop + 10, sw / 2 + 2, 16, 0, Math.PI, 0); ctx.fill();
+  ctx.fillStyle = "#991b1b"; ctx.beginPath(); ctx.ellipse(sx + sw / 2, sTop + 10, sw / 2 + 2, 5, 0, 0, Math.PI * 2); ctx.fill();
+  // barn body
+  const bx = b.x, bw = b.w - 30;
+  ctx.fillStyle = RED; ctx.fillRect(bx, b.y + 40, bw, b.h - 40);
+  ctx.fillStyle = "rgba(0,0,0,.14)"; for (let x = bx + 14; x < bx + bw; x += 14) ctx.fillRect(x, b.y + 40, 2, b.h - 40);
+  ctx.fillStyle = RED_DK; ctx.fillRect(bx, base - 8, bw, 8);
+  // white corner boards + trim
+  ctx.fillStyle = WHITE; ctx.fillRect(bx, b.y + 40, 6, b.h - 40); ctx.fillRect(bx + bw - 6, b.y + 40, 6, b.h - 40); ctx.fillRect(bx, b.y + 40, bw, 4);
+  // gambrel roof
+  const mid = bx + bw / 2;
+  ctx.fillStyle = ROOF;
+  ctx.beginPath(); ctx.moveTo(bx - 10, b.y + 44); ctx.lineTo(bx + 18, b.y + 4); ctx.lineTo(mid, b.y - 26); ctx.lineTo(bx + bw - 18, b.y + 4); ctx.lineTo(bx + bw + 10, b.y + 44); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = ROOF_LT;
+  ctx.beginPath(); ctx.moveTo(bx - 10, b.y + 44); ctx.lineTo(bx + 18, b.y + 4); ctx.lineTo(bx + 24, b.y + 8); ctx.lineTo(bx - 2, b.y + 44); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.beginPath(); ctx.moveTo(bx + 18, b.y + 4); ctx.lineTo(mid, b.y - 26); ctx.lineTo(mid, b.y - 20); ctx.lineTo(bx + 24, b.y + 8); ctx.closePath(); ctx.fill();
+  for (let i = 0; i < 5; i++) { ctx.fillStyle = "rgba(0,0,0,.2)"; ctx.fillRect(bx - 6 + i * 3, b.y + 12 + i * 7, bw + 12 - i * 6, 1.5); }
+  ctx.fillStyle = WHITE; ctx.fillRect(bx - 10, b.y + 42, bw + 20, 4);
+  // hayloft door (open, hay inside) + hoist beam
+  ctx.fillStyle = "#3f2210"; ctx.fillRect(mid - 18, b.y + 52, 36, 34);
+  ctx.fillStyle = "#facc15"; ctx.fillRect(mid - 14, b.y + 70, 28, 14); ctx.fillStyle = "#eab308"; ctx.fillRect(mid - 14, b.y + 70, 28, 3);
+  ctx.strokeStyle = WHITE; ctx.lineWidth = 3; ctx.strokeRect(mid - 18, b.y + 52, 36, 34);
+  ctx.fillStyle = "#1f2937"; ctx.fillRect(mid - 2, b.y + 30, 4, 22); ctx.fillRect(mid - 14, b.y + 30, 16, 3);
+  // weathervane
+  const wa = Math.sin(t / 2500) * 0.6;
+  ctx.strokeStyle = "#111827"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(mid, b.y - 26); ctx.lineTo(mid, b.y - 48); ctx.stroke();
+  ctx.save(); ctx.translate(mid, b.y - 44); ctx.rotate(wa);
+  ctx.fillStyle = "#111827"; ctx.fillRect(-14, -1, 28, 2);
+  ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(8, -4); ctx.lineTo(8, 4); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-14, -5); ctx.lineTo(-6, -5); ctx.lineTo(-4, 0); ctx.lineTo(-6, 4); ctx.lineTo(-14, 4); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  // side windows with white X frames
+  for (const wx of [bx + 22, bx + bw - 52]) {
+    TB.litWindow(ctx, wx, b.y + 96, 30, 26, t, wx, WHITE, true);
+    ctx.strokeStyle = WHITE; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(wx, b.y + 96); ctx.lineTo(wx + 30, b.y + 122); ctx.moveTo(wx + 30, b.y + 96); ctx.lineTo(wx, b.y + 122); ctx.stroke();
+  }
+  // big double doors (the entrance) with the classic white X braces
+  const dw = half * 2 + 20, dx = cx - dw / 2;
+  ctx.fillStyle = "#7c2d12"; ctx.fillRect(dx, base - 66, dw, 66);
+  ctx.fillStyle = "#1c0a02"; ctx.fillRect(cx - half, base - 60, half * 2, 60);    // open gap into the dark barn
+  TB.spill(ctx, cx, base, half * 2, "255,200,110", 0.2);
+  for (const s of [-1, 1]) {
+    const px = s < 0 ? dx : cx + half;
+    ctx.fillStyle = "#9a3412"; ctx.fillRect(px, base - 66, dw / 2 - half, 66);
+    ctx.strokeStyle = WHITE; ctx.lineWidth = 3;
+    ctx.strokeRect(px + 2, base - 64, dw / 2 - half - 4, 62);
+    ctx.beginPath(); ctx.moveTo(px + 2, base - 64); ctx.lineTo(px + dw / 2 - half - 2, base - 2); ctx.moveTo(px + dw / 2 - half - 2, base - 64); ctx.lineTo(px + 2, base - 2); ctx.stroke();
+  }
+  // hay bale + milk churn out front
+  ctx.fillStyle = "#eab308"; GFX_roundFill(ctx, bx + 14, base - 22, 30, 20, 4, "#eab308");
+  ctx.fillStyle = "#ca8a04"; ctx.fillRect(bx + 14, base - 12, 30, 2); ctx.fillRect(bx + 28, base - 22, 2, 20);
+  ctx.fillStyle = "#9ca3af"; GFX_roundFill(ctx, bx + bw - 30, base - 26, 14, 24, 4, "#9ca3af"); ctx.fillStyle = "#6b7280"; ctx.fillRect(bx + bw - 32, base - 28, 18, 4);
+  // sign
+  TB.plate(ctx, cx - 60, b.y + 128, 120, 22, "FARM", "#fef3c7", "#7f1d1d", "#7f1d1d", "bold 15px Georgia, serif");
+}
+function GFX_roundFill(ctx, x, y, w, h, r, color) { roundFill(ctx, x, y, w, h, r, color); }
+
 const BUILDING_RENDERERS = {
   mayor: drawTownHall,
+  farm: drawFarmBarn,
   bank: drawBank,
   furniture: drawFurnitureland,
   lootbox: drawMysteryBoxes,

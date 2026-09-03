@@ -113,6 +113,15 @@ const INTERIORS = {
       { x: 512, y: 240, label: "MAYOR'S DESK", action: "mayor_desk", icon: "desk" },
     ],
   },
+  // Your personal farm (behind the FARM barn). The 12 beds are added as small
+  // hotspots by farm.js (see currentHotspots); the room is drawn by gameFarm.room.
+  interior_farm: {
+    w: 1024, h: 640, floor: "#4d7c0f", wall: "#bae6fd", trim: "#92400e",
+    hotspots: [
+      { x: 170, y: 150, label: "SEED STALL", action: "farm_shop" },
+      { x: 854, y: 150, label: "COOKING POT", action: "farm_pot" },
+    ],
+  },
 };
 
 async function enterOwnHome(initial) {
@@ -153,6 +162,7 @@ async function enterBuilding(b) {
   state.pos.x = 512; state.pos.y = 540;
   state.facing = "up";
   updateHUD();
+  if (area === "interior_farm" && window.gameFarm) { gameFarm.onEnter(); return; }
   toast(`Entered ${b.label}. Walk to a station and press E.`);
 }
 
@@ -217,6 +227,7 @@ function currentHotspots() {
     const f = def.floors[state.casinoFloor || 0] || def.floors[0];
     return f.hotspots.concat([ELEVATOR]);
   }
+  if (state.area === "interior_farm" && window.gameFarm) return (def.hotspots || []).concat(gameFarm.plotHotspots());
   return def.hotspots || [];
 }
 function currentFloorStyle() {
@@ -237,7 +248,7 @@ function hotspotAtPlayer() {
   let best = null, bestD = Infinity;
   for (const h of currentHotspots()) {
     const d = Math.hypot(state.pos.x - h.x, state.pos.y - (h.y + HOTSPOT_PAD_DY));
-    if (d < HOTSPOT_RADIUS && d < bestD) { best = h; bestD = d; }
+    if (d < (h.r || HOTSPOT_RADIUS) && d < bestD) { best = h; bestD = d; }
   }
   return best;
 }
@@ -270,7 +281,7 @@ function drawInterior() {
   } else {
     // Themed shell: floor, back wall, windows, lighting. Furniture and props
     // come later so they sit on top of the floor art.
-    const r = ROOM_RENDERERS[state.area];
+    const r = roomRenderer(state.area);
     if (r) r.base(room, Date.now());
     else drawSurround(room, def.wall);
   }
@@ -321,6 +332,7 @@ function drawInterior() {
   for (const [u, p] of Object.entries(state.others)) {
     let myArea = state.area;
     if (state.area === "interior_home") myArea = `inside:${state.interiorOf}`;
+    if (state.area === "interior_farm") myArea = `farm:${state.user}`;   // personal: nobody else can be here
     if (p.area !== myArea) continue;
     // VEGAS is one area with several floors: only show people on your floor.
     if (state.area === "interior_casino" && (p.floor || 0) !== (state.casinoFloor || 0)) continue;
@@ -379,6 +391,7 @@ function buildingTitle(area) {
     interior_barber: "TRIM & STYLE",
     interior_plaza: "TOWN PLAZA",
     interior_mayor: "TOWN HALL",
+    interior_farm: `${state.user}'s Farm`,
   };
   return map[area] || "Interior";
 }
@@ -418,8 +431,14 @@ function drawInteriorDecor(area) {
     drawVegasFloor(state.casinoFloor || 0, room);
     return;
   }
-  const r = ROOM_RENDERERS[area];
+  const r = roomRenderer(area);
   if (r && r.decor) r.decor(room, Date.now());
+}
+// Rooms drawn by other modules (the farm lives in farm.js) register here.
+function roomRenderer(area) {
+  if (ROOM_RENDERERS[area]) return ROOM_RENDERERS[area];
+  if (area === "interior_farm" && window.gameFarm) return gameFarm.room;
+  return null;
 }
 
 function drawHotspot(h) {
@@ -429,6 +448,16 @@ function drawHotspot(h) {
   const active = hotspotAtPlayer() === h;
   const casino = state.area === "interior_casino";
   const py = h.y + HOTSPOT_PAD_DY;
+  if (h.small) {
+    // Farm beds draw themselves; just float the label when you're on one.
+    if (!active) return;
+    ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
+    const w = ctx.measureText(h.label).width + 30;
+    GFX.roundFill(ctx, h.x - w / 2, py - 62, w, 22, 11, "rgba(10,10,12,0.85)");
+    ctx.strokeStyle = "#fde047"; ctx.lineWidth = 1.4; GFX.roundStroke(ctx, h.x - w / 2, py - 62, w, 22, 11);
+    ctx.fillStyle = "#fef3c7"; ctx.fillText(h.label, h.x, py - 47);
+    return;
+  }
   if (casino) {
     // Vegas: a soft gold pool of light with a hairline ring, matching the
     // black & gold of the elevator menu rather than a flat yellow disc.
@@ -453,7 +482,7 @@ function drawHotspot(h) {
   }
   // Everywhere else: a pool of light that breathes, a rotating dashed ring,
   // and a clean label plate in the room's accent colour.
-  const r = ROOM_RENDERERS[state.area];
+  const r = roomRenderer(state.area);
   const accent = (r && r.accent) || "#fbbf24";
   const rgb = hexToRgb(accent);
   const pulse = 0.5 + 0.5 * Math.sin(t);

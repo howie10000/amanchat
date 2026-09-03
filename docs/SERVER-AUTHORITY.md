@@ -13,7 +13,8 @@ Clients may NOT write these fields of their own `users/<me>` record over
 *other* players keep their existing powers; owners are unrestricted.
 
 `money, inventory, cosmetics, vegasFloor, dailyStreak, lastDaily,
-lastInterest, fishInventory, houseStyle, furniture, houseIndex, createdAt`
+lastInterest, fishInventory, houseStyle, furniture, houseIndex, createdAt,
+bankBalance, bankLast, creditScore, creditGainLast, loan, notes, farm, meals, luck`
 
 Also: `appearance` may be patched, but paid cosmetic fields (`hat`,
 `accessory`, `aura`, `pet`, `nameColor`) are validated against
@@ -38,6 +39,9 @@ game.js) and the server (`require`). It exports (UMD style: `window.ECON` /
 - `EARN_CAPS` — see `earn`
 - `marketStock(furnitureList, now)` — the hour-seeded shelf (moved from game.js)
 - `FISH_TABLE`, `fishPriceNow(fish, now)` (moved from outdoor.js)
+- Fishing update: `LAKE` (pond geometry), `RARITY_INFO`, `LOOT_TABLE`, `fishDef`, `REEL_CFG` (per-rarity reel tuning incl. `minMs`),
+  `rollFish(luck)`, `krakenChance`, `luckEffects`/`luckDurationMs`/`activeLuck`, `CROPS`/`seedShopStock(now)`, `cookMeal(ingredients)`,
+  `KRAKEN` constants, `krakenPartPos(i)`, `krakenHeadPos()`, `atLake(x, y)`
 
 `js/furniture.js` must also become loadable by the server: keep it exactly
 as is for the browser, but at the bottom add
@@ -83,8 +87,25 @@ over the cap is clamped, anything inside the cooldown is rejected.
 Returns `{ money, gained }`.
 
 ### `fish`
-`{ op:"fish", action:"catch", quality }` — quality 0..1 (reel accuracy). Server rolls FISH_TABLE with the same weighting outdoor.js used, adds to `fishInventory`. Cooldown 4 s. Returns `{ fishInventory, fish }`.
-`{ op:"fish", action:"sell", name, qty }` — price from `fishPriceNow`. Returns `{ money, fishInventory, gained }`.
+Two-step so the client never picks its catch:
+- `{ op:"fish", action:"cast", pick? }` — the server rolls the fish from `rollFish(luckLevel)` (five rarity tiers; an active meal luck buff shifts the odds) and, secretly, whether the **Kraken** is on the line (`krakenChance(rarity)`, only if no Kraken is up or resting). Returns `{ castId, rarity, biteIn, luck }` — never the fish or the Kraken. `pick` (a fish name, or `"kraken"`) is **staff only**; anyone else gets `Staff only.`
+- `{ op:"fish", action:"reel", landed }` — after the gauge minigame. `landed:false` banks nothing. `landed:true` is rejected if it arrives sooner than `REEL_CFG[rarity].minMs` after the bite (the fastest a flawless reel can be) or if the cast is older than `FISH_CAST_TTL`. On success the fish goes into `fishInventory` and, if the cast was a Kraken hook, `spawnKraken()` runs. Returns `{ fishInventory, fish, rarity, kraken }`. Cast cooldown 4 s from the reel.
+- `{ op:"fish", action:"sell", name, qty }` — price from `fishPriceNow`; works for fish and Kraken loot (`LOOT_TABLE`). Returns `{ money, fishInventory, gained }`.
+
+### `farm`
+`users/<me>/farm = { plots:{ [0..11]: {crop, at} }, seeds:{}, harvest:{} }` — protected. The seed stall is `seedShopStock(now)` (seeded on the 5-minute bucket) minus the **global** sold counts at `farm_shop/<bucket>` (server-written only; old buckets are pruned).
+`{ op:"farm", action:"status" }` → `{ farm, shop:{ bucket, restockIn, items:[{id, stock, left}] }, luck }`.
+`{ action:"buy", crop, qty }` (1–50, must be on the stall with enough `left`), `{ action:"plant", plot, crop }` (needs a seed, bed must be empty), `{ action:"harvest", plot|"all" }` (only beds past `growMs`; yield = `cropYield`), `{ action:"clear", plot }` (uproot, no refund), `{ action:"sell", crop, qty }` (crop `value` each, credited as earnings). Every reply is the status view plus the action's fields.
+
+### `cook`
+`{ op:"cook", action:"cook", ingredients:[{kind:"fish"|"crop", id}] }` — 1..`COOK_MAX_ING`; `cookMeal()` decides the meal and its luck level from the ingredients' points; the pantry (fish bucket / harvest) must cover them and is debited. Meals stack at `users/<me>/meals[key] = { name, emoji, luck, n }`.
+`{ op:"cook", action:"eat", meal:key }` — sets `users/<me>/luck = { level, until, meal, emoji }` (`luckDurationMs(level)`; a weaker meal on top of a stronger buff only tops the timer up).
+`luck` is applied server-side: fishing rarity weights (`rarityWeights`), and in `casino` every win pays `floor(delta * casinoBonus)` extra (`luckBonus` in the reply) and a lost single-roll round is re-rolled once with `rerollChance` (`luckReroll:true`).
+
+### `kraken`
+Server-owned boss, in memory only. `spawnKraken(user)` sizes HP from how many players are at the lake (`krakenMaxHp`), broadcasts `{ event:"kraken", kind, kraken:view, now }` to everyone on `spawn`, `alive` (after `RISE_MS`), `slam` (with `slams:[{x,y,r,dmg,inMs}]` aimed at up to three players at the lake), `hp`/`part_down`/`tick`, `dead` and `gone`.
+`{ op:"kraken", action:"status" }` → `{ kraken|null, restIn }`.
+`{ op:"kraken", action:"hit", part: 0..5|"head", weapon:"sword"|"pistol" }` — rejected unless the Kraken is alive, the caller's presence is in the open town within `LAKE_FIGHT_RADIUS`, the weapon's `HIT_MIN_MS` has passed, the part is within `REACH[weapon]` of the caller and still up, and (for the head) every tentacle is down. Damage is the weapon's fixed `HIT_DMG`. When the head drops, everyone with damage gets 1–3 `Kraken Tentacle` (share ≥ 15% of damage = +1, 35% chance of +1) plus a `GOLDEN_CHANCE` (+`TOP_GOLDEN_BONUS` for top damage) at a `Golden Kraken Tentacle`, written straight into `fishInventory` and pushed as `{ event:"kraken_reward" }`. A new Kraken cannot surface for `RESPAWN_COOLDOWN_MS`.
 
 ### `duel` settlement
 When `duels/<id>.status` becomes `"ended"` with a `winner`, the server moves

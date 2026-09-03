@@ -36,6 +36,10 @@ const BUILDINGS = [
   { x: 2680, y: 320, w: 220, h: 180, type: "job",    label: "JOBS CENTER",       color: "#1e3a8a", roofColor: "#1e293b", signColor: "#fcd34d" },
   { x: 3000, y: 320, w: 220, h: 180, type: "barber", label: "TRIM & STYLE",      color: "#0c4a6e", roofColor: "#1e293b", signColor: "#fcd34d" },
   { x: 3320, y: 320, w: 220, h: 180, type: "plaza",  label: "TOWN PLAZA",        color: "#9a3412", roofColor: "#1e293b", signColor: "#fcd34d" },
+
+  // The FARM barn — in the activity band between the pond and the stage. Its
+  // interior is your own personal farm (seed stall, 12 beds, a cooking pot).
+  { x: 1180, y: 1450, w: 250, h: 180, type: "farm", label: "FARM", color: "#b91c1c", roofColor: "#3f2210", signColor: "#fde68a" },
 ];
 
 function mulberry32(a){return function(){var t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296;}}
@@ -76,10 +80,14 @@ const PARK_BENCHES = [];
 
 // ACTIVITY ZONES ---------------------------------------------------------
 // Fishing pond (west) — solo activity
-const POND = { x: 620, y: 1600, rx: 300, ry: 190 };
+// Geometry is shared with the server (ECON.LAKE) so the Kraken fight agrees
+// on where every tentacle stands and who counts as "at the lake".
+const POND = { x: ECON.LAKE.x, y: ECON.LAKE.y, rx: ECON.LAKE.rx, ry: ECON.LAKE.ry };
 const POND_DOCK = { x: POND.x, y: POND.y + POND.ry - 6, w: 90, h: 120 }; // dock reaching into water from south
 // Pulled up so the stand-here ring stays clear of the residential road (y 1894+).
 const FISH_SPOT = { x: POND.x, y: POND.y + POND.ry + 36, r: 78 };
+// Lakeside cooking pot, on the bank east of the dock.
+const COOK_SPOT = { x: POND.x + 270, y: POND.y + POND.ry + 44, r: 70 };
 // Basketball court (east) — solo activity
 const COURT = { x: 3300, y: 1420, w: 760, h: 380 };
 const HOOPS = [
@@ -92,6 +100,7 @@ const NOTICE = { x: 2262, y: 1318, w: 100, h: 82 };
 const NOTICE_SPOT = { x: NOTICE.x + NOTICE.w/2, y: NOTICE.y + NOTICE.h + 30, r: 74 };
 const ACTIVITY_SPOTS = [
   { spot: FISH_SPOT,   type: "fishing",     label: "GO FISHING" },
+  { spot: COOK_SPOT,   type: "cooking",     label: "USE THE COOKING POT" },
   { spot: BALL_SPOT,   type: "basketball",  label: "SHOOT HOOPS" },
   { spot: NOTICE_SPOT, type: "leaderboard", label: "READ NOTICE BOARD" },
 ];
@@ -560,7 +569,12 @@ function drawNeighborhood() {
   _syncCam();
   ctx.fillStyle = "#3f6212"; ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.save();
-  ctx.translate(-state.cam.x, -state.cam.y);
+  // Lakeside cinematics zoom in on the pond (about the screen centre) and the
+  // Kraken shakes the ground. Zoom only ever goes IN, so culling stays safe.
+  const lake = window.gameLake;
+  const zoom = lake ? lake.zoom() : 1, shake = lake ? lake.shake() : { x: 0, y: 0 };
+  if (zoom !== 1) { ctx.translate(canvas.width / 2, canvas.height / 2); ctx.scale(zoom, zoom); ctx.translate(-canvas.width / 2, -canvas.height / 2); }
+  ctx.translate(-state.cam.x + shake.x, -state.cam.y + shake.y);
 
   // ---- ground ----
   drawGrassPattern();
@@ -578,6 +592,7 @@ function drawNeighborhood() {
   // ---- zones ----
   drawPark();
   drawPond();
+  if (lake) lake.drawLake();     // the Kraken, its slams, the bobber
   drawCourt();
   drawAmphitheater();
   drawNoticeBoard();
@@ -638,11 +653,13 @@ function drawNeighborhood() {
                     { facing: state.facing, walking: state.walking, emote: state.emote });
   GFX.drawNameAndBubble(ctx, state.pos.x, state.pos.y, state.user, state.msgs, true, state.appearance, state.role);
   ctx.globalAlpha = 1;
+  if (lake) lake.drawLakeFx();   // fishing rod, sword swing, bullets, splashes
 
   ctx.restore();
   drawInteractionPrompt();
   drawWaypointArrow();
   drawMinimap();
+  if (lake) lake.drawScreen();   // rain, boss bar, cinematic banners
 }
 
 // ---- Route guidance: a dotted trail on the ground toward the waypoint ----
@@ -776,6 +793,8 @@ function drawMinimap() {
     ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(q.x, q.y, 4 + Math.sin(Date.now()/250) * 1.5, 0, Math.PI*2); ctx.stroke();
   }
+  // a Kraken at the pond pulses so latecomers can find the fight
+  if (window.gameLake) gameLake.drawMinimapMarker(M);
   // you
   const me = M(state.pos.x, state.pos.y);
   ctx.fillStyle = "#fafafa";
@@ -1681,6 +1700,15 @@ function drawPond() {
     ctx.fillStyle = "#fef3c7"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
     ctx.fillText("🎣 FISHING", sx, sy - 48);
   }
+  // lakeside cooking pot on its own little stone circle
+  if (window.gameFarm) {
+    ctx.fillStyle = "#8a6d3b"; ctx.beginPath(); ctx.ellipse(COOK_SPOT.x, COOK_SPOT.y - 20, 46, 20, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#a8a29e"; for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; ctx.beginPath(); ctx.ellipse(COOK_SPOT.x + Math.cos(a) * 44, COOK_SPOT.y - 20 + Math.sin(a) * 18, 5, 3, 0, 0, Math.PI * 2); ctx.fill(); }
+    gameFarm.drawPot(COOK_SPOT.x, COOK_SPOT.y - 24, t);
+    // log bench beside it
+    ctx.fillStyle = "#5b3a1a"; GFX.roundFill(ctx, COOK_SPOT.x + 46, COOK_SPOT.y - 40, 44, 12, 5, "#5b3a1a");
+    ctx.fillStyle = "#8a5a2b"; ctx.fillRect(COOK_SPOT.x + 48, COOK_SPOT.y - 39, 40, 4);
+  }
 }
 
 // =====================================================================
@@ -2097,7 +2125,7 @@ window.gameWorld = {
   WORLD_W, WORLD_H, BUILDINGS, HOUSES_PER_ROW, HOUSE_ROW_Y, HOUSE_COUNT,
   houseRect, drawNeighborhood, collidesNeighborhood, buildingAtPlayer, houseAtPlayer,
   activityAtPlayer, visibleHouseUsers, houseAddress, STREET_NAMES,
-  PARK, FOUNTAIN, POND, COURT, STAGE, NOTICE, FISH_SPOT, BALL_SPOT, NOTICE_SPOT,
+  PARK, FOUNTAIN, POND, POND_DOCK, COURT, STAGE, NOTICE, FISH_SPOT, BALL_SPOT, NOTICE_SPOT, COOK_SPOT,
   // for scenery.js: "is this open grass with nothing standing on it?"
   openGround: (x, y) => inGreenSpace(x, y) && !tooCloseToTree(x, y),
 };

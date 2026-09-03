@@ -482,7 +482,8 @@ setInterval(broadcastPresence, 66); // ~15Hz presence broadcast (was 100ms/10Hz)
 // a server-side settlement. Staff editing OTHER players keep their powers.
 const PROTECTED_FIELDS = new Set(['money', 'inventory', 'cosmetics', 'vegasFloor', 'dailyStreak', 'lastDaily',
     'lastInterest', 'fishInventory', 'houseStyle', 'furniture', 'houseIndex', 'createdAt',
-    'bankBalance', 'bankLast', 'creditScore', 'creditGainLast', 'loan', 'notes']);
+    'bankBalance', 'bankLast', 'creditScore', 'creditGainLast', 'loan', 'notes',
+    'farm', 'meals', 'luck']);
 // The only fields of a user record another (non-staff) player is allowed to
 // SEE. Everything else — friends, keys, furniture, inventory, notes, all the
 // bank/loan/credit numbers — is private and never leaves the server for anyone
@@ -1001,6 +1002,8 @@ function handleMessage(c, msg) {
             const p = (msg.data && typeof msg.data === 'object') ? msg.data : null;
             if (p && activeMute(c.user)) { p.msgs = []; p.msg = ''; }
             if (p) p.invisible = !!p.invisible && isStaff(c.user);   // only staff may hide
+            // Your personal farm is yours alone — you can't stand in someone else's.
+            if (p && typeof p.area === 'string' && p.area.indexOf('farm:') === 0 && p.area.slice(5) !== c.user) p.area = 'farm:' + c.user;
             if (p && typeof p.area === 'string' && p.area.indexOf('inside:') === 0) {
                 // You can only claim to be inside someone else's home if the
                 // `home` op actually let you in (recently). Otherwise you're
@@ -1029,7 +1032,8 @@ function handleMessage(c, msg) {
         }
 
         // ----- server-authoritative economy ops (docs/SERVER-AUTHORITY.md) -----
-        case 'bank': case 'buy': case 'furniture_set': case 'earn': case 'fish': case 'casino': case 'home': case 'treasury': {
+        case 'bank': case 'buy': case 'furniture_set': case 'earn': case 'fish': case 'casino': case 'home': case 'treasury':
+        case 'farm': case 'cook': case 'kraken': {
             if (!c.user) return replyErr('not authed');
             let out;
             try { out = ECONOMY_OPS[op](c.user, msg); }
@@ -1047,9 +1051,164 @@ function handleMessage(c, msg) {
 // Each handler mutates the caller's record through the store and returns the
 // reply data; every reply carries the caller's new `money`. Throw to reject.
 const earnLast = new Map();   // `${user}:${source}` -> last accepted ts
-const fishLast = new Map();   // user -> last catch ts
+const fishLast = new Map();   // user -> last reel ts (cast cooldown)
+const fishCasts = new Map();  // user -> { id, fish, kraken, at, biteAt } — the line that's out right now
 
 function nonNegInt(v) { const n = Number(v); return Number.isInteger(n) && n >= 0 ? n : null; }
+
+// ---- luck (cooked meals) ----
+// Returns the active luck buff or null, clearing an expired one from the record.
+function luckOf(user, u, now) {
+    now = now || Date.now();
+    const l = ECON.activeLuck(u.luck, now);
+    if (!l && u.luck) { u.luck = null; store.put(`users/${user}/luck`, null); }
+    return l;
+}
+// Single-roll games a lucky loss may be re-rolled on (multi-step games keep
+// state across calls, so they only get the win bonus).
+const LUCK_REROLL_GAMES = new Set(['slots', 'jackpot', 'coinflip', 'scratch', 'roulette', 'dice', 'keno', 'baccarat', 'plinko', 'horses', 'wheel']);
+
+// ---- farm ----
+function farmOf(u) {
+    const f = (u.farm && typeof u.farm === 'object') ? u.farm : {};
+    if (!f.plots || typeof f.plots !== 'object' || Array.isArray(f.plots)) f.plots = {};
+    if (!f.seeds || typeof f.seeds !== 'object') f.seeds = {};
+    if (!f.harvest || typeof f.harvest !== 'object') f.harvest = {};
+    u.farm = f;
+    return f;
+}
+// The stall this 5-minute bucket, minus what everyone has already bought.
+function seedShopView(now) {
+    const bucket = ECON.seedShopBucket(now);
+    const sold = store.get('farm_shop/' + bucket) || {};
+    return {
+        bucket, restockIn: ECON.seedShopRestockIn(now),
+        items: ECON.seedShopStock(now).map(s => ({ id: s.id, stock: s.stock, left: Math.max(0, s.stock - (sold[s.id] || 0)) })),
+    };
+}
+// Old buckets are worthless once the stall has rotated.
+setInterval(() => {
+    const cur = ECON.seedShopBucket(Date.now());
+    const all = store.get('farm_shop') || {};
+    for (const k of Object.keys(all)) if (+k < cur) store.delete('farm_shop/' + k);
+}, 60000);
+
+// ---- the Kraken ----
+// One boss for the whole server, kept in memory (it never needs to survive a
+// restart). Every client hears about it through `kraken` events; hits and
+// rewards go through the `kraken` op.
+let kraken = null;          // see spawnKraken for the shape
+let krakenDiedAt = 0;
+function krakenBlocked() { return !!kraken || (Date.now() - krakenDiedAt < ECON.KRAKEN.RESPAWN_COOLDOWN_MS); }
+function lakeClients() {
+    const out = [];
+    for (const c of clients) {
+        const p = c.user && c.presence;
+        if (!p || (p.area && p.area !== 'neighborhood')) continue;
+        if (ECON.atLake(p.x, p.y)) out.push(c);
+    }
+    return out;
+}
+function spawnKraken(user) {
+    const now = Date.now();
+    const n = Math.max(1, lakeClients().length);
+    const maxHp = ECON.krakenMaxHp(n);
+    const headHp = Math.floor(maxHp * ECON.KRAKEN.HEAD_FRAC);
+    const tentHp = Math.floor((maxHp - headHp) / ECON.KRAKEN.TENTACLES);
+    kraken = {
+        id: pushId(), status: 'rising', spawnedAt: now, spawnedBy: user, diedAt: 0,
+        maxHp: headHp + tentHp * ECON.KRAKEN.TENTACLES,
+        head: { hp: headHp, maxHp: headHp },
+        parts: Array.from({ length: ECON.KRAKEN.TENTACLES }, () => ({ hp: tentHp, maxHp: tentHp })),
+        damage: {}, rewards: null,
+        nextAttackAt: now + ECON.KRAKEN.RISE_MS + 1500,
+        lastBroadcast: 0, lastTick: 0,
+        hitLast: new Map(),
+    };
+    console.log(`[kraken] surfaced — hooked by ${user}, ${n} at the lake, ${kraken.maxHp} hp`);
+    broadcastKraken('spawn');
+}
+function krakenView(now) {
+    if (!kraken) return null;
+    now = now || Date.now();
+    const hp = kraken.head.hp + kraken.parts.reduce((s, p) => s + p.hp, 0);
+    const top = Object.entries(kraken.damage).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([u, d]) => ({ user: u, dmg: d }));
+    return {
+        id: kraken.id, status: kraken.status, spawnedBy: kraken.spawnedBy,
+        elapsed: now - kraken.spawnedAt, riseMs: ECON.KRAKEN.RISE_MS,
+        deadFor: kraken.diedAt ? now - kraken.diedAt : 0,
+        hp, maxHp: kraken.maxHp, head: kraken.head, parts: kraken.parts,
+        top, participants: Object.keys(kraken.damage).length,
+        rewards: kraken.rewards,
+    };
+}
+function broadcastKraken(kind, extra) {
+    const now = Date.now();
+    if (kraken) kraken.lastBroadcast = now;
+    const msg = JSON.stringify(Object.assign({ event: 'kraken', kind, now, kraken: krakenView(now) }, extra || {}));
+    for (const c of clients) { if (c.user && c.ws.readyState === c.ws.OPEN) { try { c.ws.send(msg); } catch (e) {} } }
+}
+function krakenDie(now) {
+    if (!kraken || kraken.status === 'dead') return;
+    now = now || Date.now();
+    kraken.status = 'dead';
+    kraken.diedAt = now;
+    krakenDiedAt = now;
+    // Loot: everyone who landed a hit gets 1-3 tentacles; a golden one is a
+    // small chance, a little better for whoever did the most damage.
+    const entries = Object.entries(kraken.damage).filter(([, d]) => d > 0);
+    const total = entries.reduce((s, [, d]) => s + d, 0) || 1;
+    const topUser = entries.slice().sort((a, b) => b[1] - a[1])[0];
+    const rewards = {};
+    for (const [u, d] of entries) {
+        const rec = store.get('users/' + u);
+        if (!rec) continue;
+        let n = 1 + (d / total >= 0.15 ? 1 : 0) + (Math.random() < 0.35 ? 1 : 0);
+        n = Math.max(ECON.KRAKEN.REWARD_MIN, Math.min(ECON.KRAKEN.REWARD_MAX, n));
+        const golden = Math.random() < ECON.KRAKEN.GOLDEN_CHANCE + (topUser && topUser[0] === u ? ECON.KRAKEN.TOP_GOLDEN_BONUS : 0);
+        const inv = (rec.fishInventory && typeof rec.fishInventory === 'object') ? rec.fishInventory : {};
+        inv['Kraken Tentacle'] = (inv['Kraken Tentacle'] || 0) + n;
+        if (golden) inv['Golden Kraken Tentacle'] = (inv['Golden Kraken Tentacle'] || 0) + 1;
+        rec.fishInventory = inv; store.put('users/' + u + '/fishInventory', inv);
+        rewards[u] = { tentacles: n, golden };
+        pushTo(u, { event: 'kraken_reward', tentacles: n, golden, fishInventory: inv, dmg: d, share: d / total });
+    }
+    kraken.rewards = rewards;
+    console.log(`[kraken] slain — ${entries.length} fighter(s) rewarded`);
+    broadcastKraken('dead');
+}
+function krakenTick() {
+    if (!kraken) return;
+    const now = Date.now();
+    if (kraken.status === 'rising' && now - kraken.spawnedAt >= ECON.KRAKEN.RISE_MS) {
+        kraken.status = 'alive';
+        broadcastKraken('alive');
+        return;
+    }
+    if (kraken.status === 'alive') {
+        if (now >= kraken.nextAttackAt) {
+            // Slam up to three fighters: a warning ring, then the tentacle lands.
+            const here = lakeClients();
+            for (let i = here.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [here[i], here[j]] = [here[j], here[i]]; }
+            const slams = here.slice(0, 3).map(c => ({
+                x: Math.round(c.presence.x + (Math.random() - 0.5) * 40),
+                y: Math.round(c.presence.y + (Math.random() - 0.5) * 30),
+                r: ECON.KRAKEN.SLAM_RADIUS, dmg: ECON.KRAKEN.SLAM_DMG,
+                inMs: ECON.KRAKEN.SLAM_WARN_MS,
+            }));
+            kraken.nextAttackAt = now + ECON.KRAKEN.ATTACK_EVERY_MS + Math.floor(Math.random() * 900);
+            if (slams.length) broadcastKraken('slam', { slams });
+        } else if (now - kraken.lastBroadcast > 1000) {
+            broadcastKraken('tick');
+        }
+        return;
+    }
+    if (kraken.status === 'dead' && now - kraken.diedAt > ECON.KRAKEN.DEAD_LINGER_MS) {
+        kraken = null;
+        broadcastKraken('gone');
+    }
+}
+setInterval(krakenTick, 250);
 
 // Resale value of everything a player owns (inventory + placed furniture).
 function furnitureWorthOf(u) {
@@ -1440,24 +1599,61 @@ const ECONOMY_OPS = {
         return { money: moneyOf(u), gained, net, cap, loan: u.loan || null };
     },
 
+    // Fishing is a two-step op so the CLIENT never picks the catch:
+    //   cast  -> the server rolls the fish (and, secretly, whether the Kraken
+    //            is on the line) and answers with the rarity so the reel can
+    //            tune its difficulty. Staff may pass `pick` to choose the catch.
+    //   reel  -> { landed:true } after the gauge filled. The server checks the
+    //            reel took at least as long as a perfect one could, banks the
+    //            fish, and — only on a landed fish — wakes the Kraken.
     fish(user, msg) {
         const u = userRec(user), now = Date.now();
         const inv = (u.fishInventory && typeof u.fishInventory === 'object') ? u.fishInventory : {};
-        if (msg.action === 'catch') {
+        const luck = luckOf(user, u, now);
+        const L = luck ? luck.level : 0;
+        if (msg.action === 'cast') {
             const last = fishLast.get(user) || 0;
             if (now - last < ECON.FISH_CATCH_COOLDOWN) throw new Error('The line is still out.');
-            fishLast.set(user, now);
-            const q = Math.max(0, Math.min(1, Number(msg.quality) || 0));
-            const fish = ECON.rollFish(q);
-            if (fish) {
-                inv[fish.name] = (inv[fish.name] || 0) + 1;
-                u.fishInventory = inv; store.put(`users/${user}/fishInventory`, inv);
+            let fish = null, krakenHook = false;
+            const pick = msg.pick == null ? '' : String(msg.pick);
+            if (pick && pick !== 'random') {
+                // Staff-only: choose the next catch from the fishing menu.
+                if (!isStaff(user)) throw new Error('Staff only.');
+                if (pick === 'kraken') {
+                    if (krakenBlocked()) throw new Error(kraken ? 'The Kraken is already awake.' : 'The Kraken is still resting — try again in a few minutes.');
+                    fish = ECON.rollFishOfRarity('legendary');
+                    krakenHook = true;
+                } else {
+                    fish = ECON.fishDef(pick);
+                    if (!fish || fish.loot) throw new Error('No such fish.');
+                }
+            } else {
+                fish = ECON.rollFish(L);
+                if (!krakenBlocked() && Math.random() < ECON.krakenChance(fish.rarity)) krakenHook = true;
             }
-            // fish: the FISH_TABLE entry ({name, emoji, value, weight}) or null when the line snapped
-            return { money: moneyOf(u), fishInventory: inv, fish: fish || null, quality: ECON.fishQualityLabel(q) };
+            const cast = { id: pushId(), fish, kraken: krakenHook, at: now, biteAt: now + 1200 + Math.floor(Math.random() * 3200) };
+            fishCasts.set(user, cast);
+            // The Kraken is never revealed here — it only surfaces once the fish is landed.
+            return { money: moneyOf(u), castId: cast.id, rarity: fish.rarity, biteIn: cast.biteAt - now, luck: L, cooldown: ECON.FISH_CATCH_COOLDOWN };
+        }
+        if (msg.action === 'reel') {
+            const cast = fishCasts.get(user);
+            if (!cast) throw new Error('Cast your line first.');
+            fishCasts.delete(user);
+            fishLast.set(user, now);
+            if (!msg.landed) return { money: moneyOf(u), fishInventory: inv, fish: null, lost: true, rarity: cast.fish.rarity };
+            if (now - cast.at > ECON.FISH_CAST_TTL) throw new Error('That cast went stale — cast again.');
+            const cfg = ECON.REEL_CFG[cast.fish.rarity] || ECON.REEL_CFG.common;
+            if (now - cast.biteAt < cfg.minMs) throw new Error('Nobody reels that fast.');
+            const fish = cast.fish;
+            inv[fish.name] = (inv[fish.name] || 0) + 1;
+            u.fishInventory = inv; store.put(`users/${user}/fishInventory`, inv);
+            let krakenSpawned = false;
+            if (cast.kraken && !krakenBlocked()) { spawnKraken(user); krakenSpawned = true; }
+            return { money: moneyOf(u), fishInventory: inv, fish, rarity: fish.rarity, kraken: krakenSpawned, luck: L };
         }
         if (msg.action === 'sell') {
-            const fish = ECON.FISH_TABLE.find(f => f.name === msg.name);
+            const fish = ECON.fishDef(msg.name);
             const have = Math.max(0, Math.floor(+inv[msg.name] || 0));
             let qty = nonNegInt(msg.qty == null ? have : msg.qty);
             if (!fish || qty == null) throw new Error('No such fish.');
@@ -1471,17 +1667,221 @@ const ECONOMY_OPS = {
             creditEarnings(user, u, gained, 'fishing');
             return { money: moneyOf(u), fishInventory: inv, gained, price, qty, loan: u.loan || null };
         }
+        // Legacy one-shot catch (pre-reel clients): roll and bank immediately.
+        if (msg.action === 'catch') {
+            const last = fishLast.get(user) || 0;
+            if (now - last < ECON.FISH_CATCH_COOLDOWN) throw new Error('The line is still out.');
+            fishLast.set(user, now);
+            const q = Math.max(0, Math.min(1, Number(msg.quality) || 0));
+            if (ECON.fishQualityLabel(q) === 'poor' && Math.random() < 0.5) return { money: moneyOf(u), fishInventory: inv, fish: null, quality: 'poor' };
+            const fish = ECON.rollFish(L);
+            inv[fish.name] = (inv[fish.name] || 0) + 1;
+            u.fishInventory = inv; store.put(`users/${user}/fishInventory`, inv);
+            return { money: moneyOf(u), fishInventory: inv, fish, quality: ECON.fishQualityLabel(q) };
+        }
         throw new Error('Unknown fish action.');
     },
 
+    // Personal farm: buy seeds from the rotating stall (global stock per
+    // 5-minute bucket), plant them in a bed, harvest when grown, sell or cook.
+    farm(user, msg) {
+        const u = userRec(user), now = Date.now();
+        const farm = farmOf(u);
+        const save = () => { u.farm = farm; store.put(`users/${user}/farm`, farm); };
+        const view = (extra) => Object.assign({ money: moneyOf(u), farm, shop: seedShopView(now), luck: luckOf(user, u, now), loan: u.loan || null }, extra || {});
+        const action = String(msg.action || 'status');
+        if (action === 'status') return view();
+        if (action === 'buy') {
+            const crop = ECON.CROP_BY_ID[String(msg.crop || '')];
+            const qty = nonNegInt(msg.qty == null ? 1 : msg.qty);
+            if (!crop) throw new Error('No such seed.');
+            if (!qty || qty > 50) throw new Error('Buy 1-50 seeds at a time.');
+            const shop = seedShopView(now);
+            const item = shop.items.find(i => i.id === crop.id);
+            if (!item) throw new Error(`${crop.name} seeds aren't on the stall right now.`);
+            if (item.left < qty) throw new Error(item.left ? `Only ${item.left} ${crop.name} seed${item.left === 1 ? '' : 's'} left this rotation.` : `${crop.name} seeds are sold out — the stall restocks in ${Math.ceil(shop.restockIn / 60000)} min.`);
+            const cost = crop.price * qty;
+            if (moneyOf(u) < cost) throw new Error('Not enough money.');
+            setMoney(user, u, moneyOf(u) - cost);
+            const sold = store.get('farm_shop/' + shop.bucket) || {};
+            sold[crop.id] = (sold[crop.id] || 0) + qty;
+            store.put('farm_shop/' + shop.bucket, sold);
+            farm.seeds[crop.id] = (farm.seeds[crop.id] || 0) + qty;
+            save();
+            return view({ bought: qty, crop: crop.id, cost });
+        }
+        if (action === 'plant') {
+            const plot = nonNegInt(msg.plot);
+            const crop = ECON.CROP_BY_ID[String(msg.crop || '')];
+            if (plot == null || plot >= ECON.FARM_PLOTS) throw new Error('No such bed.');
+            if (!crop) throw new Error('No such seed.');
+            if (farm.plots[plot]) throw new Error('That bed already has something growing.');
+            if (!(farm.seeds[crop.id] > 0)) throw new Error(`You have no ${crop.name} seeds.`);
+            farm.seeds[crop.id] -= 1;
+            if (farm.seeds[crop.id] <= 0) delete farm.seeds[crop.id];
+            farm.plots[plot] = { crop: crop.id, at: now };
+            save();
+            return view({ planted: plot, crop: crop.id });
+        }
+        if (action === 'harvest') {
+            const which = msg.plot === 'all' || msg.plot == null ? null : nonNegInt(msg.plot);
+            const got = [];
+            for (const [k, p] of Object.entries(farm.plots)) {
+                if (which != null && +k !== which) continue;
+                const crop = p && ECON.CROP_BY_ID[p.crop];
+                if (!crop) { delete farm.plots[k]; continue; }
+                if (now - (+p.at || 0) < crop.growMs) continue;
+                const n = ECON.cropYield(crop);
+                farm.harvest[crop.id] = (farm.harvest[crop.id] || 0) + n;
+                got.push({ crop: crop.id, n });
+                delete farm.plots[k];
+            }
+            if (!got.length) throw new Error(which != null ? 'That crop is still growing.' : 'Nothing is ready to harvest yet.');
+            save();
+            return view({ harvested: got });
+        }
+        if (action === 'clear') {
+            const plot = nonNegInt(msg.plot);
+            if (plot == null || !farm.plots[plot]) throw new Error('That bed is empty.');
+            delete farm.plots[plot];
+            save();
+            return view({ cleared: plot });
+        }
+        if (action === 'sell') {
+            const crop = ECON.CROP_BY_ID[String(msg.crop || '')];
+            if (!crop) throw new Error('No such crop.');
+            const have = Math.max(0, Math.floor(+farm.harvest[crop.id] || 0));
+            let qty = nonNegInt(msg.qty == null ? have : msg.qty);
+            if (qty == null) throw new Error('Bad quantity.');
+            qty = Math.min(qty, have);
+            if (qty <= 0) throw new Error('Nothing to sell.');
+            farm.harvest[crop.id] = have - qty;
+            if (farm.harvest[crop.id] <= 0) delete farm.harvest[crop.id];
+            const gained = crop.value * qty;
+            creditEarnings(user, u, gained, 'farming');
+            save();
+            return view({ gained, sold: qty, crop: crop.id });
+        }
+        throw new Error('Unknown farm action.');
+    },
+
+    // Cooking pot (at the lake and on the farm): up to four fish / tentacles /
+    // crops become a meal; eating one grants timed luck (see ECON.luckEffects).
+    cook(user, msg) {
+        const u = userRec(user), now = Date.now();
+        const inv = (u.fishInventory && typeof u.fishInventory === 'object') ? u.fishInventory : {};
+        const farm = farmOf(u);
+        const meals = (u.meals && typeof u.meals === 'object') ? u.meals : {};
+        const view = (extra) => Object.assign({ money: moneyOf(u), meals, fishInventory: inv, farm, luck: luckOf(user, u, now) }, extra || {});
+        const action = String(msg.action || 'status');
+        if (action === 'status') return view();
+        if (action === 'cook') {
+            const ings = Array.isArray(msg.ingredients) ? msg.ingredients : [];
+            const meal = ECON.cookMeal(ings);
+            if (!meal) throw new Error(`Put 1-${ECON.COOK_MAX_ING} real ingredients in the pot.`);
+            // tally what's needed, then check the pantry before touching anything
+            const need = {};
+            for (const i of ings) { const k = i.kind + ':' + i.id; need[k] = (need[k] || 0) + 1; }
+            for (const [k, n] of Object.entries(need)) {
+                const [kind, id] = [k.slice(0, k.indexOf(':')), k.slice(k.indexOf(':') + 1)];
+                const have = kind === 'fish' ? (+inv[id] || 0) : (+farm.harvest[id] || 0);
+                if (have < n) throw new Error(`You don't have enough ${(ECON.ingredientInfo(kind, id) || { name: id }).name}.`);
+            }
+            for (const [k, n] of Object.entries(need)) {
+                const [kind, id] = [k.slice(0, k.indexOf(':')), k.slice(k.indexOf(':') + 1)];
+                if (kind === 'fish') { inv[id] -= n; if (inv[id] <= 0) delete inv[id]; }
+                else { farm.harvest[id] -= n; if (farm.harvest[id] <= 0) delete farm.harvest[id]; }
+            }
+            const cur = meals[meal.key] || { name: meal.name, emoji: meal.emoji, luck: meal.luck, n: 0 };
+            cur.n += 1;
+            meals[meal.key] = cur;
+            u.fishInventory = inv; store.put(`users/${user}/fishInventory`, inv);
+            u.farm = farm; store.put(`users/${user}/farm`, farm);
+            u.meals = meals; store.put(`users/${user}/meals`, meals);
+            return view({ cooked: meal });
+        }
+        if (action === 'eat') {
+            const key = String(msg.meal || '');
+            const m = meals[key];
+            if (!m || !(m.n > 0)) throw new Error('You have no such meal.');
+            const cur = luckOf(user, u, now);
+            let luck;
+            if (cur && cur.level > m.luck) {
+                // A weaker meal on top of a stronger buff just tops the timer up.
+                luck = Object.assign({}, cur, { until: cur.until + Math.floor(ECON.luckDurationMs(m.luck) / 2) });
+            } else if (cur && cur.level === m.luck) {
+                luck = Object.assign({}, cur, { until: cur.until + ECON.luckDurationMs(m.luck) });
+            } else {
+                luck = { level: m.luck, until: now + ECON.luckDurationMs(m.luck), meal: m.name, emoji: m.emoji, since: now };
+            }
+            m.n -= 1;
+            if (m.n <= 0) delete meals[key];
+            u.meals = meals; store.put(`users/${user}/meals`, meals);
+            u.luck = luck; store.put(`users/${user}/luck`, luck);
+            return view({ ate: m.name, luck });
+        }
+        throw new Error('Unknown cook action.');
+    },
+
+    // The Kraken boss fight. Every hit is validated here: right weapon
+    // cadence, standing at the lake, within reach of the part, and the head
+    // only once every tentacle is down.
+    kraken(user, msg) {
+        const now = Date.now();
+        const action = String(msg.action || 'status');
+        if (action === 'status') {
+            return { kraken: krakenView(now), restIn: kraken ? 0 : Math.max(0, ECON.KRAKEN.RESPAWN_COOLDOWN_MS - (now - krakenDiedAt)) };
+        }
+        if (action === 'hit') {
+            if (!kraken || kraken.status !== 'alive') throw new Error('There is nothing to fight.');
+            const c = byUser.get(user), p = c && c.presence;
+            if (!p || (p.area && p.area !== 'neighborhood') || !ECON.atLake(p.x, p.y)) throw new Error('You need to be at the lake.');
+            const weapon = msg.weapon === 'pistol' ? 'pistol' : 'sword';
+            const k = user + ':' + weapon;
+            const last = kraken.hitLast.get(k) || 0;
+            if (now - last < ECON.KRAKEN.HIT_MIN_MS[weapon]) throw new Error('Too fast.');
+            let target, pos;
+            if (msg.part === 'head') {
+                if (kraken.parts.some(t => t.hp > 0)) throw new Error('The tentacles guard the head — cut them down first!');
+                target = kraken.head; pos = ECON.krakenHeadPos();
+            } else {
+                const i = nonNegInt(msg.part);
+                if (i == null || i >= kraken.parts.length) throw new Error('No such tentacle.');
+                target = kraken.parts[i]; pos = ECON.krakenPartPos(i, kraken.parts.length);
+            }
+            if (target.hp <= 0) throw new Error('That part is already down.');
+            if (Math.hypot(p.x - pos.x, p.y - pos.y) > ECON.KRAKEN.REACH[weapon] + 60) throw new Error('Out of reach.');
+            kraken.hitLast.set(k, now);
+            const dmg = Math.min(target.hp, ECON.KRAKEN.HIT_DMG[weapon]);
+            target.hp -= dmg;
+            kraken.damage[user] = (kraken.damage[user] || 0) + dmg;
+            const downed = target.hp <= 0;
+            if (msg.part === 'head' && downed) krakenDie(now);
+            else if (downed) broadcastKraken('part_down', { part: msg.part === 'head' ? 'head' : nonNegInt(msg.part) });
+            else if (now - kraken.lastBroadcast > 150) broadcastKraken('hp');
+            return { part: msg.part, hp: target.hp, maxHp: target.maxHp, dmg, downed, dead: kraken ? kraken.status === 'dead' : true };
+        }
+        throw new Error('Unknown kraken action.');
+    },
+
     casino(user, msg) {
-        const u = userRec(user);
+        const u = userRec(user), now = Date.now();
         const game = String(msg.game || ''), action = String(msg.action || '');
-        const r = GAMES.play(user, game, action, msg, moneyOf(u));
+        const luck = luckOf(user, u, now);
+        const eff = luck ? ECON.luckEffects(luck.level) : null;
+        let r = GAMES.play(user, game, action, msg, moneyOf(u));
+        // Luck (from a cooked meal): a lost single-roll round may be re-rolled
+        // once, and every win pays a bonus on top. Multi-step games only get the bonus.
+        let luckReroll = false, luckBonus = 0;
+        if (eff && r.delta < 0 && LUCK_REROLL_GAMES.has(game) && Math.random() < eff.rerollChance) {
+            const r2 = GAMES.play(user, game, action, msg, moneyOf(u));
+            if (r2.delta > r.delta) { r = r2; luckReroll = true; }
+        }
+        if (eff && r.delta > 0) luckBonus = Math.floor(r.delta * eff.casinoBonus);
         // A win is earnings (skimmed while a loan is overdue); a loss is a loss.
-        if (r.delta > 0) creditEarnings(user, u, r.delta, 'casino');
+        if (r.delta > 0) creditEarnings(user, u, r.delta + luckBonus, 'casino');
         else if (r.delta < 0) setMoney(user, u, moneyOf(u) + r.delta);
-        return Object.assign({}, r.data, { money: moneyOf(u), loan: u.loan || null });
+        return Object.assign({}, r.data, { money: moneyOf(u), loan: u.loan || null, luckBonus, luckReroll, luck: luck || null });
     },
 
     // Server-checked house entry. A locked door only opens for the owner, staff,

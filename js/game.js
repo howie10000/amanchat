@@ -174,6 +174,13 @@ function openHelp() {
     <div>L — lock / unlock your front door</div>
     <h3 class="section">OUTDOORS</h3>
     <div>🎣 Fishing Pond • 🏀 Basketball Court — walk up and press E</div>
+    <div>🎣 Fishing: cast, hook the bite, then click (or Space) to keep the hook between the gold lines until the white bar fills.
+        Fish come in five rarities — Common, Rare, Epic, Legendary and Mythical (mythicals leap out of the water).</div>
+    <div>🦑 A landed fish can wake <b>the Kraken</b>. It rains at the lake, tentacles rise and the whole town can come fight it:
+        click to attack (1 sword, 2 pistol), dodge the red rings, cut the tentacles then strike the head. Everyone who hits it gets Kraken Tentacles.</div>
+    <div>🌱 FARM (the red barn) — buy seeds from a stall that rotates every 5 minutes, plant them in your beds, harvest and sell.</div>
+    <div>🍲 Cooking Pot (on your farm and beside the pond) — put up to 4 fish / tentacles / crops in for a meal. Eat it for timed
+        <b>luck</b>: rarer fish bite, and every VEGAS win pays a bonus.</div>
     <div>★ Notice Board — leaderboard of the richest neighbors</div>
     <h3 class="section">VEGAS</h3>
     <div>The tower on the west side. Five rooms, sixteen games: The Strip (lobby),
@@ -261,6 +268,7 @@ function handleKey(e) {
   } else if (k === "v" && state.isMayor) {
     toggleInvisible();
   } else if (k === "e") {
+    if (window.gameLake && gameLake.blocksInput()) return;   // mid-cinematic / knocked out
     tryInteract();
   } else if (k === "escape") {
     if (state.buildMode) { toggleBuildMode(); return; }
@@ -286,6 +294,7 @@ function handleKey(e) {
 function onLeftClick() {
   if (state.area === "dungeon") gameCombat.doAttack();
   else if (state.area === "duel") gameCombat.doAttack();
+  else if (state.area === "neighborhood") { if (window.gameLake && gameLake.fightActive()) gameLake.attack(); }
   else if (state.area === "interior_home") {
     if (state.placeMode) placeFurnitureAtMouse();
     else if (state.buildMode) tryGrabFurniture();
@@ -438,7 +447,7 @@ function tryInteract() {
     if (act) return triggerActivity(act.type);
   } else if (state.area.startsWith("interior_")) {
     const hs = gameInteriors.hotspotAtPlayer();
-    if (hs) return triggerHotspotAction(hs.action);
+    if (hs) return triggerHotspotAction(hs.action, hs);
     // ESC also leaves; but no hotspot? door check (close to bottom)
     const room = gameInteriors.interiorRoom();
     if (state.pos.y > room.y + room.h - 30) gameInteriors.leaveInterior();
@@ -450,11 +459,15 @@ function triggerActivity(type) {
   if (type === "fishing")     gameOutdoor.openFishing();
   else if (type === "basketball") gameOutdoor.openBasketball();
   else if (type === "leaderboard") gameOutdoor.openLeaderboard();
+  else if (type === "cooking") gameFarm.openCooking("lake");
 }
 
 // ---------- Hotspot action dispatch ----------
-function triggerHotspotAction(action) {
+function triggerHotspotAction(action, hs) {
   switch (action) {
+    case "farm_shop":        gameFarm.openSeedShop(); break;
+    case "farm_pot":         gameFarm.openCooking("farm"); break;
+    case "farm_plot":        gameFarm.openPlot(hs ? hs.plot : 0); break;
     case "casino_slots":     gameCasino.openSlots(); break;
     case "casino_coinflip":  gameCasino.openCoinFlip(); break;
     case "casino_scratch":   gameCasino.openScratch(); break;
@@ -503,6 +516,7 @@ function mapDestinations() {
   }
   out.push({ group: "Places in town", label: "\ud83c\udf33 Central Park Fountain", x: gameWorld.FOUNTAIN.x, y: gameWorld.FOUNTAIN.y + 90 });
   out.push({ group: "Places in town", label: "\ud83c\udfa3 Fishing Pond", x: gameWorld.FISH_SPOT.x, y: gameWorld.FISH_SPOT.y });
+  out.push({ group: "Places in town", label: "\ud83c\udf72 Lakeside Cooking Pot", x: gameWorld.COOK_SPOT.x, y: gameWorld.COOK_SPOT.y });
   out.push({ group: "Places in town", label: "\ud83c\udfc0 Basketball Court", x: gameWorld.BALL_SPOT.x, y: gameWorld.BALL_SPOT.y });
   out.push({ group: "Places in town", label: "\ud83c\udfaa Amphitheater Stage", x: gameWorld.STAGE.x, y: gameWorld.STAGE.y + 150 });
   out.push({ group: "Places in town", label: "\u2605 Notice Board", x: gameWorld.NOTICE_SPOT.x, y: gameWorld.NOTICE_SPOT.y });
@@ -1797,7 +1811,11 @@ function update() {
     !document.getElementById("menu").classList.contains("hidden") ||
     // A phone app does NOT block movement (the phone is a HUD, not a modal) —
     // only a focused text field in it does.
-    (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
+    (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) ||
+    // A lakeside cinematic (mythical catch / the Kraken rising) or a Kraken
+    // knock-out holds you in place.
+    (window.gameLake && gameLake.blocksInput());
+  if (state.swingT > 0) state.swingT--;
 
   if (!inputBlocked) {
     let dx = 0, dy = 0;
@@ -1855,6 +1873,8 @@ function update() {
   } else {
     state.cam.x = 0; state.cam.y = 0;
   }
+  // The lake may take the camera (cinematics), run the Kraken fight and weather.
+  if (window.gameLake) gameLake.update();
 }
 
 // ---------- DRAW ----------

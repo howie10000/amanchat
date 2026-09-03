@@ -25,6 +25,24 @@ A multiplayer browser game built on the idea you sent your friend:
   - ⚔️ **Quest House** — Top-down combat for money
   - 💼 **Workplace** — Pizza delivery, typing test, whack-a-mole
   - 💬 **Social Plaza** — Hangout / mayor announcements
+  - 🌱 **FARM** — the red barn in the activity band opens your **personal farm**:
+    a seed stall that rotates its plants and stock **every 5 minutes** (stock is
+    shared town-wide, Grow-a-Garden style), 12 beds to plant in, and a cooking pot.
+- **🎣 Fishing update** — the pond has five rarity tiers of fish (Common, Rare,
+  Epic, Legendary, Mythical). Reeling is a gauge: a hook marker sinks, every
+  click kicks it up, keep it between the two gold lines and the white catch bar
+  fills — full bar lands the fish, let it drain and it's gone. Mythical catches
+  play a leap cinematic at the dock. Staff see a **next-catch picker** in the
+  fishing menu (server-verified; players can't use it).
+- **🦑 The Kraken** — a landed fish can wake the sea beast: the rod jerks, the sky
+  over the lake turns to rain, tentacles rise, then the head surfaces and a
+  boss fight starts for **everyone online** (anyone can come to the pond while
+  it's alive). Click to attack (1 sword, 2 pistol), dodge the tentacle-slam
+  rings, cut down the tentacles then strike the head. Everyone who hit it gets
+  1–3 **Kraken Tentacles**, with a chance at a **Golden** one.
+- **🍲 Cooking** — pots on your farm and beside the pond take up to 4 fish /
+  tentacles / crops and turn them into a meal. Eating one grants timed **luck**:
+  rarer fish bite, VEGAS wins pay a bonus and lost bets sometimes re-roll.
 - **Staff system** — three roles: 👑 **owner** > 🛡️ **admin** > player.
   - Owners are set **in the server save file only** (never from the game):
     run `node server-node/set-owner.js aman howie` on the box that holds
@@ -49,7 +67,7 @@ A multiplayer browser game built on the idea you sent your friend:
   matters. Clients cannot write `money`, `inventory`, `cosmetics`,
   `vegasFloor`, streaks, fish or house paint; every purchase, payout and
   casino outcome is an RPC the server validates (`buy`, `bank`, `earn`,
-  `fish`, `furniture_set`, `casino`). All sixteen Vegas games are rolled in
+  `fish`, `farm`, `cook`, `kraken`, `furniture_set`, `casino`). All sixteen Vegas games are rolled in
   `server-node/games.js` with the same paytables the client shows; the
   client only animates the result. Mini-game payouts are capped and
   rate-limited per source, duels are settled server-side once, and paid
