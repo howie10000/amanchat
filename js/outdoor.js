@@ -88,7 +88,8 @@ function setFishTab(t) {
 function staffPickHtml() {
   if (!state.isMayor) return "";
   let opts = `<option value="random" ${_fishPick === "random" ? "selected" : ""}>Random (normal odds)</option>
-    <option value="kraken" ${_fishPick === "kraken" ? "selected" : ""}>🦑 THE KRAKEN (sea beast)</option>`;
+    <option value="kraken" ${_fishPick === "kraken" ? "selected" : ""}>🦑 THE KRAKEN (sea beast)</option>
+    <option value="serpent" ${_fishPick === "serpent" ? "selected" : ""}>🐍 THE SEA SERPENT (sea beast)</option>`;
   for (const r of ECON.FISH_RARITIES) {
     opts += `<optgroup label="${ECON.RARITY_INFO[r].label}">` + FISH_TABLE.filter(f => f.rarity === r).map(f => `<option value="${f.name}" ${_fishPick === f.name ? "selected" : ""}>${f.emoji} ${f.name}</option>`).join("") + `</optgroup>`;
   }
@@ -298,7 +299,7 @@ async function finishReel(landed) {
   if (d.kraken) {
     // The server says the Kraken took the bait. lake.js runs the show from here.
     closeMenu();
-    if (window.gameLake) gameLake.startKrakenCinematic();
+    if (window.gameLake) gameLake.startKrakenCinematic(d.beast || "kraken");
     toast(`${fish.emoji} You landed a <b>${fish.name}</b>… but something else is on the line.`, 4000);
     return;
   }
@@ -324,6 +325,9 @@ function showCatch(fish, cast) {
 }
 
 // ---- the scene + gauge, drawn every frame while the Fish tab is open ----
+// The left panel is a slice of the real pond, drawn with the same palette and
+// props world.js uses (bank rim, radial water, lily pads, reeds, the plank
+// dock and lantern) with YOUR character standing on the dock, rod out.
 function fishFrame(ts) {
   const cv = document.getElementById("fishCanvas");
   if (!cv || !menuOpen() || _fishTab !== "fish") { _fishRaf = 0; return; }
@@ -334,109 +338,154 @@ function fishFrame(ts) {
   drawFishScene(cv.getContext("2d"), ts / 1000, dt);
   _fishRaf = requestAnimationFrame(fishFrame);
 }
+const _fishDecor = (function () {
+  const rng = ECON.mulberry32(777);
+  const d = { lilies: [], reeds: [], glints: [], shore: [] };
+  for (let i = 0; i < 4; i++) d.lilies.push({ x: 40 + rng() * 170, y: 60 + rng() * 90, r: 7 + rng() * 5, flower: rng() < 0.5, rot: rng() * 6.28 });
+  for (let i = 0; i < 9; i++) d.reeds.push({ x: 8 + rng() * 60 + (i > 5 ? 190 : 0), h: 14 + rng() * 16, cat: rng() < 0.5, lean: (rng() - 0.5) * 0.5 });
+  for (let i = 0; i < 26; i++) d.glints.push({ x: 20 + rng() * 230, y: 40 + rng() * 150, ph: rng() * 6.28, sp: 0.6 + rng() });
+  for (let i = 0; i < 24; i++) d.shore.push(rng());
+  return d;
+})();
 function drawFishScene(c, t, dt) {
   const W = FISH_W, H = FISH_H;
   c.clearRect(0, 0, W, H);
-  // ---- left: the pond ----
+  // ================= left: the pond (top-down, like the town) =================
   const PW = 270;
-  const sky = c.createLinearGradient(0, 0, 0, 120); sky.addColorStop(0, "#1e3a5f"); sky.addColorStop(1, "#0e7490");
-  c.fillStyle = sky; c.fillRect(0, 0, PW, 120);
-  const water = c.createLinearGradient(0, 120, 0, H); water.addColorStop(0, "#0891b2"); water.addColorStop(1, "#0c4a6e");
-  c.fillStyle = water; c.fillRect(0, 120, PW, H - 120);
-  // reeds + far shore
-  c.fillStyle = "#3f6212"; c.beginPath(); c.moveTo(0, 122); for (let x = 0; x <= PW; x += 18) c.lineTo(x, 112 + Math.sin(x / 30) * 5); c.lineTo(PW, 122); c.closePath(); c.fill();
-  c.strokeStyle = "#65a30d"; c.lineWidth = 2;
-  for (let i = 0; i < 7; i++) { const x = 14 + i * 12 + (i % 2) * 5; c.beginPath(); c.moveTo(x, 124); c.quadraticCurveTo(x + Math.sin(t + i) * 3, 105, x + 3 + Math.sin(t * 1.3 + i) * 4, 90 - (i % 3) * 6); c.stroke(); }
-  // ripples
-  c.lineWidth = 1;
-  for (let i = 0; i < 5; i++) { const rp = (t * 0.3 + i * 0.2) % 1; c.strokeStyle = `rgba(255,255,255,${0.18 * (1 - rp)})`; c.beginPath(); c.ellipse(150, 200, 20 + rp * 120, 6 + rp * 40, 0, 0, Math.PI * 2); c.stroke(); }
-  for (let i = 0; i < 12; i++) { const a = 0.5 + 0.5 * Math.sin(t * 2 + i * 1.7); c.fillStyle = `rgba(255,255,255,${a * 0.5})`; c.fillRect(20 + ((i * 41) % (PW - 40)), 140 + ((i * 29) % 140), 5, 1); }
-  // dock + rod
-  c.fillStyle = "#8a5a2b"; c.fillRect(0, H - 60, 120, 60);
-  for (let y = H - 60; y < H; y += 10) { c.fillStyle = "rgba(0,0,0,.25)"; c.fillRect(0, y, 120, 1.5); }
-  c.fillStyle = "#5b3210"; c.fillRect(0, H - 60, 3, 60); c.fillRect(117, H - 60, 3, 60);
+  c.save(); c.beginPath(); c.rect(0, 0, PW, H); c.clip();
+  // grass + bank rim (world.js drawPond colours)
+  c.fillStyle = "#44701a"; c.fillRect(0, 0, PW, H);
+  c.fillStyle = "rgba(255,255,255,.05)"; for (let i = 0; i < 40; i++) c.fillRect((i * 37) % PW, (i * 53) % H, 2, 5);
+  const bank = (extra, col) => {
+    c.fillStyle = col; c.beginPath();
+    for (let i = 0; i < 24; i++) { const a = i / 24 * Math.PI * 2; const k = 1 + extra + _fishDecor.shore[i] * 0.05; const x = 135 + Math.cos(a) * 150 * k, y = 118 + Math.sin(a) * 118 * k; i ? c.lineTo(x, y) : c.moveTo(x, y); }
+    c.closePath(); c.fill();
+  };
+  bank(0.16, "#4a6b12"); bank(0.07, "#8a6d3b"); bank(0.035, "#c2a36b");
+  // water: deep centre to shallow rim
+  const g = c.createRadialGradient(135, 118, 10, 135, 118, 150);
+  g.addColorStop(0, "#0c4a6e"); g.addColorStop(0.55, "#0e7490"); g.addColorStop(0.9, "#0891b2"); g.addColorStop(1, "#22d3ee");
+  c.fillStyle = g; bank(0, g);
+  c.fillStyle = "rgba(186,230,253,.10)"; c.beginPath(); c.ellipse(110, 80, 80, 28, -0.2, 0, Math.PI * 2); c.fill();
+  // ripples + glints
+  c.lineWidth = 1.5;
+  for (let i = 0; i < 4; i++) { const rp = (t * 0.35 + i * 0.25) % 1; c.strokeStyle = `rgba(255,255,255,${0.22 * (1 - rp)})`; c.beginPath(); c.ellipse(150, 105, 20 + rp * 100, 12 + rp * 62, 0, 0, Math.PI * 2); c.stroke(); }
+  for (const gl of _fishDecor.glints) { const a = 0.5 + 0.5 * Math.sin(t * gl.sp * 2 + gl.ph); if (a < 0.35) continue; c.fillStyle = `rgba(255,255,255,${(a - 0.35) * 0.9})`; c.fillRect(gl.x - 3, gl.y, 6, 1.2); }
+  // lily pads
+  for (const l of _fishDecor.lilies) {
+    c.fillStyle = "rgba(0,0,0,.15)"; c.beginPath(); c.ellipse(l.x + 2, l.y + 2, l.r, l.r * 0.7, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#15803d"; c.beginPath(); c.ellipse(l.x, l.y, l.r, l.r * 0.7, 0, l.rot + 0.5, l.rot + Math.PI * 2); c.lineTo(l.x, l.y); c.fill();
+    c.fillStyle = "rgba(255,255,255,.15)"; c.beginPath(); c.ellipse(l.x - l.r * 0.3, l.y - l.r * 0.2, l.r * 0.4, l.r * 0.2, 0, 0, Math.PI * 2); c.fill();
+    if (l.flower) { c.fillStyle = "#fbcfe8"; for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; c.beginPath(); c.ellipse(l.x + Math.cos(a) * 3.5, l.y - 3 + Math.sin(a) * 2.5, 3, 1.6, a, 0, Math.PI * 2); c.fill(); } c.fillStyle = "#fde047"; c.beginPath(); c.arc(l.x, l.y - 3, 1.6, 0, Math.PI * 2); c.fill(); }
+  }
+  // a duck paddling a slow loop
+  { const a = t * 0.35; const dx = 150 + Math.cos(a) * 70, dy = 70 + Math.sin(a) * 26; const dir = Math.sign(-Math.sin(a)) || 1;
+    c.strokeStyle = "rgba(255,255,255,.25)"; c.lineWidth = 1; c.beginPath(); c.moveTo(dx - dir * 6, dy + 2); c.lineTo(dx - dir * 22, dy - 4); c.moveTo(dx - dir * 6, dy + 3); c.lineTo(dx - dir * 22, dy + 9); c.stroke();
+    c.fillStyle = "#fef3c7"; c.beginPath(); c.ellipse(dx, dy, 8, 5, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#166534"; c.beginPath(); c.arc(dx + dir * 6, dy - 5, 4, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#f59e0b"; c.beginPath(); c.moveTo(dx + dir * 9, dy - 5); c.lineTo(dx + dir * 14, dy - 4); c.lineTo(dx + dir * 9, dy - 3); c.closePath(); c.fill(); }
+  // reeds on the banks
+  for (const r of _fishDecor.reeds) {
+    const by = r.x > 150 ? 250 : 262, sway = Math.sin(t * 1.3 + r.x * 0.05) * 2;
+    c.strokeStyle = "#3f6212"; c.lineWidth = 2; c.lineCap = "round";
+    for (let k = -1; k <= 1; k++) { c.beginPath(); c.moveTo(r.x + k * 3, by); c.quadraticCurveTo(r.x + k * 3 + r.lean * 10, by - r.h * 0.6, r.x + k * 5 + sway + r.lean * 14, by - r.h - k * 3); c.stroke(); }
+    c.lineCap = "butt";
+    if (r.cat) { c.fillStyle = "#78350f"; c.fillRect(r.x + sway + r.lean * 14 - 1.5, by - r.h - 8, 3, 10); }
+  }
+  // plank dock reaching in from the bottom, with posts, rope rail and lantern
+  const dx0 = 105, dw = 62, dy0 = 170;
+  c.fillStyle = "rgba(0,0,0,.28)"; c.fillRect(dx0 + 5, dy0 + 6, dw, H - dy0);
+  for (let yy = dy0; yy < H; yy += 11) { c.fillStyle = ((yy / 11) | 0) % 2 ? "#9a6a35" : "#8a5a2b"; c.fillRect(dx0, yy, dw, 11); c.fillStyle = "rgba(0,0,0,.28)"; c.fillRect(dx0, yy, dw, 1.5); }
+  c.fillStyle = "#5b3210"; c.fillRect(dx0, dy0, 3, H - dy0); c.fillRect(dx0 + dw - 3, dy0, 3, H - dy0);
+  for (const [px, py] of [[dx0 - 1, dy0 - 2], [dx0 + dw - 5, dy0 - 2], [dx0 - 1, dy0 + 50], [dx0 + dw - 5, dy0 + 50]]) { c.fillStyle = "#3f2210"; c.fillRect(px, py - 12, 6, 20); c.fillStyle = "#7c4a18"; c.fillRect(px, py - 12, 2, 20); }
+  c.strokeStyle = "#d6c7a1"; c.lineWidth = 1.5; c.beginPath(); c.moveTo(dx0 + 2, dy0 - 10); c.quadraticCurveTo(dx0 + 2, dy0 + 30, dx0 + 2, dy0 + 40); c.moveTo(dx0 + dw - 2, dy0 - 10); c.quadraticCurveTo(dx0 + dw - 2, dy0 + 30, dx0 + dw - 2, dy0 + 40); c.stroke();
+  { const lx = dx0 + 2, ly = dy0 - 22, fl = 0.8 + 0.2 * Math.sin(t * 7); const lg = c.createRadialGradient(lx, ly, 4, lx, ly, 40); lg.addColorStop(0, "rgba(255,226,140,.34)"); lg.addColorStop(1, "rgba(255,214,110,0)"); c.fillStyle = lg; c.beginPath(); c.arc(lx, ly, 40, 0, Math.PI * 2); c.fill(); c.fillStyle = "#1f2937"; c.fillRect(lx - 4, ly - 6, 8, 12); c.fillStyle = `rgba(255,200,90,${fl})`; c.fillRect(lx - 2.5, ly - 4, 5, 8); c.fillStyle = "#1f2937"; c.fillRect(lx - 3, ly - 8, 6, 2); }
+  // you, on the dock, facing the water — with your real look
+  const px = dx0 + dw / 2, py = dy0 + 34;
   const bend = _fishState === "reeling" && _reel ? 0.35 + 0.35 * _reel.wobble + Math.abs(Math.sin(t * 14)) * 0.15 : _fishState === "bite" ? Math.abs(Math.sin(t * 20)) * 0.6 : 0;
-  c.strokeStyle = "#5b3210"; c.lineWidth = 5; c.lineCap = "round";
-  c.beginPath(); c.moveTo(70, H - 30); c.quadraticCurveTo(120, H - 120 + bend * 30, 170 - bend * 30, 90 + bend * 60); c.stroke();
-  c.strokeStyle = "#c48a4a"; c.lineWidth = 1.5;
-  c.beginPath(); c.moveTo(71, H - 32); c.quadraticCurveTo(121, H - 122 + bend * 30, 171 - bend * 30, 90 + bend * 60); c.stroke();
+  GFX.drawCharacter(c, px, py, state.appearance, { facing: "up", walking: _fishState === "reeling" ? t * 60 : 0 });
+  // rod + line + bobber
+  const hx = px + 9, hy = py + 3, tipX = px + 30 - bend * 10, tipY = py - 48 + bend * 16;
+  c.strokeStyle = "#5b3210"; c.lineWidth = 3.5; c.lineCap = "round";
+  c.beginPath(); c.moveTo(hx, hy); c.quadraticCurveTo(px + 26, py - 24 + bend * 6, tipX, tipY); c.stroke();
+  c.strokeStyle = "#c48a4a"; c.lineWidth = 1.2; c.beginPath(); c.moveTo(hx + 1, hy - 1); c.quadraticCurveTo(px + 27, py - 24 + bend * 6, tipX + 1, tipY); c.stroke();
   c.lineCap = "butt";
-  const tipX = 170 - bend * 30, tipY = 90 + bend * 60;
-  // bobber
-  let bob = Math.sin(t * 2) * 2, dip = 0;
-  if (_fishState === "bite") dip = 6 + Math.abs(Math.sin(t * 18)) * 8;
-  if (_fishState === "reeling" && _reel) dip = 10 + (1 - _reel.y) * 10;
-  const bx = 200, by = 178 + bob + dip;
+  c.fillStyle = "#1f2937"; c.beginPath(); c.arc(px + 13, py - 4, 3.5, 0, Math.PI * 2); c.fill();
+  let bob = Math.sin(t * 2) * 1.5, dip = 0;
+  if (_fishState === "bite") dip = 5 + Math.abs(Math.sin(t * 18)) * 7;
+  if (_fishState === "reeling" && _reel) dip = 6 + (1 - _reel.y) * 8;
+  const bx = px + 34, by = 118 + bob + dip;
   if (_fishState !== "idle" && _fishState !== "landing") {
     c.strokeStyle = "rgba(226,232,240,.9)"; c.lineWidth = 1;
-    c.beginPath(); c.moveTo(tipX, tipY); c.quadraticCurveTo((tipX + bx) / 2, by + (dip ? 4 : 20), bx, by - 6); c.stroke();
-    c.fillStyle = "#ef4444"; c.beginPath(); c.arc(bx, by, 6, Math.PI, 0); c.fill();
-    c.fillStyle = "#fafafa"; c.beginPath(); c.arc(bx, by, 6, 0, Math.PI); c.fill();
-    c.strokeStyle = "#0a0a0a"; c.lineWidth = 1; c.beginPath(); c.arc(bx, by, 6, 0, Math.PI * 2); c.stroke();
-    if (dip) for (let i = 0; i < 3; i++) { const rp = (t * 1.5 + i * 0.33) % 1; c.strokeStyle = `rgba(255,255,255,${0.6 * (1 - rp)})`; c.beginPath(); c.ellipse(bx, by + 6, 6 + rp * 30, 2 + rp * 10, 0, 0, Math.PI * 2); c.stroke(); }
+    c.beginPath(); c.moveTo(tipX, tipY); c.quadraticCurveTo((tipX + bx) / 2, Math.max(tipY, by) + (dip ? 2 : 16), bx, by - 5); c.stroke();
+    if (dip) for (let i = 0; i < 3; i++) { const rp = (t * 1.5 + i * 0.33) % 1; c.strokeStyle = `rgba(255,255,255,${0.6 * (1 - rp)})`; c.beginPath(); c.ellipse(bx, by + 4, 6 + rp * 28, 3 + rp * 12, 0, 0, Math.PI * 2); c.stroke(); }
+    c.fillStyle = "#ef4444"; c.beginPath(); c.arc(bx, by, 5.5, Math.PI, 0); c.fill();
+    c.fillStyle = "#fafafa"; c.beginPath(); c.arc(bx, by, 5.5, 0, Math.PI); c.fill();
+    c.strokeStyle = "#0a0a0a"; c.lineWidth = 1; c.beginPath(); c.arc(bx, by, 5.5, 0, Math.PI * 2); c.stroke();
   }
-  // the fish shadow thrashing under the bobber while reeling
+  // the fish's shadow thrashing under the bobber while reeling (colour = rarity)
   if (_fishState === "reeling" && _reel && _cast) {
     const info = ECON.RARITY_INFO[_cast.rarity] || ECON.RARITY_INFO.common;
-    const fx = bx - 20 + Math.sin(t * 5) * 18, fy = by + 34 + Math.cos(t * 3.2) * 6;
-    const g = c.createRadialGradient(fx, fy, 2, fx, fy, 36); g.addColorStop(0, info.color + "55"); g.addColorStop(1, info.color + "00");
-    c.fillStyle = g; c.beginPath(); c.arc(fx, fy, 36, 0, Math.PI * 2); c.fill();
+    const fx = bx - 16 + Math.sin(t * 5) * 16, fy = by + 26 + Math.cos(t * 3.2) * 5;
+    const gg = c.createRadialGradient(fx, fy, 2, fx, fy, 34); gg.addColorStop(0, info.color + "66"); gg.addColorStop(1, info.color + "00");
+    c.fillStyle = gg; c.beginPath(); c.arc(fx, fy, 34, 0, Math.PI * 2); c.fill();
     c.save(); c.translate(fx, fy); c.rotate(Math.sin(t * 5) * 0.5);
-    c.fillStyle = "rgba(2,6,23,.55)"; c.beginPath(); c.ellipse(0, 0, 18, 7, 0, 0, Math.PI * 2); c.fill();
-    c.beginPath(); c.moveTo(-16, 0); c.lineTo(-26, -8); c.lineTo(-26, 8); c.closePath(); c.fill();
+    c.fillStyle = "rgba(2,6,23,.55)"; c.beginPath(); c.ellipse(0, 0, 16, 6, 0, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.moveTo(-14, 0); c.lineTo(-24, -7); c.lineTo(-24, 7); c.closePath(); c.fill();
     c.restore();
   }
-  // "!" on bite
-  if (_fishState === "bite") { c.fillStyle = "#fde047"; c.font = "bold 34px sans-serif"; c.textAlign = "center"; c.fillText("!", bx + 18, by - 30 + Math.sin(t * 20) * 3); }
-  // splash bursts
+  if (_fishState === "bite") { c.fillStyle = "#fde047"; c.font = "bold 30px sans-serif"; c.textAlign = "center"; c.fillText("!", px + 18, py - 42 + Math.sin(t * 20) * 3); }
   if (_fishSplash > 0) { const k = _fishSplash / 900; c.fillStyle = `rgba(224,242,254,${0.8 * k})`; for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; c.fillRect(bx + Math.cos(a) * (30 - k * 20) - 1.5, by - 10 - Math.abs(Math.sin(a)) * (26 - k * 16) - 1.5, 3, 3); } }
-  // frame
+  // the FISHING signpost, like the one on the bank
+  { const sx = 236, sy = 262; c.fillStyle = "rgba(0,0,0,.25)"; c.beginPath(); c.ellipse(sx + 2, sy + 2, 8, 3, 0, 0, Math.PI * 2); c.fill(); c.fillStyle = "#7c4a18"; c.fillRect(sx - 3, sy - 40, 6, 42); GFX.roundFill(c, sx - 30, sy - 58, 60, 20, 4, "#0c4a6e"); c.strokeStyle = "#fbbf24"; c.lineWidth = 1.5; GFX.roundStroke(c, sx - 30, sy - 58, 60, 20, 4); c.fillStyle = "#fef3c7"; c.font = "bold 9px sans-serif"; c.textAlign = "center"; c.fillText("FISHING", sx, sy - 44); }
+  // dusk tint like the town's time of day
+  if (window.gameScenery) { const tod = gameScenery.timeOfDay(); const night = Math.max(0, Math.min(1, (Math.abs(tod - 0.5) - 0.22) / 0.1)); if (night > 0) { c.fillStyle = `rgba(10,20,50,${0.35 * night})`; c.fillRect(0, 0, PW, H); } }
+  c.restore();
   c.strokeStyle = "#2a3344"; c.lineWidth = 2; c.strokeRect(1, 1, PW - 2, H - 2);
 
-  // ---- right: the gauge ----
-  const GX = 330, GY = 22, GW = 64, GH = H - 44;
+  // ================= right: the gauge, on a wooden tackle board =================
+  const GX = 330, GY = 30, GW = 64, GH = H - 60;
   const PX = 440, PWd = 30;
   c.fillStyle = "#0f141c"; c.fillRect(PW, 0, W - PW, H);
-  // track
-  GFX.roundFill(c, GX - 3, GY - 3, GW + 6, GH + 6, 8, "#05070a");
+  // plank board + brass corners
+  GFX.roundFill(c, PW + 12, 10, W - PW - 24, H - 20, 10, "#3f2210");
+  for (let yy = 14; yy < H - 12; yy += 12) { c.fillStyle = ((yy / 12) | 0) % 2 ? "#5b3a1a" : "#4a2f14"; GFX.roundFill(c, PW + 16, yy, W - PW - 32, 11, 3, ((yy / 12) | 0) % 2 ? "#5b3a1a" : "#4a2f14"); }
+  c.fillStyle = "#d4a017"; for (const [x, y] of [[PW + 20, 18], [W - 24, 18], [PW + 20, H - 22], [W - 24, H - 22]]) { c.beginPath(); c.arc(x, y, 3, 0, Math.PI * 2); c.fill(); }
+  GFX.roundFill(c, GX - 6, GY - 6, GW + 12, GH + 12, 8, "#1a1208");
+  c.strokeStyle = "#d4a017"; c.lineWidth = 1.5; GFX.roundStroke(c, GX - 6, GY - 6, GW + 12, GH + 12, 8);
   const tg = c.createLinearGradient(0, GY, 0, GY + GH); tg.addColorStop(0, "#132033"); tg.addColorStop(1, "#0a1220");
   c.fillStyle = tg; c.fillRect(GX, GY, GW, GH);
   c.strokeStyle = "#2a3344"; c.lineWidth = 1; for (let i = 1; i < 10; i++) { c.beginPath(); c.moveTo(GX, GY + GH * i / 10); c.lineTo(GX + 8, GY + GH * i / 10); c.stroke(); }
-  c.fillStyle = "#8aa0bf"; c.font = "bold 9px sans-serif"; c.textAlign = "center";
-  c.fillText("HOOK", GX + GW / 2, GY - 8); c.fillText("CATCH", PX + PWd / 2, GY - 8);
+  c.fillStyle = "#f5deb3"; c.font = "bold 9px Georgia, serif"; c.textAlign = "center";
+  c.fillText("HOOK", GX + GW / 2, GY - 12); c.fillText("CATCH", PX + PWd / 2, GY - 12);
+  GFX.roundFill(c, PX - 6, GY - 6, PWd + 12, GH + 12, 8, "#1a1208");
+  c.strokeStyle = "#d4a017"; c.lineWidth = 1.5; GFX.roundStroke(c, PX - 6, GY - 6, PWd + 12, GH + 12, 8);
+  c.fillStyle = "#0a1220"; c.fillRect(PX, GY, PWd, GH);
   if (_fishState === "reeling" && _reel) {
     const r = _reel, cfg = r.cfg;
     const info = ECON.RARITY_INFO[_cast.rarity] || ECON.RARITY_INFO.common;
     const zy0 = GY + GH * (1 - (r.zoneC + cfg.zone / 2)), zh = GH * cfg.zone;
-    // the zone between the two lines
     c.fillStyle = r.inZone ? "rgba(251,191,36,.30)" : "rgba(251,191,36,.14)"; c.fillRect(GX, zy0, GW, zh);
     c.strokeStyle = r.inZone ? "#fde047" : "#d4a017"; c.lineWidth = 2.5;
     c.beginPath(); c.moveTo(GX - 6, zy0); c.lineTo(GX + GW + 6, zy0); c.moveTo(GX - 6, zy0 + zh); c.lineTo(GX + GW + 6, zy0 + zh); c.stroke();
-    // the fish silhouette marks the zone centre
     c.fillStyle = "rgba(255,255,255,.18)"; c.beginPath(); c.ellipse(GX + GW / 2, zy0 + zh / 2, 12, 5, 0, 0, Math.PI * 2); c.fill();
-    // hook marker
     const hy = GY + GH * (1 - r.y);
-    if (r.inZone) { const g = c.createRadialGradient(GX + GW / 2, hy, 2, GX + GW / 2, hy, 26); g.addColorStop(0, info.color + "88"); g.addColorStop(1, info.color + "00"); c.fillStyle = g; c.beginPath(); c.arc(GX + GW / 2, hy, 26, 0, Math.PI * 2); c.fill(); }
+    if (r.inZone) { const gg = c.createRadialGradient(GX + GW / 2, hy, 2, GX + GW / 2, hy, 26); gg.addColorStop(0, info.color + "88"); gg.addColorStop(1, info.color + "00"); c.fillStyle = gg; c.beginPath(); c.arc(GX + GW / 2, hy, 26, 0, Math.PI * 2); c.fill(); }
     c.strokeStyle = r.inZone ? "#fff" : info.color; c.lineWidth = 3; c.lineCap = "round";
     c.beginPath(); c.moveTo(GX + GW / 2, hy - 12); c.lineTo(GX + GW / 2, hy + 4); c.arc(GX + GW / 2 - 5, hy + 4, 5, 0, Math.PI, false); c.stroke();
     c.lineCap = "butt";
     c.fillStyle = r.inZone ? "#fff" : info.color; c.beginPath(); c.arc(GX + GW / 2, hy - 13, 3, 0, Math.PI * 2); c.fill();
-    // progress bar
-    GFX.roundFill(c, PX - 3, GY - 3, PWd + 6, GH + 6, 8, "#05070a");
-    c.fillStyle = "#0a1220"; c.fillRect(PX, GY, PWd, GH);
     const ph = GH * r.progress;
     const pg = c.createLinearGradient(0, GY + GH - ph, 0, GY + GH); pg.addColorStop(0, "#ffffff"); pg.addColorStop(1, "#cbd5e1");
     c.fillStyle = pg; c.fillRect(PX, GY + GH - ph, PWd, ph);
     if (r.progress > 0.8) { c.fillStyle = `rgba(255,255,255,${(r.progress - 0.8) * 2 * (0.5 + 0.5 * Math.sin(t * 12))})`; c.fillRect(PX - 4, GY + GH - ph - 4, PWd + 8, 6); }
-    c.fillStyle = r.progress < 0.25 ? "#f87171" : "#8aa0bf"; c.font = "bold 11px sans-serif";
-    c.fillText(Math.round(r.progress * 100) + "%", PX + PWd / 2, GY + GH + 16);
+    c.fillStyle = r.progress < 0.25 ? "#f87171" : "#f5deb3"; c.font = "bold 11px sans-serif";
+    c.fillText(Math.round(r.progress * 100) + "%", PX + PWd / 2, GY + GH + 18);
     c.fillStyle = r.inZone ? "#fde047" : "#f87171"; c.font = "bold 11px sans-serif";
-    c.fillText(r.inZone ? "HOLD IT!" : "PULL!", GX + GW / 2, GY + GH + 16);
+    c.fillText(r.inZone ? "HOLD IT!" : "PULL!", GX + GW / 2, GY + GH + 18);
   } else {
-    c.fillStyle = "#334155"; c.font = "11px sans-serif"; c.textAlign = "center";
+    c.fillStyle = "#94a3b8"; c.font = "11px sans-serif"; c.textAlign = "center";
     c.fillText(_fishState === "idle" ? "cast to begin" : _fishState === "waiting" ? "watch the bobber…" : _fishState === "bite" ? "HOOK IT!" : "…", (GX + PX + PWd) / 2, GY + GH / 2);
-    GFX.roundFill(c, PX - 3, GY - 3, PWd + 6, GH + 6, 8, "#05070a");
-    c.fillStyle = "#0a1220"; c.fillRect(PX, GY, PWd, GH);
   }
 }
 

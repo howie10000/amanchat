@@ -556,6 +556,7 @@ function highlow(user, action, args, balance, rand) {
         return { delta: 0, data: hlView(st) };
     }
     if (action === 'bank') {
+        if (!(st.streak > 0)) throw new Error('Make a call first — you can only bank after a correct guess.');
         st.status = 'banked'; st.payout = st.pot;
         setRound(user, 'highlow', null);
         return { delta: st.payout, data: hlView(st) };

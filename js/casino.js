@@ -1631,7 +1631,7 @@ function hlRender() {
     <div class="btnRow">
       <button class="menuBtn green bigBtn" onclick="hlGuess('higher')">HIGHER ▲</button>
       <button class="menuBtn bigBtn" onclick="hlGuess('lower')">LOWER ▼</button>
-      <button class="menuBtn gold bigBtn" onclick="hlBank()">BANK $${_hl.pot}</button>
+      ${_hl.streak > 0 ? `<button class="menuBtn gold bigBtn" onclick="hlBank()">BANK ${_hl.pot}</button>` : `<span class="muted" style="align-self:center">make a call to start the pot</span>`}
     </div>`);
 }
 function hlReset(bet) {
@@ -1672,6 +1672,7 @@ window.hlGuess = async (dir) => {
 };
 window.hlBank = async () => {
   if (!_hl || _hl.busy) return;
+  if (!(_hl.streak > 0)) { toast("Make a call first — you can only bank after a correct guess."); return; }
   _hl.busy = true;
   let data;
   try { data = await casinoRpc("highlow", "bank"); }

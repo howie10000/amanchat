@@ -43,7 +43,12 @@ function runPizzaGame() {
   const start = Date.now();
   let raf;
   function spawn() {
-    cars.push({ x: 540, y: 40 + Math.random() * 200, w: 60, h: 28, speed: 2.5 + Math.random() * 2 });
+    // Traffic uses the whole road — the top and bottom edges included — and
+    // every few seconds a truck spans two lanes, so there's nowhere to camp.
+    if (Math.random() < 0.18) cars.push({ x: 540, y: 4 + Math.random() * 200, w: 90, h: 58, speed: 2 + Math.random() * 1.2, truck: true });
+    else cars.push({ x: 540, y: 4 + Math.random() * 248, w: 60, h: 28, speed: 2.5 + Math.random() * 2 });
+    // and now and then one that drifts into the scooter's lane
+    if (Math.random() < 0.3) cars.push({ x: 600, y: Math.max(4, Math.min(248, py - 14 + (Math.random() - 0.5) * 30)), w: 60, h: 28, speed: 3 + Math.random() * 1.5 });
   }
   let spawnT = 0;
   let lastTs = performance.now();
@@ -60,7 +65,7 @@ function runPizzaGame() {
     const k = window.gameCore.keys;
     if (k["w"] || k["arrowup"]) py -= 4 * fu;
     if (k["s"] || k["arrowdown"]) py += 4 * fu;
-    py = Math.max(20, Math.min(260, py));
+    py = Math.max(18, Math.min(262, py));
     elapsed = Math.floor((Date.now() - start) / 1000);
     t = LIMIT - elapsed;
     document.getElementById("pizzaTime").textContent = `Time: ${Math.max(0, t)}s`;
@@ -87,8 +92,9 @@ function runPizzaGame() {
     c.setLineDash([]);
     // cars
     for (const car of cars) {
-      c.fillStyle = "#dc2626"; c.fillRect(car.x, car.y, car.w, car.h);
+      c.fillStyle = car.truck ? "#f59e0b" : "#dc2626"; c.fillRect(car.x, car.y, car.w, car.h);
       c.fillStyle = "#0a0a0a"; c.fillRect(car.x + 8, car.y + 6, car.w - 16, 8);
+      if (car.truck) { c.fillStyle = "#e5e7eb"; c.fillRect(car.x + 8, car.y + 20, car.w - 16, car.h - 26); }
     }
     // pizza guy / scooter
     c.fillStyle = "#fcd34d"; c.fillRect(48, py - 6, 24, 12);

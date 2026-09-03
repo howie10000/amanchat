@@ -892,6 +892,16 @@ function handleMessage(c, msg) {
             if (parts[0] === 'bug_reports' && !isStaff(c.user) && parts[1] !== c.user) return replyErr('forbidden');
             if (parts[0] === 'mayor' && parts[1] === 'treasury' && !isStaff(c.user)) return replyErr('forbidden');
 
+            // ----- dm threads: the whole map used to go to everyone (every chat on
+            // the server). Only threads the caller is in are returned now.
+            if (parts[0] === 'dm_threads') {
+                if (parts.length === 1) {
+                    const out = {};
+                    for (const [tid, t] of Object.entries(store.get('dm_threads') || {})) if (tid.split('__').includes(c.user)) out[tid] = t;
+                    return reply(out);
+                }
+                if (!isStaff(c.user) && !parts[1].split('__').includes(c.user)) return replyErr('forbidden');
+            }
             // ----- user records: only the owner or staff see the private fields.
             if ((parts[0] === 'users' || parts[0] === 'players') && !isStaff(c.user)) {
                 const raw = store.get(msg.path);
@@ -1067,6 +1077,12 @@ function luckOf(user, u, now) {
 // Single-roll games a lucky loss may be re-rolled on (multi-step games keep
 // state across calls, so they only get the win bonus).
 const LUCK_REROLL_GAMES = new Set(['slots', 'jackpot', 'coinflip', 'scratch', 'roulette', 'dice', 'keno', 'baccarat', 'plinko', 'horses', 'wheel']);
+// Minimum ms between round STARTS per game (roughly what the client animation
+// takes), so a console script can't spin a machine hundreds of times a minute.
+const casinoLast = new Map();   // user:game -> last accepted ts
+const CASINO_ROUND_START = new Set(['spin', 'flip', 'buy', 'roll', 'draw', 'deal', 'drop', 'race', 'start']);
+const CASINO_MIN_GAP = { slots: 1400, jackpot: 1600, coinflip: 900, scratch: 800, roulette: 2500, dice: 900, keno: 1200,
+    baccarat: 1200, plinko: 1200, horses: 3000, wheel: 2500, blackjack: 600, mines: 600, crash: 600, highlow: 600, videopoker: 600 };
 
 // ---- farm ----
 function farmOf(u) {
@@ -1109,24 +1125,76 @@ function lakeClients() {
     }
     return out;
 }
-function spawnKraken(user) {
+function spawnKraken(user, kind) {
     const now = Date.now();
+    kind = ECON.BEASTS[kind] ? kind : 'kraken';
+    const def = ECON.BEASTS[kind];
     const n = Math.max(1, lakeClients().length);
     const maxHp = ECON.krakenMaxHp(n);
     const headHp = Math.floor(maxHp * ECON.KRAKEN.HEAD_FRAC);
-    const tentHp = Math.floor((maxHp - headHp) / ECON.KRAKEN.TENTACLES);
+    const tentHp = Math.floor((maxHp - headHp) / def.parts);
     kraken = {
-        id: pushId(), status: 'rising', spawnedAt: now, spawnedBy: user, diedAt: 0,
-        maxHp: headHp + tentHp * ECON.KRAKEN.TENTACLES,
+        id: pushId(), kind, status: 'rising', spawnedAt: now, spawnedBy: user, diedAt: 0,
+        maxHp: headHp + tentHp * def.parts,
         head: { hp: headHp, maxHp: headHp },
-        parts: Array.from({ length: ECON.KRAKEN.TENTACLES }, () => ({ hp: tentHp, maxHp: tentHp })),
+        parts: Array.from({ length: def.parts }, () => ({ hp: tentHp, maxHp: tentHp })),
         damage: {}, rewards: null,
         nextAttackAt: now + ECON.KRAKEN.RISE_MS + 1500,
-        lastBroadcast: 0, lastTick: 0,
+        lastBroadcast: 0, lastTick: 0, lastAttack: null,
         hitLast: new Map(),
     };
-    console.log(`[kraken] surfaced — hooked by ${user}, ${n} at the lake, ${kraken.maxHp} hp`);
+    console.log(`[beast] ${kind} surfaced — hooked by ${user}, ${n} at the lake, ${kraken.maxHp} hp`);
     broadcastKraken('spawn');
+}
+function beastEnraged() { return !!kraken && (kraken.head.hp + kraken.parts.reduce((s, p) => s + p.hp, 0)) / kraken.maxHp < ECON.KRAKEN.ENRAGE_FRAC; }
+// Build one telegraphed attack from the beast's deck, aimed at the players
+// standing at the lake. Every attack carries a warning window so it can be dodged.
+function rollAttack(now) {
+    const here = lakeClients();
+    for (let i = here.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [here[i], here[j]] = [here[j], here[i]]; }
+    const head = ECON.krakenHeadPos();
+    let a = ECON.pickAttack(kraken.kind);
+    if (a === kraken.lastAttack && Math.random() < 0.6) a = ECON.pickAttack(kraken.kind);   // avoid the same move twice in a row
+    kraken.lastAttack = a;
+    const jitter = (n) => Math.round((Math.random() - 0.5) * n);
+    const targets = here.slice(0, a.targets || 1).map(c => ({ x: c.presence.x + jitter(40), y: c.presence.y + jitter(30) }));
+    const out = { type: a.type, warnMs: a.warnMs, dmg: a.dmg, durMs: a.durMs || 0, r: a.r || 0 };
+    switch (a.type) {
+        case 'slam': case 'coil': case 'ink':
+            out.points = targets; break;
+        case 'spit':
+            out.from = head; out.points = targets; out.speed = a.speed; break;
+        case 'sweep': {
+            // a tentacle drags across a horizontal band of the shore
+            const t = targets[0] || { y: ECON.LAKE.y + ECON.LAKE.ry + 60 };
+            const dir = Math.random() < 0.5 ? 1 : -1;
+            out.y = t.y; out.band = a.band; out.x0 = ECON.LAKE.x - dir * 700; out.x1 = ECON.LAKE.x + dir * 700;
+            break;
+        }
+        case 'whirlpool':
+            out.pull = a.pull; out.center = { x: ECON.LAKE.x, y: ECON.LAKE.y }; break;
+        case 'roar': case 'wave':
+            out.center = head; break;
+        case 'lunge': {
+            out.strikes = targets.map(t => ({ x: head.x, y: head.y, angle: Math.atan2(t.y - head.y, t.x - head.x), len: a.len, w: a.w }));
+            break;
+        }
+        case 'jet': {
+            const t = targets[0] || { x: ECON.LAKE.x, y: ECON.LAKE.y + 400 };
+            const ang = Math.atan2(t.y - head.y, t.x - head.x);
+            const dir = Math.random() < 0.5 ? 1 : -1;
+            out.from = head; out.angle = ang - dir * a.sweep / 2; out.sweep = a.sweep * dir; out.len = a.len; out.w = a.w;
+            break;
+        }
+        case 'whip': {
+            const alive = kraken.parts.map((p, i) => p.hp > 0 ? i : -1).filter(i => i >= 0);
+            const i = alive.length ? alive[Math.floor(Math.random() * alive.length)] : 0;
+            const p = ECON.beastPartPos(kraken.kind, i, kraken.parts.length);
+            out.points = [{ x: p.x, y: p.y }, ...(targets[0] ? [targets[0]] : [])];
+            break;
+        }
+    }
+    return out;
 }
 function krakenView(now) {
     if (!kraken) return null;
@@ -1134,7 +1202,7 @@ function krakenView(now) {
     const hp = kraken.head.hp + kraken.parts.reduce((s, p) => s + p.hp, 0);
     const top = Object.entries(kraken.damage).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([u, d]) => ({ user: u, dmg: d }));
     return {
-        id: kraken.id, status: kraken.status, spawnedBy: kraken.spawnedBy,
+        id: kraken.id, kind: kraken.kind, status: kraken.status, spawnedBy: kraken.spawnedBy, enraged: beastEnraged(),
         elapsed: now - kraken.spawnedAt, riseMs: ECON.KRAKEN.RISE_MS,
         deadFor: kraken.diedAt ? now - kraken.diedAt : 0,
         hp, maxHp: kraken.maxHp, head: kraken.head, parts: kraken.parts,
@@ -1166,15 +1234,16 @@ function krakenDie(now) {
         let n = 1 + (d / total >= 0.15 ? 1 : 0) + (Math.random() < 0.35 ? 1 : 0);
         n = Math.max(ECON.KRAKEN.REWARD_MIN, Math.min(ECON.KRAKEN.REWARD_MAX, n));
         const golden = Math.random() < ECON.KRAKEN.GOLDEN_CHANCE + (topUser && topUser[0] === u ? ECON.KRAKEN.TOP_GOLDEN_BONUS : 0);
+        const def = ECON.BEASTS[kraken.kind] || ECON.BEASTS.kraken;
         const inv = (rec.fishInventory && typeof rec.fishInventory === 'object') ? rec.fishInventory : {};
-        inv['Kraken Tentacle'] = (inv['Kraken Tentacle'] || 0) + n;
-        if (golden) inv['Golden Kraken Tentacle'] = (inv['Golden Kraken Tentacle'] || 0) + 1;
+        inv[def.loot] = (inv[def.loot] || 0) + n;
+        if (golden) inv[def.golden] = (inv[def.golden] || 0) + 1;
         rec.fishInventory = inv; store.put('users/' + u + '/fishInventory', inv);
-        rewards[u] = { tentacles: n, golden };
-        pushTo(u, { event: 'kraken_reward', tentacles: n, golden, fishInventory: inv, dmg: d, share: d / total });
+        rewards[u] = { tentacles: n, golden, loot: def.loot, goldenLoot: def.golden };
+        pushTo(u, { event: 'kraken_reward', kind: kraken.kind, tentacles: n, golden, loot: def.loot, goldenLoot: def.golden, have: inv[def.loot], fishInventory: inv, dmg: d, share: d / total });
     }
     kraken.rewards = rewards;
-    console.log(`[kraken] slain — ${entries.length} fighter(s) rewarded`);
+    console.log(`[beast] ${kraken.kind} slain — ${entries.length} fighter(s) rewarded`);
     broadcastKraken('dead');
 }
 function krakenTick() {
@@ -1187,17 +1256,10 @@ function krakenTick() {
     }
     if (kraken.status === 'alive') {
         if (now >= kraken.nextAttackAt) {
-            // Slam up to three fighters: a warning ring, then the tentacle lands.
-            const here = lakeClients();
-            for (let i = here.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [here[i], here[j]] = [here[j], here[i]]; }
-            const slams = here.slice(0, 3).map(c => ({
-                x: Math.round(c.presence.x + (Math.random() - 0.5) * 40),
-                y: Math.round(c.presence.y + (Math.random() - 0.5) * 30),
-                r: ECON.KRAKEN.SLAM_RADIUS, dmg: ECON.KRAKEN.SLAM_DMG,
-                inMs: ECON.KRAKEN.SLAM_WARN_MS,
-            }));
-            kraken.nextAttackAt = now + ECON.KRAKEN.ATTACK_EVERY_MS + Math.floor(Math.random() * 900);
-            if (slams.length) broadcastKraken('slam', { slams });
+            const speed = beastEnraged() ? ECON.KRAKEN.ENRAGE_SPEED : 1;
+            const attack = rollAttack(now);
+            kraken.nextAttackAt = now + Math.floor((ECON.KRAKEN.ATTACK_EVERY_MS + Math.random() * 900 + (attack.durMs || 0) * 0.5) * speed);
+            if (lakeClients().length) broadcastKraken('attack', { attack });
         } else if (now - kraken.lastBroadcast > 1000) {
             broadcastKraken('tick');
         }
@@ -1614,24 +1676,28 @@ const ECONOMY_OPS = {
         if (msg.action === 'cast') {
             const last = fishLast.get(user) || 0;
             if (now - last < ECON.FISH_CATCH_COOLDOWN) throw new Error('The line is still out.');
-            let fish = null, krakenHook = false;
+            // One line at a time: re-casting over a pending cast would let a
+            // player re-roll until the rarity they like comes up.
+            const pending = fishCasts.get(user);
+            if (pending && now - pending.at < ECON.FISH_CAST_TTL) throw new Error('Your line is already out — reel it in first.');
+            let fish = null, beast = null;
             const pick = msg.pick == null ? '' : String(msg.pick);
             if (pick && pick !== 'random') {
                 // Staff-only: choose the next catch from the fishing menu.
                 if (!isStaff(user)) throw new Error('Staff only.');
-                if (pick === 'kraken') {
-                    if (krakenBlocked()) throw new Error(kraken ? 'The Kraken is already awake.' : 'The Kraken is still resting — try again in a few minutes.');
+                if (ECON.BEAST_KINDS.includes(pick)) {
+                    if (krakenBlocked()) throw new Error(kraken ? 'A sea beast is already up.' : 'The lake is still settling — try again in a few minutes.');
                     fish = ECON.rollFishOfRarity('legendary');
-                    krakenHook = true;
+                    beast = pick;
                 } else {
                     fish = ECON.fishDef(pick);
                     if (!fish || fish.loot) throw new Error('No such fish.');
                 }
             } else {
                 fish = ECON.rollFish(L);
-                if (!krakenBlocked() && Math.random() < ECON.krakenChance(fish.rarity)) krakenHook = true;
+                if (!krakenBlocked() && Math.random() < ECON.krakenChance(fish.rarity)) beast = ECON.rollBeastKind();
             }
-            const cast = { id: pushId(), fish, kraken: krakenHook, at: now, biteAt: now + 1200 + Math.floor(Math.random() * 3200) };
+            const cast = { id: pushId(), fish, beast, at: now, biteAt: now + 1200 + Math.floor(Math.random() * 3200) };
             fishCasts.set(user, cast);
             // The Kraken is never revealed here — it only surfaces once the fish is landed.
             return { money: moneyOf(u), castId: cast.id, rarity: fish.rarity, biteIn: cast.biteAt - now, luck: L, cooldown: ECON.FISH_CATCH_COOLDOWN };
@@ -1640,7 +1706,8 @@ const ECONOMY_OPS = {
             const cast = fishCasts.get(user);
             if (!cast) throw new Error('Cast your line first.');
             fishCasts.delete(user);
-            fishLast.set(user, now);
+            // Giving up on a line (to fish for a better rarity) waits longer than a landed one.
+            fishLast.set(user, msg.landed ? now : now + 3000);
             if (!msg.landed) return { money: moneyOf(u), fishInventory: inv, fish: null, lost: true, rarity: cast.fish.rarity };
             if (now - cast.at > ECON.FISH_CAST_TTL) throw new Error('That cast went stale — cast again.');
             const cfg = ECON.REEL_CFG[cast.fish.rarity] || ECON.REEL_CFG.common;
@@ -1648,9 +1715,9 @@ const ECONOMY_OPS = {
             const fish = cast.fish;
             inv[fish.name] = (inv[fish.name] || 0) + 1;
             u.fishInventory = inv; store.put(`users/${user}/fishInventory`, inv);
-            let krakenSpawned = false;
-            if (cast.kraken && !krakenBlocked()) { spawnKraken(user); krakenSpawned = true; }
-            return { money: moneyOf(u), fishInventory: inv, fish, rarity: fish.rarity, kraken: krakenSpawned, luck: L };
+            let spawned = null;
+            if (cast.beast && !krakenBlocked()) { spawnKraken(user, cast.beast); spawned = cast.beast; }
+            return { money: moneyOf(u), fishInventory: inv, fish, rarity: fish.rarity, kraken: !!spawned, beast: spawned, luck: L };
         }
         if (msg.action === 'sell') {
             const fish = ECON.fishDef(msg.name);
@@ -1842,12 +1909,12 @@ const ECONOMY_OPS = {
             if (now - last < ECON.KRAKEN.HIT_MIN_MS[weapon]) throw new Error('Too fast.');
             let target, pos;
             if (msg.part === 'head') {
-                if (kraken.parts.some(t => t.hp > 0)) throw new Error('The tentacles guard the head — cut them down first!');
+                if (kraken.parts.some(t => t.hp > 0)) throw new Error(kraken.kind === 'serpent' ? 'The coils guard the head — break them first!' : 'The tentacles guard the head — cut them down first!');
                 target = kraken.head; pos = ECON.krakenHeadPos();
             } else {
                 const i = nonNegInt(msg.part);
                 if (i == null || i >= kraken.parts.length) throw new Error('No such tentacle.');
-                target = kraken.parts[i]; pos = ECON.krakenPartPos(i, kraken.parts.length);
+                target = kraken.parts[i]; pos = ECON.beastPartPos(kraken.kind, i, kraken.parts.length);
             }
             if (target.hp <= 0) throw new Error('That part is already down.');
             if (Math.hypot(p.x - pos.x, p.y - pos.y) > ECON.KRAKEN.REACH[weapon] + 60) throw new Error('Out of reach.');
@@ -1867,9 +1934,18 @@ const ECONOMY_OPS = {
     casino(user, msg) {
         const u = userRec(user), now = Date.now();
         const game = String(msg.game || ''), action = String(msg.action || '');
+        // Anti-spam: a scripted client can't spin faster than the table lets a human.
+        const k = user + ':' + game;
+        const minGap = CASINO_MIN_GAP[game] != null && CASINO_ROUND_START.has(action) ? CASINO_MIN_GAP[game] : 0;
+        if (now - (casinoLast.get(k) || 0) < minGap) throw new Error('Slow down — the table is still settling.');
         const luck = luckOf(user, u, now);
         const eff = luck ? ECON.luckEffects(luck.level) : null;
+        // Multi-step games took the stake at round start; a lucky bonus must
+        // only ever apply to what the round actually WON above that stake.
+        const before = GAMES.getRound(user, game);
+        const stake = before ? Math.max(0, Math.floor(+before.bet || 0) * (before.balls || 1)) : 0;
         let r = GAMES.play(user, game, action, msg, moneyOf(u));
+        casinoLast.set(k, now);   // only an accepted action counts toward the gap
         // Luck (from a cooked meal): a lost single-roll round may be re-rolled
         // once, and every win pays a bonus on top. Multi-step games only get the bonus.
         let luckReroll = false, luckBonus = 0;
@@ -1877,7 +1953,7 @@ const ECONOMY_OPS = {
             const r2 = GAMES.play(user, game, action, msg, moneyOf(u));
             if (r2.delta > r.delta) { r = r2; luckReroll = true; }
         }
-        if (eff && r.delta > 0) luckBonus = Math.floor(r.delta * eff.casinoBonus);
+        if (eff && r.delta > 0) luckBonus = Math.floor(Math.max(0, r.delta - stake) * eff.casinoBonus);
         // A win is earnings (skimmed while a loan is overdue); a loss is a loss.
         if (r.delta > 0) creditEarnings(user, u, r.delta + luckBonus, 'casino');
         else if (r.delta < 0) setMoney(user, u, moneyOf(u) + r.delta);

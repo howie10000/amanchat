@@ -306,6 +306,8 @@
   const LOOT_TABLE = [
     { name: "Kraken Tentacle",        emoji: "🐙", value: 900,  rarity: "legendary", luckPts: 6,  loot: true },
     { name: "Golden Kraken Tentacle", emoji: "✨🐙", value: 6000, rarity: "mythical",  luckPts: 12, loot: true, golden: true },
+    { name: "Sea Serpent Scale",      emoji: "🐍", value: 1000, rarity: "legendary", luckPts: 6,  loot: true },
+    { name: "Golden Serpent Scale",   emoji: "✨🐍", value: 6500, rarity: "mythical",  luckPts: 12, loot: true, golden: true },
     { name: "Kraken",                 emoji: "🦑", value: 1500, rarity: "legendary", luckPts: 5,  loot: true, legacy: true },
   ];
   const FISH_JUNK_NAMES = FISH_TABLE.filter(f => f.junk).map(f => f.name);
@@ -370,11 +372,14 @@
     return table[0];
   }
   function rollFish(luckLevel, rand) { return rollFishOfRarity(rollRarity(luckLevel, rand), rand); }
-  // Chance the hook that just landed a fish snags the Kraken instead. Only
-  // rolled once a fish has been reeled successfully — a lost fish never wakes it.
+  // Chance the hook that just landed a fish snags a sea beast instead. Only
+  // rolled once a fish has been reeled successfully — a lost fish never wakes
+  // one. Which beast (Kraken / Sea Serpent) is a coin flip.
   function krakenChance(rarity) {
     return rarity === "mythical" ? 0.15 : rarity === "legendary" ? 0.08 : 0.03;
   }
+  const BEAST_KINDS = ["kraken", "serpent"];
+  function rollBeastKind(rand) { return (rand || Math.random)() < 0.5 ? "kraken" : "serpent"; }
   // Legacy quality label kept for old callers (the new reel has no "quality").
   function fishQualityLabel(quality) {
     const dist = (1 - Math.max(0, Math.min(1, +quality || 0))) * 50;
@@ -415,6 +420,19 @@
     { id: "moonflower",  name: "Moonflower",    emoji: "🌙", rarity: "legendary", price: 2500, growMs: 25 * 60000, yield: 2, value: 2200, luck: 4, color: "#c4b5fd", top: "#4c1d95" },
     { id: "clover",      name: "Lucky Clover",  emoji: "🍀", rarity: "legendary", price: 3000, growMs: 20 * 60000, yield: 3, value: 1500, luck: 5, color: "#4ade80", top: "#15803d" },
     { id: "sunfruit",    name: "Sunfruit",      emoji: "☀️", rarity: "mythical",  price: 9000, growMs: 40 * 60000, yield: 2, value: 8000, luck: 6, color: "#fde68a", top: "#f97316" },
+    // second wave of seeds
+    { id: "potato",      name: "Potato",        emoji: "🥔", rarity: "common",    price: 20,   growMs: 2 * 60000,  yield: 4, value: 12,   luck: 1, color: "#c8a165", top: "#4d7c0f" },
+    { id: "lettuce",     name: "Lettuce",       emoji: "🥬", rarity: "common",    price: 30,   growMs: 2.5 * 60000,yield: 3, value: 20,   luck: 1, color: "#86efac", top: "#22c55e" },
+    { id: "wheat",       name: "Wheat",         emoji: "🌾", rarity: "common",    price: 35,   growMs: 3 * 60000,  yield: 5, value: 16,   luck: 1, color: "#fcd34d", top: "#a3e635" },
+    { id: "onion",       name: "Onion",         emoji: "🧅", rarity: "common",    price: 45,   growMs: 3.5 * 60000,yield: 3, value: 28,   luck: 1, color: "#e9d5ff", top: "#65a30d" },
+    { id: "watermelon",  name: "Watermelon",    emoji: "🍉", rarity: "rare",      price: 200,  growMs: 7 * 60000,  yield: 2, value: 180,  luck: 2, color: "#22c55e", top: "#15803d" },
+    { id: "grapes",      name: "Grapes",        emoji: "🍇", rarity: "rare",      price: 170,  growMs: 6.5 * 60000,yield: 5, value: 65,   luck: 2, color: "#7c3aed", top: "#166534" },
+    { id: "chili",       name: "Fire Chili",    emoji: "🌶️", rarity: "rare",      price: 190,  growMs: 6 * 60000,  yield: 4, value: 75,   luck: 2, color: "#dc2626", top: "#15803d" },
+    { id: "mushroom",    name: "Glow Mushroom", emoji: "🍄", rarity: "epic",      price: 700,  growMs: 13 * 60000, yield: 3, value: 420,  luck: 3, color: "#f472b6", top: "#93c5fd" },
+    { id: "pineapple",   name: "Pineapple",     emoji: "🍍", rarity: "epic",      price: 650,  growMs: 12 * 60000, yield: 2, value: 600,  luck: 3, color: "#fbbf24", top: "#16a34a" },
+    { id: "starfruit",   name: "Starfruit",     emoji: "⭐", rarity: "legendary", price: 2800, growMs: 22 * 60000, yield: 3, value: 1700, luck: 4, color: "#fde047", top: "#4d7c0f" },
+    { id: "crystalberry",name: "Crystal Berry", emoji: "💠", rarity: "legendary", price: 3200, growMs: 24 * 60000, yield: 4, value: 1450, luck: 5, color: "#67e8f9", top: "#0e7490" },
+    { id: "voidmelon",   name: "Void Melon",    emoji: "🌑", rarity: "mythical",  price: 9500, growMs: 45 * 60000, yield: 2, value: 8500, luck: 6, color: "#312e81", top: "#4c1d95" },
   ];
   const CROP_BY_ID = {};
   for (const c of CROPS) CROP_BY_ID[c.id] = c;
@@ -435,11 +453,11 @@
       return pool.slice(0, n);
     };
     const out = [];
-    for (const c of pick("common", 3)) out.push({ id: c.id, stock: 8 + Math.floor(rng() * 13) });
-    for (const c of pick("rare", 1 + (rng() < 0.5 ? 1 : 0))) out.push({ id: c.id, stock: 3 + Math.floor(rng() * 6) });
-    if (rng() < 0.45) for (const c of pick("epic", 1)) out.push({ id: c.id, stock: 1 + Math.floor(rng() * 3) });
-    if (rng() < 0.18) for (const c of pick("legendary", 1)) out.push({ id: c.id, stock: 1 + (rng() < 0.4 ? 1 : 0) });
-    if (rng() < 0.05) for (const c of pick("mythical", 1)) out.push({ id: c.id, stock: 1 });
+    for (const c of pick("common", 4)) out.push({ id: c.id, stock: 8 + Math.floor(rng() * 13) });
+    for (const c of pick("rare", 2 + (rng() < 0.4 ? 1 : 0))) out.push({ id: c.id, stock: 3 + Math.floor(rng() * 6) });
+    if (rng() < 0.55) for (const c of pick("epic", 1 + (rng() < 0.3 ? 1 : 0))) out.push({ id: c.id, stock: 1 + Math.floor(rng() * 3) });
+    if (rng() < 0.22) for (const c of pick("legendary", 1)) out.push({ id: c.id, stock: 1 + (rng() < 0.4 ? 1 : 0) });
+    if (rng() < 0.06) for (const c of pick("mythical", 1)) out.push({ id: c.id, stock: 1 });
     return out;
   }
   function seedShopRestockIn(now) { now = now == null ? Date.now() : now; return SEED_SHOP_PERIOD - (now % SEED_SHOP_PERIOD); }
@@ -462,12 +480,15 @@
     if (infos.some(i => !i)) return null;
     const pts = infos.reduce((s, i) => s + i.pts, 0);
     let level = luckLevelForPts(pts);
-    const golden = infos.some(i => i.id === "Golden Kraken Tentacle");
+    const golden = infos.some(i => /^Golden /.test(i.id));
     const tentacle = infos.some(i => i.kind === "fish" && /Tentacle/.test(i.id));
+    const scale = infos.some(i => i.kind === "fish" && /Serpent Scale/.test(i.id));
     const fish = infos.filter(i => i.kind === "fish").length, crop = infos.length - fish;
     let dish, emoji;
-    if (golden) { dish = "Golden Kraken Feast"; emoji = "✨🍲"; level = Math.max(level, 5); }
+    if (golden) { dish = tentacle && !scale ? "Golden Kraken Feast" : scale && !tentacle ? "Golden Serpent Feast" : "Golden Sea Feast"; emoji = "✨🍲"; level = Math.max(level, 5); }
+    else if (tentacle && scale) { dish = "Sea Beast Stew"; emoji = "🌊"; level = Math.max(level, 4); }
     else if (tentacle) { dish = "Kraken Chowder"; emoji = "🐙"; level = Math.max(level, 3); }
+    else if (scale) { dish = "Serpent Broth"; emoji = "🐍"; level = Math.max(level, 3); }
     else if (crop === 0) { dish = "Fish Stew"; emoji = "🍲"; }
     else if (fish === 0) { dish = "Garden Salad"; emoji = "🥗"; }
     else { dish = "Surf & Turf Platter"; emoji = "🍱"; }
@@ -475,12 +496,15 @@
     return { name, emoji, luck: level, pts, key: name.toLowerCase().replace(/[^a-z0-9]+/g, "-") };
   }
 
-  // ---------- the Kraken (sea beast) ----------
+  // ---------- sea beasts: the Kraken and the Sea Serpent ----------
+  // Shared rules (HP, hit cadence, reach, loot odds) live in KRAKEN; per-kind
+  // shape (how many weak points, their loot, their attack deck) in BEASTS.
   const KRAKEN = {
-    RISE_MS: 11000,               // cinematic: tentacles then head, before it can be hit
+    RISE_MS: 11000,               // cinematic: the beast surfaces before it can be hit
     TENTACLES: 6,
     BASE_HP: 2400, HP_PER_PLAYER: 1200, HEAD_FRAC: 0.45,
-    ATTACK_EVERY_MS: 2400, SLAM_WARN_MS: 1000, SLAM_RADIUS: 54, SLAM_DMG: 34,
+    ATTACK_EVERY_MS: 2000, SLAM_WARN_MS: 1000, SLAM_RADIUS: 54, SLAM_DMG: 34,
+    ENRAGE_FRAC: 0.35, ENRAGE_SPEED: 0.6,   // below 35% hp attacks come 40% faster
     HIT_DMG: { sword: 55, pistol: 22 },
     HIT_MIN_MS: { sword: 180, pistol: 250 },
     REACH: { sword: 110, pistol: 340 },
@@ -488,15 +512,53 @@
     RESPAWN_COOLDOWN_MS: 3 * 60000,
     REWARD_MIN: 1, REWARD_MAX: 3, GOLDEN_CHANCE: 0.06, TOP_GOLDEN_BONUS: 0.06,
   };
+  // Attack decks. Every attack is telegraphed (`warnMs`) so it can be dodged;
+  // geometry is filled in by the server per use (see server krakenTick).
+  const BEASTS = {
+    kraken: {
+      name: "THE KRAKEN", parts: 6, partName: "tentacle", loot: "Kraken Tentacle", golden: "Golden Kraken Tentacle",
+      attacks: [
+        { type: "slam",      weight: 30, warnMs: 1000, r: 54,  dmg: 34, targets: 3 },
+        { type: "sweep",     weight: 18, warnMs: 1100, band: 30, dmg: 26, durMs: 900 },
+        { type: "ink",       weight: 14, warnMs: 800,  r: 120, dmg: 5,  durMs: 5000, targets: 2 },
+        { type: "spit",      weight: 20, warnMs: 500,  r: 32,  dmg: 20, speed: 5.5, targets: 3 },
+        { type: "whirlpool", weight: 10, warnMs: 900,  pull: 1.6, dmg: 16, durMs: 3200 },
+        { type: "roar",      weight: 8,  warnMs: 700,  r: 260, dmg: 12 },
+      ],
+    },
+    serpent: {
+      name: "THE SEA SERPENT", parts: 5, partName: "coil", loot: "Sea Serpent Scale", golden: "Golden Serpent Scale",
+      attacks: [
+        { type: "lunge",     weight: 30, warnMs: 900,  len: 300, w: 70, dmg: 30, targets: 2 },
+        { type: "jet",       weight: 18, warnMs: 800,  len: 520, w: 46, dmg: 7,  durMs: 1600, sweep: 0.9 },
+        { type: "coil",      weight: 22, warnMs: 1000, r: 66,  dmg: 28, targets: 3 },
+        { type: "whip",      weight: 14, warnMs: 900,  r: 100, dmg: 22 },
+        { type: "wave",      weight: 10, warnMs: 600,  r: 700, dmg: 14, durMs: 1500 },
+        { type: "spit",      weight: 6,  warnMs: 500,  r: 32,  dmg: 18, speed: 6, targets: 2 },
+      ],
+    },
+  };
   function krakenHeadPos() { return { x: LAKE.x, y: LAKE.y - 24 }; }
-  // Tentacles ring the pond from west over the top to east, leaving the dock
-  // (south) clear so the fishers have somewhere to stand.
-  function krakenPartPos(i, n) {
-    n = n || KRAKEN.TENTACLES;
+  // Weak points ring the pond from west over the top to east, leaving the
+  // dock (south) clear so the fishers have somewhere to stand. Serpent coils
+  // alternate between an inner and outer ring so the body reads as a loop.
+  function beastPartPos(kind, i, n) {
+    n = n || (BEASTS[kind] || BEASTS.kraken).parts;
     const a = -Math.PI / 2 + (i - (n - 1) / 2) * (Math.PI * 1.5 / (n - 1));
-    return { x: LAKE.x + Math.cos(a) * LAKE.rx * 0.74, y: LAKE.y + Math.sin(a) * LAKE.ry * 0.74, a };
+    // every weak point must be within a sword's reach of the bank
+    const k = kind === "serpent" ? (i % 2 ? 0.72 : 0.86) : 0.74;
+    return { x: LAKE.x + Math.cos(a) * LAKE.rx * k, y: LAKE.y + Math.sin(a) * LAKE.ry * k, a };
   }
+  function krakenPartPos(i, n) { return beastPartPos("kraken", i, n); }
   function krakenMaxHp(players) { return KRAKEN.BASE_HP + KRAKEN.HP_PER_PLAYER * Math.max(0, (players | 0) - 1); }
+  function pickAttack(kind, rand) {
+    rand = rand || Math.random;
+    const deck = (BEASTS[kind] || BEASTS.kraken).attacks;
+    const total = deck.reduce((s, a) => s + a.weight, 0);
+    let x = rand() * total;
+    for (const a of deck) { if ((x -= a.weight) <= 0) return a; }
+    return deck[0];
+  }
   function atLake(x, y) { return Math.hypot((+x || 0) - LAKE.x, (+y || 0) - LAKE.y) <= LAKE_FIGHT_RADIUS; }
 
   return {
@@ -520,10 +582,10 @@
     LAKE, LAKE_FIGHT_RADIUS, atLake,
     FISH_RARITIES, RARITY_INFO, FISH_TABLE, LOOT_TABLE, FISH_JUNK_NAMES, fishDef, fishLuckPts,
     FISH_CATCH_COOLDOWN, FISH_CAST_TTL, fishPriceNow, fishQualityLabel,
-    REEL_CFG, REEL_START_PROGRESS, rarityWeights, rollRarity, rollFishOfRarity, rollFish, krakenChance,
+    REEL_CFG, REEL_START_PROGRESS, rarityWeights, rollRarity, rollFishOfRarity, rollFish, krakenChance, BEAST_KINDS, rollBeastKind,
     LUCK_MAX_LEVEL, luckEffects, luckDurationMs, activeLuck,
     FARM_PLOTS, CROPS, CROP_BY_ID, cropYield, SEED_SHOP_PERIOD, seedShopBucket, seedShopStock, seedShopRestockIn,
     COOK_MAX_ING, MEAL_ADJ, ingredientInfo, luckLevelForPts, cookMeal,
-    KRAKEN, krakenHeadPos, krakenPartPos, krakenMaxHp,
+    KRAKEN, BEASTS, krakenHeadPos, krakenPartPos, beastPartPos, krakenMaxHp, pickAttack,
   };
 });

@@ -2449,33 +2449,33 @@ function drawHouse(ctx, r, name, isYou, style) {
     ctx.fillStyle = roofDk; ctx.fillRect(cx - 40, base - 62, 80, 5);
     ctx.fillStyle = "#94a3b8"; ctx.fillRect(cx - 38, base - 57, 3, 57); ctx.fillRect(cx + 35, base - 57, 3, 57);
   } else {
-    // CHALET: steep A-frame roof to the ground floor, balcony, timber gable
+    // CHALET: steep gable roof over a timber upper floor, loft window, balcony.
+    // (The old A-frame was drawn as a thin outline down to the ground with the
+    // wall showing through it, which read as a broken roof.)
     const peak = r.y - 12;
     ctx.fillStyle = roof;
-    ctx.beginPath(); ctx.moveTo(r.x - 10, base - 54); ctx.lineTo(cx, peak); ctx.lineTo(r.x + r.w + 10, base - 54); ctx.lineTo(r.x + r.w - 6, base - 54); ctx.lineTo(cx, peak + 22); ctx.lineTo(r.x + 6, base - 54); ctx.closePath(); ctx.fill();
-    ctx.fillStyle = roofDk;
-    ctx.beginPath(); ctx.moveTo(cx, peak); ctx.lineTo(r.x + r.w + 10, base - 54); ctx.lineTo(r.x + r.w - 6, base - 54); ctx.lineTo(cx, peak + 22); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(r.x - 12, eave + 10); ctx.lineTo(cx, peak); ctx.lineTo(r.x + r.w + 12, eave + 10); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = roofDk;                               // shaded slope
+    ctx.beginPath(); ctx.moveTo(cx, peak); ctx.lineTo(r.x + r.w + 12, eave + 10); ctx.lineTo(cx, eave + 10); ctx.closePath(); ctx.fill();
     ctx.strokeStyle = "rgba(0,0,0,.25)"; ctx.lineWidth = 1;
     for (let i = 1; i <= 5; i++) {
-      const f = i / 6, yy = peak + f * (base - 54 - peak);
-      const half = f * (r.w / 2 + 10), inner = Math.max(0, f * (r.w / 2 + 10) - 16);
-      ctx.beginPath(); ctx.moveTo(cx - half, yy); ctx.lineTo(cx - inner, yy); ctx.moveTo(cx + inner, yy); ctx.lineTo(cx + half, yy); ctx.stroke();
+      const f = i / 6, yy = peak + f * (eave + 10 - peak), half = f * (r.w / 2 + 12);
+      ctx.beginPath(); ctx.moveTo(cx - half, yy); ctx.lineTo(cx + half, yy); ctx.stroke();
     }
+    ctx.fillStyle = roofLt; ctx.fillRect(r.x - 12, eave + 8, r.w + 24, 3);   // eave board
     ctx.strokeStyle = "#1c0a04"; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(r.x - 10, base - 54); ctx.lineTo(cx, peak); ctx.lineTo(r.x + r.w + 10, base - 54); ctx.stroke();
-    // gable timbers + loft window
-    ctx.fillStyle = "#5b3a1e";
-    ctx.fillRect(cx - 1.5, peak + 18, 3, eave - peak - 18);
-    ctx.fillRect(cx - 40, eave - 4, 80, 4);
-    win(cx - 12, r.y + 36, 24, 18, 4);
-    chimney(flip > 0 ? cx + 34 : cx - 50, r.y + 44, 26, 3);
-    // balcony
-    ctx.fillStyle = "#5b3a1e"; ctx.fillRect(wx0 - 6, eave + 46, ww + 12, 5);
+    ctx.beginPath(); ctx.moveTo(r.x - 12, eave + 10); ctx.lineTo(cx, peak); ctx.lineTo(r.x + r.w + 12, eave + 10); ctx.stroke();
+    // loft window set into the roof + chimney
+    ctx.fillStyle = "#5b3a1e"; ctx.fillRect(cx - 17, r.y + 27, 34, 26);
+    win(cx - 12, r.y + 31, 24, 18, 4);
+    chimney(flip > 0 ? cx + 44 : cx - 60, r.y + 28, 30, 3);
+    // balcony across the upper floor
+    ctx.fillStyle = "#5b3a1e"; ctx.fillRect(wx0 - 6, eave + 58, ww + 12, 5);
     ctx.fillStyle = "#7c4a18";
-    for (let x = wx0 - 4; x < wx0 + ww + 6; x += 8) ctx.fillRect(x, eave + 30, 3, 16);
-    ctx.fillRect(wx0 - 6, eave + 28, ww + 12, 3);
-    for (const wxp of [wx0 + 14, wx0 + ww - 50]) { win(wxp, eave + 4, 36, 22, wxp); flowerBox(wxp - 2, eave + 52, 40, wxp); }
-    for (const wxp of [wx0 + 14, wx0 + ww - 50]) { shutters(wxp, eave + 68, 36, 30); win(wxp, eave + 68, 36, 30, wxp + 3); }
+    for (let x = wx0 - 4; x < wx0 + ww + 6; x += 8) ctx.fillRect(x, eave + 42, 3, 16);
+    ctx.fillRect(wx0 - 6, eave + 40, ww + 12, 3);
+    for (const wxp of [wx0 + 14, wx0 + ww - 50]) { win(wxp, eave + 16, 36, 22, wxp); flowerBox(wxp - 2, eave + 64, 40, wxp); }
+    for (const wxp of [wx0 + 14, wx0 + ww - 50]) { shutters(wxp, eave + 80, 36, 30); win(wxp, eave + 80, 36, 30, wxp + 3); }
     // porch posts
     ctx.fillStyle = "#5b3a1e"; ctx.fillRect(cx - 44, base - 60, 88, 5);
     ctx.fillRect(cx - 40, base - 56, 6, 56); ctx.fillRect(cx + 34, base - 56, 6, 56);

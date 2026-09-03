@@ -268,6 +268,7 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     assert(!(await tryRpc(bob, 'fish', { action: 'cast', pick: 'Golden Koi' })).ok, 'players cannot pick their catch (staff only)');
     r = await tryRpc(bob, 'fish', { action: 'cast' });
     assert(r.ok && ECON.FISH_RARITIES.includes(r.data.rarity) && r.data.biteIn > 0 && r.data.castId, 'cast answers with rarity + bite delay only: ' + (r.ok && r.data.rarity));
+    assert(!(await tryRpc(bob, 'fish', { action: 'cast' })).ok, 'casting over a pending line (rarity re-roll) rejected');
     assert(!(await tryRpc(bob, 'fish', { action: 'reel', landed: true })).ok, 'landing before the bite / minimum reel time rejected');
     // that rejection consumed the cast; the next cast is inside the cooldown
     assert(!(await tryRpc(bob, 'fish', { action: 'cast' })).ok, 'cast inside 4s cooldown rejected');
@@ -283,6 +284,9 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     r = await tryRpc(bob, 'fish', { action: 'cast' });
     r = await tryRpc(bob, 'fish', { action: 'reel', landed: false });
     assert(r.ok && r.data.lost === true && !r.data.fish, 'a lost reel banks nothing');
+    await sleep(ECON.FISH_CATCH_COOLDOWN + 100);
+    assert(!(await tryRpc(bob, 'fish', { action: 'cast' })).ok, 'giving up a line costs a longer cooldown');
+    await sleep(3100);
     // staff pick: the owner chooses the catch, server-verified
     r = await tryRpc(owner, 'fish', { action: 'cast', pick: 'Moonlight Whale' });
     assert(r.ok && r.data.rarity === 'mythical', 'staff pick sets the catch (mythical rarity reported)');
@@ -333,12 +337,24 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
         // luck pays a bonus on casino wins (coinflip: 1.95x, net win 19 on a 20 bet)
         const eff = ECON.luckEffects(whaleMeal.luck);
         let sawWin = false, bonusOk = true;
-        for (let i = 0; i < 12 && !sawWin; i++) {
+        for (let i = 0; i < 8 && !sawWin; i++) {
             const c = await tryRpc(owner, 'casino', { game: 'coinflip', action: 'flip', bet: 20, call: 'heads' });
             if (c.ok && c.data.win) { sawWin = true; bonusOk = c.data.luckBonus === Math.floor(19 * eff.casinoBonus) && c.data.luck && c.data.luck.level === whaleMeal.luck; }
+            await sleep(950);
         }
-        assert(!sawWin || bonusOk, 'lucky casino win pays the luck bonus' + (sawWin ? '' : ' (no win in 12 flips — skipped)'));
+        assert(!sawWin || bonusOk, 'lucky casino win pays the luck bonus' + (sawWin ? '' : ' (no win in 8 flips — skipped)'));
+        // high/low: banking straight after the deal must not pay a lucky bonus on zero profit
+        const hl = await tryRpc(owner, 'casino', { game: 'highlow', action: 'start', bet: 50 });
+        assert(hl.ok && hl.data.status === 'playing', 'lucky owner starts a high/low round');
+        assert(!(await tryRpc(owner, 'casino', { game: 'highlow', action: 'bank' })).ok, 'banking before any call is rejected');
+        const hg = await tryRpc(owner, 'casino', { game: 'highlow', action: 'guess', dir: 'higher' });
+        if (hg.ok && hg.data.status === 'playing') {
+            const bk = await tryRpc(owner, 'casino', { game: 'highlow', action: 'bank' });
+            assert(bk.ok && bk.data.luckBonus === Math.floor(Math.max(0, bk.data.payout - 50) * eff.casinoBonus), 'high/low bank bonus applies to profit above the stake only');
+        } else assert(true, '(high/low guess lost — bonus check skipped)');
     }
+    console.log('casino anti-spam');
+    assert(!(await tryRpc(bob, 'casino', { game: 'slots', action: 'spin', bet: 10 })).ok || !(await tryRpc(bob, 'casino', { game: 'slots', action: 'spin', bet: 10 })).ok, 'two slot spins back to back: the second is refused');
 
     console.log('kraken');
     r = await tryRpc(bob, 'kraken', { action: 'status' });
@@ -350,9 +366,10 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     assert(r.ok && r.data.rarity !== 'kraken', 'a kraken cast never reveals itself before the fish is landed');
     await sleep(r.data.biteIn + ECON.REEL_CFG[r.data.rarity].minMs + 150);
     r = await tryRpc(owner, 'fish', { action: 'reel', landed: true });
-    assert(r.ok && r.data.kraken === true, 'landing the fish wakes the kraken');
+    assert(r.ok && r.data.kraken === true && r.data.beast === 'kraken', 'landing the fish wakes the kraken');
     r = await tryRpc(bob, 'kraken', { action: 'status' });
-    assert(r.ok && r.data.kraken && r.data.kraken.status === 'rising' && r.data.kraken.parts.length === ECON.KRAKEN.TENTACLES, 'everyone sees it rising');
+    assert(r.ok && r.data.kraken && r.data.kraken.kind === 'kraken' && r.data.kraken.status === 'rising' && r.data.kraken.parts.length === ECON.BEASTS.kraken.parts, 'everyone sees it rising');
+    assert(!(await tryRpc(owner, 'fish', { action: 'cast', pick: 'serpent' })).ok, 'the serpent cannot be summoned while the kraken is up');
     assert(!(await tryRpc(bob, 'kraken', { action: 'hit', part: 0, weapon: 'sword' })).ok, 'cannot hit it while it rises');
     assert(!(await tryRpc(owner, 'fish', { action: 'cast', pick: 'kraken' })).ok, 'a second kraken cannot be summoned while one is up');
     const tp = ECON.krakenPartPos(0);
@@ -375,7 +392,7 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     assert(!(await tryRpc(bob, 'casino', { game: 'coinflip', action: 'flip', bet: 0, call: 'heads' })).ok, 'zero bet rejected');
     assert(!(await tryRpc(bob, 'casino', { game: 'poker3', action: 'x', bet: 1 })).ok, 'unknown game rejected');
     r = await tryRpc(bob, 'casino', { game: 'coinflip', action: 'flip', bet: 100, call: 'heads' });
-    assert(r.ok && (r.data.win ? r.data.money === m0 + 95 : r.data.money === m0 - 100) && r.data.money === await money(bob, 'bob'), 'coinflip moves money by +95 / -100: ' + (r.ok && r.data.result));
+    assert(r.ok && (r.data.win ? r.data.money === m0 + 95 : r.data.money === m0 - 100) && r.data.money === await money(bob, 'bob'), 'coinflip moves money by +95 / -100: ' + (r.ok ? r.data.result : r.err));
     // blackjack
     m0 = await money(bob, 'bob');
     r = await tryRpc(bob, 'casino', { game: 'blackjack', action: 'deal', bet: 100 });

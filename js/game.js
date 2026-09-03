@@ -176,7 +176,7 @@ function openHelp() {
     <div>🎣 Fishing Pond • 🏀 Basketball Court — walk up and press E</div>
     <div>🎣 Fishing: cast, hook the bite, then click (or Space) to keep the hook between the gold lines until the white bar fills.
         Fish come in five rarities — Common, Rare, Epic, Legendary and Mythical (mythicals leap out of the water).</div>
-    <div>🦑 A landed fish can wake <b>the Kraken</b>. It rains at the lake, tentacles rise and the whole town can come fight it:
+    <div>🦑🐍 A landed fish can wake <b>the Kraken</b> or <b>the Sea Serpent</b>. It rains at the lake, tentacles rise and the whole town can come fight it:
         click to attack (1 sword, 2 pistol), dodge the red rings, cut the tentacles then strike the head. Everyone who hits it gets Kraken Tentacles.</div>
     <div>🌱 FARM (the red barn) — buy seeds from a stall that rotates every 5 minutes, plant them in your beds, harvest and sell.</div>
     <div>🍲 Cooking Pot (on your farm and beside the pond) — put up to 4 fish / tentacles / crops in for a meal. Eat it for timed
@@ -1718,7 +1718,7 @@ function renderDirectory() {
     const addr = ud.houseIndex != null ? gameWorld.houseAddress(ud.houseIndex) : null;
     html += `<div class="dirRow">
       <span class="statusDot ${online ? "online" : ""}"></span>
-      <div class="dirName"><b>${escapeHtml(u)}</b>${isFriend ? ' <span class="dirTag">friend</span>' : ""}
+      <div class="dirName"><b>${escapeHtml(u)}</b>${isFriend ? ' <span class="dirTag">friend</span>' : ""} <span style="color:#fbbf24;font-size:11px;font-weight:700;">${(ud.money || 0).toLocaleString()}</span>
         ${addr ? `<div class="muted" style="font-size:10px;">${escapeHtml(addr)}</div>` : ""}</div>
       <div class="dirActions">
         ${isFriend

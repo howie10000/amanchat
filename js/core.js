@@ -329,7 +329,9 @@ document.getElementById("tutorialNext").onclick = async () => {
 // HUD / TOAST
 function updateHUD() {
   document.getElementById("hudMoney").textContent = (state.data.money || 0).toLocaleString();
-  document.getElementById("hudHp").textContent = state.hp;
+  document.getElementById("hudHp").textContent = Math.max(0, Math.floor(state.hp));
+  // The dungeon / duel screens draw a big HP bar of their own — don't show two.
+  { const hpRow = document.getElementById("hudHp").parentElement; if (hpRow) hpRow.style.display = (state.area === "dungeon" || state.area === "duel") ? "none" : "flex"; }
   const bank = Math.max(0, Math.floor(state.data.bankBalance || 0));
   const bankRow = document.getElementById("hudBankRow");
   if (bankRow) { bankRow.style.display = bank > 0 ? "flex" : "none"; document.getElementById("hudBank").textContent = bank.toLocaleString(); }

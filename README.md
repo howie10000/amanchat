@@ -34,12 +34,16 @@ A multiplayer browser game built on the idea you sent your friend:
   fills — full bar lands the fish, let it drain and it's gone. Mythical catches
   play a leap cinematic at the dock. Staff see a **next-catch picker** in the
   fishing menu (server-verified; players can't use it).
-- **🦑 The Kraken** — a landed fish can wake the sea beast: the rod jerks, the sky
-  over the lake turns to rain, tentacles rise, then the head surfaces and a
-  boss fight starts for **everyone online** (anyone can come to the pond while
-  it's alive). Click to attack (1 sword, 2 pistol), dodge the tentacle-slam
-  rings, cut down the tentacles then strike the head. Everyone who hit it gets
-  1–3 **Kraken Tentacles**, with a chance at a **Golden** one.
+- **🦑🐍 Sea beasts** — a landed fish can wake the **Kraken** or the **Sea
+  Serpent**. The hooker gets a full-screen perspective cutscene from the dock
+  (the rod jerks, the sky turns, tentacles rise or a serpent bursts out of the
+  water), everyone near the pond gets rain, and a boss fight starts for
+  **everyone online**. Click to attack (1 sword, 2 pistol). Every attack is
+  telegraphed in red — slams, sweeps, ink clouds, water bolts, whirlpools,
+  roars, lunges, jets, tail whips, shockwaves — and the beast enrages at low
+  HP. Break the tentacles / coils then strike the head. Everyone who hit it
+  gets 1–3 **Kraken Tentacles** or **Sea Serpent Scales**, with a chance at a
+  **Golden** one.
 - **🍲 Cooking** — pots on your farm and beside the pond take up to 4 fish /
   tentacles / crops and turn them into a meal. Eating one grants timed **luck**:
   rarer fish bite, VEGAS wins pay a bonus and lost bets sometimes re-roll.

@@ -167,14 +167,27 @@ async function openDMThread(other) {
   renderIMMessages(tid);
   if (imPollTimer) clearInterval(imPollTimer);
   // Server pushes `dm` events live, so no poll needed. Keep a slow safety refresh.
-  imPollTimer = setInterval(() => renderIMMessages(tid), 5000);
+  imPollTimer = setInterval(() => renderIMMessages(tid), 20000);
 }
-// Live DM updates from the server
+// Live DM updates from the server: the pushed event carries the message, so
+// append it straight away instead of re-downloading the whole thread.
 if (window.NET) NET.on("dm", (m) => {
   if (state.dmThread && dmThreadId(state.user, state.dmThread) === m.thread) {
-    renderIMMessages(m.thread);
+    if (m.data && m.data.text && m.data.from !== state.user) appendIMMessage(m.data);
+    else if (!m.data || !m.data.text) renderIMMessages(m.thread);
   }
 });
+function appendIMMessage(msg) {
+  const el = document.getElementById("imMsgs");
+  if (!el) return;
+  const note = el.querySelector(".imDay.muted");
+  const div = document.createElement("div");
+  div.className = "imBubble " + (msg.from === state.user ? "me" : "them");
+  div.innerHTML = escapeHtml(msg.text) + `<span class="ts" title="${escapeHtml(new Date(msg.ts).toLocaleString())}">${formatTs(msg.ts)}</span>`;
+  if (note) el.insertBefore(div, note); else el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+  if (window.markThreadSeen && state.dmThread) markThreadSeen(state.dmThread);
+}
 window.openDMThread = openDMThread;
 
 async function renderIMMessages(tid) {
@@ -225,10 +238,18 @@ window.sendIM = async (other) => {
   if (!text) return;
   inp.value = "";
   const tid = dmThreadId(state.user, other);
-  await fbPost(`dm_threads/${tid}/messages`, { from: state.user, text: text.slice(0,300), ts: Date.now() });
-  // Notify them
-  await fbPost(`inbox/${other}`, { kind: "dm", from: state.user, preview: text, ts: Date.now() });
-  renderIMMessages(tid);
+  const msg = { from: state.user, text: text.slice(0, 300), ts: Date.now() };
+  appendIMMessage(msg);                       // show it instantly; the server confirms below
+  try {
+    await fbPost(`dm_threads/${tid}/messages`, msg);
+  } catch (e) {
+    toast("Message didn't send: " + (e.message || e), 3000);
+    inp.value = text;
+    renderIMMessages(tid);
+    return;
+  }
+  // Notify them (a failure here must not eat the message that already sent)
+  fbPost(`inbox/${other}`, { kind: "dm", from: state.user, preview: text, ts: Date.now() }).catch(() => {});
 };
 
 window.challengeDuel = async (target) => {

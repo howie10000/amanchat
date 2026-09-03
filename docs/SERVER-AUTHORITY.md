@@ -22,6 +22,11 @@ Also: `appearance` may be patched, but paid cosmetic fields (`hat`,
 
 Freely writable by the owner: `friends, keys, locked, seenTutorial, appearance`.
 
+Reads of `dm_threads` return only the threads the caller is part of (a whole-map
+read used to ship every conversation on the server to every client, which is
+what made the Messages app crawl); a single thread you're not in is `forbidden`
+unless you are staff.
+
 Registration: the server creates the user record itself (money 300, random
 free `houseIndex`, `createdAt`). The client no longer `put`s it.
 
@@ -102,8 +107,9 @@ Two-step so the client never picks its catch:
 `{ op:"cook", action:"eat", meal:key }` — sets `users/<me>/luck = { level, until, meal, emoji }` (`luckDurationMs(level)`; a weaker meal on top of a stronger buff only tops the timer up).
 `luck` is applied server-side: fishing rarity weights (`rarityWeights`), and in `casino` every win pays `floor(delta * casinoBonus)` extra (`luckBonus` in the reply) and a lost single-roll round is re-rolled once with `rerollChance` (`luckReroll:true`).
 
-### `kraken`
-Server-owned boss, in memory only. `spawnKraken(user)` sizes HP from how many players are at the lake (`krakenMaxHp`), broadcasts `{ event:"kraken", kind, kraken:view, now }` to everyone on `spawn`, `alive` (after `RISE_MS`), `slam` (with `slams:[{x,y,r,dmg,inMs}]` aimed at up to three players at the lake), `hp`/`part_down`/`tick`, `dead` and `gone`.
+### `kraken` (sea beasts: Kraken and Sea Serpent)
+Server-owned boss, in memory only. `spawnKraken(user, kind)` picks the shape from `BEASTS[kind]` (6 tentacles / 5 coils, its loot names, its attack deck); the view carries `kind` and `enraged` (below `ENRAGE_FRAC` HP attacks come `ENRAGE_SPEED`× faster). Every `ATTACK_EVERY_MS` the server rolls one attack from the deck (`pickAttack`), fills in its geometry from the players at the lake and broadcasts `{ kind:"attack", attack:{ type, warnMs, dmg, durMs, … } }` — types: `slam`, `coil`, `whip`, `roar` (rings), `sweep` (a band across the shore), `ink` (lingering cloud), `spit` (projectiles from the head), `whirlpool` (pull toward the water), `lunge` (a rectangle from the head), `jet` (a sweeping beam), `wave` (an expanding ring). Clients resolve the hit locally after `warnMs`, the same way dungeon enemies deal damage.
+A cast may not be re-cast while a line is pending (rarity re-rolls), and giving a line up (`reel landed:false`) carries a 7 s cooldown instead of 4 s. `spawnKraken(user)` sizes HP from how many players are at the lake (`krakenMaxHp`), broadcasts `{ event:"kraken", kind, kraken:view, now }` to everyone on `spawn`, `alive` (after `RISE_MS`), `slam` (with `slams:[{x,y,r,dmg,inMs}]` aimed at up to three players at the lake), `hp`/`part_down`/`tick`, `dead` and `gone`.
 `{ op:"kraken", action:"status" }` → `{ kraken|null, restIn }`.
 `{ op:"kraken", action:"hit", part: 0..5|"head", weapon:"sword"|"pistol" }` — rejected unless the Kraken is alive, the caller's presence is in the open town within `LAKE_FIGHT_RADIUS`, the weapon's `HIT_MIN_MS` has passed, the part is within `REACH[weapon]` of the caller and still up, and (for the head) every tentacle is down. Damage is the weapon's fixed `HIT_DMG`. When the head drops, everyone with damage gets 1–3 `Kraken Tentacle` (share ≥ 15% of damage = +1, 35% chance of +1) plus a `GOLDEN_CHANCE` (+`TOP_GOLDEN_BONUS` for top damage) at a `Golden Kraken Tentacle`, written straight into `fishInventory` and pushed as `{ event:"kraken_reward" }`. A new Kraken cannot surface for `RESPAWN_COOLDOWN_MS`.
 
@@ -116,7 +122,11 @@ opponent's hp reached 0 per the hp fields, to itself.
 
 ### `casino`
 `{ op:"casino", game, action, bet, ...args }`. One active round per user per
-game, kept in server memory. `bet` is validated (integer ≥1, ≤ balance)
+game, kept in server memory. Round-starting actions are rate-limited per game
+(`CASINO_MIN_GAP`, roughly the client's animation length) so a script can't
+spin faster than a person; steps inside a round need 40 ms between them. A
+luck bonus applies only to profit above the round's stake, and high/low can
+only bank after at least one correct call. `bet` is validated (integer ≥1, ≤ balance)
 and taken at round start; wins are paid by the server. Outcomes are generated
 server-side with the SAME odds/paytables casino.js uses today. The client
 animates whatever it is told.
