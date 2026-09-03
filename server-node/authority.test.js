@@ -91,7 +91,9 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     assert((await tryRpc(bob, 'patch', { path: 'users/bob', value: { seenTutorial: true, locked: true } })).ok, 'free fields still patchable');
     assert((await tryRpc(bob, 'put', { path: 'users/bob', value: { friends: { alice: true } } })).ok, 'whole-record put without protected keys accepted');
     assert(await money(bob, 'bob') === 300, 'money survives a whole-record put');
-    assert((await tryRpc(bob, 'patch', { path: 'users/alice/friends', value: { bob: true } })).ok, 'friend-accept may write the other player\'s friends');
+    assert((await tryRpc(bob, 'put', { path: 'users/alice/friends/bob', value: true })).ok, 'a player may add only their own leaf to another\'s friends map');
+    assert(!(await tryRpc(bob, 'put', { path: 'users/alice/friends/carol', value: true })).ok, 'but not some other name into it');
+    assert(!(await tryRpc(bob, 'patch', { path: 'users/alice/friends', value: { bob: true } })).ok, 'and not the whole friends object');
     assert(!(await tryRpc(bob, 'patch', { path: 'users/alice', value: { money: 5 } })).ok, 'but not their money');
     assert((await tryRpc(owner, 'patch', { path: 'users/bob', value: { money: 100000 } })).ok, 'owner can still set money');
     assert((await tryRpc(owner, 'patch', { path: 'users/alice', value: { money: 5000 } })).ok, 'owner funds alice');
@@ -163,6 +165,27 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     await owner.rpc('presence', { data: { x: 2, y: 2, area: 'neighborhood' } });
     await sleep(200);
     assert(lastPresence(bob).boss, 'the owner reappears when they turn visible again');
+
+    console.log('staff surface: server-side only');
+    // inbox: anyone may post a DM, but only the owner of the thread may edit/delete it
+    assert((await tryRpc(bob, 'post', { path: 'inbox/alice', value: { from: 'bob', text: 'hi', ts: Date.now() } })).ok, 'anyone can post a DM into another inbox');
+    assert(!(await tryRpc(bob, 'del', { path: 'inbox/alice' })).ok, 'but cannot delete someone else\'s inbox');
+    assert(!(await tryRpc(bob, 'patch', { path: 'inbox/alice', value: { hacked: 1 } })).ok, 'and cannot patch it');
+    assert((await tryRpc(alice, 'del', { path: 'inbox/alice' })).ok, 'the inbox owner can clear their own');
+    // moderation lists are staff-only to even read
+    assert(!(await tryRpc(bob, 'get', { path: 'bans' })).ok, 'a normal player cannot read the ban list');
+    assert(!(await tryRpc(bob, 'get', { path: 'mutes' })).ok, 'nor the mute list');
+    assert(!(await tryRpc(bob, 'get', { path: 'banned_ips' })).ok, 'nor banned IPs');
+    assert((await tryRpc(owner, 'get', { path: 'bans' })).ok, 'staff can read the ban list');
+    // the legacy single-announcement key is owner-only to write
+    assert(!(await tryRpc(bob, 'put', { path: 'mayor/announcement', value: 'x' })).ok, 'a normal player cannot write the mayor announcement');
+    assert((await tryRpc(owner, 'put', { path: 'mayor/announcement', value: 'hello town' })).ok, 'an owner can');
+    // presence area spoofing: claiming to be inside someone else's locked house is rewritten
+    await bob.rpc('presence', { data: { x: 1, y: 1, area: 'inside:alice' } });
+    await sleep(150);
+    const bobArea = (lastPresence(alice).bob || {}).area;
+    assert(bobArea !== 'inside:alice', 'a player cannot spoof being inside another\'s house (got: ' + bobArea + ')');
+    await bob.rpc('presence', { data: { x: 1, y: 1, area: 'neighborhood' } });
 
     console.log('buy: lootbox');
     m0 = await money(bob, 'bob');

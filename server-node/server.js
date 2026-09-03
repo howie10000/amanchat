@@ -425,6 +425,7 @@ function authLogin(user, pass) {
 
 const clients = new Set();     // Set<Client>
 const byUser = new Map();      // user -> Client
+const homeVisiting = new Map(); // user -> { owner, ts } — last house the `home` op cleared them into
 
 class Client {
     constructor(ws, ip) {
@@ -587,8 +588,8 @@ function canWrite(user, pathStr, op) {
     if (top === 'banned_ips') return role === 'owner';
     if (top === 'meta') return false;             // server-written only (IPs)
     if (top === 'mayor') {
-        if (parts[1] === 'treasury') return false;   // server-written only (bank tax + owner draws)
-        return isStaff(user);                        // legacy single announcement
+        if (parts[1] === 'treasury') return false;   // server-written only — owners draw via the treasury op, never a raw write
+        return role === 'owner';                      // legacy single announcement
     }
     // Announcements feed: owners post, everyone reads.
     if (top === 'announcements') return role === 'owner';
@@ -614,13 +615,14 @@ function canWrite(user, pathStr, op) {
             if (parts.length === 4 && (parts[2] === 'friends' || parts[2] === 'keys') && parts[3] === user) {
                 return op === 'put' || op === 'del';
             }
-            // (legacy) whole-object friends patch during accept
-            if (parts.length === 3 && parts[2] === 'friends' && op !== 'del') return true;
             // Admins may edit other players (give money etc.) but not wipe
             // accounts and not touch other staff.
             return role === 'admin' && op !== 'del' && !isStaff(parts[1]);
         case 'inbox':
-            return true; // recipients manage own inbox; senders may post into others'
+            // Anyone may drop a notification into anyone's inbox (friend req,
+            // duel challenge, DM ping). Only the owner reads/clears their own.
+            if (op === 'post') return true;
+            return parts.length >= 2 && parts[1] === user;
         case 'dm_threads':
         case 'duels': {
             if (parts.length < 2) return false;
@@ -688,6 +690,9 @@ function afterModWrite(actor, pathStr, val, op) {
         store.delete(`users/${a}/keys/${b}`);
         store.delete(`users/${b}/keys/${a}`);
         store.delete(`users/${b}/friends/${a}`);   // keep it mutual even if the client only did one side
+        // revoke any active "inside their house" pass in both directions
+        const va = homeVisiting.get(a); if (va && va.owner === b) homeVisiting.delete(a);
+        const vb = homeVisiting.get(b); if (vb && vb.owner === a) homeVisiting.delete(b);
     }
 }
 
@@ -878,9 +883,11 @@ function handleMessage(c, msg) {
         }
 
         case 'get': {
+            if (!c.user) return replyErr('not authed');
             const parts = Store.splitPath(msg.path);
-            if (parts[0] === 'meta' && !isStaff(c.user)) return replyErr('forbidden');
-            // Bug reports are visible to staff (all) and to each author (their own).
+            // Staff-only reads: IPs, the ban/mute lists (reasons + who did it),
+            // the treasury balance, other players' bug reports.
+            if (['meta', 'bans', 'mutes', 'banned_ips'].includes(parts[0]) && !isStaff(c.user)) return replyErr('forbidden');
             if (parts[0] === 'bug_reports' && !isStaff(c.user) && parts[1] !== c.user) return replyErr('forbidden');
             if (parts[0] === 'mayor' && parts[1] === 'treasury' && !isStaff(c.user)) return replyErr('forbidden');
 
@@ -994,6 +1001,17 @@ function handleMessage(c, msg) {
             const p = (msg.data && typeof msg.data === 'object') ? msg.data : null;
             if (p && activeMute(c.user)) { p.msgs = []; p.msg = ''; }
             if (p) p.invisible = !!p.invisible && isStaff(c.user);   // only staff may hide
+            if (p && typeof p.area === 'string' && p.area.indexOf('inside:') === 0) {
+                // You can only claim to be inside someone else's home if the
+                // `home` op actually let you in (recently). Otherwise you're
+                // just outside — a client can't fake its way into a locked house.
+                const other = p.area.slice(7);
+                const v = homeVisiting.get(c.user);
+                const ok = other === c.user || isStaff(c.user) ||
+                    (v && v.owner === other && Date.now() - v.ts < 20 * 60000);
+                if (ok) { if (v && v.owner === other) v.ts = Date.now(); }   // keep the pass alive while inside
+                else p.area = 'neighborhood';
+            }
             c.presence = p;
             reply(null);
             break;
@@ -1483,6 +1501,11 @@ const ECONOMY_OPS = {
                 throw new Error(`🔒 ${owner}'s door is locked — you need to be their friend AND hold their key.`);
             }
         }
+        // Remember this player was cleared into that house, so their presence
+        // is allowed to say `inside:<owner>` (see the presence handler). A
+        // console-hacker can't make themselves appear in a house they never
+        // legitimately entered.
+        homeVisiting.set(user, { owner: owner === user ? null : owner, ts: Date.now() });
         const fr = rec.furniture;
         return {
             owner,
