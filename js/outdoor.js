@@ -97,9 +97,19 @@ function staffPickHtml() {
 }
 function setFishPick(v) { _fishPick = v || "random"; }
 
+// Closing (or navigating away from) the fishing screen with a line still out
+// tells the server to reel it in — otherwise the pending cast lingers and the
+// next cast is rejected with "your line is already out".
+function fishingCleanup() {
+  clearFishTimers();
+  if (_fishState !== "idle" && _fishState !== "landing") netFish({ action: "reel", landed: false }).catch(() => {});
+  _fishState = "idle"; _cast = null; _reel = null;
+}
+
 function renderFishingMenu(resultHtml) {
   if (_fishTab === "sell") {
     openMenu("🎣 FISHING POND", fishTabsHtml() + sellTabHtml());
+    if (typeof setMenuCloseCleanup === "function") setMenuCloseCleanup(fishingCleanup);
     return;
   }
   const luck = myLuck();
@@ -114,6 +124,7 @@ function renderFishingMenu(resultHtml) {
       ${staffPickHtml()}
     </div>
   `);
+  if (typeof setMenuCloseCleanup === "function") setMenuCloseCleanup(fishingCleanup);
   const btn = document.getElementById("fishBtn");
   if (btn) btn.onclick = fishAction;
   const cv = document.getElementById("fishCanvas");

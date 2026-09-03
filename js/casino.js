@@ -39,6 +39,15 @@ function showStake(data) {
 }
 function casinoFail(e) { toast((e && e.message) || "Casino error."); }
 
+// Multi-step games (blackjack, mines, crash, higher/lower, video poker) hold an
+// open round on the server. If the player closes the screen mid-round, tell the
+// server to resolve it — blackjack stands, the rest forfeit the already-taken
+// stake — so the next visit isn't blocked by "finish the current hand first".
+function armCasinoLeave(game) {
+  if (typeof setMenuCloseCleanup !== "function") return;
+  setMenuCloseCleanup(() => { casinoRpc(game, "leave").then(applyMoney).catch(() => {}); });
+}
+
 // ---------- cards from the server ----------
 // The server may send cards as {r,s} (rank as "A".."K"/"10" or 0..12 index),
 // {rank,suit}, or a string like "10♥"/"AS". Normalise to {r:"A".."K", s:"♠♥♦♣"}.
@@ -1095,6 +1104,7 @@ function openCrash() {
       <button class="menuBtn gold bigBtn" id="crashBtn" onclick="crashAction()">LAUNCH</button>
       <div id="crashHistory" class="rlHistory"></div>
     </div>`);
+  armCasinoLeave("crash");
   drawCrash(1, false, 0);
   renderCrashHistory();
 }
@@ -1602,6 +1612,7 @@ function openHighLow() {
       <div id="hlResult" class="gameResult"></div>
       <div id="hlControls">${betBar("hlBet", 100)}<button class="menuBtn gold bigBtn" onclick="hlStart()">DEAL</button></div>
     </div>`);
+  armCasinoLeave("highlow");
 }
 // Pot per the server's multiplier (falls back to the 1.6^streak curve).
 function hlPot(bet, data, streak) {
@@ -1713,6 +1724,7 @@ function openVideoPoker() {
         ${VP_PAYTABLE.map(([n, m]) => `<div class="payRow"><span>${n}</span><b>${m}×</b></div>`).join("")}
       </div>
     </div>`, true);
+  armCasinoLeave("videopoker");
 }
 // opts: { backs, flips, winners } — sets of card indexes to show face-down,
 // flip over with the reveal animation, or ring in gold.
@@ -1857,6 +1869,7 @@ function openBlackjack() {
         <button class="menuBtn gold bigBtn" onclick="bjDeal()">DEAL</button>
       </div>
     </div>`);
+  armCasinoLeave("blackjack");
 }
 // The dealer's hole card comes back hidden (missing/null) until the hand
 // ends; keep a placeholder in slot 1 so the face-down card still renders.
@@ -2503,6 +2516,7 @@ function openMines() {
       <div id="minesResult" class="gameResult"></div>
       <div id="minesControls">${betBar("minesBet", 100)}<button class="menuBtn gold bigBtn" onclick="minesStart()">START</button></div>
     </div>`);
+  armCasinoLeave("mines");
   renderMinesRisks();
   renderMines();
 }

@@ -14,7 +14,32 @@ const rounds = new Map(); // `${user}:${game}` -> round state
 
 function key(user, game) { return user + ':' + game; }
 function getRound(user, game) { return rounds.get(key(user, game)) || null; }
-function setRound(user, game, st) { if (st) rounds.set(key(user, game), st); else rounds.delete(key(user, game)); }
+function setRound(user, game, st) { if (st) { st.ts = Date.now(); rounds.set(key(user, game), st); } else rounds.delete(key(user, game)); }
+
+// A round the player walked away from (closed the screen, disconnected, or just
+// never came back) shouldn't lock them out of the game forever. `leaveRound`
+// resolves the open hand — blackjack stands (the dealer plays it out), the pure
+// gambling rounds forfeit the stake that was already taken — and clears it.
+// Round-start actions also call this on a round older than ROUND_STALE_MS.
+const ROUND_STALE_MS = 3 * 60 * 1000;
+const ROUND_START_ACTIONS = new Set(['deal', 'start']);
+function roundIsStale(st, now) { return !!(st && st.ts && (now || Date.now()) - st.ts > ROUND_STALE_MS); }
+function leaveRound(user, game, rand) {
+    const st = getRound(user, game);
+    if (!st || st.status && st.status !== 'playing' && st.status !== 'draw') {
+        setRound(user, game, null);
+        return { delta: 0, data: { status: 'idle', left: true, payout: 0 } };
+    }
+    if (game === 'blackjack') {
+        const p = bjDealerPlay(st);                 // stand: fairest auto-resolve
+        setRound(user, 'blackjack', null);
+        return { delta: p, data: Object.assign(bjView(st), { left: true }) };
+    }
+    // mines / crash / highlow / videopoker: leaving mid-round forfeits the stake
+    // (it was taken at round start), exactly like walking away from a live bet.
+    setRound(user, game, null);
+    return { delta: 0, data: { status: 'left', left: true, payout: 0, bet: st.bet || 0 } };
+}
 
 function pickWeighted(list, rand) {
     const total = list.reduce((s, x) => s + x.weight, 0);
@@ -672,6 +697,11 @@ function play(user, game, action, args, balance, now, rand) {
     rand = rand || Math.random;
     balance = Math.max(0, Math.floor(+balance || 0));
     if (!GAMES.has(game)) throw new Error('Unknown game.');
+    // Leaving a screen resolves any open round instead of stranding it.
+    if (action === 'leave') return leaveRound(user, game, rand);
+    // A round the player never finished (stale) is auto-resolved so a fresh
+    // deal / start isn't blocked by "finish the current hand first".
+    if (ROUND_START_ACTIONS.has(action) && roundIsStale(getRound(user, game), now)) leaveRound(user, game, rand);
     switch (game) {
         case 'slots': {
             if (action !== 'spin') throw new Error('Unknown action.');

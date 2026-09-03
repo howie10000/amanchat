@@ -4,6 +4,7 @@
 // `theme` picks an alternate skin for the box ("casino" = black & gold, used
 // by every VEGAS game so the whole building feels like one venue).
 function openMenu(title, html, wide, theme) {
+  runMenuCloseCleanup();
   document.getElementById("menuTitle").textContent = title;
   document.getElementById("menuBody").innerHTML = html;
   const box = document.querySelector(".menuBox");
@@ -11,7 +12,20 @@ function openMenu(title, html, wide, theme) {
   box.classList.toggle("casino", theme === "casino" || (!theme && state.area === "interior_casino"));
   document.getElementById("menu").classList.remove("hidden");
 }
+// A screen (casino game, fishing) can register a cleanup that runs when its
+// menu is dismissed OR replaced by another menu — so the server is told the
+// player walked away and can resolve the open round instead of stranding it
+// ("you're already playing" / "your line is already out" on the next try).
+let _menuCloseCleanup = null;
+function setMenuCloseCleanup(fn) { _menuCloseCleanup = fn || null; }
+function runMenuCloseCleanup() {
+  const f = _menuCloseCleanup; _menuCloseCleanup = null;
+  if (f) { try { f(); } catch (e) {} }
+}
+window.setMenuCloseCleanup = setMenuCloseCleanup;
+
 function closeMenu() {
+  runMenuCloseCleanup();
   document.getElementById("menu").classList.add("hidden");
   // A phone app counts as "a menu" for callers like doEmote / guideMeTo.
   if (typeof phoneBackHome === "function") phoneBackHome();
