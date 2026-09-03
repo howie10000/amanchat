@@ -595,7 +595,7 @@ async function openLeaderboard() {
   }
   html += `<h3 class="section">📌 THINGS TO DO</h3>
     <div class="muted" style="line-height:1.6;">
-      🎣 Fish at the pond, sell your catch at hourly market prices • 🏀 Ball on the court, solo or in a wagered team match • 🎰 Casino • 💼 Jobs<br/>
+      🎣 Fish at the pond, sell your catch at hourly market prices • 🏀 Ball on the court, solo or in a team match • 🎰 Casino • 💼 Jobs<br/>
       ⚔️ Quests &amp; co-op dungeons • 🤺 Duel friends • 🛋️ Decorate your home<br/>
       🔑 Lock your door (press L at home) &amp; hand out keys to friends
     </div>`;

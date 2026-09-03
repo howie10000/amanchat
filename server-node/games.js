@@ -59,9 +59,9 @@ const SLOT_SYMBOLS = [
     // three landed even though it never paid.)
     { sym: '❌', weight: 14, mult: 0 },
 ];
-// MEGA JACKPOT — Egyptian symbols, values modelled on "Gamble With Your
-// Friends" slots (Eye 0.25 / Ankh 0.75 / Scarab 1.25 / Lotus 1.75, each x2
-// per line). Every symbol pays, winning lines ADD (not multiply), so wins are
+// MEGA JACKPOT — Egyptian symbols (Eye 0.25 / Ankh 0.75 / Scarab 1.25 /
+// Lotus 1.75, each x2 per line). Every symbol pays, winning lines ADD (not
+// multiply), so wins are
 // frequent but small — a full 3x3 board is the only true jackpot. Weights are
 // tuned a little tighter than that game so the house keeps an edge (~82% RTP).
 // Stable ascii ids (the client renders these as pixel art, keyed by id).

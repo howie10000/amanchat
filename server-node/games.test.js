@@ -151,8 +151,8 @@ const U = 'sim', BAL = 1e12;
 const one = (game, action, args, bet) => (rand) => { const r = G.play(U, game, action, args, BAL, 0, rand); return [bet, bet + r.delta]; };
 rtp('slots',    20000, one('slots', 'spin', { bet: 10 }, 10), 0.80, 0.99);
 // MEGA JACKPOT: winning lines ADD (see slotSpin combine:'add'). Frequent small
-// hits, low multipliers — modelled on "Gamble With Your Friends" slots but with
-// the house kept ahead. Lands around 80-85% RTP; band is wide for the rare
+// hits, low multipliers, with the house kept ahead. Lands around 80-85% RTP;
+// band is wide for the rare
 // full-board bonus.
 rtp('jackpot',  20000, one('jackpot', 'spin', { bet: 250 }, 250), 0.60, 1.00);
 rtp('coinflip', 20000, one('coinflip', 'flip', { bet: 10, call: 'heads' }, 10), 0.90, 0.99);

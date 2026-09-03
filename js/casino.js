@@ -186,9 +186,9 @@ const SLOT_SYMBOLS = [
   // prize when three landed even though it never paid).
   { sym: "❌", color: "#64748b", weight: 14, mult: 0 },
 ];
-// MEGA JACKPOT — Egyptian symbols, values modelled on "Gamble With Your
-// Friends" slots (Eye .25 / Ankh .75 / Scarab 1.25 / Lotus 1.75, each ×2 per
-// line). Every symbol pays; winning lines ADD, so wins are frequent but small.
+// MEGA JACKPOT — Egyptian symbols (Eye .25 / Ankh .75 / Scarab 1.25 /
+// Lotus 1.75, each ×2 per line). Every symbol pays; winning lines ADD, so
+// wins are frequent but small.
 // The glyphs are hand-drawn pixel art (GFX.PIXEL_SYMBOLS) so they match the
 // game's chunky look instead of an OS emoji font. `sym` is only a stable id
 // the server also uses; `key` selects the pixel art.

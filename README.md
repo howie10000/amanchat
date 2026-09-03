@@ -1,7 +1,7 @@
-# 🏘️ Neighborhood — Social Gambling House Game
+# 🏘️ Neighborhood
 
 A multiplayer browser game built on the idea you sent your friend:
-> *"A social, gambling, house-building game where you start with a house in a neighborhood..."*
+> *"A social, house-building game where you start with a house in a neighborhood..."*
 
 ## Features
 
