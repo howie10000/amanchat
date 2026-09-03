@@ -283,7 +283,8 @@ function reelStep(dt) {
     if (Math.abs(d) < 0.01) { r.zoneT = cfg.zone / 2 + Math.random() * (1 - cfg.zone); r.pause = 0.3 + Math.random() * 1.2; }
   }
   r.inZone = Math.abs(r.y - r.zoneC) <= cfg.zone / 2;
-  r.progress += (r.inZone ? cfg.gain : -cfg.loss) * dt;
+  // Off the fish, the bar only drains at half speed (a little forgiving).
+  r.progress += (r.inZone ? cfg.gain : -cfg.loss * 0.5) * dt;
   r.wobble = r.inZone ? Math.min(1, r.wobble + dt * 3) : Math.max(0, r.wobble - dt * 4);
   if (r.progress >= 1) { r.progress = 1; finishReel(true); }
   else if (r.progress <= 0) { r.progress = 0; finishReel(false); }
