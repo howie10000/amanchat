@@ -39,6 +39,22 @@ function client() {
 async function tryRpc(c, op, args) { try { return { ok: true, data: await c.rpc(op, args) }; } catch (e) { return { ok: false, err: e.message }; } }
 const money = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }));
 
+// A pull schedule that actually beats the reel — a simple controller that pulls
+// whenever the (projected) hook is below the target zone. Used to drive the
+// server's authoritative reel replay from the tests.
+function reelPulls(rarity, seed, { sabotage = false } = {}) {
+    const cfg = ECON.REEL_CFG[rarity] || ECON.REEL_CFG.common;
+    const r = ECON.reelState(seed);
+    const pulls = [];
+    let last = -999;
+    for (let s = 0; s < 8000 && !r.done; s++) {
+        const doPull = !sabotage && (r.y + r.vy * 0.15 < r.zoneC) && (r.t - last >= 40);
+        if (doPull) { pulls.push(Math.round(r.t)); last = r.t; }
+        ECON.reelTick(r, cfg, doPull);
+    }
+    return { pulls, landed: r.done === 'landed', ms: r.t };
+}
+
 // ---- boot the server ----
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nbh-auth-'));
 const dbPath = path.join(tmp, 'test.db');
@@ -276,9 +292,25 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     r = await tryRpc(bob, 'fish', { action: 'cast' });
     assert(r.ok, 'cast after the short cooldown ok');
     let cfg = ECON.REEL_CFG[r.data.rarity];
+    assert(Number.isInteger(r.data.reelSeed), 'cast hands out a reel seed');
     await sleep(r.data.biteIn + cfg.minMs + 150);
-    r = await tryRpc(bob, 'fish', { action: 'reel', landed: true });
-    assert(r.ok && r.data.fish && r.data.fishInventory[r.data.fish.name] === 1 && r.data.kraken === false && r.data.nextCastIn === 0, 'reel after the minimum time lands the fish: ' + (r.ok && r.data.fish.name));
+    // claiming a landing with no pull data (a tampered client) is rejected
+    assert(!(await tryRpc(bob, 'fish', { action: 'reel', landed: true })).ok, 'landed claim without pull data rejected');
+    await sleep(ECON.FISH_LOST_COOLDOWN + 100);
+
+    r = await tryRpc(bob, 'fish', { action: 'cast' });
+    await sleep(r.data.biteIn + ECON.REEL_CFG[r.data.rarity].minMs + 150);
+    // a pull list that never beats the zone lands nothing, even with landed:true
+    r = await tryRpc(bob, 'fish', { action: 'reel', landed: true, pulls: reelPulls(r.data.rarity, r.data.reelSeed, { sabotage: true }).pulls });
+    assert(r.ok && r.data.lost === true && !r.data.fish, 'a losing pull sequence banks nothing despite landed:true');
+    await sleep(ECON.FISH_LOST_COOLDOWN + 100);
+
+    r = await tryRpc(bob, 'fish', { action: 'cast' });
+    const win = reelPulls(r.data.rarity, r.data.reelSeed);
+    assert(win.landed, 'the reel controller produced a winning pull sequence (' + r.data.rarity + ')');
+    await sleep(r.data.biteIn + Math.max(ECON.REEL_CFG[r.data.rarity].minMs, win.ms) + 250);
+    r = await tryRpc(bob, 'fish', { action: 'reel', landed: true, pulls: win.pulls });
+    assert(r.ok && r.data.fish && r.data.fishInventory[r.data.fish.name] === 1 && r.data.kraken === false && r.data.nextCastIn === 0, 'a winning pull sequence lands the fish: ' + (r.ok && r.data.fish && r.data.fish.name));
     const fname = r.data.fish.name;
     r = await tryRpc(bob, 'fish', { action: 'cast' });
     assert(r.ok, 'a landed fish can be followed by a cast straight away');

@@ -1724,10 +1724,13 @@ const ECONOMY_OPS = {
                 fish = ECON.rollFish(L);
                 if (!krakenBlocked() && Math.random() < ECON.krakenChance(fish.rarity)) beast = ECON.rollBeastKind();
             }
-            const cast = { id: pushId(), fish, beast, at: now, biteAt: now + 1200 + Math.floor(Math.random() * 3200) };
+            // `seed` drives the reel's zone trajectory. The client renders the
+            // minigame from it and the server replays the reel from it on reel-in
+            // to verify the landing — so it's handed out here in the open.
+            const cast = { id: pushId(), fish, beast, at: now, biteAt: now + 1200 + Math.floor(Math.random() * 3200), seed: (Math.random() * 0x7fffffff) | 0 };
             fishCasts.set(user, cast);
             // The Kraken is never revealed here — it only surfaces once the fish is landed.
-            return { money: moneyOf(u), castId: cast.id, rarity: fish.rarity, biteIn: cast.biteAt - now, luck: L, cooldown: ECON.FISH_CATCH_COOLDOWN };
+            return { money: moneyOf(u), castId: cast.id, rarity: fish.rarity, biteIn: cast.biteAt - now, reelSeed: cast.seed, luck: L, cooldown: ECON.FISH_CATCH_COOLDOWN };
         }
         if (msg.action === 'reel') {
             const cast = fishCasts.get(user);
@@ -1742,6 +1745,17 @@ const ECONOMY_OPS = {
             if (now - cast.at > ECON.FISH_CAST_TTL) throw new Error('That cast went stale — cast again.');
             const cfg = ECON.REEL_CFG[cast.fish.rarity] || ECON.REEL_CFG.common;
             if (now - cast.biteAt < cfg.minMs) throw new Error('Nobody reels that fast.');
+            // Server-authoritative landing: replay the reel from the cast seed and
+            // the player's recorded pull timestamps. The client's `landed` flag is
+            // only a hint — a tampered client (no drain / auto-pull / faked flag)
+            // still can't produce a pull sequence that beats the zone here.
+            if (isStaff(user) && !Array.isArray(msg.pulls)) {
+                // staff catch-picking tools may skip the minigame entirely
+            } else {
+                if (!ECON.reelPullsPlausible(msg.pulls)) throw new Error('Reel data missing — refresh the page and try again.');
+                const replay = ECON.reelReplay(cast.fish.rarity, cast.seed, msg.pulls, now - cast.biteAt);
+                if (!replay.landed) return { money: moneyOf(u), fishInventory: inv, fish: null, lost: true, rarity: cast.fish.rarity, nextCastIn };
+            }
             nextCastIn = 0;
             fishLast.set(user, now - ECON.FISH_CATCH_COOLDOWN);
             const fish = cast.fish;

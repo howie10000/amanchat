@@ -348,6 +348,80 @@
   const REEL_START_PROGRESS = 0.35;
   for (const k of Object.keys(REEL_CFG)) REEL_CFG[k].minMs = Math.floor(0.9 * (1 - REEL_START_PROGRESS) * 1000 / REEL_CFG[k].gain);
 
+  // ---- deterministic reel simulation (shared, so the server can verify it) ----
+  // The reel is a fixed-timestep simulation seeded per cast. The CLIENT steps it
+  // from its animation loop (with an accumulator, so the bar it shows is this
+  // exact sim) and records the ms-offset of every pull. The SERVER re-runs the
+  // identical steps from the same seed + pull offsets and decides the landing
+  // itself — so editing the client (slower drain, no drain, auto-pull) changes
+  // nothing: only a pull sequence that genuinely beats the zone lands the fish.
+  const REEL_STEP_MS = 1000 / 60;
+  // A fresh sim state. Carries the fields the client's gauge draw reads directly.
+  function reelState(seed) {
+    return {
+      y: 0.5, vy: 0.3, zoneC: 0.5, zoneT: 0.5, pause: 0.6,
+      progress: REEL_START_PROGRESS, inZone: false, wobble: 0,
+      t: 0, done: null, rng: mulberry32((seed >>> 0) || 1),
+    };
+  }
+  // Advance the sim one fixed tick. `pulled` = a pull happened during this tick.
+  function reelTick(r, cfg, pulled) {
+    const dt = REEL_STEP_MS / 1000;
+    if (pulled) r.vy = cfg.impulse + Math.max(0, r.vy) * 0.25;
+    r.vy -= cfg.gravity * dt;
+    r.y += r.vy * dt;
+    if (r.y <= 0) { r.y = 0; r.vy = 0; }
+    if (r.y >= 1) { r.y = 1; r.vy = Math.min(0, r.vy); }
+    if (r.pause > 0) r.pause -= dt;
+    else {
+      const d = r.zoneT - r.zoneC;
+      const step = Math.max(-cfg.zoneSpeed * dt, Math.min(cfg.zoneSpeed * dt, d));
+      r.zoneC += step;
+      if (Math.abs(d) < 0.01) { r.zoneT = cfg.zone / 2 + r.rng() * (1 - cfg.zone); r.pause = 0.3 + r.rng() * 1.2; }
+    }
+    r.inZone = Math.abs(r.y - r.zoneC) <= cfg.zone / 2;
+    // Off the fish the bar only drains at half speed (a little forgiving).
+    r.progress += (r.inZone ? cfg.gain : -cfg.loss * 0.5) * dt;
+    r.wobble = r.inZone ? Math.min(1, r.wobble + dt * 3) : Math.max(0, r.wobble - dt * 4);
+    r.t += REEL_STEP_MS;
+    if (r.progress >= 1) { r.progress = 1; r.done = "landed"; }
+    else if (r.progress <= 0) { r.progress = 0; r.done = "lost"; }
+    return r;
+  }
+  // Authoritative replay. `pulls` = ms offsets from reel start; `capMs` bounds
+  // how long the reel could have run. Returns { landed, progress, pulls }.
+  function reelReplay(rarity, seed, pulls, capMs) {
+    const cfg = REEL_CFG[rarity] || REEL_CFG.common;
+    const r = reelState(seed);
+    const times = (Array.isArray(pulls) ? pulls : [])
+      .map(Number).filter(n => Number.isFinite(n) && n >= 0).sort((a, b) => a - b);
+    const cap = Math.max(0, Math.min(+capMs || 0, FISH_CAST_TTL));
+    const maxTicks = Math.ceil(cap / REEL_STEP_MS) + 4;
+    let pi = 0;
+    for (let s = 0; s < maxTicks; s++) {
+      const tickEnd = (s + 1) * REEL_STEP_MS;
+      let pulled = false;
+      while (pi < times.length && times[pi] < tickEnd) { pulled = true; pi++; }
+      reelTick(r, cfg, pulled);
+      if (r.done) break;
+    }
+    return { landed: r.done === "landed", progress: r.progress, pulls: times.length };
+  }
+  // Cheap plausibility gate on a reported pull list (before the full replay).
+  function reelPullsPlausible(pulls) {
+    if (!Array.isArray(pulls)) return false;
+    if (pulls.length > 400) return false;
+    let prev = -1;
+    for (const p of pulls) {
+      const n = Number(p);
+      if (!Number.isFinite(n) || n < 0 || n > FISH_CAST_TTL) return false;
+      if (n < prev) return false;          // must be sorted / monotonic
+      if (n - prev < 12 && prev >= 0) return false;  // no superhuman double-pulls
+      prev = n;
+    }
+    return true;
+  }
+
   // Rarity roll. Luck (0..LUCK_MAX_LEVEL, from a cooked meal) scales every
   // non-common tier's weight up, so a lucky player sees more of the good stuff.
   function rarityWeights(luckLevel) {
@@ -592,7 +666,8 @@
     LAKE, LAKE_FIGHT_RADIUS, atLake,
     FISH_RARITIES, RARITY_INFO, FISH_TABLE, LOOT_TABLE, FISH_JUNK_NAMES, fishDef, fishLuckPts,
     FISH_CATCH_COOLDOWN, FISH_LOST_COOLDOWN, FISH_CAST_TTL, fishPriceNow, fishQualityLabel,
-    REEL_CFG, REEL_START_PROGRESS, rarityWeights, rollRarity, rollFishOfRarity, rollFish, krakenChance, BEAST_KINDS, rollBeastKind,
+    REEL_CFG, REEL_START_PROGRESS, REEL_STEP_MS, reelState, reelTick, reelReplay, reelPullsPlausible,
+    rarityWeights, rollRarity, rollFishOfRarity, rollFish, krakenChance, BEAST_KINDS, rollBeastKind,
     LUCK_MAX_LEVEL, luckEffects, luckDurationMs, activeLuck,
     FARM_PLOTS, CROPS, CROP_BY_ID, cropYield, SEED_SHOP_PERIOD, seedShopBucket, seedShopStock, seedShopRestockIn,
     COOK_MAX_ING, MEAL_ADJ, ingredientInfo, luckLevelForPts, cookMeal,

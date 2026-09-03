@@ -216,7 +216,7 @@ async function fishAction() {
       return;
     }
     if (!menuOpen() || _fishState !== "casting") { netFish({ action: "reel", landed: false }).catch(() => {}); _fishState = "idle"; return; }
-    _cast = { rarity: d.rarity, cfg: ECON.REEL_CFG[d.rarity] || ECON.REEL_CFG.common, biteAt: performance.now() + d.biteIn, luck: d.luck };
+    _cast = { rarity: d.rarity, cfg: ECON.REEL_CFG[d.rarity] || ECON.REEL_CFG.common, biteAt: performance.now() + d.biteIn, luck: d.luck, seed: d.reelSeed };
     _fishState = "waiting";
     _fishSplash = 500;
     setFishStatus("Waiting for a bite…", "#94a3b8");
@@ -253,50 +253,44 @@ function onBite() {
 function startReel() {
   clearTimeout(_fishMissTimer); _fishMissTimer = null;
   _fishState = "reeling";
-  const cfg = _cast.cfg;
-  _reel = {
-    y: 0.5, vy: 0.3, zoneC: 0.5, zoneT: 0.5, pause: 0.6, progress: ECON.REEL_START_PROGRESS,
-    inZone: false, cfg, t: performance.now(), pulses: 0, wobble: 0,
-  };
+  // The reel is a shared deterministic sim (js/shared/economy.js): we step it
+  // from the frame loop with an accumulator so the gauge on screen IS the sim,
+  // and record every pull's ms-offset. On reel-in the server replays the same
+  // steps from the same seed to decide the landing — the client only predicts.
+  _reel = Object.assign(ECON.reelState(_cast.seed), {
+    cfg: _cast.cfg, start: performance.now(), acc: 0, pulls: [], _pi: 0,
+  });
   const info = ECON.RARITY_INFO[_cast.rarity] || ECON.RARITY_INFO.common;
   setFishStatus(`Keep the hook between the lines! (${info.label})`, info.color);
   setFishBtn("PULL!", "gold");
 }
 function reelPulse() {
   if (_fishState !== "reeling" || !_reel) return;
-  const cfg = _reel.cfg;
-  _reel.vy = cfg.impulse + Math.max(0, _reel.vy) * 0.25;
-  _reel.pulses++;
+  _reel.pulls.push(performance.now() - _reel.start);
 }
 function reelStep(dt) {
-  const r = _reel, cfg = r.cfg;
-  r.vy -= cfg.gravity * dt;
-  r.y += r.vy * dt;
-  if (r.y <= 0) { r.y = 0; r.vy = 0; }
-  if (r.y >= 1) { r.y = 1; r.vy = Math.min(0, r.vy); }
-  // the fish drags the target zone around, pausing between darts
-  if (r.pause > 0) r.pause -= dt;
-  else {
-    const d = r.zoneT - r.zoneC;
-    const step = Math.max(-cfg.zoneSpeed * dt, Math.min(cfg.zoneSpeed * dt, d));
-    r.zoneC += step;
-    if (Math.abs(d) < 0.01) { r.zoneT = cfg.zone / 2 + Math.random() * (1 - cfg.zone); r.pause = 0.3 + Math.random() * 1.2; }
+  const r = _reel;
+  if (!r) return;
+  r.acc += dt * 1000;
+  if (r.acc > 2000) r.acc = 2000;   // don't fast-forward after a backgrounded tab
+  while (r.acc >= ECON.REEL_STEP_MS) {
+    r.acc -= ECON.REEL_STEP_MS;
+    const tickEnd = r.t + ECON.REEL_STEP_MS;
+    let pulled = false;
+    while (r._pi < r.pulls.length && r.pulls[r._pi] < tickEnd) { pulled = true; r._pi++; }
+    ECON.reelTick(r, r.cfg, pulled);
+    if (r.done) { finishReel(r.done === "landed"); return; }
   }
-  r.inZone = Math.abs(r.y - r.zoneC) <= cfg.zone / 2;
-  // Off the fish, the bar only drains at half speed (a little forgiving).
-  r.progress += (r.inZone ? cfg.gain : -cfg.loss * 0.5) * dt;
-  r.wobble = r.inZone ? Math.min(1, r.wobble + dt * 3) : Math.max(0, r.wobble - dt * 4);
-  if (r.progress >= 1) { r.progress = 1; finishReel(true); }
-  else if (r.progress <= 0) { r.progress = 0; finishReel(false); }
 }
 async function finishReel(landed) {
   _fishState = "landing";
   const cast = _cast;
+  const pulls = _reel ? _reel.pulls.slice() : [];
   const btn = document.getElementById("fishBtn");
   if (btn) { btn.textContent = landed ? "LANDING…" : "…"; btn.disabled = true; btn.className = "menuBtn bigBtn gray"; }
   setFishStatus(landed ? "Got it — hauling it in…" : "The line went slack…", landed ? "#22c55e" : "#f87171");
   let d;
-  try { d = await netFish({ action: "reel", landed }); }
+  try { d = await netFish({ action: "reel", landed, pulls }); }
   catch (e) {
     _fishState = "idle"; _cast = null; _reel = null;
     setFishStatus(e.message, "#f87171"); setFishBtn("CAST", "green");
