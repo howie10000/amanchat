@@ -238,7 +238,8 @@ html, body {
   box-shadow: 0 1px 3px rgba(0,0,0,.5);
 }
 #phone.big .actBtn.app .appBadge { min-width: 19px; height: 19px; font-size: 11px; line-height: 15px; }
-.actBtn[data-act="dms"].alert .ico::after { display: none; }  /* the number carries it */
+.actBtn[data-act="dms"].alert .ico::after,
+.actBtn[data-act="announcements"].alert .ico::after { display: none; }  /* the number carries it */
 .actBtn.staff { }
 .phoneHome {
   position: absolute; bottom: 9px; left: 50%; transform: translateX(-50%);

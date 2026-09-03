@@ -1676,6 +1676,7 @@ window.openNotes = openNotes;
 // ---------- ANNOUNCEMENTS APP ----------
 // Read-only feed of the latest announcements posted by owners.
 async function openAnnouncements() {
+  if (window.markNewsSeen) markNewsSeen();   // opening the app clears its badge
   uiPanel("📣 ANNOUNCEMENTS", `<div id="annFeed"><p class="muted">Loading…</p></div>`);
   let feed = {};
   try { feed = (await fbGet("announcements")) || {}; } catch (e) {}

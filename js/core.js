@@ -169,6 +169,7 @@ async function enterGame(user, data, role, mute) {
   startNotifyLoop();
   wrapEconomyReplies();
   initDMBadge();
+  initNewsBadge();
   if (window.gameLake) gameLake.sync();   // is a Kraken already up at the pond?
   setInterval(refreshUserCache, 4000);
   if (state.mute) toast(muteText(state.mute), 5000);
@@ -234,6 +235,51 @@ async function initDMBadge() {
     if (tid === openTid) { markThreadSeen(state.dmThread); return; }
     state.dmUnseen[tid] = (state.dmUnseen[tid] | 0) + 1;
     updateDMBadge();
+  });
+}
+
+// ---------- UNSEEN NEWS BADGE ----------
+// A count on the News (📣) app icon: announcements posted since you last opened
+// the app. Client-side only — a per-user "last seen" timestamp in localStorage,
+// with live bumps from the server's `announce` push event.
+state.newsUnseen = 0;
+function newsSeenKey() { return "newsSeen:" + (state.user || "_"); }
+function newsSeenTs() { try { return +localStorage.getItem(newsSeenKey()) || 0; } catch (e) { return 0; } }
+function newsSeenSave(ts) { try { localStorage.setItem(newsSeenKey(), String(ts)); } catch (e) {} }
+function newsAppOpen() { return !!document.getElementById("annFeed"); }
+function updateNewsBadge() {
+  const n = Math.max(0, state.newsUnseen | 0);
+  const badge = document.getElementById("newsBadge");
+  const btn = document.querySelector('.actBtn[data-act="announcements"]');
+  if (badge) {
+    badge.textContent = n > 99 ? "99+" : String(n);
+    badge.classList.toggle("hidden", n === 0);
+  }
+  if (btn) btn.classList.toggle("alert", n > 0);
+}
+window.updateNewsBadge = updateNewsBadge;
+function markNewsSeen() {
+  state.newsUnseen = 0;
+  newsSeenSave(Date.now());
+  updateNewsBadge();
+}
+window.markNewsSeen = markNewsSeen;
+async function initNewsBadge() {
+  let feed = {};
+  try { feed = (await fbGet("announcements")) || {}; } catch (e) {}
+  const list = Object.values(feed).filter(a => a && a.text);
+  let since = newsSeenTs();
+  // First run for this account: treat everything already posted as seen, so the
+  // badge doesn't open on the whole back-catalogue.
+  if (!since) { since = list.reduce((mx, a) => Math.max(mx, a.ts || 0), 0); newsSeenSave(since || Date.now()); }
+  state.newsUnseen = list.filter(a => (a.ts || 0) > since).length;
+  updateNewsBadge();
+  NET.on("announce", (m) => {
+    const a = m && m.data;
+    if (!a || !a.text) return;
+    if (a.by === state.user || newsAppOpen()) { markNewsSeen(); return; }  // your own post, or app already open = seen
+    state.newsUnseen++;
+    updateNewsBadge();
   });
 }
 
