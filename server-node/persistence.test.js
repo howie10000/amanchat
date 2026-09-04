@@ -161,6 +161,52 @@ function decode(buf) { return JSON.parse(zlib.brotliDecompressSync(buf).toString
     assert(rowMap().has('users/alice') && rowMap().has('users/bob'), 'deleting one record leaves the others alone');
     a2.close();
 
+    // ------------------------------------------------------ luck queue
+    // A weaker meal must never extend a stronger buff — that let the best buff
+    // in the game be held forever on the cheapest food.
+    console.log("luck: weaker meals queue instead of extending");
+    const lk = client(); await lk.ready;
+    await lk.rpc("auth", { user: "cookie", pass: "cookpass", register: true });
+    // give ourselves the ingredients, as staff would
+    const st = client(); await st.ready;
+    await st.rpc("auth", { user: "boss", pass: "pass123" });
+    await st.rpc("put", { path: "users/cookie/fishInventory", value: { "Golden Kraken Tentacle": 8, "Minnow": 40 } });
+
+    const cook = (ings) => lk.rpc("cook", { action: "cook", ingredients: ings });
+    const eat = (key) => tryRpc(lk, "cook", { action: "eat", meal: key });
+    const strongIngs = [{ kind: "fish", id: "Golden Kraken Tentacle" }, { kind: "fish", id: "Golden Kraken Tentacle" }];
+    const weakIngs = [{ kind: "fish", id: "Minnow" }];
+
+    const strong = await cook(strongIngs);
+    const strongKey = strong.cooked.key, strongLevel = strong.cooked.luck;
+    for (let i = 0; i < 6; i++) await cook(weakIngs);
+    const weakKey = (await cook(weakIngs)).cooked.key;
+    const weakLevel = (await lk.rpc("cook", { action: "status" })).meals[weakKey].luck;
+    assert(strongLevel > weakLevel, `the two meals differ in strength (${strongLevel} vs ${weakLevel})`);
+
+    const first = await eat(strongKey);
+    assert(first.ok && first.data.luck.level === strongLevel, "eating the strong meal starts the strong buff");
+    const until0 = first.data.luck.until;
+
+    const second = await eat(weakKey);
+    assert(second.ok, "the weak meal is accepted");
+    assert(second.data.queued === true, "…and reports that it was QUEUED, not applied");
+    assert(second.data.luck.level === strongLevel, "the running buff is still the strong one");
+    assert(second.data.luck.until === until0, "the weak meal did NOT extend the strong timer");
+    assert((second.data.luck.queue || []).length === 1, "it is waiting in the queue");
+
+    for (let i = 0; i < 4; i++) await eat(weakKey);
+    const luckAfter = await lk.rpc("cook", { action: "status" });
+    assert(luckAfter.luck.until === until0, "no amount of weak meals moves the strong timer");
+    assert((luckAfter.luck.queue || []).length === 5, "they all stacked up in the queue instead");
+
+    // an equally strong meal still extends, which is fair
+    await cook(strongIngs);
+    const same = await eat(strongKey);
+    assert(same.ok && same.data.luck.until > until0, "an EQUALLY strong meal does still extend the timer");
+    assert((same.data.luck.queue || []).length === 5, "and does not disturb the queue");
+    lk.close(); st.close();
+    await sleep(200);
     // ------------------------------------------------ money transfers
     console.log("player-to-player transfers");
     const tb = client(); await tb.ready;   // staff, for the loan setup

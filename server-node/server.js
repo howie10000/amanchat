@@ -1522,7 +1522,13 @@ function nonNegInt(v) { const n = Number(v); return Number.isInteger(n) && n >= 
 function luckOf(user, u, now) {
     now = now || Date.now();
     const l = ECON.activeLuck(u.luck, now);
-    if (!l && u.luck) { u.luck = null; store.put(`users/${user}/luck`, null); }
+    // activeLuck also promotes the next queued meal when the running one ends.
+    // Persist that, or every later call re-derives it from the stale record.
+    const before = u.luck || null;
+    const changed = !l !== !before ||
+        (l && before && (l.level !== before.level || l.until !== before.until ||
+                         (l.queue || []).length !== (before.queue || []).length));
+    if (changed) { u.luck = l; store.put(`users/${user}/luck`, l); }
     return l;
 }
 // Single-roll games a lucky loss may be re-rolled on (multi-step games keep
@@ -2406,20 +2412,18 @@ const ECONOMY_OPS = {
             const m = meals[key];
             if (!m || !(m.n > 0)) throw new Error('You have no such meal.');
             const cur = luckOf(user, u, now);
-            let luck;
-            if (cur && cur.level > m.luck) {
-                // A weaker meal on top of a stronger buff just tops the timer up.
-                luck = Object.assign({}, cur, { until: cur.until + Math.floor(ECON.luckDurationMs(m.luck) / 2) });
-            } else if (cur && cur.level === m.luck) {
-                luck = Object.assign({}, cur, { until: cur.until + ECON.luckDurationMs(m.luck) });
-            } else {
-                luck = { level: m.luck, until: now + ECON.luckDurationMs(m.luck), meal: m.name, emoji: m.emoji, since: now };
-            }
+            // Shared rules (js/shared/economy.js): a weaker meal QUEUES behind the
+            // running buff instead of extending it. Topping a Luck 6 up with cheap
+            // Luck 1 food used to add half the weak meal to the strong timer, so
+            // the best buff in the game could be held forever for a few minnows.
+            const res = ECON.luckAfterEating(cur, m.luck, m.name, m.emoji, now);
+            if (res.error) throw new Error(res.error);      // nothing consumed
+            const luck = res.luck;
             m.n -= 1;
             if (m.n <= 0) delete meals[key];
             u.meals = meals; store.put(`users/${user}/meals`, meals);
             u.luck = luck; store.put(`users/${user}/luck`, luck);
-            return view({ ate: m.name, luck });
+            return view({ ate: m.name, luck, queued: !!res.queued });
         }
         throw new Error('Unknown cook action.');
     },

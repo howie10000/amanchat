@@ -486,10 +486,62 @@
     return { level: L, fishWeightMult: 1 + 0.3 * L, casinoBonus: Math.min(0.30, 0.05 * L), rerollChance: Math.min(0.24, 0.04 * L) };
   }
   function luckDurationMs(level) { return (10 + 4 * Math.max(1, Math.min(LUCK_MAX_LEVEL, +level || 1))) * 60000; }
+  // A meal you eat while a STRONGER one is running waits its turn instead of
+  // touching the active timer. Topping a Luck 6 buff up with cheap Luck 1 food
+  // used to add half the weak meal's duration to the strong one, which meant the
+  // best buff in the game could be held forever for the price of a few minnows.
+  const LUCK_QUEUE_MAX = 10;
+  // Best-first, so when the active buff ends you always get the strongest thing
+  // you have waiting.
+  function luckQueueSort(q) {
+    return (q || []).slice().sort((a, b) => (b.level || 0) - (a.level || 0));
+  }
+  // Rolls the record forward: when the running buff has expired, the next queued
+  // meal starts where it left off (so time really does pass, offline included).
+  // Returns the buff that is actually in effect now, or null.
   function activeLuck(luck, now) {
     now = now == null ? Date.now() : now;
-    if (!luck || typeof luck !== "object" || !(luck.until > now) || !(luck.level > 0)) return null;
-    return luck;
+    if (!luck || typeof luck !== "object") return null;
+    let cur = luck;
+    let guard = 0;
+    while (cur && !(cur.until > now) && Array.isArray(cur.queue) && cur.queue.length && guard++ < 64) {
+      const q = cur.queue.slice();
+      const next = q.shift();
+      const startedAt = (+cur.until > 0) ? +cur.until : now;
+      cur = {
+        level: next.level, until: startedAt + Math.max(0, +next.ms || 0),
+        meal: next.meal, emoji: next.emoji, since: startedAt, queue: q,
+      };
+    }
+    if (!cur || !(cur.until > now) || !(cur.level > 0)) return null;
+    return cur;
+  }
+  // What eating `mealLevel` does to the record you already hold. Pure, so the
+  // client can preview it and the server can trust the same rules.
+  //   stronger -> takes over now, the remainder of the weaker one queues up
+  //   equal    -> extends the running timer
+  //   weaker   -> queues at full duration; the active buff is NOT touched
+  // Returns { luck, queued } or { error }.
+  function luckAfterEating(cur, mealLevel, mealName, mealEmoji, now) {
+    now = now == null ? Date.now() : now;
+    const lvl = Math.max(1, Math.min(LUCK_MAX_LEVEL, +mealLevel || 1));
+    const dur = luckDurationMs(lvl);
+    const active = activeLuck(cur, now);
+    if (!active) {
+      return { luck: { level: lvl, until: now + dur, meal: mealName, emoji: mealEmoji, since: now, queue: [] }, queued: false };
+    }
+    const queue = Array.isArray(active.queue) ? active.queue.slice() : [];
+    if (lvl > active.level) {
+      const leftover = Math.max(0, active.until - now);
+      if (leftover > 1000) queue.push({ level: active.level, meal: active.meal, emoji: active.emoji, ms: leftover });
+      return { luck: { level: lvl, until: now + dur, meal: mealName, emoji: mealEmoji, since: now, queue: luckQueueSort(queue).slice(0, LUCK_QUEUE_MAX) }, queued: false };
+    }
+    if (lvl === active.level) {
+      return { luck: Object.assign({}, active, { until: active.until + dur }), queued: false };
+    }
+    if (queue.length >= LUCK_QUEUE_MAX) return { error: "Your luck queue is full — let some of it run down first." };
+    queue.push({ level: lvl, meal: mealName, emoji: mealEmoji, ms: dur });
+    return { luck: Object.assign({}, active, { queue: luckQueueSort(queue) }), queued: true };
   }
 
   // ---------- farming ----------
@@ -683,7 +735,7 @@
     FISH_CATCH_COOLDOWN, FISH_LOST_COOLDOWN, FISH_CAST_TTL, fishPriceNow, fishQualityLabel,
     REEL_CFG, REEL_START_PROGRESS, REEL_STEP_MS, reelState, reelTick, reelReplay, reelPullsPlausible,
     rarityWeights, rollRarity, rollFishOfRarity, rollFish, krakenChance, BEAST_KINDS, rollBeastKind,
-    LUCK_MAX_LEVEL, luckEffects, luckDurationMs, activeLuck,
+    LUCK_MAX_LEVEL, luckEffects, luckDurationMs, activeLuck, luckAfterEating, luckQueueSort, LUCK_QUEUE_MAX,
     FARM_PLOTS, CROPS, CROP_BY_ID, cropYield, SEED_SHOP_PERIOD, seedShopBucket, seedShopStock, seedShopRestockIn,
     COOK_MAX_ING, MEAL_ADJ, ingredientInfo, luckLevelForPts, cookMeal,
     KRAKEN, BEASTS, krakenHeadPos, krakenPartPos, beastPartPos, krakenMaxHp, pickAttack,

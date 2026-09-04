@@ -424,7 +424,13 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     assert(!(await tryRpc(bob, 'fish', { action: 'cast', pick: 'kraken' })).ok, 'players cannot summon the kraken');
     await sleep(ECON.FISH_CATCH_COOLDOWN + 100);
     r = await tryRpc(owner, 'fish', { action: 'cast', pick: 'kraken' });
-    assert(r.ok && r.data.rarity !== 'kraken', 'a kraken cast never reveals itself before the fish is landed');
+    // A fish landed earlier in this suite can itself wake a beast (up to 15% on
+    // a mythical), and krakenBlocked() then refuses this cast. Report that
+    // clearly instead of dereferencing r.data and taking the whole run down.
+    assert(r.ok && r.data && r.data.rarity !== 'kraken',
+        'a kraken cast never reveals itself before the fish is landed' + (r.ok ? '' : ' — cast refused: ' + r.err));
+    if (!r.ok || !r.data) { console.log('  .. skipping the rest of the kraken section'); }
+    else {
     await sleep(r.data.biteIn + ECON.REEL_CFG[r.data.rarity].minMs + 150);
     r = await tryRpc(owner, 'fish', { action: 'reel', landed: true });
     assert(r.ok && r.data.kraken === true && r.data.beast === 'kraken', 'landing the fish wakes the kraken: ' + (r.ok ? JSON.stringify({ kraken: r.data.kraken, beast: r.data.beast }) : r.err));
@@ -529,6 +535,8 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
         assert(r.ok && r.data.money === m0 - staked + r.data.payout && r.data.money === await money(bob, 'bob'), `${game}: money = before - stake + payout (${r.ok ? r.data.payout : r.err})`);
     }
     assert(!(await tryRpc(bob, 'casino', { game: 'jackpot', action: 'spin', bet: 100 })).ok, 'jackpot min bet enforced');
+
+    }
 
     console.log('duel settlement');
     const bobM = await money(bob, 'bob'), aliceM = await money(alice, 'alice');

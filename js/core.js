@@ -456,7 +456,9 @@ function updateLuckHud() {
   const ms = Math.max(0, l.until - Date.now());
   const m = Math.floor(ms / 60000), s = Math.floor((ms % 60000) / 1000);
   row.style.display = "flex";
-  document.getElementById("hudLuck").textContent = `Luck ${l.level} · ${m}:${String(s).padStart(2, "0")}`;
+  const q = Array.isArray(l.queue) ? l.queue.length : 0;
+  document.getElementById("hudLuck").textContent =
+    `Luck ${l.level} · ${m}:${String(s).padStart(2, "0")}` + (q ? ` (+${q})` : "");
 }
 setInterval(() => { if (state.data) updateLuckHud(); }, 1000);
 

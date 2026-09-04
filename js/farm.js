@@ -422,9 +422,15 @@
     const l = ECON.activeLuck(state.data && state.data.luck, Date.now());
     if (!l) return `<p class="muted">No luck active. Eat a meal to get some.</p>`;
     const e = ECON.luckEffects(l.level);
+    const q = Array.isArray(l.queue) ? l.queue : [];
+    // Weaker meals eaten while this one is running wait here rather than
+    // extending it, strongest first.
+    const queued = q.length
+      ? `<br/><small class="muted">⏳ up next: ${q.map(x => `${x.emoji || "🍲"} <b>Luck ${x.level}</b> (${fmtDur(x.ms)})`).join(" → ")}</small>`
+      : "";
     return `<div class="mealPreview" style="border-color:#22c55e;">
       <span class="luckPill">🍀 LUCK ${l.level}</span> <b>${l.emoji || "🍲"} ${escapeHtml(l.meal || "Meal")}</b> — <span id="luckLeft">${fmtDur(l.until - Date.now())}</span> left<br/>
-      <small class="muted">rare fish ×${e.fishWeightMult.toFixed(2)} · VEGAS wins +${Math.round(e.casinoBonus * 100)}% · ${Math.round(e.rerollChance * 100)}% to re-roll a lost bet</small></div>`;
+      <small class="muted">rare fish ×${e.fishWeightMult.toFixed(2)} · VEGAS wins +${Math.round(e.casinoBonus * 100)}% · ${Math.round(e.rerollChance * 100)}% to re-roll a lost bet</small>${queued}</div>`;
   }
   async function openCooking(where) {
     _cookWhere = where || "lake";
@@ -501,7 +507,12 @@
     try {
       const d = await netCook({ action: "eat", meal: key });
       adopt(d);
-      toast(`🍀 You feel lucky! <b>LUCK ${d.luck.level}</b> for ${fmtDur(d.luck.until - Date.now())} — go fish, or hit VEGAS.`, 4500);
+      if (d.queued) {
+        const n = (d.luck.queue || []).length;
+        toast(`⏳ Saved for later — <b>LUCK ${d.luck.level}</b> is still running, so that meal waits its turn (${n} in the queue).`, 5000);
+      } else {
+        toast(`🍀 You feel lucky! <b>LUCK ${d.luck.level}</b> for ${fmtDur(d.luck.until - Date.now())} — go fish, or hit VEGAS.`, 4500);
+      }
     } catch (e) { toast(e.message); }
     if (menuOpenNow()) renderCooking();
   }
