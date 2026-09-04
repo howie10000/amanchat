@@ -100,6 +100,14 @@
       <input id="chatBox" maxlength="80" placeholder="Say something... (Enter to send, ESC to cancel)" />
     </div>
 
+    <!-- "Your client is out of date" — see the version check in js/net.js -->
+    <div id="updateBanner" class="hidden">
+      <span class="ubIcon">⚠️</span>
+      <div class="ubText"><b>Update available</b><div id="ubDetail" class="ubDetail"></div></div>
+      <button class="ubBtn" onclick="location.reload(true)">Reload</button>
+      <button class="ubClose" title="Dismiss" onclick="document.getElementById('updateBanner').classList.add('hidden')">×</button>
+    </div>
+
     <!-- Generic menu overlay -->
     <div id="menu" class="menuOverlay hidden">
       <div class="menuBox">

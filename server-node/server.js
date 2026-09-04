@@ -881,6 +881,12 @@ function canWrite(user, pathStr, op) {
         if (!isStaff(user) || parts.length < 2) return false;
         return outranks(user, parts[1]);          // can't touch equals or superiors
     }
+    if (top === 'lb_bans') {
+        // Hidden from the town leaderboard. Staff only, and you can't hide a
+        // peer or a superior.
+        if (!isStaff(user) || parts.length < 2) return false;
+        return outranks(user, parts[1]);
+    }
     if (top === 'banned_ips') return role === 'owner';
     if (top === 'meta') return false;             // server-written only (IPs)
     if (top === 'mayor') {
@@ -990,6 +996,81 @@ function afterModWrite(actor, pathStr, val, op) {
         const va = homeVisiting.get(a); if (va && va.owner === b) homeVisiting.delete(a);
         const vb = homeVisiting.get(b); if (vb && vb.owner === a) homeVisiting.delete(b);
     }
+}
+
+// ---------------------------------------------------------------- ACCOUNT DELETION
+// Deleting a player used to be three client-side `del` calls (users/, players/,
+// inbox/) which left the LOGIN behind: the row in the `auth` table was never
+// touched, so the name stayed claimed forever ("user exists") and the account
+// lingered as a ghost that the staff panel could no longer even see. This does
+// the whole job in one server-side pass, credentials included.
+function ghostAccounts() {
+    const out = [];
+    for (const row of db.prepare(`SELECT user, created FROM auth`).all()) {
+        if (store.get('users/' + row.user) == null && store.get('players/' + row.user) == null) {
+            out.push({ user: row.user, created: row.created });
+        }
+    }
+    return out;
+}
+
+function purgeUser(name) {
+    const removed = [];
+    const drop = (p) => { if (store.get(p) != null) { store.delete(p); removed.push(p); } };
+
+    // 1. The credentials. THIS is what frees the name for re-registration.
+    const auth = db.prepare(`DELETE FROM auth WHERE user = ?`).run(name).changes;
+
+    // 2. Everything filed under their own name.
+    for (const p of ['users/' + name, 'players/' + name, 'inbox/' + name, 'bug_reports/' + name,
+                     'bans/' + name, 'mutes/' + name, 'meta/ips/' + name, 'roles/admins/' + name]) drop(p);
+
+    // 3. References other players hold to them — friendships and house keys,
+    //    or a deleted account keeps a key to someone's front door.
+    for (const [u, rec] of Object.entries(store.get('users') || {})) {
+        if (!rec || typeof rec !== 'object') continue;
+        if (rec.friends && rec.friends[name] !== undefined) drop(`users/${u}/friends/${name}`);
+        if (rec.keys && rec.keys[name] !== undefined) drop(`users/${u}/keys/${name}`);
+    }
+
+    // 4. Shared documents keyed by the players in them.
+    for (const id of Object.keys(store.get('dm_threads') || {})) {
+        if (id.split('__').includes(name)) drop('dm_threads/' + id);
+    }
+    for (const [id, d] of Object.entries(store.get('duels') || {})) {
+        if (id.split('__').includes(name) || (d && (d.a === name || d.b === name))) drop('duels/' + id);
+    }
+    for (const [tname, t] of Object.entries(store.get('teams') || {})) {
+        if (!t || typeof t !== 'object') continue;
+        if (t.captain === name) { drop('teams/' + tname); continue; }
+        if (Array.isArray(t.members) && t.members.includes(name)) {
+            store.put(`teams/${tname}/members`, t.members.filter(m => m !== name));
+            removed.push(`teams/${tname}/members`);
+        }
+    }
+    for (const [k, v] of Object.entries(store.get('banned_ips') || {})) {
+        if (v && v.user === name) drop('banned_ips/' + k);
+    }
+
+    // 5. In-memory state that would otherwise outlive the account.
+    try { GAMES.clearUser(name); } catch (e) {}
+    fishCasts.delete(name); fishLast.delete(name); homeVisiting.delete(name);
+    for (const key of [...earnLast.keys()]) if (key.startsWith(name + ':')) earnLast.delete(key);
+    for (const key of [...casinoLast.keys()]) if (key.startsWith(name + ':')) casinoLast.delete(key);
+
+    // 6. Boot them if they're logged in right now.
+    const live = byUser.get(name);
+    if (live) {
+        try { live.ws.send(JSON.stringify({ event: 'kicked', reason: 'deleted', message: 'This account has been deleted by staff.' })); } catch (e) {}
+        try { live.ws.close(); } catch (e) {}
+        byUser.delete(name);
+    }
+
+    // 7. Make it durable now, not on the next 2s tick — a crash in between
+    //    would resurrect the account.
+    try { store.snapshot(); } catch (e) { console.error('[purge] snapshot failed', e); }
+    console.log(`[purge] ${name}: auth rows ${auth}, ${removed.length} record(s) removed`);
+    return { user: name, authRemoved: auth, records: removed };
 }
 
 // Duel rules for a client write (put/patch) at duels/<id>[/field]: only the
@@ -1368,8 +1449,45 @@ function handleMessage(c, msg) {
             break;
         }
 
+        // The richest-players board, ranked server-side so leaderboard bans
+        // actually hold and clients stop downloading every account to show ten
+        // rows.
+        case 'leaderboard': {
+            if (!c.user) return replyErr('not authed');
+            const hidden = store.get('lb_bans') || {};
+            const rows = Object.entries(store.get('users') || {})
+                .filter(([n, d]) => n !== 'mayor' && !hidden[n] && d && typeof d === 'object')
+                .map(([n, d]) => ({ user: n, money: Math.max(0, Math.floor(+d.money || 0)) }))
+                .sort((a, b) => b.money - a.money)
+                .slice(0, 10);
+            reply({ rows, online: rosterState.size || 1 });
+            break;
+        }
+
         case 'ping': {
             reply('pong');
+            break;
+        }
+
+        // Delete an account for good — record, references AND login. Staff only,
+        // and only downward: an admin can't delete another admin or an owner.
+        case 'delete_user': {
+            if (!c.user) return replyErr('not authed');
+            if (!isStaff(c.user)) return replyErr('forbidden');
+            const target = String(msg.user || '').trim().toLowerCase();
+            if (!target) return replyErr('no such user');
+            if (target === c.user) return replyErr("You can't delete your own account.");
+            if (!outranks(c.user, target)) return replyErr("You can't delete that account.");
+            reply(purgeUser(target));
+            break;
+        }
+
+        // Logins with no player record left — accounts a previous version of the
+        // delete button half-removed. They hold their name hostage until purged.
+        case 'ghost_accounts': {
+            if (!c.user) return replyErr('not authed');
+            if (!isStaff(c.user)) return replyErr('forbidden');
+            reply(ghostAccounts());
             break;
         }
 
@@ -1394,7 +1512,8 @@ function handleMessage(c, msg) {
 // reply data; every reply carries the caller's new `money`. Throw to reject.
 const earnLast = new Map();   // `${user}:${source}` -> last accepted ts
 const fishLast = new Map();   // user -> last reel ts (cast cooldown)
-const fishCasts = new Map();  // user -> { id, fish, kraken, at, biteAt } — the line that's out right now
+const fishCasts = new Map();
+const transferLast = new Map(); // user -> last accepted player-to-player transfer  // user -> { id, fish, kraken, at, biteAt } — the line that's out right now
 
 function nonNegInt(v) { const n = Number(v); return Number.isInteger(n) && n >= 0 ? n : null; }
 
@@ -1807,6 +1926,43 @@ const ECONOMY_OPS = {
             setMoney(user, u, moneyOf(u) + (amt - tax));
             addTreasury(tax);
             return Object.assign(view(), { moved: amt - tax, gross: amt, tax });
+        }
+
+        // ---- player-to-player transfer (the bank's transfer window) ----
+        // Fully server-side: the client only names a recipient and an amount.
+        // Both balances are read and written here, so a tampered client can't
+        // mint money, move someone else's, or dodge the loan rules.
+        if (msg.action === 'transfer') {
+            const to = String(msg.to || '').trim().toLowerCase();
+            if (!to) throw new Error('Who are you sending to?');
+            if (to === user) throw new Error("You can't send money to yourself.");
+            const target = store.get('users/' + to);
+            if (!target || typeof target !== 'object') throw new Error('No player by that name.');
+            const amt = nonNegInt(msg.amount);
+            if (!amt || amt < ECON.TRANSFER_MIN) throw new Error(`Send at least $${ECON.TRANSFER_MIN}.`);
+            const last = transferLast.get(user) || 0;
+            if (now - last < ECON.TRANSFER_COOLDOWN) {
+                throw new Error(`Slow down — you can send again in ${Math.ceil((ECON.TRANSFER_COOLDOWN - (now - last)) / 1000)}s.`);
+            }
+            // A loan on EITHER side blocks the transfer, so a debtor can neither
+            // park cash with a friend to dodge the overdue skim nor be handed
+            // money to launder around it.
+            if (u.loan && u.loan.owed > 0) throw new Error('You have an outstanding loan — pay it off before sending money.');
+            // Settle the recipient's interest/penalties first, or a loan that
+            // went overdue while they were offline wouldn't be visible yet.
+            const rec = userRec(to);
+            bankSync(to, rec, now);
+            if (rec.loan && rec.loan.owed > 0) throw new Error(to + ' has an outstanding loan and cannot receive money.');
+            if (moneyOf(u) < amt) throw new Error('Not enough cash on hand.');
+
+            setMoney(user, u, moneyOf(u) - amt);
+            const theirNew = setMoney(to, rec, moneyOf(rec) + amt);
+            transferLast.set(user, now);
+            console.log(`[transfer] ${user} -> ${to}: $${amt}`);
+            // Live HUD update + a note for whoever is on the other end.
+            pushTo(to, { event: 'money', money: theirNew, reason: 'transfer', from: user, amount: amt });
+            store.push('inbox/' + to, { kind: 'cash', from: user, amount: amt, ts: now });
+            return Object.assign(view(), { sent: amt, to });
         }
 
         if (msg.action === 'loan_take') {

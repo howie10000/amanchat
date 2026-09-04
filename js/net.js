@@ -134,6 +134,12 @@
   // Staff-only: a single player's live area/position. Presence is area-scoped,
   // so teleporting to someone in another area needs a direct lookup.
   window.netWhereIs = (user) => rpc("whereis", { user });
+  // Staff: delete an account outright — record, references and login — and list
+  // logins whose player record is already gone (see purgeUser on the server).
+  window.netDeleteUser = (user) => rpc("delete_user", { user });
+  window.netGhostAccounts = () => rpc("ghost_accounts", {});
+  // Richest-players board, ranked by the server so leaderboard bans hold.
+  window.netLeaderboard = () => rpc("leaderboard", {});
   // Server-authoritative economy ops (see docs/SERVER-AUTHORITY.md).
   window.netCasino = (data) => rpc("casino", data);
   // `id` is the rpc envelope field, so the purchase id travels as `item`.
@@ -153,4 +159,83 @@
 
   // For dev console / debugging
   window.fb = { fbGet: window.fbGet, fbPut: window.fbPut, fbPatch: window.fbPatch, fbPost: window.fbPost, fbDelete: window.fbDelete };
+
+  // ---------------- "your client is out of date" check ----------------
+  // The client is served from GitHub Pages and the backend from northpvp.net, so
+  // a player can easily be running week-old JS out of their browser cache while
+  // the server has moved on — which is exactly how a protocol change turns into
+  // "everyone vanished when I moved". On startup we ask GitHub when the client
+  // was last committed and compare it against the build stamp baked in below;
+  // if the repo is newer than the files you're running, a yellow banner offers
+  // a reload.
+  //
+  //   >>> BUMP CLIENT_BUILD ON EVERY CLIENT DEPLOY. <<<
+  // Set it to (roughly) the time you push. It only has to be >= the commit you
+  // are deploying and < the next one.
+  // Stamp it at deploy time:
+  //   sed -i "s|CLIENT_BUILD = \".*\"|CLIENT_BUILD = \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"|" js/net.js
+  const CLIENT_BUILD = "2026-09-04T00:17:01Z";
+  const GITHUB_REPO  = "howie10000/amanchat";
+  // Only commits touching this path count, so a server-only change doesn't tell
+  // every player their client is stale. Set to "" to watch the whole repo.
+  const CLIENT_PATH  = "js";
+  const VERSION_TTL  = 30 * 60 * 1000;   // don't re-ask GitHub more often than this
+  // Slack between stamping CLIENT_BUILD and actually pushing the commit, so a
+  // fresh deploy never flags itself.
+  const BUILD_SLACK  = 10 * 60 * 1000;
+
+  window.CLIENT_BUILD = CLIENT_BUILD;
+
+  function showUpdateBanner(when) {
+    const el = document.getElementById("updateBanner");
+    if (!el) return;
+    const d = document.getElementById("ubDetail");
+    if (d) {
+      const age = Date.now() - when;
+      // Under a minute, or a clock ahead of ours — don't claim a bogus age.
+      const ago = age < 60000 ? "just now"
+        : age < 60 * 60000 ? `${Math.round(age / 60000)} min ago`
+        : age < 48 * 3600000 ? `${Math.round(age / 3600000)} h ago`
+        : `${Math.round(age / 86400000)} days ago`;
+      d.textContent = `A newer version was published ${ago}. Reload to get it.`;
+    }
+    el.classList.remove("hidden");
+  }
+
+  async function latestCommitTime() {
+    // Cached so a room full of players on one school IP doesn't burn through
+    // GitHub's 60-requests-per-hour unauthenticated limit.
+    try {
+      const c = JSON.parse(localStorage.getItem("clientVersionCheck") || "null");
+      if (c && Date.now() - c.at < VERSION_TTL) return c.when;
+    } catch (e) {}
+    const ask = async (path) => {
+      const url = `https://api.github.com/repos/${GITHUB_REPO}/commits?per_page=1`
+        + (path ? `&path=${encodeURIComponent(path)}` : "");
+      const res = await fetch(url, { cache: "no-store", headers: { Accept: "application/vnd.github+json" } });
+      if (!res.ok) return null;                       // 403 = rate limited, 404 = bad repo
+      const list = await res.json();
+      if (!Array.isArray(list) || !list.length) return null;
+      const t = Date.parse(list[0].commit && list[0].commit.committer && list[0].commit.committer.date);
+      return Number.isFinite(t) ? t : null;
+    };
+    // If CLIENT_PATH doesn't exist in the repo the filtered query comes back
+    // empty; fall back to the whole repo rather than silently never warning.
+    let when = await ask(CLIENT_PATH);
+    if (when == null && CLIENT_PATH) when = await ask("");
+    if (when != null) { try { localStorage.setItem("clientVersionCheck", JSON.stringify({ at: Date.now(), when })); } catch (e) {} }
+    return when;
+  }
+
+  async function checkClientVersion() {
+    try {
+      const built = Date.parse(CLIENT_BUILD);
+      if (!Number.isFinite(built)) return;
+      const when = await latestCommitTime();
+      if (when != null && when > built + BUILD_SLACK) showUpdateBanner(when);
+    } catch (e) { /* never let a version check break the game */ }
+  }
+  // Not on the critical path — let the game boot first.
+  setTimeout(checkClientVersion, 4000);
+  window.checkClientVersion = checkClientVersion;
 })();

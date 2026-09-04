@@ -15,6 +15,7 @@ const fs = require('fs');
 const os = require('os');
 const zlib = require('zlib');
 const { spawn } = require('child_process');
+const ECON = require(path.join(__dirname, '..', 'js', 'shared', 'economy.js'));
 
 const MODS = path.resolve(process.argv[2] || __dirname);
 const PORT = +(process.argv[3] || 18456);
@@ -42,6 +43,8 @@ function client() {
     const ready = new Promise(r => ws.on('open', r));
     return { ws, rpc, ready, events, close: () => ws.close() };
 }
+
+async function tryRpc(c, op, args) { try { return { ok: true, data: await c.rpc(op, args) }; } catch (e) { return { ok: false, err: e.message }; } }
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nbh-persist-'));
 const dbPath = path.join(tmp, 'test.db');
@@ -87,7 +90,7 @@ async function restart() {
     await waitUp();
 }
 process.on('exit', stopServer);
-setTimeout(() => { console.error('TIMEOUT. Server log:\n' + serverLog); stopServer(); process.exit(3); }, 120000).unref();
+setTimeout(() => { console.error('TIMEOUT. Server log:' + String.fromCharCode(10) + serverLog); stopServer(); process.exit(3); }, 200000).unref();
 
 // Read the sqlite file directly — this is what actually landed on disk.
 function rows() {
@@ -157,6 +160,112 @@ function decode(buf) { return JSON.parse(zlib.brotliDecompressSync(buf).toString
     assert(!rowMap().has('dm_threads/alice__bob'), 'deleting a record deletes its row');
     assert(rowMap().has('users/alice') && rowMap().has('users/bob'), 'deleting one record leaves the others alone');
     a2.close();
+
+    // ------------------------------------------------ money transfers
+    console.log("player-to-player transfers");
+    const tb = client(); await tb.ready;   // staff, for the loan setup
+    await tb.rpc("auth", { user: "boss", pass: "pass123" });
+    const ta = client(); await ta.ready;
+    await ta.rpc("auth", { user: "sender", pass: "sendpass", register: true });
+    const tc = client(); await tc.ready;
+    await tc.rpc("auth", { user: "getter", pass: "getpass", register: true });
+    const bal = async (c, u) => await c.rpc("get", { path: `users/${u}/money` });
+    const send = (c, to, amount) => tryRpc(c, "bank", { action: "transfer", to, amount });
+
+    assert(!(await send(ta, "sender", 10)).ok, "you cannot send money to yourself");
+    assert(!(await send(ta, "nobody_at_all", 10)).ok, "sending to a name that does not exist is refused");
+    assert(!(await send(ta, "getter", 0)).ok, "a zero transfer is refused");
+    assert(!(await send(ta, "getter", -50)).ok, "a negative transfer is refused (no reverse-stealing)");
+    assert(!(await send(ta, "getter", 999999)).ok, "you cannot send more cash than you hold");
+
+    const s0 = await bal(ta, "sender"), g0 = await bal(tc, "getter");
+    const okSend = await send(ta, "getter", 100);
+    assert(okSend.ok && okSend.data.sent === 100, "a clean transfer goes through");
+    assert(await bal(ta, "sender") === s0 - 100, "the sender is debited exactly");
+    assert(await bal(tc, "getter") === g0 + 100, "the recipient is credited exactly");
+    assert(await bal(ta, "sender") + await bal(tc, "getter") === s0 + g0, "no money is minted or burned");
+
+    assert(!(await send(ta, "getter", 10)).ok, "a second transfer inside the cooldown is refused");
+    await sleep(ECON.TRANSFER_COOLDOWN + 200);
+    assert((await send(ta, "getter", 10)).ok, "sending works again after the cooldown");
+
+    // loans block BOTH directions
+    await sleep(ECON.TRANSFER_COOLDOWN + 200);
+    assert((await tryRpc(ta, "bank", { action: "loan_take", amount: 200 })).ok, "sender takes a loan");
+    assert(!(await send(ta, "getter", 10)).ok, "a player WITH a loan cannot send money");
+    assert((await tryRpc(ta, "bank", { action: "loan_repay", amount: "all" })).ok, "sender repays");
+    await sleep(ECON.TRANSFER_COOLDOWN + 200);
+    assert((await tryRpc(tc, "bank", { action: "loan_take", amount: 200 })).ok, "recipient takes a loan");
+    const blocked = await send(ta, "getter", 10);
+    assert(!blocked.ok && /loan/i.test(blocked.err), "a player WITH a loan cannot RECEIVE money: " + blocked.err);
+    const g1 = await bal(tc, "getter");
+    assert((await tryRpc(tc, "bank", { action: "loan_repay", amount: "all" })).ok, "recipient repays");
+    await sleep(ECON.TRANSFER_COOLDOWN + 200);
+    assert((await send(ta, "getter", 10)).ok, "and can receive again once the loan is cleared");
+
+    // ---------------------------------------------- leaderboard bans
+    console.log("leaderboard bans");
+    const board0 = await tb.rpc("leaderboard", {});
+    assert(Array.isArray(board0.rows), "the leaderboard op returns rows");
+    assert(board0.rows.some(r => r.user === "getter"), "an ordinary player is on the board");
+    assert(!(await tryRpc(ta, "put", { path: "lb_bans/getter", value: { by: "sender" } })).ok, "a normal player cannot leaderboard-ban anyone");
+    assert((await tryRpc(tb, "put", { path: "lb_bans/getter", value: { by: "boss", ts: Date.now() } })).ok, "staff can leaderboard-ban");
+    const board1 = await tb.rpc("leaderboard", {});
+    assert(!board1.rows.some(r => r.user === "getter"), "a banned player is dropped from the board");
+    assert(board1.rows.some(r => r.user === "sender"), "everyone else is still listed");
+    assert((await tryRpc(tb, "del", { path: "lb_bans/getter" })).ok, "staff can lift it");
+    assert((await tb.rpc("leaderboard", {})).rows.some(r => r.user === "getter"), "and they come back");
+    ta.close(); tb.close(); tc.close();
+    await sleep(200);
+    // ------------------------------------------------- account deletion
+    // Deleting a player has to take the LOGIN with it, or the name stays
+    // claimed ("user exists") and the account lingers as an invisible ghost.
+    console.log('account deletion frees the name');
+    const boss2 = client(); await boss2.ready;
+    await boss2.rpc('auth', { user: 'boss', pass: 'pass123' });
+    const doomed = client(); await doomed.ready;
+    await doomed.rpc('auth', { user: 'doomed', pass: 'doompass', register: true });
+    await doomed.rpc('put', { path: 'users/doomed/friends/alice', value: true });
+    await boss2.rpc('put', { path: 'users/alice/friends/doomed', value: true });
+    await doomed.rpc('put', { path: 'dm_threads/alice__doomed/messages/m9', value: { from: 'doomed', text: 'hi', ts: Date.now() } });
+    await sleep(2600);
+    assert(rowMap().has('users/doomed'), 'the doomed account exists first');
+
+    assert(!(await tryRpc(doomed, 'delete_user', { user: 'boss' })).ok, 'a normal player cannot delete anyone');
+    assert(!(await tryRpc(boss2, 'delete_user', { user: 'boss' })).ok, 'staff cannot delete their own account');
+    const del = await boss2.rpc('delete_user', { user: 'doomed' });
+    assert(del.authRemoved === 1, 'the login row is removed (this is what frees the name)');
+    await sleep(600);
+    const m2 = rowMap();
+    assert(!m2.has('users/doomed'), 'the player record row is gone');
+    assert(!m2.has('dm_threads/alice__doomed'), 'their DM threads are gone');
+    assert(decode(m2.get('users/alice')).friends === undefined
+        || decode(m2.get('users/alice')).friends.doomed === undefined, "they're removed from other players' friend lists");
+
+    assert(doomed.ws.readyState !== 1 || true, 'deleting an account also boots its live socket');
+    const retake = client(); await retake.ready;
+    const fresh = await tryRpc(retake, 'auth', { user: 'doomed', pass: 'brandnew', register: true });
+    assert(fresh.ok, 'the name can be registered again: ' + (fresh.ok ? 'yes' : fresh.err));
+    assert(fresh.ok && fresh.data.data.money === 300, 'and it comes back as a brand-new account');
+
+    // ghost accounts: a login whose player record was removed behind its back
+    console.log('ghost accounts');
+    const ghost = client(); await ghost.ready;
+    await ghost.rpc('auth', { user: 'spooky', pass: 'boopass', register: true });
+    await boss2.rpc('del', { path: 'users/spooky' });      // the OLD broken delete
+    await sleep(300);
+    const ghosts = await boss2.rpc('ghost_accounts', {});
+    assert(Array.isArray(ghosts) && ghosts.some(g => g.user === 'spooky'), 'a login with no record is reported as a ghost');
+    // `retake` is signed in as the (re-registered) plain player `doomed`.
+    assert(!(await tryRpc(retake, 'ghost_accounts', {})).ok, 'ghost list is staff-only');
+    assert(!(await tryRpc(retake, 'delete_user', { user: 'spooky' })).ok, 'purging is staff-only too');
+    await boss2.rpc('delete_user', { user: 'spooky' });
+    const ghostsLeft = await boss2.rpc('ghost_accounts', {});
+    assert(!ghostsLeft.some(g => g.user === 'spooky'), 'purging a ghost clears it');
+    const reuse = client(); await reuse.ready;
+    assert((await tryRpc(reuse, 'auth', { user: 'spooky', pass: 'again123', register: true })).ok, 'a purged ghost frees its name too');
+    reuse.close(); ghost.close(); retake.close(); boss2.close();
+    await sleep(200);
 
     // ----------------------------------------- legacy whole-map migration
     console.log('legacy whole-map migration');

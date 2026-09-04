@@ -269,7 +269,7 @@ function startReel() {
   // and record every pull's ms-offset. On reel-in the server replays the same
   // steps from the same seed to decide the landing — the client only predicts.
   _reel = Object.assign(ECON.reelState(_cast.seed), {
-    cfg: _cast.cfg, start: performance.now(), acc: 0, pulls: [], _pi: 0,
+    cfg: _cast.cfg, acc: 0, pulls: [], _pi: 0,
   });
   const info = ECON.RARITY_INFO[_cast.rarity] || ECON.RARITY_INFO.common;
   setFishStatus(`Keep the hook between the lines! (${info.label})`, info.color);
@@ -277,7 +277,16 @@ function startReel() {
 }
 function reelPulse() {
   if (_fishState !== "reeling" || !_reel) return;
-  _reel.pulls.push(performance.now() - _reel.start);
+  // Stamp the pull with the SIM clock, not performance.now(). The sim advances
+  // on an accumulator that drops long frames (see reelStep), so wall time runs
+  // ahead of sim time whenever the tab is throttled or a frame hitches — and
+  // the server replays against the sim clock. Wall-stamped pulls therefore
+  // landed late in the replay and drained the bar, which is why a long reel (a
+  // legendary, 10-40s) could fill on screen and still come back "it got away".
+  const t = _reel.t;
+  const last = _reel.pulls[_reel.pulls.length - 1];
+  if (last === t) return;   // several clicks in one frame collapse into one tick anyway
+  _reel.pulls.push(t);
 }
 function reelStep(dt) {
   const r = _reel;
@@ -856,13 +865,13 @@ async function settleMatch(m) {
 // ---------------- NOTICE BOARD (leaderboard) ----------------
 async function openLeaderboard() {
   openMenu("★ TOWN NOTICE BOARD", `<p class="muted">Reading the board...</p>`);
-  const users = (await fbGet("users")) || {};
+  // Ranked by the server: leaderboard-banned players are filtered there, and
+  // the client no longer downloads every account just to show ten rows.
+  let board;
+  try { board = await netLeaderboard(); }
+  catch (e) { board = { rows: [], online: onlineCount() }; }
   if (!menuOpen()) return;
-  const rows = Object.entries(users)
-    .filter(([u]) => u !== "mayor")
-    .map(([u, d]) => ({ u, money: (d && d.money) || 0 }))
-    .sort((a, b) => b.money - a.money)
-    .slice(0, 10);
+  const rows = (board.rows || []).map(r => ({ u: r.user, money: r.money }));
   const online = onlineCount();
   const medal = ["🥇", "🥈", "🥉"];
   let html = `<p><b>${online}</b> neighbor(s) online right now.</p>

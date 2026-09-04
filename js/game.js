@@ -835,8 +835,8 @@ function applyBankView(d) {
   state.data.loan = d.loan || null;
   updateHUD();
 }
-async function bankRpc(action, amount) {
-  const d = await netBank(amount === undefined ? { action } : { action, amount });
+async function bankRpc(action, amount, extra) {
+  const d = await netBank(Object.assign(amount === undefined ? { action } : { action, amount }, extra || {}));
   applyBankView(d);
   return d;
 }
@@ -884,6 +884,11 @@ async function openBankMain() {
       ${ready ? `· claiming now makes it <b>day ${streak}</b> for <b>$${dailyBonusAmount(streak)}</b>` : ""}</p>
     <button class="menuBtn gold" ${ready ? "" : "disabled"} onclick="claimDaily()">
       ${ready ? `CLAIM $${dailyBonusAmount(streak)}` : `NEXT BONUS IN ${waitTxt}`}</button>
+    <h3 class="section">💸 TRANSFER WINDOW</h3>
+    ${loan
+      ? `<p class="muted" style="color:#fca5a5;">You can't send money while you owe the bank <b>$${Math.ceil(loan.owed).toLocaleString()}</b>. Clear that first.</p>`
+      : `<p>Send cash straight to another neighbor. <span class="muted">No fee — but neither of you may hold a loan.</span></p>`}
+    <button class="menuBtn ${loan ? "gray" : "green"}" ${loan ? "disabled" : ""} onclick="bankTransfer()">SEND MONEY →</button>
     <h3 class="section">💳 LOAN OFFICE</h3>
     <p>Credit score: <b>${(_bank && _bank.creditScore) || ECON.CREDIT_START}</b> <span class="muted">(${ECON.creditTier((_bank && _bank.creditScore) || ECON.CREDIT_START)})</span>
       ${loan ? `· <span style="color:#f87171">you owe $${Math.ceil(loan.owed).toLocaleString()}</span>` : ""}</p>
@@ -907,6 +912,30 @@ window.bankMove = async (kind) => {
   } catch (e) { toast(e.message || "Bank refused that."); return; }
   openBankMain();
 };
+// Player-to-player transfer. Every rule that matters (both loan checks, the
+// balance, the cooldown, that the recipient exists) is enforced by the server's
+// bank op — this only collects the inputs and reports what came back.
+window.bankTransfer = async () => {
+  if (_bank && _bank.loan && _bank.loan.owed > 0) { toast("Pay off your loan before sending money."); return; }
+  const to = prompt("Send money to which neighbor? (username)");
+  if (to === null) return;
+  const name = String(to).trim().toLowerCase();
+  if (!name) return;
+  if (name === state.user) { toast("You can't send money to yourself."); return; }
+  const have = state.data.money || 0;
+  const v = prompt(`Send how much to ${name}? (you have $${have.toLocaleString()})`, String(Math.min(have, 100)));
+  if (v === null) return;
+  const amount = Math.floor(parseFloat(String(v).replace(/[^0-9.]/g, "")));
+  if (!Number.isFinite(amount) || amount <= 0) { toast("Enter a positive whole-dollar amount."); return; }
+  if (amount > have) { toast("You don't have that much cash on hand."); return; }
+  if (!confirm(`Send $${amount.toLocaleString()} to ${name}? This cannot be undone.`)) return;
+  try {
+    const d = await bankRpc("transfer", undefined, { to: name, amount });
+    toast(`💸 Sent $${(d.sent || amount).toLocaleString()} to ${escapeHtml(d.to || name)}.`, 4000);
+  } catch (e) { toast(e.message || "The bank refused that transfer."); return; }
+  openBankMain();
+};
+
 async function claimDaily() {
   if (!dailyBonusReady()) { toast("Not yet — come back later."); return; }
   let data;
@@ -1306,10 +1335,10 @@ async function openStaffPanel() {
     setRole(who && who.role);
     if (!state.isMayor) { toast("Staff only."); return; }
   } catch (e) { toast("Staff only."); return; }
-  const [users, roles, bans, mutes, ann] = await Promise.all([
-    fbGet("users"), fbGet("roles"), fbGet("bans"), fbGet("mutes"), fbGet("mayor/announcement"),
+  const [users, roles, bans, mutes, ann, lbBans] = await Promise.all([
+    fbGet("users"), fbGet("roles"), fbGet("bans"), fbGet("mutes"), fbGet("mayor/announcement"), fbGet("lb_bans"),
   ]);
-  _staff = { users: users || {}, roles: roles || {}, bans: bans || {}, mutes: mutes || {}, ann: ann || "", filter: (_staff && _staff.filter) || "" };
+  _staff = { users: users || {}, roles: roles || {}, bans: bans || {}, mutes: mutes || {}, lbBans: lbBans || {}, ann: ann || "", filter: (_staff && _staff.filter) || "" };
   const isOwner = state.role === "owner";
   openMenu(`${state.role === "owner" ? "👑 OWNER" : "🛡️ ADMIN"} — STAFF PANEL`, `
     ${isOwner ? `<h3 class="section">POST AN ANNOUNCEMENT (📣 News app + Town Plaza)</h3>
@@ -1334,9 +1363,13 @@ async function openStaffPanel() {
     <div id="staffBans"></div>
     <h3 class="section">ACTIVE MUTES</h3>
     <div id="staffMutes"></div>
+    <h3 class="section">👤 GHOST ACCOUNTS</h3>
+    <p class="muted">Logins with no player record left — deleted by an older version of the Delete button, which removed the record but not the login, so the name stayed taken. Purging one frees its name immediately.</p>
+    <div id="staffGhosts"><p class="muted">Loading…</p></div>
     <h3 class="section">🐞 BUG REPORTS</h3>
     <div id="staffBugs"><p class="muted">Loading…</p></div>
   `, true);
+  renderStaffGhosts();
   try { renderStaffLists(); }
   catch (e) {
     console.error("[staff] render failed", e);
@@ -1349,6 +1382,30 @@ async function openStaffPanel() {
   setRole(state.role);
 }
 window.openStaffPanel = openStaffPanel;
+
+// Accounts whose login outlived their player record. The server finds them by
+// walking the auth table for names with nothing in `users`.
+async function renderStaffGhosts() {
+  const el = document.getElementById("staffGhosts");
+  if (!el) return;
+  let list;
+  try { list = await netGhostAccounts(); }
+  catch (e) { el.innerHTML = `<p class="muted">Couldn't load: ${escapeHtml(e.message)}</p>`; return; }
+  if (!document.getElementById("staffGhosts")) return;
+  if (!list || !list.length) { el.innerHTML = `<p class="muted">None — every login has a player record. 👍</p>`; return; }
+  el.innerHTML = list.map(g => `<div class="staffRow">
+    <div class="who"><b>${escapeHtml(g.user)}</b>
+      <small>login only · registered ${g.created ? new Date(g.created * 1000).toLocaleDateString() : "?"}</small></div>
+    <div class="btns"><button class="menuBtn red" onclick="purgeGhost('${escapeHtml(g.user)}')">Purge</button></div>
+  </div>`).join("");
+}
+window.purgeGhost = async (u) => {
+  if (!confirm(`Purge the leftover login "${u}"? The name becomes available again.`)) return;
+  if (!await assertStaffRole()) return;
+  try { await netDeleteUser(u); toast(`Purged ${u} — the name is free.`); }
+  catch (e) { toast(e.message); return; }
+  renderStaffGhosts();
+};
 
 // Mayor's Treasury — where the bank tax collects. Any staff sees it; only
 // owners can draw from it.
@@ -1387,6 +1444,27 @@ window.treasuryWithdraw = async (mode) => {
   } catch (e) { toast(e.message || "Withdrawal failed."); return; }
   renderTreasury();
 };
+// Leaderboard ban — hides a player from the town notice board without touching
+// their account. The server ranks the board and applies `lb_bans` there, so
+// this holds even against a tampered client.
+window.staffLbBan = async (u) => {
+  if (!await assertStaffRole()) return;
+  const reason = prompt(`Hide ${u} from the town leaderboard? Optional reason:`, "");
+  if (reason === null) return;
+  try { await fbPut(`lb_bans/${u}`, { by: state.user, ts: Date.now(), reason: String(reason).slice(0, 140) }); }
+  catch (e) { toast(e.message || "Not allowed."); return; }
+  if (_staff) _staff.lbBans[u] = { by: state.user, ts: Date.now() };
+  toast(`${u} is hidden from the leaderboard.`);
+  renderStaffLists();
+};
+window.staffLbUnban = async (u) => {
+  if (!await assertStaffRole()) return;
+  try { await fbDelete(`lb_bans/${u}`); }
+  catch (e) { toast(e.message || "Not allowed."); return; }
+  if (_staff) delete _staff.lbBans[u];
+  toast(`${u} is back on the leaderboard.`);
+  renderStaffLists();
+};
 window.staffFilter = (v) => { if (_staff) { _staff.filter = v; renderStaffLists(); } };
 
 function renderStaffLists() {
@@ -1406,6 +1484,7 @@ function renderStaffLists() {
     const role = staffRoleOf(u);
     const ban = _staff.bans[u]; const banned = ban && (!ban.until || ban.until > now);
     const mute = _staff.mutes[u]; const muted = mute && (!mute.until || mute.until > now);
+    const lbBanned = !!(_staff.lbBans && _staff.lbBans[u]);
     const me = u === state.user;
     const online = me || isOnline(u);
     const can = iOutrank(u);
@@ -1420,6 +1499,9 @@ function renderStaffLists() {
       btns += muted
         ? `<button class="menuBtn green" onclick="staffUnmute('${u}')">Unmute</button>`
         : `<button class="menuBtn gray" onclick="staffMute('${u}')">Mute</button>`;
+      btns += lbBanned
+        ? `<button class="menuBtn green" onclick="staffLbUnban('${u}')" title="Show them on the town leaderboard again">Show on LB</button>`
+        : `<button class="menuBtn gray" onclick="staffLbBan('${u}')" title="Hide them from the town leaderboard">Hide from LB</button>`;
       btns += `<button class="menuBtn gold" onclick="staffGive('${u}')" title="Add to (or take from) their balance">+ $</button>`;
       btns += `<button class="menuBtn gold" onclick="staffSet('${u}')" title="Set their balance to an exact amount">Set $</button>`;
     }
@@ -1432,7 +1514,7 @@ function renderStaffLists() {
     html += `<div class="staffRow">
       <div class="who"><span class="statusDot ${online ? "online" : ""}"></span> <b>${u}</b>${me ? " <small>(you)</small>" : ""}
         ${role !== "user" ? `<span class="roleTag ${role}">${role.toUpperCase()}</span>` : ""}
-        ${banned ? `<span class="roleTag banned">BANNED</span>` : ""}${muted ? `<span class="roleTag muted">MUTED</span>` : ""}
+        ${banned ? `<span class="roleTag banned">BANNED</span>` : ""}${muted ? `<span class="roleTag muted">MUTED</span>` : ""}${lbBanned ? `<span class="roleTag muted">LB HIDDEN</span>` : ""}
         <small>$${ud.money || 0} · joined ${ud.createdAt ? new Date(ud.createdAt).toLocaleDateString() : "?"}</small></div>
       <div class="btns">${btns}</div>
     </div>`;
@@ -1639,12 +1721,15 @@ window.mayorTeleport = async (u) => {
   toast(p ? `${u} is somewhere you can't follow — sent you to their house.` : `${u} isn't online — sent you to their house.`);
 };
 window.mayorDelete = async (u) => {
-  if (!confirm("Delete user " + u + "? This wipes their house, money and inventory.")) return;
+  if (!confirm("Delete user " + u + "? This wipes their house, money and inventory, and frees the name.")) return;
   if (!await assertStaffRole()) return;
-  await fbDelete(`users/${u}`);
-  await fbDelete(`players/${u}`);
-  await fbDelete(`inbox/${u}`);
-  toast(`Deleted ${u}.`);
+  // One server-side op: it also removes the LOGIN. Deleting only the records
+  // (what this used to do) left the name claimed forever — "user exists" — and
+  // the account invisible to the staff panel.
+  try {
+    const r = await netDeleteUser(u);
+    toast(`Deleted ${u}${r && r.authRemoved ? " — the name is free again." : "."}`);
+  } catch (e) { toast(e.message); }
   openStaffPanel();
 };
 

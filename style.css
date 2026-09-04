@@ -1076,3 +1076,30 @@ h3.section { margin: 14px 0 8px; font-size: 14px; color: #fbbf24; letter-spacing
   box-shadow: 0 0 16px rgba(34,197,94,.35); animation: tagGlow 2.4s ease-in-out infinite alternate;
 }
 @keyframes tagGlow { from { box-shadow: 0 0 10px rgba(14,116,144,.35); } to { box-shadow: 0 0 22px rgba(34,197,94,.6); } }
+
+/* ---- "your client is out of date" banner (top-right, see js/net.js) ---- */
+#updateBanner {
+  position: fixed; top: 12px; right: 12px; z-index: 9000;
+  display: flex; align-items: center; gap: 10px;
+  max-width: 340px; padding: 10px 12px;
+  background: linear-gradient(180deg, #facc15, #eab308);
+  color: #1c1917; border: 1px solid #a16207; border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.45);
+  font-size: 12px; line-height: 1.35;
+  animation: ubIn .35s ease-out;
+}
+@keyframes ubIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
+#updateBanner .ubIcon { font-size: 18px; line-height: 1; }
+#updateBanner .ubText { flex: 1; min-width: 0; }
+#updateBanner .ubDetail { font-size: 11px; opacity: .8; overflow-wrap: anywhere; }
+#updateBanner .ubBtn {
+  flex: none; padding: 5px 10px; border-radius: 6px; cursor: pointer;
+  background: #1c1917; color: #fde68a; border: none;
+  font-weight: 800; font-size: 11px; letter-spacing: .5px;
+}
+#updateBanner .ubBtn:hover { background: #292524; }
+#updateBanner .ubClose {
+  flex: none; background: none; border: none; cursor: pointer;
+  color: #1c1917; font-size: 17px; line-height: 1; padding: 0 2px; opacity: .6;
+}
+#updateBanner .ubClose:hover { opacity: 1; }

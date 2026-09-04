@@ -103,6 +103,12 @@
   // Treasury (mayor/treasury on the server). Owners draw from it in the Staff
   // panel.
   const BANK_TAX_RATE = 0.025;
+
+  // ---------- player-to-player transfers (the bank's transfer window) ----------
+  // Neither side may hold a loan: a debtor can't park cash with a friend to dodge
+  // the overdue-loan skim, and can't be handed money to launder around it either.
+  const TRANSFER_MIN = 1;
+  const TRANSFER_COOLDOWN = 5000;   // per sender, so nobody can spam-gift
   function bankTax(amount) { return Math.floor(Math.max(0, +amount || 0) * BANK_TAX_RATE); }
 
   // Returns { balance, last, gained } — `last` only advances by whole periods so
@@ -413,9 +419,12 @@
     return { landed: r.done === "landed", progress: r.progress, pulls: times.length };
   }
   // Cheap plausibility gate on a reported pull list (before the full replay).
+  // Pull times are on the sim clock, so they land one per tick at most; the
+  // ceiling is however many ticks a cast could possibly last.
+  const REEL_MAX_PULLS = Math.ceil(FISH_CAST_TTL / REEL_STEP_MS);
   function reelPullsPlausible(pulls) {
     if (!Array.isArray(pulls)) return false;
-    if (pulls.length > 400) return false;
+    if (pulls.length > REEL_MAX_PULLS) return false;
     let prev = -1;
     for (const p of pulls) {
       const n = Number(p);
@@ -667,6 +676,7 @@
     CREDIT_GAIN_COOLDOWN, creditGainReadyIn, loanRepayCreditGain,
     clampCredit, creditTier, loanRate, loanLimit, loanTotalDue, loanAccrue,
     EARN_CAPS,
+    TRANSFER_MIN, TRANSFER_COOLDOWN,
     mulberry32, strToSeed, marketStock,
     LAKE, LAKE_FIGHT_RADIUS, atLake,
     FISH_RARITIES, RARITY_INFO, FISH_TABLE, LOOT_TABLE, FISH_JUNK_NAMES, fishDef, fishLuckPts,

@@ -660,7 +660,8 @@ function startNotifyLoop() {
     }
     updateHUD();
     const d = m.money - before;
-    if (m.reason === "staff" && d !== 0) toast(d > 0 ? `💰 Staff gave you $${d.toLocaleString()}.` : `💸 Staff took $${(-d).toLocaleString()}.`, 4000);
+    if (m.reason === "transfer" && m.amount > 0) toast(`💸 <b>${escapeHtml(m.from || "Someone")}</b> sent you $${(+m.amount).toLocaleString()}.`, 5000);
+    else if (m.reason === "staff" && d !== 0) toast(d > 0 ? `💰 Staff gave you $${d.toLocaleString()}.` : `💸 Staff took $${(-d).toLocaleString()}.`, 4000);
     else if (m.reason === "loan_skim" && m.skim > 0) {
       toast(m.cleared
         ? `🏦 The bank skimmed $${m.skim.toLocaleString()} from your ${m.from || "earnings"} — that clears your overdue loan!`
