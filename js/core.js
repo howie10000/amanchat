@@ -64,12 +64,54 @@ const state = {
 // UI stays proportional on any screen from a phone to an ultrawide.
 const STAGE_W = 1280, STAGE_H = 800;
 function fitStage() {
-  const s = Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H);
-  document.documentElement.style.setProperty("--stage-scale", String(Math.max(0.2, s)));
+  const vw = window.innerWidth, vh = window.innerHeight;
+  // A minimised / restoring window reports 0 for a frame or two. Scaling to
+  // that bakes in a garbage size that survives until the next real resize.
+  if (!(vw > 0) || !(vh > 0)) return;
+  const s = Math.max(0.2, Math.min(vw / STAGE_W, vh / STAGE_H));
+  // Always write it, never memoise: this doubles as the repair path when the
+  // scale has drifted from the real viewport, which is the whole point of the
+  // extra triggers below.
+  document.documentElement.style.setProperty("--stage-scale", String(s));
 }
 fitStage();
 window.addEventListener("resize", fitStage);
 window.addEventListener("orientationchange", fitStage);
+// `resize` is not reliable on its own: alt-tabbing back, restoring from
+// minimise, a snap/maximise animation or a browser UI bar sliding in can all
+// change the viewport without a usable resize event, which used to leave the
+// stage scaled for the OLD window — a crop of the game with black around it.
+// These make a missed resize self-heal instead of persisting.
+window.addEventListener("pageshow", fitStage);
+window.addEventListener("focus", fitStage);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) fitStage(); });
+if (window.ResizeObserver) {
+  try { new ResizeObserver(fitStage).observe(document.documentElement); } catch (e) {}
+}
+
+// The stage keeps a 1280x800 LAYOUT box however far it is scaled down, so its
+// box can hang outside the viewport. Tabbing to a control whose layout position
+// is out there makes the browser scroll it into view — the app shell slides up
+// and you get a band of game with black below. Nothing here is ever meant to
+// scroll, so snap any of it straight back.
+function shellEls() {
+  return [document.documentElement, document.body,
+          document.getElementById("gameScreen"), document.getElementById("loginScreen")].filter(Boolean);
+}
+function pinScroll() {
+  for (const el of shellEls()) {
+    if (el.scrollTop) el.scrollTop = 0;
+    if (el.scrollLeft) el.scrollLeft = 0;
+  }
+}
+// Listeners go on the containers themselves: a `scroll` event from an element
+// does not bubble, and a capture listener on window turned out not to catch it
+// reliably either.
+for (const el of shellEls()) el.addEventListener("scroll", pinScroll, { passive: true });
+window.addEventListener("scroll", pinScroll, true);
+// Tab moves focus first and scrolls the target into view second, so this is the
+// one that actually undoes it.
+document.addEventListener("focusin", pinScroll);
 
 // keyboard
 const keys = {};

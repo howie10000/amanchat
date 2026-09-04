@@ -1103,3 +1103,9 @@ h3.section { margin: 14px 0 8px; font-size: 14px; color: #fbbf24; letter-spacing
   color: #1c1917; font-size: 17px; line-height: 1; padding: 0 2px; opacity: .6;
 }
 #updateBanner .ubClose:hover { opacity: 1; }
+
+/* The stage keeps a 1280x800 layout box no matter how far it is scaled down, so
+   its box can overhang the viewport. Clipping here means that overhang can never
+   become scrollable area for Tab's scroll-into-view to slide the app around —
+   visually it clips nothing, because the stage is scaled to fit. */
+.screen { overflow: hidden; overscroll-behavior: none; }

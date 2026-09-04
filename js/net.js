@@ -164,78 +164,80 @@
   // The client is served from GitHub Pages and the backend from northpvp.net, so
   // a player can easily be running week-old JS out of their browser cache while
   // the server has moved on — which is exactly how a protocol change turns into
-  // "everyone vanished when I moved". On startup we ask GitHub when the client
-  // was last committed and compare it against the build stamp baked in below;
-  // if the repo is newer than the files you're running, a yellow banner offers
-  // a reload.
+  // "everyone vanished when I moved".
   //
-  //   >>> BUMP CLIENT_BUILD ON EVERY CLIENT DEPLOY. <<<
-  // Set it to (roughly) the time you push. It only has to be >= the commit you
-  // are deploying and < the next one.
-  // Stamp it at deploy time:
-  //   sed -i "s|CLIENT_BUILD = \".*\"|CLIENT_BUILD = \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"|" js/net.js
-  const CLIENT_BUILD = "2026-09-04T00:17:01Z";
-  const GITHUB_REPO  = "howie10000/amanchat";
-  // Only commits touching this path count, so a server-only change doesn't tell
-  // every player their client is stale. Set to "" to watch the whole repo.
-  const CLIENT_PATH  = "js";
-  const VERSION_TTL  = 30 * 60 * 1000;   // don't re-ask GitHub more often than this
-  // Slack between stamping CLIENT_BUILD and actually pushing the commit, so a
-  // fresh deploy never flags itself.
-  const BUILD_SLACK  = 10 * 60 * 1000;
+  // This compares the bytes the browser ACTUALLY RAN against the bytes currently
+  // deployed, for every script on the page:
+  //   cache:"force-cache" -> the HTTP-cache entry the <script> tag was served
+  //   cache:"no-store"    -> what the origin is serving right now
+  // Differ on any file and the running copy is stale. Nothing to maintain: no
+  // version constant to bump, no GitHub API (so no rate limits), and it cannot
+  // false-positive — if the bytes match, you are on the deployed build.
+  // A first-ever load has no cache entry, so force-cache fetches from the network
+  // too, both sides match, and no banner appears.
+  const VERSION_TTL = 15 * 60 * 1000;   // re-check at most this often per browser
 
-  window.CLIENT_BUILD = CLIENT_BUILD;
-
-  function showUpdateBanner(when) {
+  function showUpdateBanner(lastModified) {
     const el = document.getElementById("updateBanner");
     if (!el) return;
     const d = document.getElementById("ubDetail");
     if (d) {
-      const age = Date.now() - when;
-      // Under a minute, or a clock ahead of ours — don't claim a bogus age.
-      const ago = age < 60000 ? "just now"
-        : age < 60 * 60000 ? `${Math.round(age / 60000)} min ago`
-        : age < 48 * 3600000 ? `${Math.round(age / 3600000)} h ago`
-        : `${Math.round(age / 86400000)} days ago`;
-      d.textContent = `A newer version was published ${ago}. Reload to get it.`;
+      const when = lastModified ? Date.parse(lastModified) : NaN;
+      let detail = "A newer version has been published. Reload to get it.";
+      if (Number.isFinite(when)) {
+        const age = Date.now() - when;
+        const ago = age < 60000 ? "just now"
+          : age < 60 * 60000 ? Math.round(age / 60000) + " min ago"
+          : age < 48 * 3600000 ? Math.round(age / 3600000) + " h ago"
+          : Math.round(age / 86400000) + " days ago";
+        detail = "A newer version was published " + ago + ". Reload to get it.";
+      }
+      d.textContent = detail;
     }
     el.classList.remove("hidden");
   }
 
-  async function latestCommitTime() {
-    // Cached so a room full of players on one school IP doesn't burn through
-    // GitHub's 60-requests-per-hour unauthenticated limit.
-    try {
-      const c = JSON.parse(localStorage.getItem("clientVersionCheck") || "null");
-      if (c && Date.now() - c.at < VERSION_TTL) return c.when;
-    } catch (e) {}
-    const ask = async (path) => {
-      const url = `https://api.github.com/repos/${GITHUB_REPO}/commits?per_page=1`
-        + (path ? `&path=${encodeURIComponent(path)}` : "");
-      const res = await fetch(url, { cache: "no-store", headers: { Accept: "application/vnd.github+json" } });
-      if (!res.ok) return null;                       // 403 = rate limited, 404 = bad repo
-      const list = await res.json();
-      if (!Array.isArray(list) || !list.length) return null;
-      const t = Date.parse(list[0].commit && list[0].commit.committer && list[0].commit.committer.date);
-      return Number.isFinite(t) ? t : null;
-    };
-    // If CLIENT_PATH doesn't exist in the repo the filtered query comes back
-    // empty; fall back to the whole repo rather than silently never warning.
-    let when = await ask(CLIENT_PATH);
-    if (when == null && CLIENT_PATH) when = await ask("");
-    if (when != null) { try { localStorage.setItem("clientVersionCheck", JSON.stringify({ at: Date.now(), when })); } catch (e) {} }
-    return when;
+  // The game's own scripts, straight off the page — so a file added later is
+  // covered automatically.
+  function clientScriptUrls() {
+    const here = location.origin;
+    return [...document.querySelectorAll("script[src]")]
+      .map(el => el.src)
+      .filter(u => { try { return new URL(u, location.href).origin === here; } catch (e) { return false; } });
   }
 
-  async function checkClientVersion() {
+  async function checkClientVersion(force) {
     try {
-      const built = Date.parse(CLIENT_BUILD);
-      if (!Number.isFinite(built)) return;
-      const when = await latestCommitTime();
-      if (when != null && when > built + BUILD_SLACK) showUpdateBanner(when);
-    } catch (e) { /* never let a version check break the game */ }
+      if (!force) {
+        try {
+          const c = JSON.parse(localStorage.getItem("clientVersionCheck") || "null");
+          if (c && Date.now() - c.at < VERSION_TTL) {
+            if (c.stale) showUpdateBanner(c.lastModified);
+            return !!c.stale;
+          }
+        } catch (e) {}
+      }
+      let stale = false, lastModified = null;
+      for (const url of clientScriptUrls()) {
+        let ran, live;
+        try {
+          const [a, b] = await Promise.all([
+            fetch(url, { cache: "force-cache" }),
+            fetch(url, { cache: "no-store" }),
+          ]);
+          if (!a.ok || !b.ok) continue;              // can't tell — don't guess
+          lastModified = b.headers.get("last-modified") || lastModified;
+          [ran, live] = await Promise.all([a.text(), b.text()]);
+        } catch (e) { continue; }                    // offline / blocked: stay quiet
+        if (ran.length !== live.length || ran !== live) { stale = true; break; }
+      }
+      try { localStorage.setItem("clientVersionCheck", JSON.stringify({ at: Date.now(), stale, lastModified })); } catch (e) {}
+      if (stale) showUpdateBanner(lastModified);
+      return stale;
+    } catch (e) { return false; }                    // never let this break the game
   }
+
   // Not on the critical path — let the game boot first.
-  setTimeout(checkClientVersion, 4000);
+  setTimeout(() => checkClientVersion(false), 4000);
   window.checkClientVersion = checkClientVersion;
 })();
