@@ -399,7 +399,12 @@
     const maxTicks = Math.ceil(cap / REEL_STEP_MS) + 4;
     let pi = 0;
     for (let s = 0; s < maxTicks; s++) {
-      const tickEnd = (s + 1) * REEL_STEP_MS;
+      // Tick boundaries come off the ACCUMULATED r.t, exactly as the client's
+      // loop does. Computing them as (s + 1) * REEL_STEP_MS instead drifts by a
+      // few ULPs from a repeatedly-summed r.t, which is enough to consume a pull
+      // one tick early and make the server's replay disagree with the reel the
+      // player actually saw.
+      const tickEnd = r.t + REEL_STEP_MS;
       let pulled = false;
       while (pi < times.length && times[pi] < tickEnd) { pulled = true; pi++; }
       reelTick(r, cfg, pulled);

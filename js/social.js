@@ -40,8 +40,7 @@ async function renderFriendsList() {
   const keys = (state.data && state.data.keys) || {};
   let html = "";
   for (const f of friends) {
-    const p = state.others[f];
-    const online = !!p;
+    const online = isOnline(f);
     const hasKey = !!keys[f];
     html += `<div class="friendItem">
       <div class="info">
@@ -134,7 +133,7 @@ async function renderDMList() {
     const unseen = Math.max(0, (state.dmUnseen && state.dmUnseen[tid]) | 0);
     html += `<div class="friendItem" onclick="openDMThread('${t.other}')" style="cursor:pointer;">
       <div class="info">
-        <span class="statusDot ${state.others[t.other] ? "online" : ""}"></span>
+        <span class="statusDot ${isOnline(t.other) ? "online" : ""}"></span>
         <div>
           <b>${t.other}</b>${unseen ? ` <span class="dmCount">${unseen > 99 ? "99+" : unseen}</span>` : ""}
           <div class="muted" style="font-size:11px;">${t.last ? escapeHtml(t.last.text).slice(0, 36) : ""}${t.last ? " · " + formatTs(t.last.ts) : ""}</div>

@@ -547,7 +547,7 @@ function mapDestinations() {
     if (!u || u.houseIndex == null) continue;
     const r = gameWorld.houseRect(u.houseIndex);
     if (r) out.push({ group: "Homes", label: `\ud83d\udc65 ${f}'s house`, x: r.x + r.w / 2, y: r.y + r.h + 26,
-                      addr: gameWorld.houseAddress(u.houseIndex), online: !!state.others[f] });
+                      addr: gameWorld.houseAddress(u.houseIndex), online: isOnline(f) });
   }
   return out;
 }
@@ -1073,7 +1073,7 @@ function openCoopInvite() {
   let html = `<p>Invite a friend to a co-op quest. They'll join you in the dungeon.</p>`;
   for (const f of friends) {
     html += `<div class="friendItem">
-      <div class="info"><span class="statusDot ${state.others[f] ? "online":""}"></span><b>${f}</b></div>
+      <div class="info"><span class="statusDot ${isOnline(f) ? "online":""}"></span><b>${f}</b></div>
       <div class="flexRow">
         <button class="menuBtn green" onclick="inviteCoop('${f}')">Invite</button>
       </div>
@@ -1087,7 +1087,7 @@ function openDuelChallenge() {
   let html = `<p>Challenge a friend. Both stake the same money. Winner takes all.</p>`;
   for (const f of friends) {
     html += `<div class="friendItem">
-      <div class="info"><span class="statusDot ${state.others[f] ? "online":""}"></span><b>${f}</b></div>
+      <div class="info"><span class="statusDot ${isOnline(f) ? "online":""}"></span><b>${f}</b></div>
       <button class="menuBtn gold" onclick="challengeDuel('${f}')">Challenge</button>
     </div>`;
   }
@@ -1257,7 +1257,7 @@ async function openPlazaBoard() {
   const feed = (await fbGet("announcements")) || {};
   const list = Object.values(feed).filter(a => a && a.text).sort((a, b) => (b.ts || 0) - (a.ts || 0));
   const latest = list[0] || { text: (await fbGet("mayor/announcement")) || "(no announcements yet)", by: "owner" };
-  let online = 1 + Object.keys(state.others).length;
+  let online = onlineCount();
   openMenu("TOWN PLAZA", `
     <p><b>${online}</b> player(s) online right now.</p>
     <h3 class="section">LATEST ANNOUNCEMENT</h3>
@@ -1407,7 +1407,7 @@ function renderStaffLists() {
     const ban = _staff.bans[u]; const banned = ban && (!ban.until || ban.until > now);
     const mute = _staff.mutes[u]; const muted = mute && (!mute.until || mute.until > now);
     const me = u === state.user;
-    const online = me || !!state.others[u];
+    const online = me || isOnline(u);
     const can = iOutrank(u);
     let btns = "";
     if (me) {
@@ -1597,7 +1597,10 @@ window.mayorGive = async (u, amt) => {
 window.mayorTeleport = async (u) => {
   if (!await assertStaffRole()) return;
   closeMenu();
-  const p = state.others[u];                 // live presence, if they're online
+  // Presence only streams your own area, so ask the server where they are
+  // (staff-only op). Falls back to their house if they're offline.
+  let p = null;
+  try { p = await netWhereIs(u); } catch (e) { p = null; }
   const ud = state._userCache && state._userCache[u];
   const dropAt = (x, y) => { if (typeof x === "number" && typeof y === "number") { state.pos.x = x; state.pos.y = y; } };
 
@@ -1717,7 +1720,7 @@ function renderDirectory() {
     .filter(u => u !== state.user)
     .filter(u => !f || u.includes(f))
     .sort((a, b) => {
-      const oa = !!state.others[a], ob = !!state.others[b];
+      const oa = isOnline(a), ob = isOnline(b);
       if (oa !== ob) return ob - oa;                 // online first
       return a.localeCompare(b);
     });
@@ -1728,7 +1731,7 @@ function renderDirectory() {
   let html = "";
   for (const u of names.slice(0, 80)) {
     const ud = users[u] || {};
-    const online = !!state.others[u];
+    const online = isOnline(u);
     const isFriend = !!state.friends[u];
     const addr = ud.houseIndex != null ? gameWorld.houseAddress(ud.houseIndex) : null;
     html += `<div class="dirRow">

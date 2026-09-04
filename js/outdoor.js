@@ -863,7 +863,7 @@ async function openLeaderboard() {
     .map(([u, d]) => ({ u, money: (d && d.money) || 0 }))
     .sort((a, b) => b.money - a.money)
     .slice(0, 10);
-  const online = 1 + Object.keys(state.others).length;
+  const online = onlineCount();
   const medal = ["🥇", "🥈", "🥉"];
   let html = `<p><b>${online}</b> neighbor(s) online right now.</p>
     <h3 class="section">💰 RICHEST NEIGHBORS</h3>`;

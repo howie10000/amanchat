@@ -143,42 +143,49 @@ function compactUser(u) {
     }
     return out;
 }
+// Top-level keys that are a map of INDEPENDENT records. These get one sqlite
+// row per record ("users/alice") instead of one row for the whole map, so a
+// single player buying a chair rewrites ~500 bytes instead of re-serialising
+// and brotli-compressing every player on the server.
+const SHARDED_KEYS = new Set(['users', 'inbox', 'dm_threads', 'duels']);
+
+// Compact ONE record of a sharded key. `undefined` means "drop this record".
+// Same rules the whole-tree compactor used to apply in bulk.
+function compactChild(topKey, v, now) {
+    now = now || Date.now();
+    if (topKey === 'users') return compactUser(v);
+    if (topKey === 'duels') {
+        if (v && v.status === 'ended' && (now - (v.startedAt || 0)) > DUEL_TTL) return undefined;
+        return isEmptyish(v) ? undefined : v;
+    }
+    if (topKey === 'dm_threads') {
+        let msgs = Object.entries((v && v.messages) || {});
+        // Messages self-destruct 7 days after they're sent.
+        msgs = msgs.filter(([, m]) => (now - (m.ts || 0)) < DM_MAX_AGE);
+        if (!msgs.length) return undefined;   // thread with nothing left is dropped
+        msgs.sort((a, b) => (a[1].ts || 0) - (b[1].ts || 0));
+        return Object.assign({}, v, { messages: Object.fromEntries(msgs.slice(-DM_KEEP)) });
+    }
+    return isEmptyish(v) ? undefined : v;   // inbox
+}
+
 function compactTree(root) {
     const now = Date.now();
     const out = {};
     for (const [k, v] of Object.entries(root)) {
         if (EPHEMERAL_KEYS.has(k)) continue;
         if (isEmptyish(v)) continue;
-        if (k === 'users') {
-            const users = {};
-            for (const [name, u] of Object.entries(v)) users[name] = compactUser(u);
-            out[k] = users;
-        } else if (k === 'duels') {
-            const duels = {};
-            for (const [id, d] of Object.entries(v)) {
-                if (d && d.status === 'ended' && (now - (d.startedAt || 0)) > DUEL_TTL) continue;
-                duels[id] = d;
+        if (SHARDED_KEYS.has(k)) {
+            const children = {};
+            for (const [name, child] of Object.entries(v)) {
+                const cc = compactChild(k, child, now);
+                if (cc !== undefined) children[name] = cc;
             }
-            if (!isEmptyish(duels)) out[k] = duels;
-        } else if (k === 'dm_threads') {
-            const threads = {};
-            for (const [id, t] of Object.entries(v)) {
-                let msgs = Object.entries((t && t.messages) || {});
-                // Messages self-destruct 7 days after they're sent.
-                msgs = msgs.filter(([, m]) => (now - (m.ts || 0)) < DM_MAX_AGE);
-                if (!msgs.length) continue;   // thread with nothing left is dropped
-                msgs.sort((a, b) => (a[1].ts || 0) - (b[1].ts || 0));
-                threads[id] = Object.assign({}, t, { messages: Object.fromEntries(msgs.slice(-DM_KEEP)) });
-            }
-            if (!isEmptyish(threads)) out[k] = threads;
+            if (!isEmptyish(children)) out[k] = children;
         } else if (k === 'announcements') {
             const ann = Object.entries(v).filter(([, a]) => a && a.text)
                 .sort((a, b) => (a[1].ts || 0) - (b[1].ts || 0)).slice(-ANNOUNCE_KEEP);
             if (ann.length) out[k] = Object.fromEntries(ann);
-        } else if (k === 'inbox') {
-            const inbox = {};
-            for (const [name, box] of Object.entries(v)) if (!isEmptyish(box)) inbox[name] = box;
-            if (!isEmptyish(inbox)) out[k] = inbox;
         } else {
             out[k] = v;
         }
@@ -186,12 +193,35 @@ function compactTree(root) {
     return out;
 }
 
+// Prepared once — `db.prepare` recompiles the statement on every call, and a
+// snapshot can touch hundreds of rows.
+const sqlPutRow = db.prepare(`INSERT INTO kv(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
+const sqlDelRow = db.prepare(`DELETE FROM kv WHERE key = ?`);
+const sqlAllKeys = db.prepare(`SELECT key FROM kv`);
+
 class Store {
     constructor() {
         this.root = {};
-        this.dirtyKeys = new Set();   // top-level keys to rewrite on next snapshot
+        // Row keys to rewrite: a plain top-level key ("mayor") or one record of
+        // a sharded key ("users/alice").
+        this.dirtyKeys = new Set();
+        // Sharded keys whose whole map was replaced/cleared: rewrite every record
+        // and delete rows for records that are gone.
+        this.dirtyRoots = new Set();
         this.dirtyAll = false;        // root replaced/cleared: rewrite everything
         this._load();
+    }
+
+    // Every row key that SHOULD exist on disk for one top-level key.
+    _rowKeysFor(top, out) {
+        if (EPHEMERAL_KEYS.has(top)) return;
+        const v = this.root[top];
+        if (v === undefined) return;
+        if (SHARDED_KEYS.has(top)) {
+            if (v && typeof v === 'object') for (const child of Object.keys(v)) out.add(top + '/' + child);
+        } else {
+            out.add(top);
+        }
     }
 
     _load() {
@@ -199,11 +229,9 @@ class Store {
         if (legacy) {
             const before = Buffer.byteLength(legacy.value);
             this.root = compactTree(JSON.parse(legacy.value));
-            db.transaction(() => {
-                db.prepare(`DELETE FROM kv`).run();
-                for (const k of Object.keys(this.root)) this._writeKey(k);
-            })();
-            this.dirtyAll = false;
+            db.prepare(`DELETE FROM kv`).run();
+            this.dirtyAll = true;
+            this.snapshot();
             let after = 0;
             for (const r of db.prepare(`SELECT value FROM kv`).all()) after += r.value.length;
             db.exec('VACUUM');
@@ -212,36 +240,85 @@ class Store {
         }
         const rows = db.prepare(`SELECT key, value FROM kv`).all();
         if (!rows.length) { console.log('[store] fresh database'); return; }
-        for (const r of rows) this.root[r.key] = decodeValue(r.value);
-        // Reclaim free pages and apply the page size; on a few-KB file this
-        // is instant and keeps the file at its minimum after deletions.
-        db.exec('VACUUM');
-        console.log(`[store] loaded ${rows.length} top-level keys (${db.pragma('page_count', { simple: true }) * db.pragma('page_size', { simple: true })} bytes on disk)`);
+        let legacyBlobs = 0;
+        for (const r of rows) {
+            const slash = r.key.indexOf('/');
+            if (slash < 0) {
+                this.root[r.key] = decodeValue(r.value);
+                // A pre-sharding row holding a whole map — split it up below.
+                if (SHARDED_KEYS.has(r.key)) legacyBlobs++;
+            } else {
+                const top = r.key.slice(0, slash), child = r.key.slice(slash + 1);
+                if (!this.root[top] || typeof this.root[top] !== 'object') this.root[top] = {};
+                this.root[top][child] = decodeValue(r.value);
+            }
+        }
+        if (legacyBlobs) {
+            for (const k of SHARDED_KEYS) if (this.root[k] !== undefined) this.dirtyRoots.add(k);
+            this.snapshot();
+            console.log(`[store] re-sharded ${legacyBlobs} whole-map row(s) into one row per record`);
+        }
+        // Reclaim free pages, but only when there's something worth reclaiming —
+        // VACUUM rewrites the entire file and this runs at every boot.
+        if (db.pragma('freelist_count', { simple: true }) > 64) db.exec('VACUUM');
+        const rowCount = sqlAllKeys.all().length;
+        console.log(`[store] loaded ${Object.keys(this.root).length} top-level keys / ${rowCount} rows (${db.pragma('page_count', { simple: true }) * db.pragma('page_size', { simple: true })} bytes on disk)`);
     }
 
-    _writeKey(k) {
-        if (EPHEMERAL_KEYS.has(k)) return;
-        const v = this.root[k];
-        if (v === undefined) { db.prepare(`DELETE FROM kv WHERE key = ?`).run(k); return; }
-        const compacted = compactTree({ [k]: v })[k];
-        if (compacted === undefined) { db.prepare(`DELETE FROM kv WHERE key = ?`).run(k); return; }
-        db.prepare(`INSERT INTO kv(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
-            .run(k, encodeValue(compacted));
+    // `rowKey` is "top" or "top/child".
+    _writeKey(rowKey) {
+        const slash = rowKey.indexOf('/');
+        const top = slash < 0 ? rowKey : rowKey.slice(0, slash);
+        if (EPHEMERAL_KEYS.has(top)) return;
+        let value;
+        if (slash < 0) {
+            const v = this.root[top];
+            value = v === undefined ? undefined : compactTree({ [top]: v })[top];
+        } else {
+            const child = rowKey.slice(slash + 1);
+            const parent = this.root[top];
+            const v = (parent && typeof parent === 'object') ? parent[child] : undefined;
+            value = v === undefined ? undefined : compactChild(top, v, Date.now());
+        }
+        if (value === undefined) { sqlDelRow.run(rowKey); return; }
+        sqlPutRow.run(rowKey, encodeValue(value));
     }
 
     snapshot() {
-        if (!this.dirtyAll && this.dirtyKeys.size === 0) return;
-        const keys = this.dirtyAll
-            ? new Set([...Object.keys(this.root), ...db.prepare(`SELECT key FROM kv`).all().map(r => r.key)])
-            : this.dirtyKeys;
-        db.transaction(() => { for (const k of keys) this._writeKey(k); })();
+        if (!this.dirtyAll && this.dirtyRoots.size === 0 && this.dirtyKeys.size === 0) return;
+        const rowKeys = new Set();
+        // Scopes rewritten wholesale, where rows for vanished records must go.
+        let reconcileAll = false;
+        const reconcileTops = [];
+        if (this.dirtyAll) {
+            reconcileAll = true;
+            for (const k of Object.keys(this.root)) this._rowKeysFor(k, rowKeys);
+        } else {
+            for (const k of this.dirtyRoots) { reconcileTops.push(k); this._rowKeysFor(k, rowKeys); }
+            for (const k of this.dirtyKeys) rowKeys.add(k);
+        }
+        db.transaction(() => {
+            if (reconcileAll || reconcileTops.length) {
+                for (const { key } of sqlAllKeys.all()) {
+                    const inScope = reconcileAll ||
+                        reconcileTops.some(t => key === t || key.startsWith(t + '/'));
+                    if (inScope && !rowKeys.has(key)) sqlDelRow.run(key);
+                }
+            }
+            for (const k of rowKeys) this._writeKey(k);
+        })();
         this.dirtyKeys = new Set();
+        this.dirtyRoots = new Set();
         this.dirtyAll = false;
     }
 
     _touch(parts) {
-        if (parts.length === 0) this.dirtyAll = true;
-        else this.dirtyKeys.add(parts[0]);
+        if (parts.length === 0) { this.dirtyAll = true; return; }
+        const top = parts[0];
+        if (!SHARDED_KEYS.has(top)) { this.dirtyKeys.add(top); return; }
+        // The whole map was replaced or removed — every record needs reconciling.
+        if (parts.length === 1) this.dirtyRoots.add(top);
+        else this.dirtyKeys.add(top + '/' + parts[1]);
     }
 
     static splitPath(p) {
@@ -336,15 +413,16 @@ function pruneOldDms() {
     const threads = store.get('dm_threads');
     if (!threads || typeof threads !== 'object') return;
     const cutoff = Date.now() - DM_MAX_AGE;
-    let changed = false;
     for (const [id, t] of Object.entries(threads)) {
         const msgs = (t && t.messages) || {};
+        let touched = false;
         for (const [mid, m] of Object.entries(msgs)) {
-            if (!m || (m.ts || 0) < cutoff) { delete msgs[mid]; changed = true; }
+            if (!m || (m.ts || 0) < cutoff) { delete msgs[mid]; touched = true; }
         }
-        if (!Object.keys(msgs).length) { store.delete('dm_threads/' + id); changed = true; }
+        // store.delete already marks that one thread dirty; an in-place edit doesn't.
+        if (!Object.keys(msgs).length) store.delete('dm_threads/' + id);
+        else if (touched) store._touch(['dm_threads', id]);
     }
-    if (changed) store._touch(['dm_threads']);
 }
 pruneOldDms();
 setInterval(pruneOldDms, 30 * 60 * 1000);   // every half hour
@@ -405,20 +483,97 @@ function fmtBan(b) {
 }
 
 // ---------------------------------------------------------------- AUTH
+// bcryptjs is pure JS: a cost-10 hash is ~120ms of unbroken CPU, and doing that
+// on the main thread freezes the whole server for every login (a reconnect storm
+// after a restart serialises them). A tiny worker pool moves it onto the idle
+// cores. If workers can't start for any reason we fall straight back to the
+// synchronous calls, so auth never breaks — it just blocks like it used to.
+const { Worker } = require('worker_threads');
+const HASH_WORKERS = Math.max(1, Math.min(3, (require('os').cpus().length || 2) - 1));
+const HASH_QUEUE_MAX = 200;   // refuse work beyond this rather than grow forever
 
-function authRegister(user, pass) {
+const hashPool = (() => {
+    const idle = [];
+    const queue = [];
+    const inflight = new Map();   // id -> { resolve, reject, worker }
+    let nextId = 1;
+    let broken = false;
+
+    function spawn() {
+        const w = new Worker(path.join(__dirname, 'hash-worker.js'));
+        w.on('message', (m) => {
+            const job = inflight.get(m.id);
+            inflight.delete(m.id);
+            release(w);
+            if (!job) return;
+            if (m.ok) job.resolve(m.value); else job.reject(new Error(m.err));
+        });
+        w.on('error', (err) => {
+            console.error('[hash] worker error', err);
+            for (const [id, job] of inflight) if (job.worker === w) { inflight.delete(id); job.reject(err); }
+            const i = idle.indexOf(w); if (i >= 0) idle.splice(i, 1);
+            try { w.terminate(); } catch (e) {}
+            try { idle.push(spawn()); } catch (e) { broken = true; }
+        });
+        w.unref();   // never hold the process open
+        return w;
+    }
+    function release(w) {
+        const next = queue.shift();
+        if (next) run(w, next); else idle.push(w);
+    }
+    function run(w, job) {
+        inflight.set(job.id, Object.assign(job, { worker: w }));
+        w.postMessage(job.msg);
+    }
+
+    try { for (let i = 0; i < HASH_WORKERS; i++) idle.push(spawn()); }
+    catch (e) { console.error('[hash] worker pool unavailable, falling back to sync bcrypt:', e.message); broken = true; }
+
+    return {
+        available() { return !broken && (idle.length > 0 || inflight.size > 0 || queue.length > 0); },
+        submit(msg) {
+            return new Promise((resolve, reject) => {
+                if (broken) return reject(new Error('no workers'));
+                if (queue.length >= HASH_QUEUE_MAX) return reject(new Error('server busy, try again'));
+                const job = { id: nextId++, msg: null, resolve, reject };
+                job.msg = Object.assign({ id: job.id }, msg);
+                const w = idle.pop();
+                if (w) run(w, job); else queue.push(job);
+            });
+        },
+    };
+})();
+
+async function bcryptHash(pass) {
+    if (hashPool.available()) {
+        try { return await hashPool.submit({ op: 'hash', pass, rounds: 10 }); } catch (e) { if (e.message === 'server busy, try again') throw e; }
+    }
+    return bcrypt.hashSync(pass, 10);
+}
+async function bcryptCompare(pass, hash) {
+    if (hashPool.available()) {
+        try { return await hashPool.submit({ op: 'compare', pass, hash }); } catch (e) { if (e.message === 'server busy, try again') throw e; }
+    }
+    return bcrypt.compareSync(pass, hash);
+}
+
+async function authRegister(user, pass) {
     if (!user || !pass) throw new Error('empty credentials');
     const exists = db.prepare(`SELECT COUNT(*) AS c FROM auth WHERE user = ?`).get(user);
     if (exists.c > 0) throw new Error('user exists');
-    const hash = bcrypt.hashSync(pass, 10);
+    const hash = await bcryptHash(pass);
+    // Re-check after the await: two registrations for the same name could have
+    // been in flight at once now that hashing yields.
+    if (db.prepare(`SELECT COUNT(*) AS c FROM auth WHERE user = ?`).get(user).c > 0) throw new Error('user exists');
     db.prepare(`INSERT INTO auth(user, pwhash, created) VALUES (?, ?, ?)`)
         .run(user, hash, Math.floor(Date.now() / 1000));
 }
 
-function authLogin(user, pass) {
+async function authLogin(user, pass) {
     const row = db.prepare(`SELECT pwhash FROM auth WHERE user = ?`).get(user);
     if (!row) throw new Error('no such user');
-    if (!bcrypt.compareSync(pass, row.pwhash)) throw new Error('bad password');
+    if (!await bcryptCompare(pass, row.pwhash)) throw new Error('bad password');
 }
 
 // ---------------------------------------------------------------- HUB
@@ -433,6 +588,15 @@ class Client {
         this.ip = ip || '';
         this.user = '';
         this.presence = null;
+        // Appearance is the heavy half of a presence packet and almost never
+        // changes, so the client sends it only when it does. We keep the last
+        // one and bump `av` on every change; the broadcaster uses that to decide
+        // who still needs it. `sentArea` is the area this socket last received a
+        // snapshot for — a change means it needs a fresh full one.
+        this.appearanceStr = '';
+        this.av = 0;
+        this.sentArea = null;
+        this.rosterSynced = false;   // has this socket had the full online list?
     }
 }
 
@@ -457,24 +621,155 @@ function pushTo(user, msg) {
     try { c.ws.send(JSON.stringify(msg)); } catch (e) {}
 }
 
-function broadcastPresence() {
-    const users = {};
-    for (const c of clients) {
-        if (!c.user || !c.presence) continue;
-        // Staff who've gone invisible are dropped from EVERY broadcast — no
-        // other client ever hears about them (they still render themselves,
-        // ghosted, from local state).
-        if (c.presence.invisible) continue;
+function sendRaw(c, str) {
+    if (!c || c.ws.readyState !== c.ws.OPEN) return;
+    try { c.ws.send(str); } catch (e) {}
+}
+
+// ---- PRESENCE: area-scoped and delta-encoded ----------------------------
+// This used to be one snapshot of every player on the server sent to every
+// player, 15x a second — O(N^2) bytes, with a full appearance object per player
+// per tick. Now:
+//   * players are bucketed by the area they're standing in, and a client only
+//     hears about its own area (the client already filtered the rest away);
+//   * within an area only the players whose visible state actually CHANGED are
+//     sent, plus a `gone` list — an idle town costs almost nothing;
+//   * `appearance` rides along only when a player is new to the area or has
+//     changed their look (Client.av).
+// A client that has just moved to a different area gets a full snapshot of it
+// with `reset: true` instead of a delta, so it can drop the old area's players.
+const areaState = new Map();   // areaKey -> Map<user, { sig, av }>
+
+function presenceAreaKey(p) {
+    const a = p && p.area;
+    return (typeof a === 'string' && a) ? a : 'neighborhood';
+}
+// Exactly the fields other clients render. Kept as full names (not one-letter
+// keys) so the client merge stays a plain Object.assign — the win here is in
+// not sending idle players at all, not in shaving field names.
+function presenceView(c) {
+    const p = c.presence;
+    return {
+        x: Number.isFinite(p.x) ? Math.round(p.x) : 0,
+        y: Number.isFinite(p.y) ? Math.round(p.y) : 0,
+        area: p.area,
+        floor: p.floor,
+        facing: p.facing,
+        hp: p.hp,
+        emote: p.emote,
+        msgs: p.msgs,
+        msg: p.msg,
         // Role is stamped server-side so a client can't fake a staff badge.
-        users[c.user] = Object.assign({}, c.presence, { role: roleOf(c.user) });
-    }
-    const msg = JSON.stringify({ event: 'presence', users });
+        role: roleOf(c.user),
+    };
+}
+
+function broadcastPresence() {
+    const members = new Map();   // areaKey -> Client[]  (who is drawn there)
+    const viewers = new Map();   // areaKey -> Client[]  (who receives that area)
     for (const c of clients) {
         if (!c.user || c.ws.readyState !== c.ws.OPEN) continue;
-        try { c.ws.send(msg); } catch (e) {}
+        const p = c.presence;
+        // Authed but hasn't pushed a position yet (the first ~66ms after login):
+        // it still gets a stream, defaulting to the open town, so a client is
+        // never briefly blind to the world.
+        const key = presenceAreaKey(p);
+        let v = viewers.get(key); if (!v) viewers.set(key, v = []);
+        v.push(c);
+        if (!p) continue;
+        // Staff who've gone invisible are dropped from every broadcast body —
+        // no other client ever hears about them (they still render themselves,
+        // ghosted, from local state) — but they still receive the area.
+        if (p.invisible) continue;
+        let m = members.get(key); if (!m) members.set(key, m = []);
+        m.push(c);
+    }
+
+    for (const [key, vs] of viewers) {
+        const here = members.get(key) || [];
+        const prev = areaState.get(key) || new Map();
+        const next = new Map();
+        const delta = {};
+        const full = {};
+        for (const c of here) {
+            const view = presenceView(c);
+            const sig = JSON.stringify(view);
+            const was = prev.get(c.user);
+            next.set(c.user, { sig, av: c.av });
+            full[c.user] = c.appearanceStr
+                ? Object.assign({ appearance: c.presence.appearance }, view)
+                : view;
+            // New to this area, or a new look -> send the whole thing (with
+            // appearance). Otherwise send the light view, and only if it moved.
+            if (!was || was.av !== c.av) delta[c.user] = full[c.user];
+            else if (was.sig !== sig) delta[c.user] = view;
+        }
+        const gone = [];
+        for (const u of prev.keys()) if (!next.has(u)) gone.push(u);
+        areaState.set(key, next);
+
+        let fullMsg = null, deltaMsg = null;
+        const hasDelta = gone.length > 0 || Object.keys(delta).length > 0;
+        for (const c of vs) {
+            if (c.sentArea !== key) {
+                c.sentArea = key;
+                if (fullMsg === null) fullMsg = JSON.stringify({ event: 'presence', area: key, reset: true, users: full, gone: [] });
+                sendRaw(c, fullMsg);
+            } else if (hasDelta) {
+                if (deltaMsg === null) deltaMsg = JSON.stringify({ event: 'presence', area: key, users: delta, gone });
+                sendRaw(c, deltaMsg);
+            }
+        }
+    }
+    // Areas nobody is standing in or looking at stop costing memory.
+    for (const key of areaState.keys()) if (!viewers.has(key)) areaState.delete(key);
+}
+setInterval(broadcastPresence, 66); // ~15Hz presence broadcast
+
+// ---- ROSTER: who is online, server-wide ---------------------------------
+// Presence is area-scoped now, so friend lists, the directory and the "players
+// online" counts need their own feed. It's tiny and changes only on login /
+// logout / role change / invisibility, so it's recomputed every 2s and sent as
+// a delta; a client gets the full list the moment it authenticates.
+let rosterState = new Map();   // user -> role
+
+function currentRoster() {
+    const m = new Map();
+    for (const c of clients) {
+        if (!c.user || c.ws.readyState !== c.ws.OPEN) continue;
+        if (c.presence && c.presence.invisible) continue;
+        m.set(c.user, roleOf(c.user));
+    }
+    return m;
+}
+// Both the first full snapshot and every later delta are produced HERE, from
+// the same `rosterState` sequence. Sending the snapshot from the auth handler
+// instead used to leave a hole: a player who logged in during someone else's
+// reconnect blip missed them from the snapshot, and the delta that would have
+// re-added them was never generated (nothing had changed by the next tick).
+function syncRoster() {
+    const now = currentRoster();
+    const users = {};
+    const gone = [];
+    let changed = false;
+    for (const [u, r] of now) if (rosterState.get(u) !== r) { users[u] = r; changed = true; }
+    for (const u of rosterState.keys()) if (!now.has(u)) { gone.push(u); changed = true; }
+    rosterState = now;
+
+    let fullMsg = null, deltaMsg = null;
+    for (const c of clients) {
+        if (!c.user) continue;
+        if (!c.rosterSynced) {
+            c.rosterSynced = true;
+            if (fullMsg === null) fullMsg = JSON.stringify({ event: 'roster', full: true, users: Object.fromEntries(now) });
+            sendRaw(c, fullMsg);
+        } else if (changed) {
+            if (deltaMsg === null) deltaMsg = JSON.stringify({ event: 'roster', users, gone });
+            sendRaw(c, deltaMsg);
+        }
     }
 }
-setInterval(broadcastPresence, 66); // ~15Hz presence broadcast (was 100ms/10Hz)
+setInterval(syncRoster, 2000);
 
 // ---------------------------------------------------------------- SERVER AUTHORITY
 // Fields of users/<me> a player may never write directly: every change to
@@ -862,24 +1157,37 @@ function handleMessage(c, msg) {
             if (ipBan && ipBan.user !== user && !isStaff(user)) {
                 return replyErr('This network is banned from Neighborhood.');
             }
-            try {
-                if (register) authRegister(user, pass);
-                else authLogin(user, pass);
-            } catch (e) {
-                return replyErr(e.message);
-            }
-            const ban = activeBan(user);
-            if (ban) return replyErr(fmtBan(ban));
-            setUser(c, user);
-            if (c.ip) store.put('meta/ips/' + user, c.ip);
-            const role = roleOf(user);
-            if (role !== 'user' || register) console.log(`[auth] ${user} ${register ? 'registered' : 'logged in'} role=${role}`);
-            // The server owns the player record: created here on registration
-            // (money 300, a random free lot) and never `put` by the client.
-            // Settle vault interest + overdue-loan penalties accrued while away.
-            const rec = userRec(user);
-            try { bankSync(user, rec, Date.now()); } catch (e) { console.error('[bank] sync on login failed', e); }
-            reply({ user, data: rec, role, mute: activeMute(user) });
+            // Hashing is off-thread now, so this op is async — one at a time per
+            // socket, or a client could queue a pile of bcrypt work by spamming.
+            if (c.authBusy) return replyErr('already authenticating');
+            c.authBusy = true;
+            (async () => {
+              try {
+                try {
+                    if (register) await authRegister(user, pass);
+                    else await authLogin(user, pass);
+                } catch (e) {
+                    return replyErr(e.message);
+                }
+                if (c.ws.readyState !== c.ws.OPEN) return;   // gave up while we hashed
+                const ban = activeBan(user);
+                if (ban) return replyErr(fmtBan(ban));
+                setUser(c, user);
+                if (c.ip) store.put('meta/ips/' + user, c.ip);
+                const role = roleOf(user);
+                if (role !== 'user' || register) console.log(`[auth] ${user} ${register ? 'registered' : 'logged in'} role=${role}`);
+                // The server owns the player record: created here on registration
+                // (money 300, a random free lot) and never `put` by the client.
+                // Settle vault interest + overdue-loan penalties accrued while away.
+                const rec = userRec(user);
+                try { bankSync(user, rec, Date.now()); } catch (e) { console.error('[bank] sync on login failed', e); }
+                reply({ user, data: rec, role, mute: activeMute(user) });
+                // Who's online, in full — presence itself is area-scoped now.
+                // syncRoster owns the snapshot so it can't race with the deltas.
+                c.rosterSynced = false;
+                syncRoster();
+              } finally { c.authBusy = false; }
+            })();
             break;
         }
 
@@ -1025,14 +1333,38 @@ function handleMessage(c, msg) {
                 if (ok) { if (v && v.owner === other) v.ts = Date.now(); }   // keep the pass alive while inside
                 else p.area = 'neighborhood';
             }
+            // `appearance` only travels when it changes (js/core.js pushPresence),
+            // so carry the last one forward and version it for the broadcaster.
+            if (p) {
+                if (p.appearance === undefined) {
+                    if (c.presence && c.presence.appearance !== undefined) p.appearance = c.presence.appearance;
+                } else {
+                    const s = JSON.stringify(p.appearance);
+                    if (s !== c.appearanceStr) { c.appearanceStr = s; c.av++; }
+                }
+            }
             c.presence = p;
-            reply(null);
+            // If we've never been told this socket's look (a reconnect that
+            // thought it had already sent one), ask for it back.
+            reply(p && !c.appearanceStr ? { needAppearance: true } : null);
             break;
         }
 
         case 'whoami': {
             if (!c.user) return replyErr('not authed');
             reply({ user: c.user, role: roleOf(c.user), mute: activeMute(c.user) });
+            break;
+        }
+
+        // Staff teleport needs a player's live position even when they're in a
+        // different area, which the area-scoped presence stream no longer
+        // carries. Staff-only, one player at a time — never a broadcast.
+        case 'whereis': {
+            if (!c.user) return replyErr('not authed');
+            if (!isStaff(c.user)) return replyErr('forbidden');
+            const t = byUser.get(String(msg.user || '').trim().toLowerCase());
+            const p = t && t.presence;
+            reply(p ? { area: p.area, x: p.x, y: p.y, floor: p.floor } : null);
             break;
         }
 

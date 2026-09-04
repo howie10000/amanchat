@@ -30,7 +30,11 @@ const state = {
   msgs: [],           // stacked chat bubbles: [{text, ts}], newest first
   waypoint: null,     // { x, y, label } — active "guide me there" route
   casinoFloor: 0,     // which floor of the VEGAS tower you are on
+  // Players drawn on YOUR screen — the server only streams the area you're in.
   others: {},
+  // Everyone logged in, server-wide: { username: role }. Fed by the `roster`
+  // event; use isOnline() / onlineCount() rather than reading it directly.
+  online: {},
   cam: { x: 0, y: 0 },
   interiorOf: null,
   interiorFurniture: [],
@@ -423,7 +427,25 @@ function toast(text, dur = 2000) {
   toastTimer = setTimeout(() => el.classList.add("hidden"), dur);
 }
 
-// PRESENCE — push only; server broadcasts to everyone at 10Hz
+// Is this player logged in anywhere on the server? (Presence only covers your
+// own area now, so online-ness comes from the roster feed.)
+function isOnline(u) { return u === state.user || !!(state.online && state.online[u]); }
+// Players online server-wide, counting yourself even while invisible (an
+// invisible staff member is deliberately absent from the roster).
+function onlineCount() {
+  const n = Object.keys(state.online || {}).length;
+  return n + (state.online && state.online[state.user] ? 0 : 1);
+}
+window.isOnline = isOnline;
+window.onlineCount = onlineCount;
+
+// PRESENCE — push only; the server broadcasts your area back at ~15Hz.
+// `appearance` is by far the heaviest field and changes almost never, so it
+// only rides along when it actually changed (the server keeps the last one and
+// asks for it back with `needAppearance` if it ever finds itself without one).
+let _sentAppearance = null;
+if (window.NET) NET.on("open", () => { _sentAppearance = null; });
+
 async function pushPresence() {
   if (!state.user) return;
   let area = state.area;
@@ -438,7 +460,8 @@ async function pushPresence() {
   // reconnecting is expected and harmless, so swallow it rather than spraying
   // unhandled rejections across the console.
   if (state.emote && now - state.emote.ts > GFX.EMOTE_TTL) state.emote = null;
-  netPresence({
+  const look = JSON.stringify(state.appearance || null);
+  const data = {
     x: state.pos.x, y: state.pos.y,
     area,
     // Which floor of the VEGAS tower you're on, so people on other floors
@@ -446,13 +469,17 @@ async function pushPresence() {
     floor: area === "interior_casino" ? (state.casinoFloor || 0) : undefined,
     msgs: state.msgs,
     msg: state.msgs.length ? state.msgs[0].text : "",
-    appearance: state.appearance,
     facing: state.facing,
     hp: state.hp,
     emote: state.emote,
     // Staff-only; the server drops an invisible client from every broadcast.
     invisible: state.invisible || undefined,
-  }).catch(() => {});
+  };
+  if (look !== _sentAppearance) { data.appearance = state.appearance; _sentAppearance = look; }
+  netPresence(data).then(r => {
+    // The server has no look on file for this socket — send it again next tick.
+    if (r && r.needAppearance) _sentAppearance = null;
+  }).catch(() => { _sentAppearance = null; });
 }
 
 // Staff: vanish from everyone else's screen (you stay ghosted on your own).
@@ -467,26 +494,53 @@ window.toggleInvisible = async () => {
 function startPresenceLoop() {
   pushPresence();
   setInterval(pushPresence, 66); // ~15Hz client push (server also broadcasts ~15Hz)
-  // Server pushes `presence` event — wire it up
+}
+
+// These are registered at load, NOT inside startPresenceLoop: the server sends
+// the full roster (and the first area snapshot) the moment auth succeeds, which
+// is before the login flow gets around to starting the presence loop. Handlers
+// registered later would miss those first packets entirely, and both feeds are
+// deltas afterwards — so the miss would never heal.
+if (window.NET) {
+  // The server streams only the area you're standing in, and only the players
+  // in it whose state actually changed:
+  //   m.reset  — you just arrived in a new area; m.users is the full picture
+  //   m.users  — players to add or update (appearance included only when new)
+  //   m.gone   — players who left your area
   NET.on("presence", (m) => {
-    const users = m.users || {};
-    const out = {};
     const now = Date.now();
-    for (const [u, p] of Object.entries(users)) {
+    if (m.reset) state.others = {};
+    for (const u of (m.gone || [])) delete state.others[u];
+    for (const [u, p] of Object.entries(m.users || {})) {
       if (u === state.user) continue;
-      // Keep the smoothed display position running across updates — only
-      // the raw target (p.x/p.y) changes; interpolateOthers() eases toward it
-      // each frame so other players glide instead of teleporting between
-      // presence ticks.
       const prev = state.others[u];
-      out[u] = Object.assign({}, p);
+      // Merge onto what we already hold so fields the delta left out (chiefly
+      // `appearance`) survive, and keep the smoothed display position running —
+      // only the raw target (x/y) changes; interpolateOthers() eases toward it
+      // each frame so other players glide instead of teleporting between ticks.
+      const next = Object.assign({}, prev, p);
       if (prev && typeof prev.dispX === "number") {
-        out[u].dispX = prev.dispX;
-        out[u].dispY = prev.dispY;
+        next.dispX = prev.dispX;
+        next.dispY = prev.dispY;
       }
-      out[u].msgs = mergeRemoteMsgs(u, prev && prev.msgs, (p.msgs != null ? p.msgs : p.msg), now);
+      next.msgs = mergeRemoteMsgs(u, prev && prev.msgs, (p.msgs != null ? p.msgs : p.msg), now);
+      state.others[u] = next;
     }
-    state.others = out;
+    // Players who didn't change still need their bubbles aged out, which
+    // mergeRemoteMsgs does off each line's local receive stamp.
+    for (const [u, p] of Object.entries(state.others)) {
+      if (m.users && m.users[u]) continue;
+      p.msgs = mergeRemoteMsgs(u, p.msgs, p.msgs, now);
+    }
+  });
+  // Who's online server-wide — presence is area-scoped, so friend lists, the
+  // directory and the online counts ride on this instead. Tiny and rare.
+  NET.on("roster", (m) => {
+    if (m.full) state.online = Object.assign({}, m.users || {});
+    else {
+      for (const [u, role] of Object.entries(m.users || {})) state.online[u] = role;
+      for (const u of (m.gone || [])) delete state.online[u];
+    }
   });
 }
 

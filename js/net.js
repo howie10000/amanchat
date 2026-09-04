@@ -131,6 +131,9 @@
   // Server-authoritative identity check: returns { user, role, mute }. Used to
   // re-verify staff powers (e.g. teleport) rather than trusting client state.
   window.netWhoami = () => rpc("whoami", {});
+  // Staff-only: a single player's live area/position. Presence is area-scoped,
+  // so teleporting to someone in another area needs a direct lookup.
+  window.netWhereIs = (user) => rpc("whereis", { user });
   // Server-authoritative economy ops (see docs/SERVER-AUTHORITY.md).
   window.netCasino = (data) => rpc("casino", data);
   // `id` is the rpc envelope field, so the purchase id travels as `item`.

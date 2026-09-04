@@ -54,7 +54,10 @@ function reelPulls(rarity, seed, { sabotage = false } = {}) {
         const proj = r.y + r.vy * 0.12;
         const doPull = !sabotage && (r.t - last >= 28) &&
             (proj < r.zoneC || (r.y < r.zoneC + cfg.zone * 0.35 && r.vy < -0.03));
-        if (doPull) { pulls.push(Math.round(r.t)); last = r.t; }
+        // Do NOT round: the replay consumes a pull on the first tick whose end
+        // is past it, so rounding 33.33 down to 33 lands it a tick early and the
+        // replay diverges from what this controller simulated.
+        if (doPull) { pulls.push(r.t); last = r.t; }
         ECON.reelTick(r, cfg, doPull);
     }
     return { pulls, landed: r.done === 'landed', ms: r.t };
@@ -171,7 +174,19 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     assert(!(await tryRpc(bob, 'buy', { kind: 'furniture', item: 'nope' })).ok, 'unknown furniture id rejected');
 
     console.log('staff invisibility');
-    const lastPresence = (c) => { for (let i = c.events.length - 1; i >= 0; i--) if (c.events[i].event === 'presence') return c.events[i].users || {}; return {}; };
+    // Presence is area-scoped and delta-encoded, so a single packet only carries
+    // what CHANGED. Fold the whole stream the way js/core.js does to get the
+    // view this client would actually be rendering.
+    const lastPresence = (c) => {
+        let view = {};
+        for (const e of c.events) {
+            if (e.event !== 'presence') continue;
+            if (e.reset) view = {};
+            for (const u of (e.gone || [])) delete view[u];
+            for (const [u, p] of Object.entries(e.users || {})) view[u] = Object.assign(view[u] || {}, p);
+        }
+        return view;
+    };
     await bob.rpc('presence', { data: { x: 1, y: 1, area: 'neighborhood' } });
     await owner.rpc('presence', { data: { x: 2, y: 2, area: 'neighborhood' } });
     await sleep(200);
