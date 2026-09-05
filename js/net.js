@@ -156,6 +156,10 @@
   window.netFarm = (data) => rpc("farm", data);          // personal farm + rotating seed stall
   window.netCook = (data) => rpc("cook", data);          // cooking pot: meals -> luck
   window.netKraken = (data) => rpc("kraken", data);      // sea-beast boss fight (status / hit)
+  window.netGuild = (data) => rpc("guild", data);        // guilds: ranks, bank, treasury, skills
+  window.netMastery = (data) => rpc("mastery", data || {}); // per-skill mastery tracks
+  window.netGuildDungeon = (data) => rpc("guild_dungeon", data); // guild runs + their bosses
+  window.netGear = (data) => rpc("gear", data);          // dungeon loot: equip / take off / sell
 
   // For dev console / debugging
   window.fb = { fbGet: window.fbGet, fbPut: window.fbPut, fbPatch: window.fbPatch, fbPost: window.fbPost, fbDelete: window.fbDelete };

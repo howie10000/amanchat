@@ -78,11 +78,11 @@
   function hurt(dmg, why) {
     const t = now();
     if (state.area !== "neighborhood" || t < stunUntil || cine) return;
-    state.hp -= dmg;
+    state.hp -= window.gameGear ? dmg * (1 - gameGear.mitigation()) : dmg;
     addFx(state.pos.x, state.pos.y, 10, "#ef4444", { speed: 4, life: 20 });
     shake(5, 10);
     if (state.hp <= 0) {
-      state.hp = 100;
+      state.hp = state.maxHp || 100;
       state.pos.x = LAKE.x + (Math.random() - 0.5) * 120; state.pos.y = LAKE.y + LAKE.ry + 150;
       stunUntil = t + 2500;
       toast(`💫 ${why || "The beast"} knocked you out cold. You wash up on the shore…`, 3500);
@@ -345,7 +345,8 @@
     bullets = bullets.filter(b => b.life > 0);
     for (const p of fx) { p.x += p.vx; p.y += p.vy; p.vy += p.g; p.life++; }
     fx = fx.filter(p => p.life < p.max);
-    if (!fightActive() && state.hp < 100 && state.area === "neighborhood" && ++regenTick >= 20) { regenTick = 0; state.hp = Math.min(100, state.hp + 1); updateHUD(); }
+    const hpCap = state.maxHp || 100;
+    if (!fightActive() && state.hp < hpCap && state.area === "neighborhood" && ++regenTick >= 20) { regenTick = 0; state.hp = Math.min(hpCap, state.hp + 1); updateHUD(); }
   }
 
   // ---------------- combat ----------------

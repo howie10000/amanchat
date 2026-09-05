@@ -393,14 +393,18 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     assert(r.ok && r.data.cooked.name === whaleMeal.name && r.data.meals[whaleMeal.key].n === 1 && !r.data.fishInventory['Moonlight Whale'], 'cooking consumes the fish and shelves the meal: ' + (r.ok && r.data.cooked.name));
     assert(!(await tryRpc(owner, 'cook', { action: 'eat', meal: 'nope' })).ok, 'eating a meal you do not have rejected');
     r = await tryRpc(owner, 'cook', { action: 'eat', meal: whaleMeal.key });
-    assert(r.ok && r.data.luck && r.data.luck.level === whaleMeal.luck && r.data.luck.until > Date.now() && !r.data.meals[whaleMeal.key], 'eating grants timed luck: level ' + (r.ok && r.data.luck.level));
+    // A meal is worth a RANGE now — the level is rolled on eating and skewed
+    // toward the top by cooking mastery, so assert the band, not a fixed value.
+    const ateLuck = r.ok && r.data.luck ? r.data.luck.level : 0;
+    assert(r.ok && r.data.luck && ateLuck >= whaleMeal.luckMin && ateLuck <= whaleMeal.luckMax && r.data.luck.until > Date.now() && !r.data.meals[whaleMeal.key],
+        `eating grants timed luck in [${whaleMeal.luckMin}-${whaleMeal.luckMax}]: level ` + ateLuck);
     {
         // luck pays a bonus on casino wins (coinflip: 1.95x, net win 19 on a 20 bet)
-        const eff = ECON.luckEffects(whaleMeal.luck);
+        const eff = ECON.luckEffects(ateLuck);
         let sawWin = false, bonusOk = true;
         for (let i = 0; i < 8 && !sawWin; i++) {
             const c = await tryRpc(owner, 'casino', { game: 'coinflip', action: 'flip', bet: 20, call: 'heads' });
-            if (c.ok && c.data.win) { sawWin = true; bonusOk = c.data.luckBonus === Math.floor(19 * eff.casinoBonus) && c.data.luck && c.data.luck.level === whaleMeal.luck; }
+            if (c.ok && c.data.win) { sawWin = true; bonusOk = c.data.luckBonus === Math.floor(19 * eff.casinoBonus) && c.data.luck && c.data.luck.level === ateLuck; }
             await sleep(950);
         }
         assert(!sawWin || bonusOk, 'lucky casino win pays the luck bonus' + (sawWin ? '' : ' (no win in 8 flips — skipped)'));

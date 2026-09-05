@@ -509,6 +509,13 @@ function triggerHotspotAction(action, hs) {
     case "quest_board":      openQuestBoard(); break;
     case "quest_invite":     openCoopInvite(); break;
     case "duel_open":        openDuelChallenge(); break;
+    case "guild_broker":     gameGuild.openBroker(); break;
+    case "gear_armoury":     gameGear.openArmoury(); break;
+    case "guild_home":       gameGuild.enterGuildHall(); break;
+    case "guild_open":       gameGuild.openHall(); break;
+    case "guild_bank":       gameGuild.openBank(); break;
+    case "guild_treasury":   gameGuild.openTreasury(); break;
+    case "guild_dungeons":   gameGuild.openDungeons(); break;
     case "job_pizza":        openPizzaJob(); break;
     case "job_typing":       openTypingJob(); break;
     case "job_whack":        openWhackJob(); break;
@@ -1073,12 +1080,18 @@ window.loanRepay = async (mode) => {
 function openQuestBoard() {
   openMenu("QUEST BOARD", `
     <p>Each quest is a randomly-generated labyrinth. Clear all enemies in the maze, grab the key that drops, find the exit door (bottom-right cell), and proceed to the next floor.</p>
+    <p class="muted">Everything down there hunts you properly now — it routes around corners instead of grinding into walls, and it only wakes when it sees or hears you. A <b>?</b> over a head means it hasn't noticed you yet.</p>
     <h3 class="section">ENEMY TYPES</h3>
     <div class="enemyLegend">
       <div><span class="dot" style="background:#dc2626"></span><b>Brute</b> — slow but hits hard</div>
       <div><span class="dot" style="background:#3b82f6"></span><b>Imp</b> — fast and weak</div>
       <div><span class="dot" style="background:#16a34a"></span><b>Ogre</b> — tank, huge HP</div>
       <div><span class="dot" style="background:#a855f7"></span><b>Mage</b> — keeps distance, shoots projectiles</div>
+      <div><span class="dot" style="background:#e11d48"></span><b>Archer</b> — outranges the Mage, hits harder</div>
+      <div><span class="dot" style="background:#f97316"></span><b>Bomber</b> — charges you, lights a fuse, detonates (it kills its own side too)</div>
+      <div><span class="dot" style="background:#14b8a6"></span><b>Shaman</b> — hangs back healing the others. Kill it first</div>
+      <div><span class="dot" style="background:#7c3aed"></span><b>Stalker</b> — waits, motionless, until you come close</div>
+      <div><span class="dot" style="background:#64748b"></span><b>Warden</b> — shielded and slow to fall</div>
       <div><span class="dot" style="background:#7f1d1d"></span><b>Boss</b> — final floor, mixes everything</div>
     </div>
     <h3 class="section">CHOOSE A QUEST</h3>
@@ -1088,11 +1101,17 @@ function openQuestBoard() {
       <button class="menuBtn gold" onclick="gameCombat.startDungeon('medium')">START</button></div>
     <div class="shopItem"><div class="info"><b>Demon Lair</b><br/><small>Hard • 5 floors + final boss • Reward $1800</small></div>
       <button class="menuBtn red" onclick="gameCombat.startDungeon('hard')">START</button></div>
+    <h3 class="section">GUILD DUNGEONS</h3>
+    <p class="muted">Three harder runs are posted where the board can't reach — longer, denser, and each sealed at the end by a boss well past anything in the pond. They need a guild. Talk to the man leaning against the wall.</p>
+    <button class="menuBtn gold" onclick="gameGuild.openBroker()">TALK TO THE BROKER</button>
     <h3 class="section">WEAPONS</h3>
     <div class="weaponInfo">
       <div><b>1 — Sword</b>: 55 dmg • wide arc hits multiple enemies • knockback • short range</div>
       <div><b>2 — Pistol</b>: 22 dmg • long range projectile • slower fire</div>
     </div>
+    <p class="muted">Combat mastery scales both. <a href="#" onclick="gameGuild.openMastery();return false;">See your mastery levels</a>.</p>
+    <h3 class="section">GEAR</h3>
+    <p class="muted">Anything you clear can drop a weapon, a helmet, a chestplate, leggings or a ring. The board's dungeons drop the bottom of the table; guild dungeons drop the rest of it. Equip and sell at <a href="#" onclick="gameGear.openArmoury();return false;">the Armoury</a> across the hall.</p>
     <p class="muted" style="margin-top:10px;">Aim with mouse. Left-click to attack. ESC to abandon.</p>
   `);
 }

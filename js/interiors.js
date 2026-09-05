@@ -85,6 +85,19 @@ const INTERIORS = {
       { x: 512, y: 240, label: "QUEST BOARD", action: "quest_board", icon: "scroll" },
       { x: 200, y: 360, label: "INVITE FRIEND", action: "quest_invite", icon: "people" },
       { x: 824, y: 360, label: "DUEL ARENA", action: "duel_open", icon: "swords" },
+      { x: 262, y: 208, label: "TALK TO THE BROKER", action: "guild_broker", icon: "people" },
+      { x: 762, y: 208, label: "THE ARMOURY", action: "gear_armoury", icon: "hammer" },
+    ],
+  },
+  // A guild's own hall, reached through the door that appears beside the broker
+  // once you belong to one. Only members can open it (see enterGuildHall).
+  interior_guild: {
+    w: 1024, h: 640, floor: "#1f2937", wall: "#111827", trim: "#fbbf24",
+    hotspots: [
+      { x: 512, y: 200, label: "GUILD HALL", action: "guild_open", icon: "board" },
+      { x: 220, y: 340, label: "GUILD BANK", action: "guild_bank", icon: "vault" },
+      { x: 804, y: 340, label: "GUILD TREASURY", action: "guild_treasury", icon: "coin" },
+      { x: 512, y: 452, label: "GUILD DUNGEONS", action: "guild_dungeons", icon: "swords" },
     ],
   },
   interior_job: {
@@ -176,6 +189,14 @@ function leaveInterior() {
     state.interiorOf = null;
     state.buildMode = false; toggleBuildBanner(false);
     state.placeMode = null; state.selectedFurn = -1;
+  } else if (wasArea === "interior_guild") {
+    // The hall is behind a door INSIDE the Adventurers Guild, so stepping out
+    // returns you to that room, not to the street.
+    state.area = "interior_quest";
+    state.pos.x = 120; state.pos.y = 300;
+    state.facing = "right";
+    updateHUD();
+    return;
   } else {
     // building interior — find which type and place outside it
     const type = wasArea.replace("interior_", "");
@@ -228,6 +249,10 @@ function currentHotspots() {
     return f.hotspots.concat([ELEVATOR]);
   }
   if (state.area === "interior_farm" && window.gameFarm) return (def.hotspots || []).concat(gameFarm.plotHotspots());
+  // The guild door is only there if you have a guild to walk into.
+  if (state.area === "interior_quest" && window.gameGuild && gameGuild.myGuild()) {
+    return (def.hotspots || []).concat([{ x: 74, y: 208, label: "GUILD HALL", action: "guild_home", icon: "board" }]);
+  }
   return def.hotspots || [];
 }
 function currentFloorStyle() {
@@ -387,6 +412,7 @@ function buildingTitle(area) {
     interior_furniture: "FURNITURELAND",
     interior_lootbox: "MYSTERY BOXES",
     interior_quest: "ADVENTURERS GUILD",
+    interior_guild: "GUILD HALL",
     interior_job: "JOBS CENTER",
     interior_barber: "TRIM & STYLE",
     interior_plaza: "TOWN PLAZA",
@@ -2366,8 +2392,117 @@ const guildRoom = {
     drawBarrel(room.x + room.w - 36, room.y + 460);
     drawLedgerStand(200, 330, t);
     drawTrainingDummy(824, 340, t);
+    // The broker props up the west wall in the one patch of shadow the hearth
+    // doesn't reach, with his door beside him — but only if you have a guild.
+    if (window.gameGuild && gameGuild.myGuild()) drawGuildDoor(74, 208, t);
+    drawShadyBroker(262, 208, t);
     wallSign(room.x + 130, room.y + 24, "HEARTH & HOME", { size: 8, serif: true, bg: "#2a1a0e", border: "#d4a017", color: "#fde68a" });
     wallSign(room.x + room.w - 150, room.y + 30, "ARMOURY", { size: 8, serif: true, bg: "#2a1a0e", border: "#d4a017", color: "#fde68a" });
+  },
+};
+
+// The man who sells charters. Deliberately drawn as a silhouette with a lit
+// cigarette and a hat brim over the eyes — he reads as "talk to me" without a
+// label, and the idle shifts (weight change, ember flare) keep him alive.
+function drawShadyBroker(x, y, t) {
+  const sway = Math.sin(t / 1400) * 1.6;
+  const lean = 0.12 + Math.sin(t / 2600) * 0.02;
+  drawShadowEllipse(x + 6, y + 62, 20, 7);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(lean);              // shoulder into the wall
+  // legs, crossed at the ankle
+  ctx.fillStyle = "#18120c";
+  ctx.fillRect(-9, 22, 8, 40);
+  ctx.save(); ctx.translate(3, 22); ctx.rotate(-0.28); ctx.fillRect(0, 0, 8, 42); ctx.restore();
+  ctx.fillStyle = "#0c0906";
+  ctx.fillRect(-11, 58, 12, 6);
+  // long coat
+  ctx.fillStyle = "#241a12";
+  GFX.roundFill(ctx, -16, -12, 32, 42, 5, "#241a12");
+  ctx.fillStyle = "#160f0a";
+  ctx.fillRect(-2, -12, 4, 42);   // coat seam
+  // arms folded
+  ctx.fillStyle = "#2e2118";
+  GFX.roundFill(ctx, -19, 2, 38, 10, 5, "#2e2118");
+  // head + hat
+  ctx.fillStyle = "#8b6b4e";
+  ctx.beginPath(); ctx.arc(0, -20 + sway * 0.2, 9, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#0f0b07";
+  ctx.fillRect(-13, -26, 26, 4);              // brim
+  GFX.roundFill(ctx, -8, -36, 16, 11, 2, "#0f0b07");  // crown
+  // the brim keeps the eyes dark; only a glint shows
+  ctx.fillStyle = "rgba(251,191,36,.85)";
+  ctx.fillRect(-5, -21, 3, 2); ctx.fillRect(2, -21, 3, 2);
+  ctx.restore();
+  // cigarette ember + smoke, drawn unrotated so the smoke rises true
+  const ember = 0.55 + 0.45 * Math.abs(Math.sin(t / 900));
+  ctx.fillStyle = `rgba(249,115,22,${ember})`;
+  ctx.beginPath(); ctx.arc(x + 12, y - 16, 2.2, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(200,200,200,.13)";
+  for (let i = 0; i < 3; i++) {
+    const p = ((t / 22) + i * 34) % 100;
+    ctx.beginPath();
+    ctx.arc(x + 12 + Math.sin((p + i * 30) / 16) * 5, y - 20 - p * 0.5, 2 + p / 34, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// The guild door: small, iron-banded, and lit from the inside.
+function drawGuildDoor(x, y, t) {
+  const glow = 0.35 + 0.12 * Math.sin(t / 700);
+  ctx.fillStyle = `rgba(251,191,36,${glow * 0.5})`;
+  ctx.beginPath(); ctx.ellipse(x, y + 58, 40, 14, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#2a1a0e";
+  GFX.roundFill(ctx, x - 22, y - 4, 44, 62, 4, "#2a1a0e");
+  ctx.fillStyle = "#3f2a18";
+  GFX.roundFill(ctx, x - 18, y, 36, 58, 3, "#3f2a18");
+  // iron bands
+  ctx.fillStyle = "#57534e";
+  ctx.fillRect(x - 18, y + 10, 36, 5);
+  ctx.fillRect(x - 18, y + 40, 36, 5);
+  // handle + keyhole light
+  ctx.fillStyle = "#d4a017";
+  ctx.beginPath(); ctx.arc(x + 11, y + 28, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = `rgba(251,191,36,${glow + 0.3})`;
+  ctx.fillRect(x - 3, y + 24, 3, 8);
+  wallSign(x, y - 18, "GUILD", { size: 7, serif: true, bg: "#2a1a0e", border: "#d4a017", color: "#fde68a" });
+}
+
+// ---------------- GUILD HALL ----------------
+// The members-only room behind that door: a war table in the middle, the bank
+// and treasury against opposite walls, and the guild banner over the hearth.
+const guildHallRoom = {
+  accent: "#fbbf24",
+  base(room, t) {
+    drawSurround(room, "#0b0f18");
+    drawFlagstones(room, room.y + WALL_H);
+    drawBackWall(room, { top: "#1f2937", bottom: "#111827", skirting: "#0b0f18" });
+    ctx.fillStyle = "#0b0f18";
+    for (let i = 0; i <= 6; i++) ctx.fillRect(room.x + i * (room.w / 6) - 5, room.y + 8, 10, WALL_H - 18);
+    drawSideWalls(room, "#111827");
+    drawLightPool(room.x + room.w / 2, room.y + 300, 300, "#fbbf24", 0.16);
+    drawRug(room.x + room.w / 2, room.y + 300, 260, 120, "#1e3a8a", "#fbbf24", { medallion: true });
+  },
+  decor(room, t) {
+    const g = window.gameGuild && gameGuild.myGuild();
+    drawCandleChandelier(room.x + room.w / 2, room.y + 14, t);
+    drawHearth(room.x + room.w / 2, room.y + 118, t);
+    // The guild's own banner, in its own colours, over the hearth.
+    drawBanner(room.x + 300, room.y + 8, "#1e3a8a", g ? (g.tag || "?").slice(0, 3) : "?", t);
+    drawBanner(room.x + room.w - 300, room.y + 8, "#7f1d1d", "⚔", t + 300);
+    drawLongTable(room.x + room.w / 2, room.y + 452);
+    drawBarrel(room.x + 40, room.y + 300); drawBarrel(room.x + 66, room.y + 330);
+    drawBarrel(room.x + room.w - 40, room.y + 300);
+    drawWeaponRack(room.x + 150, room.y + 100);
+    drawWeaponRack(room.x + room.w - 150, room.y + 100);
+    // Off-centre: the hearth's chimney owns the middle of the wall.
+    wallSign(room.x + 170, room.y + 30, g ? g.name.toUpperCase() : "GUILD HALL",
+      { size: 9, serif: true, bg: "#0b0f18", border: "#fbbf24", color: "#fde68a" });
+    wallSign(room.x + room.w - 170, room.y + 30, g ? `${g.clears} CLEARED` : "—",
+      { size: 9, serif: true, bg: "#0b0f18", border: "#fbbf24", color: "#fde68a" });
+    wallSign(220, room.y + 250, "BANK", { size: 8, serif: true, bg: "#0b0f18", border: "#fbbf24", color: "#fde68a" });
+    wallSign(804, room.y + 250, "TREASURY", { size: 8, serif: true, bg: "#0b0f18", border: "#fbbf24", color: "#fde68a" });
   },
 };
 
@@ -2740,6 +2875,7 @@ const ROOM_RENDERERS = {
   interior_furniture: furnitureRoom,
   interior_lootbox: lootboxRoom,
   interior_quest: guildRoom,
+  interior_guild: guildHallRoom,
   interior_job: jobsRoom,
   interior_barber: barberRoom,
   interior_plaza: plazaRoom,

@@ -9,10 +9,14 @@
   <!-- LOGIN SCREEN -->
   <div id="loginScreen" class="screen">
     <canvas id="titleBg"></canvas>
+    <div class="loginStack">
+      <div class="gdTitle">
+        <div class="gdRule"><span></span><i>&#9760;</i><span></span></div>
+        <div class="gdMain"><b class="gd1">GUILDS</b><b class="gdAmp">&amp;</b><b class="gd2">DUNGEONS</b></div>
+      </div>
     <div class="loginBox">
       <h1>NEIGHBORHOOD</h1>
-      <div class="updateTag">🎣 FISHING &amp; FARMING UPDATE 🌱</div>
-      <p class="tagline">Reel up five tiers of fish, fight the beasts of the lake, grow a farm, cook for luck.</p>
+      <p class="tagline">Form your guild, conquer dungeons,<br/>defeat powerful bosses, earn epic rewards.</p>
       <input id="loginUser" placeholder="Username" maxlength="16" autocomplete="username" />
       <input id="loginPass" type="password" placeholder="Password" maxlength="32" autocomplete="current-password" />
       <div class="loginBtns">
@@ -21,6 +25,7 @@
       </div>
       <div id="loginMsg" class="msg"></div>
       <div class="hint">Owners and admins get the Staff panel. Be nice — bans and mutes are real.</div>
+    </div>
     </div>
   </div>
 
@@ -147,7 +152,11 @@
   <script src="js/interiors.js"></script>
   <script src="js/casino.js"></script>
   <script src="js/jobs.js"></script>
+  <script src="js/mobs.js"></script>
+  <script src="js/bosses.js"></script>
   <script src="js/combat.js"></script>
+  <script src="js/guild.js"></script>
+  <script src="js/gear.js"></script>
   <script src="js/social.js"></script>
   <script src="js/outdoor.js"></script>
   <script src="js/lake.js"></script>

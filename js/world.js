@@ -65,6 +65,10 @@ const PARK_BENCHES = [];
     const a = (i / N) * Math.PI * 2;
     const bx = FOUNTAIN.x + Math.cos(a) * R;
     const by = FOUNTAIN.y + Math.sin(a) * R * 0.72;
+    // Skip the spot directly north of the fountain — the tall central jet
+    // and stacked tiers extend straight up from there, so a bench placed
+    // there visually cuts into the fountain right where the water shoots out.
+    if (Math.abs(bx - FOUNTAIN.x) < 20 && by < FOUNTAIN.y) continue;
     PARK_BENCHES.push({ x: bx, y: by, ang: benchFacing(bx, by, FOUNTAIN.x, FOUNTAIN.y) });
   }
   // Outer ring, larger radius, also facing the fountain
@@ -74,6 +78,7 @@ const PARK_BENCHES = [];
     const bx = FOUNTAIN.x + Math.cos(a) * R2;
     const by = FOUNTAIN.y + Math.sin(a) * R2 * 0.62;
     if (bx < PARK.x + 60 || bx > PARK.x + PARK.w - 60) continue;
+    if (Math.abs(bx - FOUNTAIN.x) < 20 && by < FOUNTAIN.y) continue;
     PARK_BENCHES.push({ x: bx, y: by, ang: benchFacing(bx, by, FOUNTAIN.x, FOUNTAIN.y) });
   }
 })();

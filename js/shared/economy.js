@@ -227,6 +227,12 @@
     quest_medium: { cap: 700,  cooldown: 60000 },
     quest_hard:   { cap: 1800, cooldown: 90000 },
     team_match:   { perStake: 5, cooldown: 30000 },
+    // Guild dungeons pay the run reward plus the boss bounty, so their caps sit
+    // above GUILD_DUNGEONS.reward + GUILD_BOSSES.reward for the matching tier.
+    guild_crypt:  { cap: 6000, cooldown: 180000 },
+    guild_forge:  { cap: 10500, cooldown: 240000 },
+    guild_void:   { cap: 18500, cooldown: 300000 },
+    guild_dragon: { cap: 31500, cooldown: 360000 },
   };
 
   // ---------- seeded rng (shared by the market shelf and fish prices) ----------
@@ -274,11 +280,14 @@
   // tier itself is rolled first from RARITY_INFO.weight (shifted by luck).
   const FISH_RARITIES = ["common", "rare", "epic", "legendary", "mythical"];
   const RARITY_INFO = {
+    // Epic and up were trimmed when fishing mastery went in: a maxed rod adds
+    // its own +50% to these tiers, so the base rates came down to keep the
+    // top end feeling like a top end.
     common:    { label: "Common",    color: "#94a3b8", weight: 62,  luckPts: 1 },
     rare:      { label: "Rare",      color: "#3b82f6", weight: 24,  luckPts: 2 },
-    epic:      { label: "Epic",      color: "#a855f7", weight: 9.5, luckPts: 3 },
-    legendary: { label: "Legendary", color: "#fbbf24", weight: 3.5, luckPts: 5 },
-    mythical:  { label: "Mythical",  color: "#e879f9", weight: 1.0, luckPts: 8 },
+    epic:      { label: "Epic",      color: "#a855f7", weight: 7.6, luckPts: 3 },
+    legendary: { label: "Legendary", color: "#fbbf24", weight: 2.5, luckPts: 5 },
+    mythical:  { label: "Mythical",  color: "#e879f9", weight: 0.7, luckPts: 8 },
   };
   const FISH_TABLE = [
     // common
@@ -436,17 +445,19 @@
     return true;
   }
 
-  // Rarity roll. Luck (0..LUCK_MAX_LEVEL, from a cooked meal) scales every
-  // non-common tier's weight up, so a lucky player sees more of the good stuff.
-  function rarityWeights(luckLevel) {
+  // Rarity roll. Luck (0..LUCK_MAX_LEVEL, from a cooked meal) and fishing
+  // mastery (1..MASTERY_MAX_LEVEL, permanent) both scale every non-common
+  // tier's weight up, so a lucky, practised angler sees more of the good stuff.
+  function rarityWeights(luckLevel, masteryLvl) {
     const L = Math.max(0, Math.min(LUCK_MAX_LEVEL, +luckLevel || 0));
+    const mBonus = masteryFishBonus(masteryLvl);
     const out = {};
-    for (const r of FISH_RARITIES) out[r] = RARITY_INFO[r].weight * (r === "common" ? 1 : 1 + 0.3 * L);
+    for (const r of FISH_RARITIES) out[r] = RARITY_INFO[r].weight * (r === "common" ? 1 : 1 + 0.3 * L + mBonus);
     return out;
   }
-  function rollRarity(luckLevel, rand) {
+  function rollRarity(luckLevel, rand, masteryLvl) {
     rand = rand || Math.random;
-    const w = rarityWeights(luckLevel);
+    const w = rarityWeights(luckLevel, masteryLvl);
     const total = FISH_RARITIES.reduce((s, r) => s + w[r], 0);
     let x = rand() * total;
     for (const r of FISH_RARITIES) { if ((x -= w[r]) <= 0) return r; }
@@ -460,12 +471,13 @@
     for (const f of table) { if ((x -= f.weight) <= 0) return f; }
     return table[0];
   }
-  function rollFish(luckLevel, rand) { return rollFishOfRarity(rollRarity(luckLevel, rand), rand); }
+  function rollFish(luckLevel, rand, masteryLvl) { return rollFishOfRarity(rollRarity(luckLevel, rand, masteryLvl), rand); }
   // Chance the hook that just landed a fish snags a sea beast instead. Only
   // rolled once a fish has been reeled successfully — a lost fish never wakes
-  // one. Which beast (Kraken / Sea Serpent) is a coin flip.
+  // one. Which beast (Kraken / Sea Serpent) is a coin flip. Trimmed alongside
+  // the epic+ fish rates so beasts stay an event, not a routine.
   function krakenChance(rarity) {
-    return rarity === "mythical" ? 0.15 : rarity === "legendary" ? 0.08 : 0.03;
+    return rarity === "mythical" ? 0.11 : rarity === "legendary" ? 0.055 : 0.02;
   }
   const BEAST_KINDS = ["kraken", "serpent"];
   function rollBeastKind(rand) { return (rand || Math.random)() < 0.5 ? "kraken" : "serpent"; }
@@ -479,11 +491,17 @@
   // A meal sets users/<me>/luck = { level, until, meal, emoji }. While active:
   //   * fishing rolls rarer (rarityWeights)
   //   * every VEGAS win pays an extra casinoBonus on top
-  //   * a lost single-roll VEGAS round is re-rolled once with rerollChance
+  //   * every VEGAS round carries `winChance` of extra chance to win outright
+  //
+  // `winChance` replaced an older "re-roll a lost round and keep the better
+  // result", which could show a player one outcome and then quietly swap it.
+  // This is the same maths stated honestly: your effective win rate on a
+  // single-roll game is p + (1 - p) * winChance, and you only ever see the
+  // result that actually counts.
   const LUCK_MAX_LEVEL = 6;
   function luckEffects(level) {
     const L = Math.max(0, Math.min(LUCK_MAX_LEVEL, +level || 0));
-    return { level: L, fishWeightMult: 1 + 0.3 * L, casinoBonus: Math.min(0.30, 0.05 * L), rerollChance: Math.min(0.24, 0.04 * L) };
+    return { level: L, fishWeightMult: 1 + 0.3 * L, casinoBonus: Math.min(0.30, 0.05 * L), winChance: Math.min(0.24, 0.04 * L) };
   }
   function luckDurationMs(level) { return (10 + 4 * Math.max(1, Math.min(LUCK_MAX_LEVEL, +level || 1))) * 60000; }
   // A meal you eat while a STRONGER one is running waits its turn instead of
@@ -639,8 +657,26 @@
     else if (crop === 0) { dish = "Fish Stew"; emoji = "🍲"; }
     else if (fish === 0) { dish = "Garden Salad"; emoji = "🥗"; }
     else { dish = "Surf & Turf Platter"; emoji = "🍱"; }
+    // A meal is no longer worth one fixed luck level: it's a RANGE, and the
+    // level you actually get is rolled when you EAT it. Cooking mastery skews
+    // that roll toward the top of the range (masteryCookBias), so the same
+    // recipe keeps improving as the cook does.
+    const luckMin = Math.max(1, level - 1);
+    const luckMax = Math.min(LUCK_MAX_LEVEL, level + 1);
     const name = `${MEAL_ADJ[level - 1]} ${dish}`;
-    return { name, emoji, luck: level, pts, key: name.toLowerCase().replace(/[^a-z0-9]+/g, "-") };
+    return { name, emoji, luck: level, luckMin, luckMax, pts, key: name.toLowerCase().replace(/[^a-z0-9]+/g, "-") };
+  }
+  // Roll the luck level a meal actually grants. `bias` 0..1 (cooking mastery)
+  // pushes the result toward luckMax; at bias 0 it's flat across the range.
+  function rollMealLuck(luckMin, luckMax, masteryLvl, rand) {
+    rand = rand || Math.random;
+    const lo = Math.max(1, Math.min(LUCK_MAX_LEVEL, Math.floor(+luckMin || 1)));
+    const hi = Math.max(lo, Math.min(LUCK_MAX_LEVEL, Math.floor(+luckMax || lo)));
+    if (hi === lo) return lo;
+    const bias = Math.max(0, Math.min(1, masteryCookBias(masteryLvl)));
+    // u^(1 - 0.7*bias): exponents below 1 pull a uniform roll upward.
+    const skewed = Math.pow(rand(), 1 - 0.7 * bias);
+    return lo + Math.round(skewed * (hi - lo));
   }
 
   // ---------- sea beasts: the Kraken and the Sea Serpent ----------
@@ -711,6 +747,515 @@
   }
   function atLake(x, y) { return Math.hypot((+x || 0) - LAKE.x, (+y || 0) - LAKE.y) <= LAKE_FIGHT_RADIUS; }
 
+  // ---------- mastery ----------
+  // A per-skill level track (users/<me>/mastery = { fishing: {xp}, ... }).
+  // XP comes from actually doing the thing: landing fish, cooking meals,
+  // harvesting crops, clearing dungeon floors. Levels are slow on purpose —
+  // the bonuses are small and permanent, so they compound rather than spike.
+  const MASTERY_SKILLS = ["fishing", "cooking", "farming", "combat"];
+  const MASTERY_INFO = {
+    fishing: { label: "Fishing", emoji: "🎣", blurb: "Rarer fish bite more often." },
+    cooking: { label: "Cooking", emoji: "🍲", blurb: "Meals land nearer the top of their luck range." },
+    farming: { label: "Farming", emoji: "🌾", blurb: "Bigger harvests from every bed." },
+    combat:  { label: "Combat",  emoji: "⚔️", blurb: "You hit harder in dungeons." },
+  };
+  const MASTERY_MAX_LEVEL = 50;
+  // XP to climb FROM level L to L+1. Deliberately steep at the top.
+  function masteryXpForNext(level) {
+    const L = Math.max(1, Math.min(MASTERY_MAX_LEVEL, Math.floor(+level || 1)));
+    return Math.floor(60 * Math.pow(L, 1.55));
+  }
+  // Total XP -> { level, xp, into, need, pct, maxed }
+  function masteryLevel(xp) {
+    xp = Math.max(0, Math.floor(+xp || 0));
+    let level = 1, spent = 0;
+    while (level < MASTERY_MAX_LEVEL) {
+      const need = masteryXpForNext(level);
+      if (xp - spent < need) break;
+      spent += need; level++;
+    }
+    const maxed = level >= MASTERY_MAX_LEVEL;
+    const need = maxed ? 0 : masteryXpForNext(level);
+    const into = xp - spent;
+    return { level, xp, into, need, pct: maxed ? 1 : (need > 0 ? into / need : 0), maxed };
+  }
+  // 0..1 progress toward max level — every mastery bonus scales off this.
+  function masteryT(level) {
+    return Math.max(0, Math.min(1, (Math.max(1, +level || 1) - 1) / (MASTERY_MAX_LEVEL - 1)));
+  }
+  // Fishing: pushes the non-common tiers up, exactly like luck does but smaller
+  // and permanent. +50% tier weight at level 50.
+  function masteryFishBonus(level) { return 0.5 * masteryT(level); }
+  // Cooking: 0..1 skew toward the TOP of a meal's luck range when you eat it.
+  function masteryCookBias(level) { return masteryT(level); }
+  // Farming: extra chance of a bonus unit on every harvest (on top of cropYield's own 25%).
+  function masteryFarmBonus(level) { return 0.35 * masteryT(level); }
+  // Combat: dungeon damage multiplier, 1.0 .. 1.35.
+  function masteryCombatMult(level) { return 1 + 0.35 * masteryT(level); }
+
+  // What each activity pays into its track.
+  const MASTERY_XP = {
+    fish_landed:   { common: 4, rare: 9, epic: 20, legendary: 45, mythical: 90 },
+    cook_meal:     6,        // x meal luck level
+    crop_harvest:  2,        // x units harvested
+    dungeon_floor: 12,
+    dungeon_clear: 60,
+    guild_clear:   140,
+    boss_part:     30,
+  };
+
+  // ---------- guilds ----------
+  const GUILD_CREATE_COST = 100000;
+  const GUILD_NAME_MIN = 3, GUILD_NAME_MAX = 24, GUILD_TAG_MAX = 5;
+  const GUILD_MAX_MEMBERS = 20;
+  const GUILD_RANKS = ["master", "officer", "member"];
+  const GUILD_RANK_INFO = {
+    master:  { label: "Guild Master", rank: 0, canInvite: true, canKick: true, canWithdraw: true, canSetRates: true, canSpendSkills: true },
+    officer: { label: "Officer",      rank: 1, canInvite: true, canKick: true, canWithdraw: true, canSetRates: false, canSpendSkills: false },
+    member:  { label: "Member",       rank: 2, canInvite: false, canKick: false, canWithdraw: false, canSetRates: false, canSpendSkills: false },
+  };
+  function guildRankAtLeast(rank, min) {
+    const a = GUILD_RANK_INFO[rank], b = GUILD_RANK_INFO[min];
+    return !!a && !!b && a.rank <= b.rank;
+  }
+  function guildCan(rank, power) {
+    const r = GUILD_RANK_INFO[rank];
+    return !!r && !!r[power];
+  }
+
+  // Every coin moving through a guild pays the Mayor first, then whatever the
+  // Guild Master has set on top. The Mayor's cut leaves the guild economy; the
+  // Master's cut stays inside it, in the treasury, which is what pays the
+  // interest on member deposits.
+  const GUILD_BANK_MAYOR_TAX = 0.005;      // 0.5% of every guild-bank deposit/withdrawal
+  const GUILD_TREASURY_MAYOR_TAX = 0.025;  // 2.5% on a direct treasury donation
+  const TRANSFER_TAX_RATE = 0.035;         // 3.5% on any player-to-player send
+  const GUILD_DUNGEON_CUT = 0.10;          // 10% of a guild-dungeon payout tithes to the treasury
+  const GUILD_TAX_MAX = 0.10;              // the Master may add up to 10%
+  const GUILD_INTEREST_MAX = 0.01;         // ...and set up to 1% per period
+  const GUILD_INTEREST_PERIOD = 5 * 60000; // same cadence as the town bank
+  const GUILD_INTEREST_MAX_PERIODS = 4032;
+
+  function guildMayorTax(amount) { return Math.floor(Math.max(0, +amount || 0) * GUILD_BANK_MAYOR_TAX); }
+  function guildOwnTax(amount, rate) {
+    const r = Math.max(0, Math.min(GUILD_TAX_MAX, +rate || 0));
+    return Math.floor(Math.max(0, +amount || 0) * r);
+  }
+  function transferTax(amount) { return Math.floor(Math.max(0, +amount || 0) * TRANSFER_TAX_RATE); }
+  function clampGuildTax(r) { return Math.max(0, Math.min(GUILD_TAX_MAX, Math.round((+r || 0) * 10000) / 10000)); }
+  function clampGuildInterest(r) { return Math.max(0, Math.min(GUILD_INTEREST_MAX, Math.round((+r || 0) * 10000) / 10000)); }
+
+  // Guild-bank interest, paid OUT OF THE TREASURY. Unlike the town bank this
+  // can run dry: if the treasury can't cover the full payout the member gets
+  // whatever is left, so a Master who sets a fat rate with an empty vault is
+  // writing cheques the guild can't cash.
+  function guildAccrue(balance, last, rate, now) {
+    balance = Math.max(0, Math.floor(+balance || 0));
+    now = now || Date.now();
+    last = +last || now;
+    const r = clampGuildInterest(rate);
+    if (balance <= 0 || r <= 0 || now <= last) return { balance, last: Math.min(last, now) || now, gained: 0 };
+    const periods = Math.floor((now - last) / GUILD_INTEREST_PERIOD);
+    if (periods <= 0) return { balance, last, gained: 0 };
+    const grown = Math.floor(balance * Math.pow(1 + r, Math.min(periods, GUILD_INTEREST_MAX_PERIODS)) + 1e-6);
+    return { balance: grown, last: last + periods * GUILD_INTEREST_PERIOD, gained: grown - balance };
+  }
+
+  // Guild skill tree: clearing guild dungeons earns the guild skill points, and
+  // the Master spends them on small permanent XP bonuses for ONE mastery track
+  // each. Four ranks per track, +2% XP apiece — 8% at full investment.
+  const GUILD_DUNGEONS_PER_POINT = 5;
+  const GUILD_SKILL_RANKS = 4;
+  const GUILD_SKILL_XP_PER_RANK = 0.02;
+  function guildSkillXpMult(skills, skill) {
+    const n = Math.max(0, Math.min(GUILD_SKILL_RANKS, Math.floor((skills && skills[skill]) || 0)));
+    return 1 + GUILD_SKILL_XP_PER_RANK * n;
+  }
+  function guildPointsEarned(clears) {
+    return Math.floor(Math.max(0, Math.floor(+clears || 0)) / GUILD_DUNGEONS_PER_POINT);
+  }
+
+  // ---------- guild dungeons ----------
+  // Members-only tiers that sit above the public quest board: longer, denser,
+  // and each ends in a sealed boss room. Payouts run through the `earn` op like
+  // the normal quests, so the same cap/cooldown anti-cheat applies.
+  // `mini` names the boss that blocks the halfway floor: a short fight with a
+  // spawn flourish rather than a cutscene, so a long run has a spike in the
+  // middle instead of one wall at the end.
+  const GUILD_DUNGEONS = {
+    guild_crypt: {
+      name: "The Sunken Crypt", tier: "guild_crypt", boss: "warden", mini: "ogrelord",
+      floors: 4, enemyMin: 9, enemyMax: 13, hpMult: 2.4, speedMult: 1.4, reward: 2200,
+      blurb: "Flooded halls under the old chapel. The Warden does not sleep.",
+    },
+    guild_forge: {
+      name: "The Ember Forge", tier: "guild_forge", boss: "smith", mini: "tempest",
+      floors: 5, enemyMin: 11, enemyMax: 15, hpMult: 3.1, speedMult: 1.5, reward: 3900,
+      blurb: "Every anvil still hot. Something down there is still working.",
+    },
+    guild_void: {
+      name: "The Hollow Throne", tier: "guild_void", boss: "tyrant", mini: "ogrelord",
+      floors: 6, enemyMin: 13, enemyMax: 18, hpMult: 4.0, speedMult: 1.62, reward: 7500,
+      blurb: "The last door in the world. It is answered from the other side.",
+    },
+    guild_dragon: {
+      name: "The Ashen Roost", tier: "guild_dragon", boss: "dragon", mini: "tempest",
+      floors: 7, enemyMin: 15, enemyMax: 20, hpMult: 5.2, speedMult: 1.75, reward: 13000,
+      blurb: "Follow the burnt air up. Something up there is still breathing.",
+    },
+  };
+  const GUILD_DUNGEON_ORDER = ["guild_crypt", "guild_forge", "guild_void", "guild_dragon"];
+  // Which floor the mini blocks: the middle of the run, never the first or the
+  // boss floor.
+  function miniFloorOf(cfg) { return Math.max(1, Math.floor(((cfg && cfg.floors) || 4) / 2)); }
+
+  // ---- run pacing / anti-cheat floors ----
+  // A floor cannot be reported cleared faster than this. It is far below what a
+  // real floor takes (a fast player needs ~25-40s) but it makes "start the run,
+  // instantly claim every floor, fight the boss" impossible, which was the one
+  // way a patched client could shortcut a run to the purse.
+  const GUILD_FLOOR_MIN_MS = 12000;
+  // ...and the boss cannot be claimed until the whole run has taken at least
+  // this long, which bounds the same trick from the other end.
+  const GUILD_RUN_MIN_MS = 45000;
+  // A boss fight itself has a floor: the shortest possible kill is
+  // (hp / dps) given HIT_MIN_MS, so anything faster than this is not a fight.
+  const GUILD_BOSS_MIN_FIGHT_MS = 8000;
+
+  // Guild bosses — the tier above the sea beasts. Same shape as BEASTS (parts +
+  // a head, telegraphed attack deck) so the client can reuse the lake fight's
+  // rise cinematic and HP furniture, but tuned much harder and scaled by party
+  // size at GUILD_BOSS_HP_PER_PLAYER per extra fighter.
+  const GUILD_BOSS = {
+    RISE_MS: 9000,
+    HP_PER_PLAYER: 0.75,          // +75% to EVERY part per additional player
+    HEAD_FRAC: 0.42,
+    MAX_LIFE_MS: 12 * 60000,
+    // Attacks land further apart and telegraph for much longer than the first
+    // pass did: the fight should be about reading the wind-up and moving, not
+    // about reacting inside 400ms to something the size of the room.
+    ATTACK_EVERY_MS: 2600, ENRAGE_FRAC: 0.35, ENRAGE_SPEED: 0.72,
+    HIT_DMG: { sword: 55, pistol: 22 },
+    HIT_MIN_MS: { sword: 180, pistol: 250 },
+    REACH: { sword: 130, pistol: 380 },
+    DEAD_LINGER_MS: 12000,
+    // Minis surface mid-run, fight briefly and drop back. No cutscene: they get
+    // a short spawn flourish (see SPAWN_MS) and that's it.
+    MINI_RISE_MS: 2600,
+  };
+  // Every attack now carries a `tell` — the words that appear over the wind-up —
+  // and a `dodge` hint describing the movement that beats it. Both are drawn by
+  // the client, so a player learns the deck by fighting it rather than by dying
+  // to it.
+  const GUILD_BOSSES = {
+    warden: {
+      name: "THE DROWNED WARDEN", parts: 4, partName: "chain", color: "#0e7490", accent: "#67e8f9",
+      baseHp: 9000, reward: 3000, tier: "boss",
+      cry: "THE WATER REMEMBERS EVERY NAME.",
+      title: "WARDEN OF THE SUNKEN CRYPT",
+      attacks: [
+        { type: "slam",   weight: 28, warnMs: 1500, r: 70,  dmg: 26, targets: 2, tell: "CHAIN SLAM",   dodge: "step out of the circles" },
+        { type: "sweep",  weight: 20, warnMs: 1700, band: 40, dmg: 24, durMs: 900, tell: "LOW SWEEP",  dodge: "get off the line" },
+        { type: "spit",   weight: 18, warnMs: 1100, r: 34,  dmg: 18, speed: 4.5, targets: 2, tell: "BRINE SPIT", dodge: "keep moving sideways" },
+        { type: "wave",   weight: 16, warnMs: 1500, r: 420, dmg: 16, durMs: 1600, tell: "TIDE",        dodge: "run to the far wall" },
+        { type: "chain",  weight: 18, warnMs: 1600, len: 320, w: 52, dmg: 24, targets: 1, tell: "CHAIN LASH", dodge: "leave the lane" },
+      ],
+    },
+    smith: {
+      name: "THE EMBER SMITH", parts: 5, partName: "bellows", color: "#b45309", accent: "#fbbf24",
+      baseHp: 15000, reward: 5500, tier: "boss",
+      cry: "STILL WARM. STILL WORKING.",
+      title: "MASTER OF THE EMBER FORGE",
+      attacks: [
+        { type: "slam",     weight: 26, warnMs: 1400, r: 74,  dmg: 30, targets: 2, tell: "HAMMER FALL", dodge: "step out of the circles" },
+        { type: "firewall", weight: 20, warnMs: 1900, band: 46, dmg: 26, durMs: 1700, tell: "FIREWALL", dodge: "cross before it lights" },
+        { type: "spit",     weight: 20, warnMs: 1000, r: 36,  dmg: 22, speed: 5, targets: 3, tell: "SLAG SPRAY", dodge: "keep moving sideways" },
+        { type: "roar",     weight: 14, warnMs: 1500, r: 340, dmg: 20, tell: "FORGE ROAR",   dodge: "back away from the middle" },
+        { type: "sweep",    weight: 20, warnMs: 1600, band: 42, dmg: 24, durMs: 850, tell: "TONG SWEEP", dodge: "get off the line" },
+      ],
+    },
+    tyrant: {
+      name: "THE HOLLOW TYRANT", parts: 6, partName: "sigil", color: "#4c1d95", accent: "#c084fc",
+      baseHp: 26000, reward: 10000, tier: "boss",
+      cry: "YOU KNOCKED. HOW POLITE.",
+      title: "THE THING BEHIND THE LAST DOOR",
+      attacks: [
+        { type: "slam",      weight: 24, warnMs: 1350, r: 78,  dmg: 32, targets: 3, tell: "VOID SLAM", dodge: "step out of the circles" },
+        { type: "rift",      weight: 20, warnMs: 1700, r: 104, dmg: 26, durMs: 2400, targets: 2, tell: "RIFT",  dodge: "do not stand in the tear" },
+        { type: "spit",      weight: 18, warnMs: 950,  r: 38,  dmg: 24, speed: 5.5, targets: 3, tell: "HOLLOW BOLT", dodge: "keep moving sideways" },
+        { type: "sweep",     weight: 16, warnMs: 1600, band: 48, dmg: 28, durMs: 900, tell: "ARM SWEEP", dodge: "get off the line" },
+        { type: "roar",      weight: 12, warnMs: 1400, r: 440, dmg: 22, tell: "SCREAM",     dodge: "back away from the middle" },
+        { type: "whirlpool", weight: 10, warnMs: 1800, pull: 1.5, dmg: 18, durMs: 3000, tell: "COLLAPSE", dodge: "walk against the pull" },
+      ],
+    },
+    // The dragon is the top of the ladder: the longest run, the biggest purse,
+    // and the only fight with a breath attack that sweeps the whole floor.
+    dragon: {
+      name: "VARKAAL, THE ASHEN", parts: 6, partName: "wing-spar", color: "#7f1d1d", accent: "#fb923c",
+      baseHp: 42000, reward: 17000, tier: "boss",
+      cry: "I WAS OLD WHEN YOUR TOWN WAS A FIELD.",
+      title: "THE LAST THING THAT FLIES",
+      attacks: [
+        { type: "breath",    weight: 26, warnMs: 2000, len: 620, w: 150, dmg: 34, durMs: 2000, sweep: 1.25, tell: "FIRE BREATH", dodge: "run around behind the cone" },
+        { type: "slam",      weight: 22, warnMs: 1400, r: 84,  dmg: 34, targets: 3, tell: "TALON SLAM", dodge: "step out of the circles" },
+        { type: "divebomb",  weight: 18, warnMs: 2100, r: 150, dmg: 40, tell: "DIVE",        dodge: "leave the marked ground" },
+        { type: "spit",      weight: 16, warnMs: 900,  r: 40,  dmg: 26, speed: 6, targets: 3, tell: "EMBER SPIT", dodge: "keep moving sideways" },
+        { type: "sweep",     weight: 12, warnMs: 1600, band: 50, dmg: 30, durMs: 900, tell: "TAIL SWEEP", dodge: "get off the line" },
+        { type: "roar",      weight: 10, warnMs: 1500, r: 480, dmg: 24, tell: "ROAR",        dodge: "back away from the middle" },
+      ],
+    },
+    // ---- minis: shorter fights that interrupt a run partway through ----
+    ogrelord: {
+      name: "THE OGRE LORD", parts: 2, partName: "pauldron", color: "#3f6212", accent: "#a3e635",
+      baseHp: 3200, reward: 700, tier: "mini",
+      cry: "SMASH.",
+      attacks: [
+        { type: "slam",  weight: 40, warnMs: 1500, r: 82,  dmg: 22, targets: 2, tell: "CLUB SLAM", dodge: "step out of the circles" },
+        { type: "sweep", weight: 32, warnMs: 1700, band: 44, dmg: 20, durMs: 800, tell: "WIDE SWING", dodge: "get off the line" },
+        { type: "roar",  weight: 28, warnMs: 1400, r: 260, dmg: 14, tell: "BELLOW", dodge: "back away from the middle" },
+      ],
+    },
+    tempest: {
+      name: "THE TEMPEST", parts: 3, partName: "storm-eye", color: "#1e40af", accent: "#7dd3fc",
+      baseHp: 4200, reward: 950, tier: "mini",
+      cry: "...",
+      attacks: [
+        { type: "bolt",      weight: 38, warnMs: 1300, r: 56, dmg: 20, targets: 3, tell: "LIGHTNING", dodge: "leave the marked spots" },
+        { type: "spit",      weight: 26, warnMs: 950,  r: 34, dmg: 16, speed: 6, targets: 3, tell: "HAIL", dodge: "keep moving sideways" },
+        { type: "whirlpool", weight: 20, warnMs: 1700, pull: 1.2, dmg: 14, durMs: 2600, tell: "VORTEX", dodge: "walk against the pull" },
+        { type: "roar",      weight: 16, warnMs: 1400, r: 320, dmg: 16, tell: "THUNDERCLAP", dodge: "back away from the middle" },
+      ],
+    },
+  };
+  const GUILD_BOSS_ORDER = ["warden", "smith", "tyrant", "dragon"];
+  const GUILD_MINIS = ["ogrelord", "tempest"];
+  function isMiniBoss(id) { return !!GUILD_BOSSES[id] && GUILD_BOSSES[id].tier === "mini"; }
+  // Solo-sized HP for a boss, before party scaling.
+  function guildBossMaxHp(bossId, players) {
+    const def = GUILD_BOSSES[bossId] || GUILD_BOSSES.warden;
+    const mult = 1 + GUILD_BOSS.HP_PER_PLAYER * Math.max(0, (players | 0) - 1);
+    return Math.round(def.baseHp * mult);
+  }
+  function guildBossPartPos(i, n, w, h) {
+    // Parts arc across the top half of the boss room; the floor below stays
+    // clear so a party always has somewhere to stand and dodge.
+    n = Math.max(1, n | 0);
+    const cx = (w || 1024) / 2, cy = (h || 640) * 0.47;
+    const spread = Math.min((w || 1024) * 0.38, 84 * n);
+    const a = n === 1 ? 0 : (i - (n - 1) / 2) / ((n - 1) / 2);
+    return { x: cx + a * spread, y: cy + Math.abs(a) * 34 };
+  }
+  function guildBossHeadPos(w, h) { return { x: (w || 1024) / 2, y: (h || 640) * 0.34 }; }
+  function pickGuildBossAttack(bossId, rand) {
+    rand = rand || Math.random;
+    const deck = (GUILD_BOSSES[bossId] || GUILD_BOSSES.warden).attacks;
+    const total = deck.reduce((s, a) => s + a.weight, 0);
+    let x = rand() * total;
+    for (const a of deck) { if ((x -= a.weight) <= 0) return a; }
+    return deck[0];
+  }
+
+  // ---------------------------------------------------------------- GEAR
+  // Dungeon loot. Everything below is pure data + pure rolls so the SERVER is
+  // the only thing that ever decides what dropped (docs/SERVER-AUTHORITY.md);
+  // the client re-uses these tables purely to draw the item it was handed.
+  //
+  // Five slots, one item each. A piece is (base x rarity x roll): the base
+  // decides the slot, the flavour and how its power is split between the three
+  // stats, the rarity multiplies that power, and a +/-15% roll makes two of
+  // the same thing worth comparing.
+  const GEAR_SLOTS = ["weapon", "helmet", "chest", "legs", "ring"];
+  const GEAR_SLOT_INFO = {
+    weapon: { label: "Weapon",     emoji: "⚔️" },
+    helmet: { label: "Helmet",     emoji: "⛑️" },
+    chest:  { label: "Chestplate", emoji: "🧥" },
+    legs:   { label: "Leggings",   emoji: "👖" },
+    ring:   { label: "Ring",       emoji: "💍" },
+  };
+  const GEAR_STATS = ["atk", "def", "vit"];
+  const GEAR_STAT_INFO = {
+    atk: { label: "Attack",   short: "ATK", color: "#f87171" },
+    def: { label: "Defence",  short: "DEF", color: "#60a5fa" },
+    vit: { label: "Vitality", short: "VIT", color: "#4ade80" },
+  };
+
+  const GEAR_RARITIES = ["worn", "fine", "rare", "epic", "legendary", "mythic"];
+  const GEAR_RARITY_INFO = {
+    worn:      { label: "Worn",      color: "#94a3b8", power: 0.62, value: 0.5 },
+    fine:      { label: "Fine",      color: "#22c55e", power: 1.00, value: 1 },
+    rare:      { label: "Rare",      color: "#3b82f6", power: 1.35, value: 2.2 },
+    epic:      { label: "Epic",      color: "#a855f7", power: 1.80, value: 5 },
+    legendary: { label: "Legendary", color: "#fbbf24", power: 2.40, value: 12 },
+    mythic:    { label: "Mythic",    color: "#e879f9", power: 3.15, value: 30 },
+  };
+
+  // Item level 1-7. Level is what the DUNGEON was worth, not what the player
+  // is: a legendary out of the Goblin Caves is still a level-1 legendary, so
+  // the quest board can never out-drop a guild run.
+  const GEAR_MAX_LEVEL = 7;
+  const GEAR_POWER = [0, 9, 15, 24, 38, 56, 78, 104];   // indexed by level
+  const GEAR_BASE_VALUE = [0, 25, 55, 130, 300, 650, 1200, 2000];
+
+  // `split` is how a base spends its power budget across the three stats. The
+  // shares in each base add to 1, so every base of a level is equally strong —
+  // they just wear that strength differently.
+  const GEAR_BASES = [
+    // --- weapons ---
+    { id: "chipped_sword",  slot: "weapon", lvl: 1, name: "Chipped Shortsword", split: { atk: 1.00 } },
+    { id: "iron_cleaver",   slot: "weapon", lvl: 2, name: "Iron Cleaver",       split: { atk: 0.92, vit: 0.08 } },
+    { id: "hunters_edge",   slot: "weapon", lvl: 3, name: "Hunter's Edge",      split: { atk: 0.88, def: 0.12 } },
+    { id: "crypt_fang",     slot: "weapon", lvl: 4, name: "Crypt Fang",         split: { atk: 0.90, vit: 0.10 } },
+    { id: "emberbrand",     slot: "weapon", lvl: 5, name: "Emberbrand",         split: { atk: 0.95, def: 0.05 } },
+    { id: "hollow_glaive",  slot: "weapon", lvl: 6, name: "Hollow Glaive",      split: { atk: 0.86, def: 0.14 } },
+    { id: "ashen_maw",      slot: "weapon", lvl: 7, name: "Ashen Maw",          split: { atk: 1.00 } },
+    // --- helmets ---
+    { id: "leather_cap",    slot: "helmet", lvl: 1, name: "Leather Cap",         split: { def: 0.80, vit: 0.20 } },
+    { id: "iron_helm",      slot: "helmet", lvl: 2, name: "Iron Helm",           split: { def: 0.78, vit: 0.22 } },
+    { id: "warden_visor",   slot: "helmet", lvl: 3, name: "Warden's Visor",      split: { def: 0.72, vit: 0.20, atk: 0.08 } },
+    { id: "drowned_crown",  slot: "helmet", lvl: 4, name: "Drowned Crown",       split: { def: 0.70, vit: 0.30 } },
+    { id: "forge_mask",     slot: "helmet", lvl: 5, name: "Forgemaster's Mask",  split: { def: 0.66, vit: 0.20, atk: 0.14 } },
+    { id: "hollow_diadem",  slot: "helmet", lvl: 6, name: "Hollow Diadem",       split: { def: 0.62, vit: 0.24, atk: 0.14 } },
+    { id: "roost_helm",     slot: "helmet", lvl: 7, name: "Roostwarden Helm",    split: { def: 0.66, vit: 0.22, atk: 0.12 } },
+    // --- chestplates ---
+    { id: "padded_vest",    slot: "chest",  lvl: 1, name: "Padded Vest",         split: { def: 0.85, vit: 0.15 } },
+    { id: "iron_chestplate",slot: "chest",  lvl: 2, name: "Iron Chestplate",     split: { def: 0.82, vit: 0.18 } },
+    { id: "bandit_mail",    slot: "chest",  lvl: 3, name: "Bandit Mail",         split: { def: 0.76, vit: 0.16, atk: 0.08 } },
+    { id: "crypt_plate",    slot: "chest",  lvl: 4, name: "Crypt Plate",         split: { def: 0.80, vit: 0.20 } },
+    { id: "ember_cuirass",  slot: "chest",  lvl: 5, name: "Ember Cuirass",       split: { def: 0.72, vit: 0.18, atk: 0.10 } },
+    { id: "void_carapace",  slot: "chest",  lvl: 6, name: "Void Carapace",       split: { def: 0.74, vit: 0.26 } },
+    { id: "dragonscale",    slot: "chest",  lvl: 7, name: "Dragonscale Plate",   split: { def: 0.70, vit: 0.20, atk: 0.10 } },
+    // --- leggings ---
+    { id: "cloth_leggings", slot: "legs",   lvl: 1, name: "Cloth Leggings",      split: { def: 0.75, vit: 0.25 } },
+    { id: "iron_greaves",   slot: "legs",   lvl: 2, name: "Iron Greaves",        split: { def: 0.80, vit: 0.20 } },
+    { id: "stalker_legs",   slot: "legs",   lvl: 3, name: "Stalker's Legguards", split: { def: 0.66, vit: 0.20, atk: 0.14 } },
+    { id: "tidewalkers",    slot: "legs",   lvl: 4, name: "Tidewalker Greaves",  split: { def: 0.72, vit: 0.28 } },
+    { id: "slag_greaves",   slot: "legs",   lvl: 5, name: "Slagforged Greaves",  split: { def: 0.78, vit: 0.22 } },
+    { id: "throne_legs",    slot: "legs",   lvl: 6, name: "Throneguard Legs",    split: { def: 0.68, vit: 0.20, atk: 0.12 } },
+    { id: "ashen_greaves",  slot: "legs",   lvl: 7, name: "Ashen Greaves",       split: { def: 0.70, vit: 0.22, atk: 0.08 } },
+    // --- rings ---
+    { id: "tin_band",       slot: "ring",   lvl: 1, name: "Tin Band",            split: { atk: 0.40, def: 0.30, vit: 0.30 } },
+    { id: "signet",         slot: "ring",   lvl: 2, name: "Bandit Signet",       split: { atk: 0.55, def: 0.20, vit: 0.25 } },
+    { id: "bloodstone",     slot: "ring",   lvl: 3, name: "Bloodstone Ring",     split: { atk: 0.60, vit: 0.40 } },
+    { id: "drowned_seal",   slot: "ring",   lvl: 4, name: "Drowned Seal",        split: { def: 0.45, vit: 0.55 } },
+    { id: "forge_ring",     slot: "ring",   lvl: 5, name: "Forgefire Ring",      split: { atk: 0.65, def: 0.35 } },
+    { id: "void_loop",      slot: "ring",   lvl: 6, name: "Void Loop",           split: { atk: 0.50, def: 0.25, vit: 0.25 } },
+    { id: "dragon_sigil",   slot: "ring",   lvl: 7, name: "Dragon Sigil",        split: { atk: 0.60, def: 0.15, vit: 0.25 } },
+  ];
+  const GEAR_BASE_BY_ID = {};
+  for (const b of GEAR_BASES) GEAR_BASE_BY_ID[b.id] = b;
+
+  // Flavour only — an affix never changes a stat, so two players comparing
+  // numbers never have to read the name.
+  const GEAR_AFFIXES = [
+    "of the Warden", "of the Ember", "of the Hollow", "of Ash", "of the Drowned",
+    "of the Long Night", "of the First Floor", "of the Tithe", "of the Broker",
+  ];
+
+  // What each dungeon drops. `chance` is the roll for a piece at all, `bonus` a
+  // second independent roll (guild runs can hand out two), and `weights` the
+  // rarity table. Normal quests genuinely cannot roll the top rarities — that
+  // is the whole reason to want a guild.
+  const GEAR_SOURCES = {
+    easy:         { lvl: 1, chance: 0.30, bonus: 0,    weights: { worn: 62, fine: 30, rare: 7,  epic: 1,  legendary: 0,   mythic: 0 } },
+    medium:       { lvl: 2, chance: 0.36, bonus: 0,    weights: { worn: 44, fine: 38, rare: 15, epic: 3,  legendary: 0,   mythic: 0 } },
+    hard:         { lvl: 3, chance: 0.44, bonus: 0.08, weights: { worn: 24, fine: 40, rare: 26, epic: 9,  legendary: 1,   mythic: 0 } },
+    guild_crypt:  { lvl: 4, chance: 0.72, bonus: 0.20, weights: { worn: 4,  fine: 28, rare: 39, epic: 22, legendary: 6.5, mythic: 0.5 } },
+    guild_forge:  { lvl: 5, chance: 0.80, bonus: 0.30, weights: { worn: 0,  fine: 18, rare: 36, epic: 30, legendary: 14,  mythic: 2 } },
+    guild_void:   { lvl: 6, chance: 0.88, bonus: 0.42, weights: { worn: 0,  fine: 8,  rare: 28, epic: 36, legendary: 23,  mythic: 5 } },
+    guild_dragon: { lvl: 7, chance: 1.00, bonus: 0.55, weights: { worn: 0,  fine: 0,  rare: 18, epic: 34, legendary: 34,  mythic: 14 } },
+  };
+  function gearSourceFor(tier) {
+    return GEAR_SOURCES[String(tier || "").replace(/^quest_/, "")] || null;
+  }
+
+  function rollGearRarity(weights, rand) {
+    rand = rand || Math.random;
+    let total = 0;
+    for (const r of GEAR_RARITIES) total += Math.max(0, (weights && weights[r]) || 0);
+    if (total <= 0) return "worn";
+    let x = rand() * total;
+    for (const r of GEAR_RARITIES) { if ((x -= Math.max(0, weights[r] || 0)) <= 0) return r; }
+    return "fine";
+  }
+
+  // One finished item. `roll` (0.85..1.15) is stored so the same piece always
+  // re-derives the same numbers, and so a player can see they got a good one.
+  function makeGear(baseId, rarity, rand, id) {
+    rand = rand || Math.random;
+    const base = GEAR_BASE_BY_ID[baseId] || GEAR_BASES[0];
+    const rar = GEAR_RARITY_INFO[rarity] ? rarity : "fine";
+    const roll = 0.85 + rand() * 0.30;
+    const budget = GEAR_POWER[base.lvl] * GEAR_RARITY_INFO[rar].power * roll;
+    const stats = {};
+    for (const s of GEAR_STATS) {
+      const share = base.split[s] || 0;
+      if (share > 0) stats[s] = Math.max(1, Math.round(budget * share));
+    }
+    const affix = (rar === "epic" || rar === "legendary" || rar === "mythic")
+      ? GEAR_AFFIXES[Math.floor(rand() * GEAR_AFFIXES.length)] : "";
+    return {
+      id: id || ("g" + Math.floor(rand() * 0xffffffff).toString(36) + Date.now().toString(36)),
+      base: base.id, slot: base.slot, lvl: base.lvl, rarity: rar,
+      roll: Math.round(roll * 1000) / 1000, stats, affix,
+    };
+  }
+
+  // The whole drop decision for one cleared dungeon: 0, 1 or 2 pieces.
+  function rollGearDrops(tier, rand) {
+    rand = rand || Math.random;
+    const src = gearSourceFor(tier);
+    if (!src) return [];
+    const pool = GEAR_BASES.filter(b => b.lvl === src.lvl);
+    if (!pool.length) return [];
+    const out = [];
+    const pull = () => {
+      const base = pool[Math.floor(rand() * pool.length)];
+      out.push(makeGear(base.id, rollGearRarity(src.weights, rand), rand));
+    };
+    if (rand() < src.chance) pull();
+    if (src.bonus > 0 && rand() < src.bonus) pull();
+    return out;
+  }
+
+  function gearName(item) {
+    if (!item) return "";
+    const base = GEAR_BASE_BY_ID[item.base];
+    return (base ? base.name : "Unknown Relic") + (item.affix ? " " + item.affix : "");
+  }
+  function gearPower(item) {
+    if (!item || !item.stats) return 0;
+    return GEAR_STATS.reduce((s, k) => s + (+item.stats[k] || 0), 0);
+  }
+  // Resale. The Adventurers Guild buys anything back at this, no haggling.
+  function gearSellValue(item) {
+    if (!item) return 0;
+    const lvl = Math.max(1, Math.min(GEAR_MAX_LEVEL, item.lvl | 0));
+    const rar = GEAR_RARITY_INFO[item.rarity] || GEAR_RARITY_INFO.fine;
+    return Math.max(10, Math.floor(GEAR_BASE_VALUE[lvl] * rar.value * (+item.roll || 1)));
+  }
+
+  // Totals for a set of equipped pieces, and what those totals actually do.
+  function gearTotals(items) {
+    const out = { atk: 0, def: 0, vit: 0 };
+    for (const it of (items || [])) {
+      if (!it || !it.stats) continue;
+      for (const s of GEAR_STATS) out[s] += Math.max(0, +it.stats[s] || 0);
+    }
+    return out;
+  }
+  const GEAR_DEF_SOFTCAP = 220;      // def at which mitigation is half its ceiling
+  const GEAR_MITIGATION_MAX = 0.62;  // ...and the ceiling itself
+  function gearAttackMult(atk) { return 1 + Math.max(0, +atk || 0) / 100; }
+  function gearMitigation(def) {
+    const d = Math.max(0, +def || 0);
+    return GEAR_MITIGATION_MAX * (d / (d + GEAR_DEF_SOFTCAP));
+  }
+  const GEAR_BASE_HP = 100;
+  function gearMaxHp(vit) { return GEAR_BASE_HP + Math.max(0, Math.floor(+vit || 0)); }
+  // A pack this size is generous but finite, so "sell the junk" stays something
+  // players actually do rather than a button nobody presses.
+  const GEAR_PACK_MAX = 60;
+
   return {
     COSMETICS, COSMETIC_DEFAULTS,
     PAINT_PRICE, PAINT_WALLS, PAINT_ROOFS,
@@ -737,7 +1282,27 @@
     rarityWeights, rollRarity, rollFishOfRarity, rollFish, krakenChance, BEAST_KINDS, rollBeastKind,
     LUCK_MAX_LEVEL, luckEffects, luckDurationMs, activeLuck, luckAfterEating, luckQueueSort, LUCK_QUEUE_MAX,
     FARM_PLOTS, CROPS, CROP_BY_ID, cropYield, SEED_SHOP_PERIOD, seedShopBucket, seedShopStock, seedShopRestockIn,
-    COOK_MAX_ING, MEAL_ADJ, ingredientInfo, luckLevelForPts, cookMeal,
+    COOK_MAX_ING, MEAL_ADJ, ingredientInfo, luckLevelForPts, cookMeal, rollMealLuck,
     KRAKEN, BEASTS, krakenHeadPos, krakenPartPos, beastPartPos, krakenMaxHp, pickAttack,
+    MASTERY_SKILLS, MASTERY_INFO, MASTERY_MAX_LEVEL, MASTERY_XP,
+    masteryXpForNext, masteryLevel, masteryT,
+    masteryFishBonus, masteryCookBias, masteryFarmBonus, masteryCombatMult,
+    GUILD_CREATE_COST, GUILD_NAME_MIN, GUILD_NAME_MAX, GUILD_TAG_MAX, GUILD_MAX_MEMBERS,
+    GUILD_RANKS, GUILD_RANK_INFO, guildRankAtLeast, guildCan,
+    GUILD_BANK_MAYOR_TAX, GUILD_TREASURY_MAYOR_TAX, TRANSFER_TAX_RATE, GUILD_DUNGEON_CUT,
+    GUILD_TAX_MAX, GUILD_INTEREST_MAX, GUILD_INTEREST_PERIOD, GUILD_INTEREST_MAX_PERIODS,
+    guildMayorTax, guildOwnTax, transferTax, clampGuildTax, clampGuildInterest, guildAccrue,
+    GUILD_DUNGEONS_PER_POINT, GUILD_SKILL_RANKS, GUILD_SKILL_XP_PER_RANK, guildSkillXpMult, guildPointsEarned,
+    GUILD_DUNGEONS, GUILD_DUNGEON_ORDER, GUILD_BOSS, GUILD_BOSSES,
+    GUILD_BOSS_ORDER, GUILD_MINIS, isMiniBoss, miniFloorOf,
+    GUILD_FLOOR_MIN_MS, GUILD_RUN_MIN_MS, GUILD_BOSS_MIN_FIGHT_MS,
+    guildBossMaxHp, guildBossPartPos, guildBossHeadPos, pickGuildBossAttack,
+    GEAR_SLOTS, GEAR_SLOT_INFO, GEAR_STATS, GEAR_STAT_INFO,
+    GEAR_RARITIES, GEAR_RARITY_INFO, GEAR_MAX_LEVEL, GEAR_POWER, GEAR_BASE_VALUE,
+    GEAR_BASES, GEAR_BASE_BY_ID, GEAR_AFFIXES, GEAR_SOURCES, GEAR_PACK_MAX,
+    gearSourceFor, rollGearRarity, makeGear, rollGearDrops,
+    gearName, gearPower, gearSellValue, gearTotals,
+    GEAR_DEF_SOFTCAP, GEAR_MITIGATION_MAX, GEAR_BASE_HP,
+    gearAttackMult, gearMitigation, gearMaxHp,
   };
 });

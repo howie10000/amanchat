@@ -1109,3 +1109,126 @@ h3.section { margin: 14px 0 8px; font-size: 14px; color: #fbbf24; letter-spacing
    become scrollable area for Tab's scroll-into-view to slide the app around —
    visually it clips nothing, because the stage is scaled to fit. */
 .screen { overflow: hidden; overscroll-behavior: none; }
+
+/* ---------------- GUILDS & MASTERY ---------------- */
+/* The broker's dialogue: set apart from the panel copy so it reads as someone
+   talking to you rather than as instructions. */
+.brokerLine {
+  border-left: 3px solid #d4a017;
+  background: #120d08;
+  padding: 10px 12px; margin: 4px 0 12px;
+  border-radius: 0 8px 8px 0;
+}
+.brokerSay { margin: 0; color: #fde68a; font-style: italic; }
+
+/* Labelled input rows used by the guild bank, treasury and Master's settings. */
+.formRow { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+.formRow label { color: #8aa0bf; font-size: 12px; min-width: 150px; }
+.menuInput {
+  flex: 1; background: #0a0e15; border: 1px solid #2a3344; color: #e8eef7;
+  padding: 8px 10px; border-radius: 6px; font-size: 13px; font-family: inherit;
+}
+.menuInput:focus { outline: none; border-color: #3b82f6; }
+
+/* Four-up stat strip at the top of the hall / bank / treasury panels. */
+.statRow { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+.statBox {
+  flex: 1; min-width: 92px; background: #0a0e15; border: 1px solid #2a3344;
+  border-radius: 8px; padding: 8px 10px; text-align: center;
+}
+.statBox small { display: block; color: #8aa0bf; font-size: 10px; letter-spacing: .5px; }
+.statBox b { color: #fbbf24; font-size: 15px; }
+
+.guildHead { padding: 4px 0 8px; border-bottom: 1px solid #2a3344; }
+.guildHead b { color: #fbbf24; font-size: 17px; }
+.guildMotd { color: #8aa0bf; font-style: italic; font-size: 12px; margin-top: 4px; }
+
+/* Guild skill investment pips — filled ranks are gold, the rest are empty. */
+.pips { margin-left: 6px; }
+.pip {
+  display: inline-block; width: 9px; height: 9px; margin-right: 3px;
+  border-radius: 2px; background: #2a3344; border: 1px solid #3b4457;
+}
+.pip.on { background: linear-gradient(180deg, #fbbf24, #d97706); border-color: #d97706; }
+
+.checkRow {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; margin: 4px 0; cursor: pointer;
+  background: #0a0e15; border: 1px solid #2a3344; border-radius: 8px;
+  color: #e8eef7; font-size: 13px;
+}
+.checkRow:hover { border-color: #3b82f6; }
+
+/* Mastery track: a headline, then the XP bar underneath it. */
+.masteryRow {
+  padding: 10px 12px; margin: 6px 0;
+  background: #0a0e15; border: 1px solid #2a3344; border-radius: 10px;
+}
+.masteryRow .info b { color: #e8eef7; }
+.masteryRow .info small { color: #8aa0bf; font-size: 12px; }
+.xpBar { height: 7px; background: #05070b; border-radius: 4px; overflow: hidden; margin: 7px 0 4px; }
+.xpFill { height: 100%; background: linear-gradient(90deg, #3b82f6, #22d3ee); }
+.guildBonus {
+  font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px;
+  background: linear-gradient(90deg, #fbbf24, #f97316); color: #1a1a1a; margin-left: 6px;
+}
+
+/* ---------- LOGIN: the GUILDS & DUNGEONS title plate ---------- */
+/* The title sits in the same centred stack as the login box, so it is always
+   directly above it no matter how the backdrop canvas is cover-scaled. */
+.loginStack {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column; align-items: center; gap: 18px;
+}
+.gdTitle { text-align: center; user-select: none; }
+.gdRule { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 6px; }
+.gdRule span {
+  display: block; width: 120px; height: 2px;
+  background: linear-gradient(90deg, transparent, #6b21a8, transparent);
+}
+.gdRule i { font-style: normal; font-size: 18px; color: #a855f7; text-shadow: 0 0 12px rgba(168,85,247,.8); }
+.gdMain {
+  display: flex; align-items: baseline; justify-content: center; gap: 16px; flex-wrap: wrap;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(34px, 7vw, 74px); font-weight: 900; letter-spacing: 2px; line-height: 1;
+}
+.gdMain b { display: block; }
+/* Gold on the guild half, violet on the dungeon half, each with a hard drop
+   shadow so they read against the busy scene behind them. */
+.gd1 {
+  background: linear-gradient(180deg, #fde68a, #f59e0b 55%, #b45309);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 4px 0 #7c2d12) drop-shadow(0 6px 14px rgba(0,0,0,.75));
+}
+.gdAmp {
+  background: linear-gradient(180deg, #f8fafc, #cbd5e1 60%, #64748b);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  font-size: .72em;
+  filter: drop-shadow(0 3px 0 #334155) drop-shadow(0 5px 12px rgba(0,0,0,.7));
+}
+.gd2 {
+  background: linear-gradient(180deg, #d8b4fe, #9333ea 55%, #581c87);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 4px 0 #3b0764) drop-shadow(0 6px 14px rgba(0,0,0,.75));
+}
+.loginBox h1 { font-size: 26px; letter-spacing: 6px; }
+
+/* ---------- THE ARMOURY (dungeon gear) ---------- */
+/* Same skeleton as .shopItem, plus a rarity stripe down the left edge so a
+   pack of thirty pieces can be skimmed by colour alone. */
+.gearItem {
+  display: flex; align-items: center; gap: 10px;
+  background: #16202e; border: 1px solid #24344a; border-radius: 8px;
+  padding: 9px 11px; margin: 6px 0;
+}
+.gearItem .info { flex: 1; line-height: 1.5; }
+.gearItem .info b { color: #e8eef7; }
+.gearItem .info small { font-size: 12px; }
+.gearItem.gearEmpty { opacity: .55; border-style: dashed; }
+.gearTag {
+  display: inline-block; margin: 0 6px; padding: 0 6px;
+  border: 1px solid currentColor; border-radius: 999px;
+  font-size: 10px; letter-spacing: .6px; text-transform: uppercase; vertical-align: 1px;
+}
+.gearFilters { flex-wrap: wrap; margin: 8px 0; }
+.gearFilters .menuBtn { padding: 5px 10px; }

@@ -498,10 +498,13 @@ const hashPool = (() => {
     const inflight = new Map();   // id -> { resolve, reject, worker }
     let nextId = 1;
     let broken = false;
+    let consecutiveFailures = 0;
+    const MAX_CONSECUTIVE_FAILURES = 10;   // give up respawning rather than crash-loop forever
 
     function spawn() {
         const w = new Worker(path.join(__dirname, 'hash-worker.js'));
         w.on('message', (m) => {
+            consecutiveFailures = 0;
             const job = inflight.get(m.id);
             inflight.delete(m.id);
             release(w);
@@ -513,6 +516,12 @@ const hashPool = (() => {
             for (const [id, job] of inflight) if (job.worker === w) { inflight.delete(id); job.reject(err); }
             const i = idle.indexOf(w); if (i >= 0) idle.splice(i, 1);
             try { w.terminate(); } catch (e) {}
+            consecutiveFailures++;
+            if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+                console.error(`[hash] worker pool giving up after ${consecutiveFailures} consecutive failures, falling back to sync bcrypt`);
+                broken = true;
+                return;
+            }
             try { idle.push(spawn()); } catch (e) { broken = true; }
         });
         w.unref();   // never hold the process open
@@ -778,7 +787,7 @@ setInterval(syncRoster, 2000);
 const PROTECTED_FIELDS = new Set(['money', 'inventory', 'cosmetics', 'vegasFloor', 'dailyStreak', 'lastDaily',
     'lastInterest', 'fishInventory', 'houseStyle', 'furniture', 'houseIndex', 'createdAt',
     'bankBalance', 'bankLast', 'creditScore', 'creditGainLast', 'loan', 'notes',
-    'farm', 'meals', 'luck']);
+    'farm', 'meals', 'luck', 'gear', 'equipped']);
 // The only fields of a user record another (non-staff) player is allowed to
 // SEE. Everything else — friends, keys, furniture, inventory, notes, all the
 // bank/loan/credit numbers — is private and never leaves the server for anyone
@@ -840,6 +849,7 @@ function newUserRecord() {
         appearance: Object.assign({}, DEFAULT_APPEARANCE),
         seenTutorial: false,
         fishInventory: {},
+        gear: {}, equipped: {},
         bankBalance: 0, bankLast: Date.now(),
         creditScore: ECON.CREDIT_START, creditGainLast: 0, loan: null,
         createdAt: Date.now(),
@@ -889,6 +899,19 @@ function canWrite(user, pathStr, op) {
     }
     if (top === 'banned_ips') return role === 'owner';
     if (top === 'meta') return false;             // server-written only (IPs)
+    // ----- guilds -----
+    // A guild record holds real player money: the shared treasury and every
+    // member's savings. Those two subtrees are written by the `guild` op and by
+    // nothing else, not even an owner — the same rule mayor/treasury follows.
+    // Replacing a whole guild record is refused outright (it would smuggle both
+    // past the field check); an owner may still fix a name or a motd in place.
+    if (top === 'guilds') {
+        if (parts.length < 3) return false;
+        if (parts[2] === 'treasury' || parts[2] === 'bank' || parts[2] === 'members') return false;
+        return role === 'owner';
+    }
+    // Invitations are issued and cleared by the guild op only.
+    if (top === 'guild_invites') return false;
     if (top === 'mayor') {
         if (parts[1] === 'treasury') return false;   // server-written only — owners draw via the treasury op, never a raw write
         return role === 'owner';                      // legacy single announcement
@@ -1493,7 +1516,7 @@ function handleMessage(c, msg) {
 
         // ----- server-authoritative economy ops (docs/SERVER-AUTHORITY.md) -----
         case 'bank': case 'buy': case 'furniture_set': case 'earn': case 'fish': case 'casino': case 'home': case 'treasury':
-        case 'farm': case 'cook': case 'kraken': {
+        case 'farm': case 'cook': case 'kraken': case 'guild': case 'mastery': case 'guild_dungeon': case 'gear': {
             if (!c.user) return replyErr('not authed');
             let out;
             try { out = ECONOMY_OPS[op](c.user, msg); }
@@ -1531,9 +1554,9 @@ function luckOf(user, u, now) {
     if (changed) { u.luck = l; store.put(`users/${user}/luck`, l); }
     return l;
 }
-// Single-roll games a lucky loss may be re-rolled on (multi-step games keep
-// state across calls, so they only get the win bonus).
-const LUCK_REROLL_GAMES = new Set(['slots', 'jackpot', 'coinflip', 'scratch', 'roulette', 'dice', 'keno', 'baccarat', 'plinko', 'horses', 'wheel']);
+// Single-roll games luck's extra win chance can apply to (multi-step games keep
+// state across calls, so they only get the payout bonus).
+const LUCK_WIN_GAMES = new Set(['slots', 'jackpot', 'coinflip', 'scratch', 'roulette', 'dice', 'keno', 'baccarat', 'plinko', 'horses', 'wheel']);
 // Minimum ms between round STARTS per game (roughly what the client animation
 // takes), so a console script can't spin a machine hundreds of times a minute.
 const casinoLast = new Map();   // user:game -> last accepted ts
@@ -1883,6 +1906,347 @@ function creditEarnings(user, u, gross, reason) {
     return net;
 }
 
+// ---------------------------------------------------------------- MASTERY
+// Per-skill XP tracks on users/<u>/mastery. Every grant runs through here so
+// the guild's XP skill ranks are applied in exactly one place, and so a level
+// -up always reaches the player as an event rather than being noticed later.
+function masteryRec(u) {
+    const m = (u.mastery && typeof u.mastery === 'object') ? u.mastery : {};
+    for (const s of ECON.MASTERY_SKILLS) {
+        if (typeof m[s] !== 'number' || !Number.isFinite(m[s]) || m[s] < 0) m[s] = Math.max(0, Math.floor(+m[s] || 0));
+    }
+    u.mastery = m;
+    return m;
+}
+function masteryLevelOf(u, skill) {
+    return ECON.masteryLevel(masteryRec(u)[skill] || 0).level;
+}
+function masteryView(u) {
+    const m = masteryRec(u);
+    const out = {};
+    for (const s of ECON.MASTERY_SKILLS) out[s] = ECON.masteryLevel(m[s] || 0);
+    return out;
+}
+// Award XP into one track. `mult` folds in the guild's skill-rank bonus.
+function grantMastery(user, u, skill, amount) {
+    if (!ECON.MASTERY_SKILLS.includes(skill)) return 0;
+    amount = Math.floor(+amount || 0);
+    if (amount <= 0) return 0;
+    const g = guildOf(user);
+    const mult = g ? ECON.guildSkillXpMult(g.skills, skill) : 1;
+    const gained = Math.max(1, Math.floor(amount * mult));
+    const m = masteryRec(u);
+    const before = ECON.masteryLevel(m[skill] || 0).level;
+    m[skill] = (m[skill] || 0) + gained;
+    store.put(`users/${user}/mastery`, m);
+    const after = ECON.masteryLevel(m[skill]).level;
+    if (after > before) {
+        pushTo(user, { event: 'mastery_level', skill, level: after, from: before, xp: m[skill] });
+        console.log(`[mastery] ${user} ${skill} -> ${after}`);
+    }
+    return gained;
+}
+
+// ---------------------------------------------------------------- GUILDS
+// A guild is one record at guilds/<gid>; users/<u>/guild points back at it, and
+// pending invitations live at guild_invites/<user>/<gid>. Membership is stored
+// on the guild (not scattered across users) so a rank change is a single write
+// and can never half-apply.
+function guildIdOf(user) {
+    const g = store.get('users/' + user + '/guild');
+    return g ? String(g) : null;
+}
+function guildRec(gid) {
+    if (!gid) return null;
+    const g = store.get('guilds/' + gid);
+    if (!g || typeof g !== 'object') return null;
+    if (!g.members || typeof g.members !== 'object') g.members = {};
+    if (!g.bank || typeof g.bank !== 'object') g.bank = {};
+    if (!g.skills || typeof g.skills !== 'object') g.skills = {};
+    for (const s of ECON.MASTERY_SKILLS) g.skills[s] = Math.max(0, Math.min(ECON.GUILD_SKILL_RANKS, Math.floor(+g.skills[s] || 0)));
+    g.treasury = Math.max(0, Math.floor(+g.treasury || 0));
+    g.clears = Math.max(0, Math.floor(+g.clears || 0));
+    g.skillPoints = Math.max(0, Math.floor(+g.skillPoints || 0));
+    g.taxRate = ECON.clampGuildTax(g.taxRate);
+    g.interestRate = ECON.clampGuildInterest(g.interestRate);
+    return g;
+}
+function guildOf(user) { return guildRec(guildIdOf(user)); }
+function saveGuild(g) { store.put('guilds/' + g.id, g); }
+function guildRankOf(g, user) {
+    const m = g && g.members && g.members[user];
+    return m ? String(m.rank || 'member') : null;
+}
+function guildRequire(user) {
+    const gid = guildIdOf(user);
+    const g = guildRec(gid);
+    if (!g || !g.members[user]) throw new Error('You are not in a guild.');
+    return g;
+}
+function guildRequirePower(user, power) {
+    const g = guildRequire(user);
+    if (!ECON.guildCan(guildRankOf(g, user), power)) throw new Error('Your rank does not allow that.');
+    return g;
+}
+// Notify every online member (a rank change, a payout, someone joining).
+function guildBroadcast(g, msg) {
+    for (const u of Object.keys(g.members || {})) pushTo(u, Object.assign({ event: 'guild', guild: g.id }, msg));
+}
+// Pay a member's guild-bank interest out of the treasury, lazily. The treasury
+// is the hard ceiling: a Master can promise 1% but only what's actually banked
+// gets paid, so the rate is a claim on real money, not an invention of it.
+function guildBankSync(g, user, now) {
+    now = now || Date.now();
+    const acct = g.bank[user] || (g.bank[user] = { balance: 0, last: now });
+    acct.balance = Math.max(0, Math.floor(+acct.balance || 0));
+    acct.last = +acct.last || now;
+    const acc = ECON.guildAccrue(acct.balance, acct.last, g.interestRate, now);
+    let paid = 0;
+    if (acc.gained > 0) {
+        paid = Math.min(acc.gained, g.treasury);
+        g.treasury -= paid;
+        acct.balance = acct.balance + paid;
+    }
+    acct.last = acc.last;
+    return { paid, owedButUnfunded: Math.max(0, acc.gained - paid) };
+}
+function guildBankTotal(g) {
+    let t = 0;
+    for (const a of Object.values(g.bank || {})) t += Math.max(0, Math.floor(+a.balance || 0));
+    return t;
+}
+function guildView(g, user, now) {
+    now = now || Date.now();
+    const members = Object.entries(g.members).map(([u, m]) => ({
+        user: u, rank: m.rank || 'member', joinedAt: +m.joinedAt || 0,
+        contributed: Math.max(0, Math.floor(+m.contributed || 0)),
+        banked: Math.max(0, Math.floor(+((g.bank[u] || {}).balance) || 0)),
+        online: byUser.has(u),
+    })).sort((a, b) => (ECON.GUILD_RANK_INFO[a.rank].rank - ECON.GUILD_RANK_INFO[b.rank].rank) || a.user.localeCompare(b.user));
+    const mine = g.bank[user] || { balance: 0, last: now };
+    return {
+        id: g.id, name: g.name, tag: g.tag, master: g.master, createdAt: g.createdAt, motd: g.motd || '',
+        treasury: g.treasury, taxRate: g.taxRate, interestRate: g.interestRate,
+        clears: g.clears, skillPoints: g.skillPoints, skills: g.skills,
+        members, memberCount: members.length, maxMembers: ECON.GUILD_MAX_MEMBERS,
+        myRank: guildRankOf(g, user),
+        myBank: Math.max(0, Math.floor(+mine.balance || 0)),
+        bankTotal: guildBankTotal(g),
+        rates: {
+            mayorBank: ECON.GUILD_BANK_MAYOR_TAX, mayorTreasury: ECON.GUILD_TREASURY_MAYOR_TAX,
+            transfer: ECON.TRANSFER_TAX_RATE, dungeonCut: ECON.GUILD_DUNGEON_CUT,
+            taxMax: ECON.GUILD_TAX_MAX, interestMax: ECON.GUILD_INTEREST_MAX,
+            interestPeriod: ECON.GUILD_INTEREST_PERIOD,
+        },
+    };
+}
+function guildInvitesOf(user) {
+    const inv = store.get('guild_invites/' + user);
+    return (inv && typeof inv === 'object') ? inv : {};
+}
+
+
+// --------------------------------------------------------------- GEAR (loot)
+// Armour, weapons and rings dropped by dungeons. The server is the only thing
+// that ever rolls a piece or decides what it is worth — the client is handed a
+// finished item and only ever asks to equip, unequip or sell one by id.
+function gearPackOf(u) {
+    if (!u.gear || typeof u.gear !== 'object' || Array.isArray(u.gear)) u.gear = {};
+    return u.gear;
+}
+function equippedOf(u) {
+    if (!u.equipped || typeof u.equipped !== 'object' || Array.isArray(u.equipped)) u.equipped = {};
+    return u.equipped;
+}
+// The pieces actually worn, in slot order, skipping any slot whose id has gone
+// stale (sold from under it by an older build, or a hand-edited record).
+function equippedItems(u) {
+    const pack = gearPackOf(u), eq = equippedOf(u), out = [];
+    for (const slot of ECON.GEAR_SLOTS) {
+        const it = eq[slot] && pack[eq[slot]];
+        if (it && it.slot === slot) out.push(it);
+    }
+    return out;
+}
+function gearStatsOf(u) { return ECON.gearTotals(equippedItems(u)); }
+function saveGear(user, u) {
+    store.put(`users/${user}/gear`, gearPackOf(u));
+    store.put(`users/${user}/equipped`, equippedOf(u));
+}
+function gearView(u) {
+    const pack = gearPackOf(u), eq = equippedOf(u), totals = gearStatsOf(u);
+    return {
+        gear: pack, equipped: eq, totals,
+        packMax: ECON.GEAR_PACK_MAX, packUsed: Object.keys(pack).length,
+        attackMult: ECON.gearAttackMult(totals.atk),
+        mitigation: ECON.gearMitigation(totals.def),
+        maxHp: ECON.gearMaxHp(totals.vit),
+    };
+}
+// Roll a cleared dungeon's loot into a player's pack. A full pack drops
+// nothing rather than silently eating the piece, and says so.
+function grantGear(user, u, tier) {
+    const pack = gearPackOf(u);
+    const drops = ECON.rollGearDrops(tier);
+    const kept = [];
+    let full = false;
+    for (const it of drops) {
+        if (Object.keys(pack).length >= ECON.GEAR_PACK_MAX) { full = true; break; }
+        while (pack[it.id]) it.id = it.id + 'x';   // ids collide only if two land in the same ms
+        pack[it.id] = it;
+        kept.push(it);
+    }
+    if (kept.length) saveGear(user, u);
+    if (kept.length) console.log(`[gear] ${user} looted ${kept.map(i => ECON.gearName(i) + ' (' + i.rarity + ')').join(', ')} from ${tier}`);
+    return { loot: kept, packFull: full };
+}
+
+// ------------------------------------------------------- GUILD DUNGEON RUNS
+// One in-memory run per party. The maze itself stays client-side (same as the
+// public quests), but the BOSS is server-authoritative — every hit is checked
+// here, so the fight at the end of a 6-floor run can't be skipped by a console.
+const guildRuns = new Map();          // runId -> run
+const guildRunOf = new Map();         // user -> runId
+function runFor(user) {
+    const id = guildRunOf.get(user);
+    return id ? guildRuns.get(id) || null : null;
+}
+function guildBossView(run, now) {
+    const b = run && run.boss;
+    if (!b) return null;
+    now = now || Date.now();
+    const def = ECON.GUILD_BOSSES[b.id];
+    const mini = def.tier === 'mini';
+    const hp = b.head.hp + b.parts.reduce((s, p) => s + p.hp, 0);
+    return {
+        id: b.id, name: def.name, cry: def.cry, color: def.color, accent: def.accent,
+        title: def.title || '', tier: def.tier, mini,
+        partName: def.partName, status: b.status, hpMult: b.hpMult,
+        elapsed: now - b.spawnedAt, riseMs: mini ? ECON.GUILD_BOSS.MINI_RISE_MS : ECON.GUILD_BOSS.RISE_MS,
+        leavesIn: Math.max(0, ECON.GUILD_BOSS.MAX_LIFE_MS - (now - b.spawnedAt)),
+        enraged: hp / b.maxHp < ECON.GUILD_BOSS.ENRAGE_FRAC,
+        hp, maxHp: b.maxHp, head: b.head, parts: b.parts,
+        top: Object.entries(b.damage).sort((a, c) => c[1] - a[1]).slice(0, 5).map(([u, d]) => ({ user: u, dmg: d })),
+        participants: Object.keys(b.damage).length,
+    };
+}
+function runBroadcast(run, kind, extra) {
+    const msg = Object.assign({ event: 'guild_boss', kind, runId: run.id, now: Date.now(), boss: guildBossView(run) }, extra || {});
+    for (const u of run.members) pushTo(u, msg);
+}
+// Raise either the run's final boss or the mini that blocks its middle floor.
+// Both use the same structure so the fight code, the scaling and the hit
+// validation have exactly one implementation.
+function spawnGuildBoss(run, bossId) {
+    const def = ECON.GUILD_BOSSES[bossId];
+    if (!def) return;
+    const mini = def.tier === 'mini';
+    const now = Date.now();
+    // Solo-sized at spawn; rescaleGuildBoss grows it as fighters land hits.
+    const maxHp = ECON.guildBossMaxHp(bossId, 1);
+    const headHp = Math.floor(maxHp * ECON.GUILD_BOSS.HEAD_FRAC);
+    const partHp = Math.floor((maxHp - headHp) / def.parts);
+    const riseMs = mini ? ECON.GUILD_BOSS.MINI_RISE_MS : ECON.GUILD_BOSS.RISE_MS;
+    run.boss = {
+        id: bossId, mini, status: 'rising', spawnedAt: now, diedAt: 0,
+        baseHead: headHp, basePart: partHp, hpMult: 1,
+        maxHp: headHp + partHp * def.parts,
+        head: { hp: headHp, maxHp: headHp },
+        parts: Array.from({ length: def.parts }, () => ({ hp: partHp, maxHp: partHp })),
+        damage: {}, hitLast: new Map(),
+        nextAttackAt: now + riseMs + 1200, lastBroadcast: 0, lastAttack: null,
+    };
+    console.log(`[guild-boss] ${def.name} awoke for run ${run.id} (${run.members.size} in the party)`);
+    runBroadcast(run, 'spawn');
+}
+// Same "keep the fraction, grow the bar" rule the sea beasts use, so a bar
+// never jumps when a latecomer lands their first hit — it just drains slower.
+function rescaleGuildBoss(run) {
+    const b = run.boss;
+    const n = Object.keys(b.damage).length;
+    const mult = 1 + ECON.GUILD_BOSS.HP_PER_PLAYER * Math.max(0, n - 1);
+    if (mult === b.hpMult) return;
+    b.hpMult = mult;
+    const scale = (p, base) => {
+        const frac = p.maxHp > 0 ? p.hp / p.maxHp : 0;
+        p.maxHp = Math.round(base * mult);
+        p.hp = p.hp > 0 ? Math.max(1, Math.round(frac * p.maxHp)) : 0;
+    };
+    scale(b.head, b.baseHead);
+    for (const p of b.parts) scale(p, b.basePart);
+    b.maxHp = b.head.maxHp + b.parts.reduce((s, p) => s + p.maxHp, 0);
+}
+function rollGuildBossAttack(run) {
+    const b = run.boss;
+    let a = ECON.pickGuildBossAttack(b.id);
+    if (a === b.lastAttack && Math.random() < 0.6) a = ECON.pickGuildBossAttack(b.id);
+    b.lastAttack = a;
+    // Positions are picked by each client against its own boss-room geometry;
+    // the server only decides WHICH attack and its shape/timing, so the fight
+    // stays in sync without the server tracking in-dungeon coordinates.
+    return {
+        type: a.type, warnMs: a.warnMs, dmg: a.dmg, durMs: a.durMs || 0,
+        r: a.r || 0, band: a.band || 0, len: a.len || 0, w: a.w || 0,
+        speed: a.speed || 0, pull: a.pull || 0, targets: a.targets || 1,
+        seed: (Math.random() * 0x7fffffff) | 0,
+    };
+}
+function endGuildRun(run, reason) {
+    if (!run) return;
+    for (const u of run.members) if (guildRunOf.get(u) === run.id) guildRunOf.delete(u);
+    guildRuns.delete(run.id);
+    if (reason) runBroadcast(run, 'ended', { reason });
+}
+function guildBossTick() {
+    const now = Date.now();
+    for (const run of [...guildRuns.values()]) {
+        const b = run.boss;
+        // A run nobody has touched in 30 minutes is abandoned (disconnects,
+        // closed tabs) — drop it rather than leak the entry forever.
+        if (!b && now - run.startedAt > 30 * 60000) { endGuildRun(run, 'expired'); continue; }
+        if (!b) continue;
+        if (b.status !== 'dead' && now - b.spawnedAt > ECON.GUILD_BOSS.MAX_LIFE_MS) {
+            if (b.mini) {
+                // A mini that outlasts the party just withdraws — it costs them
+                // its bounty, not the whole run.
+                run.boss = null;
+                run.miniDone = true;
+                runBroadcast(run, 'mini_fled');
+            } else {
+                runBroadcast(run, 'timeout');
+                endGuildRun(run);
+            }
+            continue;
+        }
+        if (b.status === 'rising' && now - b.spawnedAt >= (b.mini ? ECON.GUILD_BOSS.MINI_RISE_MS : ECON.GUILD_BOSS.RISE_MS)) {
+            b.status = 'alive';
+            runBroadcast(run, 'alive');
+            continue;
+        }
+        if (b.status === 'alive') {
+            if (now >= b.nextAttackAt) {
+                const hp = b.head.hp + b.parts.reduce((s, p) => s + p.hp, 0);
+                const speed = hp / b.maxHp < ECON.GUILD_BOSS.ENRAGE_FRAC ? ECON.GUILD_BOSS.ENRAGE_SPEED : 1;
+                const attack = rollGuildBossAttack(run);
+                b.nextAttackAt = now + Math.floor((ECON.GUILD_BOSS.ATTACK_EVERY_MS + Math.random() * 800 + (attack.durMs || 0) * 0.5) * speed);
+                runBroadcast(run, 'attack', { attack });
+            } else if (now - b.lastBroadcast > 1000) {
+                b.lastBroadcast = now;
+                runBroadcast(run, 'tick');
+            }
+            continue;
+        }
+        // A dead FINAL boss ends the run once the corpse has been on screen
+        // long enough to claim. A dead mini just stops being an obstacle — the
+        // party still has floors to walk.
+        if (b.status === 'dead' && now - b.diedAt > ECON.GUILD_BOSS.DEAD_LINGER_MS) {
+            if (b.mini) { run.boss = null; run.miniDone = true; runBroadcast(run, 'mini_cleared'); }
+            else endGuildRun(run);
+        }
+    }
+}
+setInterval(guildBossTick, 250);
+
 const ECONOMY_OPS = {
     bank(user, msg) {
         const u = userRec(user), now = Date.now();
@@ -1961,14 +2325,20 @@ const ECONOMY_OPS = {
             if (rec.loan && rec.loan.owed > 0) throw new Error(to + ' has an outstanding loan and cannot receive money.');
             if (moneyOf(u) < amt) throw new Error('Not enough cash on hand.');
 
+            // The sender pays the full amount; the Mayor takes 3.5% in transit
+            // and the recipient banks the rest. Taxing the send (rather than
+            // the receipt) means the cost is visible at the moment you choose it.
+            const tax = ECON.transferTax(amt);
+            const delivered = amt - tax;
             setMoney(user, u, moneyOf(u) - amt);
-            const theirNew = setMoney(to, rec, moneyOf(rec) + amt);
+            const theirNew = setMoney(to, rec, moneyOf(rec) + delivered);
+            addTreasury(tax);
             transferLast.set(user, now);
-            console.log(`[transfer] ${user} -> ${to}: $${amt}`);
+            console.log(`[transfer] ${user} -> ${to}: $${amt} (tax $${tax}, delivered $${delivered})`);
             // Live HUD update + a note for whoever is on the other end.
-            pushTo(to, { event: 'money', money: theirNew, reason: 'transfer', from: user, amount: amt });
-            store.push('inbox/' + to, { kind: 'cash', from: user, amount: amt, ts: now });
-            return Object.assign(view(), { sent: amt, to });
+            pushTo(to, { event: 'money', money: theirNew, reason: 'transfer', from: user, amount: delivered });
+            store.push('inbox/' + to, { kind: 'cash', from: user, amount: delivered, ts: now });
+            return Object.assign(view(), { sent: amt, delivered, tax, taxRate: ECON.TRANSFER_TAX_RATE, to });
         }
 
         if (msg.action === 'loan_take') {
@@ -2179,7 +2549,11 @@ const ECONOMY_OPS = {
         const gained = Math.min(asked, cap);
         earnLast.set(k, now);
         const net = creditEarnings(user, u, gained, source);
-        return { money: moneyOf(u), gained, net, cap, loan: u.loan || null };
+        // A cleared quest can also drop a piece of gear. The board's dungeons
+        // roll from the bottom of the table — the good stuff is behind a guild.
+        const drop = ECON.gearSourceFor(source) ? grantGear(user, u, source) : null;
+        return Object.assign({ money: moneyOf(u), gained, net, cap, loan: u.loan || null },
+            drop ? { loot: drop.loot, packFull: drop.packFull, gear: gearPackOf(u) } : {});
     },
 
     // Fishing is a two-step op so the CLIENT never picks the catch:
@@ -2215,7 +2589,7 @@ const ECONOMY_OPS = {
                     if (!fish || fish.loot) throw new Error('No such fish.');
                 }
             } else {
-                fish = ECON.rollFish(L);
+                fish = ECON.rollFish(L, null, masteryLevelOf(u, 'fishing'));
                 if (!krakenBlocked() && Math.random() < ECON.krakenChance(fish.rarity)) beast = ECON.rollBeastKind();
             }
             // `seed` drives the reel's zone trajectory. The client renders the
@@ -2255,9 +2629,10 @@ const ECONOMY_OPS = {
             const fish = cast.fish;
             inv[fish.name] = (inv[fish.name] || 0) + 1;
             u.fishInventory = inv; store.put(`users/${user}/fishInventory`, inv);
+            const xp = grantMastery(user, u, 'fishing', ECON.MASTERY_XP.fish_landed[fish.rarity] || 4);
             let spawned = null;
             if (cast.beast && !krakenBlocked()) { spawnKraken(user, cast.beast); spawned = cast.beast; }
-            return { money: moneyOf(u), fishInventory: inv, fish, rarity: fish.rarity, kraken: !!spawned, beast: spawned, luck: L, nextCastIn };
+            return { money: moneyOf(u), fishInventory: inv, fish, rarity: fish.rarity, kraken: !!spawned, beast: spawned, luck: L, nextCastIn, masteryXp: xp, mastery: masteryView(u) };
         }
         if (msg.action === 'sell') {
             const fish = ECON.fishDef(msg.name);
@@ -2281,7 +2656,7 @@ const ECONOMY_OPS = {
             fishLast.set(user, now);
             const q = Math.max(0, Math.min(1, Number(msg.quality) || 0));
             if (ECON.fishQualityLabel(q) === 'poor' && Math.random() < 0.5) return { money: moneyOf(u), fishInventory: inv, fish: null, quality: 'poor' };
-            const fish = ECON.rollFish(L);
+            const fish = ECON.rollFish(L, null, masteryLevelOf(u, 'fishing'));
             inv[fish.name] = (inv[fish.name] || 0) + 1;
             u.fishInventory = inv; store.put(`users/${user}/fishInventory`, inv);
             return { money: moneyOf(u), fishInventory: inv, fish, quality: ECON.fishQualityLabel(q) };
@@ -2338,14 +2713,18 @@ const ECONOMY_OPS = {
                 const crop = p && ECON.CROP_BY_ID[p.crop];
                 if (!crop) { delete farm.plots[k]; continue; }
                 if (now - (+p.at || 0) < crop.growMs) continue;
-                const n = ECON.cropYield(crop);
+                // Base yield plus the farmer's own bonus roll from mastery.
+                let n = ECON.cropYield(crop);
+                if (Math.random() < ECON.masteryFarmBonus(masteryLevelOf(u, 'farming'))) n += 1;
                 farm.harvest[crop.id] = (farm.harvest[crop.id] || 0) + n;
                 got.push({ crop: crop.id, n });
                 delete farm.plots[k];
             }
             if (!got.length) throw new Error(which != null ? 'That crop is still growing.' : 'Nothing is ready to harvest yet.');
             save();
-            return view({ harvested: got });
+            const units = got.reduce((s2, g) => s2 + g.n, 0);
+            const xp = grantMastery(user, u, 'farming', ECON.MASTERY_XP.crop_harvest * units);
+            return view({ harvested: got, masteryXp: xp, mastery: masteryView(u) });
         }
         if (action === 'clear') {
             const plot = nonNegInt(msg.plot);
@@ -2400,30 +2779,39 @@ const ECONOMY_OPS = {
                 else { farm.harvest[id] -= n; if (farm.harvest[id] <= 0) delete farm.harvest[id]; }
             }
             const cur = meals[meal.key] || { name: meal.name, emoji: meal.emoji, luck: meal.luck, n: 0 };
+            // Older saves stored only a flat `luck`; carry the range onto them
+            // the first time they're re-cooked so both shapes keep working.
+            cur.luckMin = meal.luckMin; cur.luckMax = meal.luckMax;
             cur.n += 1;
             meals[meal.key] = cur;
             u.fishInventory = inv; store.put(`users/${user}/fishInventory`, inv);
             u.farm = farm; store.put(`users/${user}/farm`, farm);
             u.meals = meals; store.put(`users/${user}/meals`, meals);
-            return view({ cooked: meal });
+            const xp = grantMastery(user, u, 'cooking', ECON.MASTERY_XP.cook_meal * meal.luck);
+            return view({ cooked: meal, masteryXp: xp, mastery: masteryView(u) });
         }
         if (action === 'eat') {
             const key = String(msg.meal || '');
             const m = meals[key];
             if (!m || !(m.n > 0)) throw new Error('You have no such meal.');
             const cur = luckOf(user, u, now);
+            // The meal is worth a RANGE; the level you actually get is rolled
+            // here, skewed toward the top of that range by cooking mastery.
+            const lo = m.luckMin != null ? m.luckMin : m.luck;
+            const hi = m.luckMax != null ? m.luckMax : m.luck;
+            const rolled = ECON.rollMealLuck(lo, hi, masteryLevelOf(u, 'cooking'));
             // Shared rules (js/shared/economy.js): a weaker meal QUEUES behind the
             // running buff instead of extending it. Topping a Luck 6 up with cheap
             // Luck 1 food used to add half the weak meal to the strong timer, so
             // the best buff in the game could be held forever for a few minnows.
-            const res = ECON.luckAfterEating(cur, m.luck, m.name, m.emoji, now);
+            const res = ECON.luckAfterEating(cur, rolled, m.name, m.emoji, now);
             if (res.error) throw new Error(res.error);      // nothing consumed
             const luck = res.luck;
             m.n -= 1;
             if (m.n <= 0) delete meals[key];
             u.meals = meals; store.put(`users/${user}/meals`, meals);
             u.luck = luck; store.put(`users/${user}/luck`, luck);
-            return view({ ate: m.name, luck, queued: !!res.queued });
+            return view({ ate: m.name, luck, queued: !!res.queued, rolled, rolledFrom: { min: lo, max: hi } });
         }
         throw new Error('Unknown cook action.');
     },
@@ -2487,16 +2875,23 @@ const ECONOMY_OPS = {
         casinoLast.set(k, now);   // only an accepted action counts toward the gap
         // Luck (from a cooked meal): a lost single-roll round may be re-rolled
         // once, and every win pays a bonus on top. Multi-step games only get the bonus.
-        let luckReroll = false, luckBonus = 0;
-        if (eff && r.delta < 0 && LUCK_REROLL_GAMES.has(game) && Math.random() < eff.rerollChance) {
-            const r2 = GAMES.play(user, game, action, msg, moneyOf(u));
-            if (r2.delta > r.delta) { r = r2; luckReroll = true; }
+        // Luck's casino effect is an extra chance to win outright. When a
+        // single-roll round loses, `winChance` decides whether it should have
+        // won; if it hits, the round is re-run until it does. The player only
+        // ever sees the outcome that counts, so the effective win rate is
+        // p + (1 - p) * winChance with no visible result ever changing.
+        let luckWin = false, luckBonus = 0;
+        if (eff && r.delta < 0 && LUCK_WIN_GAMES.has(game) && Math.random() < eff.winChance) {
+            for (let attempt = 0; attempt < 24; attempt++) {
+                const r2 = GAMES.play(user, game, action, msg, moneyOf(u));
+                if (r2.delta > 0) { r = r2; luckWin = true; break; }
+            }
         }
         if (eff && r.delta > 0) luckBonus = Math.floor(Math.max(0, r.delta - stake) * eff.casinoBonus);
         // A win is earnings (skimmed while a loan is overdue); a loss is a loss.
         if (r.delta > 0) creditEarnings(user, u, r.delta + luckBonus, 'casino');
         else if (r.delta < 0) setMoney(user, u, moneyOf(u) + r.delta);
-        return Object.assign({}, r.data, { money: moneyOf(u), loan: u.loan || null, luckBonus, luckReroll, luck: luck || null });
+        return Object.assign({}, r.data, { money: moneyOf(u), loan: u.loan || null, luckBonus, luckWin, luck: luck || null });
     },
 
     // Server-checked house entry. A locked door only opens for the owner, staff,
@@ -2528,6 +2923,558 @@ const ECONOMY_OPS = {
             houseStyle: rec.houseStyle || {},
             furniture: Array.isArray(fr) ? fr : (fr && typeof fr === 'object' ? Object.values(fr) : []),
         };
+    },
+
+    // Your own mastery tracks. Read-only: XP is granted by the activities
+    // themselves so the client can never award it.
+    mastery(user, msg) {
+        const u = userRec(user);
+        const g = guildOf(user);
+        const mult = {};
+        for (const s of ECON.MASTERY_SKILLS) mult[s] = g ? ECON.guildSkillXpMult(g.skills, s) : 1;
+        return { mastery: masteryView(u), xpMult: mult, guild: g ? { id: g.id, name: g.name, tag: g.tag, skills: g.skills } : null };
+    },
+
+    // Guilds: creation, membership, ranks, the guild bank and the treasury.
+    // Every money path here is server-side, so a tampered client can't mint a
+    // guild, promote itself, or draw from a vault its rank can't touch.
+    guild(user, msg) {
+        const u = userRec(user), now = Date.now();
+        const action = String(msg.action || 'status');
+
+        if (action === 'status') {
+            const g = guildOf(user);
+            if (!g) return { guild: null, invites: guildInvitesOf(user), createCost: ECON.GUILD_CREATE_COST, money: moneyOf(u) };
+            const sync = guildBankSync(g, user, now);
+            saveGuild(g);
+            return { guild: guildView(g, user, now), invites: guildInvitesOf(user), money: moneyOf(u), interestPaid: sync.paid, interestUnfunded: sync.owedButUnfunded };
+        }
+
+        if (action === 'create') {
+            if (guildIdOf(user)) throw new Error('Leave your current guild first.');
+            const name = String(msg.name || '').trim().replace(/\s+/g, ' ');
+            const tag = String(msg.tag || '').trim().toUpperCase();
+            if (name.length < ECON.GUILD_NAME_MIN || name.length > ECON.GUILD_NAME_MAX) throw new Error(`Guild names are ${ECON.GUILD_NAME_MIN}-${ECON.GUILD_NAME_MAX} characters.`);
+            if (!/^[A-Za-z0-9 '\-]+$/.test(name)) throw new Error('Guild names use letters, numbers, spaces, apostrophes and dashes.');
+            if (!tag || tag.length > ECON.GUILD_TAG_MAX || !/^[A-Z0-9]+$/.test(tag)) throw new Error(`Tags are 1-${ECON.GUILD_TAG_MAX} letters or numbers.`);
+            const all = store.get('guilds') || {};
+            for (const other of Object.values(all)) {
+                if (!other || typeof other !== 'object') continue;
+                if (String(other.name || '').toLowerCase() === name.toLowerCase()) throw new Error('A guild already carries that name.');
+                if (String(other.tag || '').toUpperCase() === tag) throw new Error('A guild already carries that tag.');
+            }
+            if (moneyOf(u) < ECON.GUILD_CREATE_COST) throw new Error(`Founding a guild costs $${ECON.GUILD_CREATE_COST.toLocaleString()}.`);
+            setMoney(user, u, moneyOf(u) - ECON.GUILD_CREATE_COST);
+            // The founding fee is not burned — it goes to the Mayor, like every
+            // other charter in town.
+            addTreasury(ECON.GUILD_CREATE_COST);
+            const gid = pushId();
+            const g = {
+                id: gid, name, tag, master: user, createdAt: now, motd: '',
+                members: { [user]: { rank: 'master', joinedAt: now, contributed: 0 } },
+                bank: { [user]: { balance: 0, last: now } },
+                treasury: 0, taxRate: 0, interestRate: 0,
+                clears: 0, skillPoints: 0,
+                skills: ECON.MASTERY_SKILLS.reduce((o, s) => (o[s] = 0, o), {}),
+            };
+            saveGuild(g);
+            store.put(`users/${user}/guild`, gid);
+            console.log(`[guild] ${user} founded "${name}" [${tag}]`);
+            return { guild: guildView(g, user, now), money: moneyOf(u), created: true };
+        }
+
+        if (action === 'invite') {
+            const g = guildRequirePower(user, 'canInvite');
+            const to = String(msg.user || '').trim().toLowerCase();
+            if (!to) throw new Error('Who are you inviting?');
+            if (g.members[to]) throw new Error('They are already in your guild.');
+            if (Object.keys(g.members).length >= ECON.GUILD_MAX_MEMBERS) throw new Error(`A guild holds at most ${ECON.GUILD_MAX_MEMBERS} members.`);
+            if (!store.get('users/' + to)) throw new Error('No player by that name.');
+            if (guildIdOf(to)) throw new Error('They already belong to a guild.');
+            const inv = guildInvitesOf(to);
+            inv[g.id] = { by: user, at: now, name: g.name, tag: g.tag };
+            store.put('guild_invites/' + to, inv);
+            pushTo(to, { event: 'guild_invite', guild: g.id, name: g.name, tag: g.tag, by: user });
+            return { invited: to, guild: guildView(g, user, now) };
+        }
+
+        if (action === 'invites') return { invites: guildInvitesOf(user) };
+
+        if (action === 'accept') {
+            if (guildIdOf(user)) throw new Error('Leave your current guild first.');
+            const gid = String(msg.guild || '');
+            const inv = guildInvitesOf(user);
+            if (!inv[gid]) throw new Error('That invitation is no longer open.');
+            const g = guildRec(gid);
+            if (!g) { delete inv[gid]; store.put('guild_invites/' + user, inv); throw new Error('That guild no longer exists.'); }
+            if (Object.keys(g.members).length >= ECON.GUILD_MAX_MEMBERS) throw new Error('That guild is full.');
+            g.members[user] = { rank: 'member', joinedAt: now, contributed: 0 };
+            g.bank[user] = { balance: 0, last: now };
+            saveGuild(g);
+            store.put(`users/${user}/guild`, gid);
+            store.delete('guild_invites/' + user);   // joining clears every other offer
+            guildBroadcast(g, { kind: 'joined', user });
+            console.log(`[guild] ${user} joined "${g.name}"`);
+            return { guild: guildView(g, user, now), joined: true };
+        }
+
+        if (action === 'decline') {
+            const gid = String(msg.guild || '');
+            const inv = guildInvitesOf(user);
+            if (!inv[gid]) throw new Error('No such invitation.');
+            delete inv[gid];
+            store.put('guild_invites/' + user, inv);
+            return { invites: inv };
+        }
+
+        if (action === 'leave') {
+            const g = guildRequire(user);
+            if (g.master === user) throw new Error('A Guild Master must hand the guild to someone else before leaving.');
+            // Anything the member had banked is returned in full — the guild
+            // never keeps a leaver's deposits.
+            guildBankSync(g, user, now);
+            const back = Math.max(0, Math.floor(+((g.bank[user] || {}).balance) || 0));
+            if (back > 0) setMoney(user, u, moneyOf(u) + back);
+            delete g.members[user];
+            delete g.bank[user];
+            saveGuild(g);
+            store.delete(`users/${user}/guild`);
+            guildBroadcast(g, { kind: 'left', user });
+            return { left: true, refunded: back, money: moneyOf(u) };
+        }
+
+        if (action === 'kick') {
+            const g = guildRequirePower(user, 'canKick');
+            const who = String(msg.user || '').trim().toLowerCase();
+            if (!g.members[who]) throw new Error('They are not in your guild.');
+            if (who === g.master) throw new Error('The Guild Master cannot be removed.');
+            // An officer can't remove a peer; only the Master outranks one.
+            if (who !== user && !ECON.guildRankAtLeast(guildRankOf(g, user), guildRankOf(g, who)) ) throw new Error('You cannot remove someone of your own rank or above.');
+            if (guildRankOf(g, who) === 'officer' && guildRankOf(g, user) !== 'master') throw new Error('Only the Guild Master can remove an officer.');
+            guildBankSync(g, who, now);
+            const back = Math.max(0, Math.floor(+((g.bank[who] || {}).balance) || 0));
+            if (back > 0) { const r = userRec(who); setMoney(who, r, moneyOf(r) + back); }
+            delete g.members[who];
+            delete g.bank[who];
+            saveGuild(g);
+            store.delete(`users/${who}/guild`);
+            pushTo(who, { event: 'guild', kind: 'kicked', guild: g.id, name: g.name, by: user, refunded: back });
+            guildBroadcast(g, { kind: 'kicked_member', user: who, by: user });
+            return { kicked: who, guild: guildView(g, user, now) };
+        }
+
+        if (action === 'set_rank') {
+            const g = guildRequire(user);
+            if (guildRankOf(g, user) !== 'master') throw new Error('Only the Guild Master can change ranks.');
+            const who = String(msg.user || '').trim().toLowerCase();
+            const rank = String(msg.rank || '');
+            if (!g.members[who]) throw new Error('They are not in your guild.');
+            if (who === user) throw new Error('You already hold the guild.');
+            if (rank === 'master') {
+                // Handing over the guild: the old Master steps down to officer
+                // in the same write, so there is never a guild with two masters.
+                g.members[who].rank = 'master';
+                g.members[user].rank = 'officer';
+                g.master = who;
+            } else {
+                if (!['officer', 'member'].includes(rank)) throw new Error('Unknown rank.');
+                g.members[who].rank = rank;
+            }
+            saveGuild(g);
+            guildBroadcast(g, { kind: 'rank', user: who, rank: g.members[who].rank, by: user });
+            return { guild: guildView(g, user, now) };
+        }
+
+        if (action === 'set_rates') {
+            const g = guildRequirePower(user, 'canSetRates');
+            if (msg.taxRate != null) g.taxRate = ECON.clampGuildTax(msg.taxRate);
+            if (msg.interestRate != null) g.interestRate = ECON.clampGuildInterest(msg.interestRate);
+            if (msg.motd != null) g.motd = String(msg.motd).slice(0, 200);
+            saveGuild(g);
+            guildBroadcast(g, { kind: 'rates', taxRate: g.taxRate, interestRate: g.interestRate });
+            return { guild: guildView(g, user, now) };
+        }
+
+        // ---- guild bank: a member's own savings, held by the guild ----
+        // A deposit pays the Mayor 0.5% and then the Master's own tax on top;
+        // the Master's cut lands in the treasury, which is what funds interest.
+        if (action === 'bank_deposit') {
+            const g = guildRequire(user);
+            const amt = nonNegInt(msg.amount);
+            if (!amt || amt <= 0) throw new Error('Enter an amount to deposit.');
+            if (moneyOf(u) < amt) throw new Error('Not enough cash on hand.');
+            guildBankSync(g, user, now);
+            const mayor = ECON.guildMayorTax(amt);
+            const guildCut = ECON.guildOwnTax(amt, g.taxRate);
+            const credited = amt - mayor - guildCut;
+            setMoney(user, u, moneyOf(u) - amt);
+            addTreasury(mayor);
+            g.treasury += guildCut;
+            const acct = g.bank[user] || (g.bank[user] = { balance: 0, last: now });
+            acct.balance = Math.max(0, Math.floor(+acct.balance || 0)) + credited;
+            acct.last = +acct.last || now;
+            g.members[user].contributed = Math.max(0, Math.floor(+g.members[user].contributed || 0)) + guildCut;
+            saveGuild(g);
+            return Object.assign(guildView(g, user, now), { money: moneyOf(u), deposited: credited, mayorTax: mayor, guildTax: guildCut });
+        }
+
+        if (action === 'bank_withdraw') {
+            const g = guildRequire(user);
+            guildBankSync(g, user, now);
+            const acct = g.bank[user] || (g.bank[user] = { balance: 0, last: now });
+            const have = Math.max(0, Math.floor(+acct.balance || 0));
+            let amt = msg.amount === 'all' ? have : nonNegInt(msg.amount);
+            if (!amt || amt <= 0) throw new Error('Enter an amount to withdraw.');
+            if (have < amt) throw new Error('Your guild account does not hold that much.');
+            const mayor = ECON.guildMayorTax(amt);
+            const guildCut = ECON.guildOwnTax(amt, g.taxRate);
+            acct.balance = have - amt;
+            addTreasury(mayor);
+            g.treasury += guildCut;
+            setMoney(user, u, moneyOf(u) + (amt - mayor - guildCut));
+            saveGuild(g);
+            return Object.assign(guildView(g, user, now), { money: moneyOf(u), withdrew: amt - mayor - guildCut, mayorTax: mayor, guildTax: guildCut });
+        }
+
+        // ---- treasury: the guild's shared pot ----
+        // Anyone may donate (the Mayor takes 2.5%); only Master and officers
+        // may draw from it.
+        if (action === 'treasury_deposit') {
+            const g = guildRequire(user);
+            const amt = nonNegInt(msg.amount);
+            if (!amt || amt <= 0) throw new Error('Enter an amount to donate.');
+            if (moneyOf(u) < amt) throw new Error('Not enough cash on hand.');
+            const mayor = Math.floor(amt * ECON.GUILD_TREASURY_MAYOR_TAX);
+            setMoney(user, u, moneyOf(u) - amt);
+            addTreasury(mayor);
+            g.treasury += (amt - mayor);
+            g.members[user].contributed = Math.max(0, Math.floor(+g.members[user].contributed || 0)) + (amt - mayor);
+            saveGuild(g);
+            guildBroadcast(g, { kind: 'treasury', by: user, amount: amt - mayor, treasury: g.treasury });
+            return Object.assign(guildView(g, user, now), { money: moneyOf(u), donated: amt - mayor, mayorTax: mayor });
+        }
+
+        if (action === 'treasury_withdraw') {
+            const g = guildRequirePower(user, 'canWithdraw');
+            let amt = msg.amount === 'all' ? g.treasury : nonNegInt(msg.amount);
+            if (!amt || amt <= 0) throw new Error('Enter an amount to withdraw.');
+            if (g.treasury < amt) throw new Error('The treasury does not hold that much.');
+            g.treasury -= amt;
+            setMoney(user, u, moneyOf(u) + amt);
+            saveGuild(g);
+            guildBroadcast(g, { kind: 'treasury', by: user, amount: -amt, treasury: g.treasury });
+            return Object.assign(guildView(g, user, now), { money: moneyOf(u), withdrew: amt });
+        }
+
+        if (action === 'spend_skill') {
+            const g = guildRequirePower(user, 'canSpendSkills');
+            const skill = String(msg.skill || '');
+            if (!ECON.MASTERY_SKILLS.includes(skill)) throw new Error('No such mastery.');
+            if (g.skillPoints <= 0) throw new Error('No guild skill points to spend — clear more guild dungeons.');
+            if (g.skills[skill] >= ECON.GUILD_SKILL_RANKS) throw new Error('That track is already fully invested.');
+            g.skills[skill] += 1;
+            g.skillPoints -= 1;
+            saveGuild(g);
+            guildBroadcast(g, { kind: 'skill', skill, rank: g.skills[skill] });
+            return Object.assign(guildView(g, user, now), { skill, rank: g.skills[skill] });
+        }
+
+        if (action === 'browse') {
+            // Public directory, so a guildless player can see who to ask.
+            const all = store.get('guilds') || {};
+            const list = Object.values(all).filter(x => x && typeof x === 'object').map(x => ({
+                id: x.id, name: x.name, tag: x.tag, master: x.master,
+                members: Object.keys(x.members || {}).length, maxMembers: ECON.GUILD_MAX_MEMBERS,
+                clears: Math.max(0, Math.floor(+x.clears || 0)), motd: x.motd || '',
+            })).sort((a, b) => b.clears - a.clears || b.members - a.members);
+            return { guilds: list };
+        }
+
+        throw new Error('Unknown guild action.');
+    },
+
+    // Guild dungeons. The maze itself is drawn client-side (same as the public
+    // quests), but everything that pays out is settled here: which floor you
+    // are on, whether that floor was held for a humanly possible length of
+    // time, when a boss may be raised, every point of damage dealt to it, and
+    // the purse at the door. A patched client can redraw the maze; it cannot
+    // skip a floor, raise the boss early, or claim a run it did not fight.
+    // Your pack and what you are wearing. Nothing here rolls an item — loot
+    // only ever comes out of a cleared dungeon (`earn`, `guild_dungeon`).
+    //
+    // A piece travels as `piece`/`pieces`, never `id`: `id` is the RPC
+    // envelope's own request-id field and would be eaten in transit.
+    gear(user, msg) {
+        const u = userRec(user);
+        const action = String(msg.action || 'status');
+        const pack = gearPackOf(u), eq = equippedOf(u);
+
+        if (action === 'status') return gearView(u);
+
+        if (action === 'equip') {
+            const id = String(msg.piece || '');
+            const it = pack[id];
+            if (!it) throw new Error("That piece isn't in your pack.");
+            if (!ECON.GEAR_SLOTS.includes(it.slot)) throw new Error('That piece has no slot.');
+            const wasWearing = eq[it.slot] || null;
+            eq[it.slot] = id;
+            saveGear(user, u);
+            return Object.assign(gearView(u), { equippedId: id, replaced: wasWearing });
+        }
+
+        if (action === 'unequip') {
+            const slot = String(msg.slot || '');
+            if (!ECON.GEAR_SLOTS.includes(slot)) throw new Error('No such slot.');
+            const was = eq[slot] || null;
+            delete eq[slot];
+            saveGear(user, u);
+            return Object.assign(gearView(u), { slot, removed: was });
+        }
+
+        // Selling is the sink that keeps the pack from filling with worn junk.
+        // A worn piece is taken off first rather than refused, so "sell it all"
+        // can never leave a slot pointing at something that no longer exists.
+        if (action === 'sell') {
+            const ids = Array.isArray(msg.pieces) ? msg.pieces : (msg.piece ? [msg.piece] : []);
+            if (!ids.length) throw new Error('Nothing selected.');
+            let gained = 0;
+            const sold = [];
+            for (const raw of ids.slice(0, ECON.GEAR_PACK_MAX)) {
+                const id = String(raw || '');
+                const it = pack[id];
+                if (!it) continue;
+                for (const slot of ECON.GEAR_SLOTS) if (eq[slot] === id) delete eq[slot];
+                gained += ECON.gearSellValue(it);
+                sold.push({ id, name: ECON.gearName(it), rarity: it.rarity, value: ECON.gearSellValue(it) });
+                delete pack[id];
+            }
+            if (!sold.length) throw new Error('None of those are in your pack.');
+            saveGear(user, u);
+            const net = creditEarnings(user, u, gained, 'gear_sale');
+            console.log(`[gear] ${user} sold ${sold.length} piece(s) for $${gained}`);
+            return Object.assign(gearView(u), { sold, gained, net, money: moneyOf(u), loan: u.loan || null });
+        }
+
+        // "Sell everything I'm not wearing that is worse than what I am." The
+        // server does the comparison so the button can't be tricked into
+        // dumping a good piece.
+        if (action === 'sell_junk') {
+            const worn = {};
+            for (const slot of ECON.GEAR_SLOTS) {
+                const it = eq[slot] && pack[eq[slot]];
+                worn[slot] = it ? ECON.gearPower(it) : 0;
+            }
+            const doomed = [];
+            for (const [id, it] of Object.entries(pack)) {
+                if (!it || Object.values(eq).includes(id)) continue;
+                if (ECON.gearPower(it) < worn[it.slot]) doomed.push(id);
+            }
+            if (!doomed.length) throw new Error('Nothing in your pack is worse than what you are wearing.');
+            return ECONOMY_OPS.gear(user, { action: 'sell', pieces: doomed });
+        }
+
+        throw new Error('Unknown gear action.');
+    },
+
+    guild_dungeon(user, msg) {
+        const u = userRec(user), now = Date.now();
+        const action = String(msg.action || 'status');
+        const runView = (run) => run ? {
+            id: run.id, tier: run.tier, members: [...run.members], startedAt: run.startedAt,
+            floor: run.floor, floors: ECON.GUILD_DUNGEONS[run.tier].floors,
+            miniFloor: ECON.miniFloorOf(ECON.GUILD_DUNGEONS[run.tier]),
+            miniDone: !!run.miniDone, seed: run.seed,
+        } : null;
+
+        if (action === 'status') {
+            const run = runFor(user);
+            return { run: runView(run), boss: run ? guildBossView(run, now) : null };
+        }
+
+        if (action === 'start') {
+            const g = guildRequire(user);
+            const tier = String(msg.tier || '');
+            const cfg = ECON.GUILD_DUNGEONS[tier];
+            if (!cfg) throw new Error('No such guild dungeon.');
+            const existing = runFor(user);
+            if (existing) endGuildRun(existing);
+            // A party is the caller plus any guildmates they name who are online
+            // and not already running something.
+            const members = new Set([user]);
+            for (const raw of (Array.isArray(msg.party) ? msg.party : []).slice(0, ECON.GUILD_MAX_MEMBERS)) {
+                const p = String(raw || '').trim().toLowerCase();
+                if (!p || p === user || !g.members[p] || !byUser.has(p) || guildRunOf.has(p)) continue;
+                members.add(p);
+            }
+            const run = {
+                id: pushId(), tier, gid: g.id, members, startedAt: now,
+                floor: 0, floorAt: now, miniDone: false, miniPurse: 0, boss: null, paid: false,
+                seed: (Math.random() * 0x7fffffff) | 0,
+            };
+            guildRuns.set(run.id, run);
+            for (const m of members) guildRunOf.set(m, run.id);
+            const info = { event: 'guild_dungeon', kind: 'start', runId: run.id, tier, seed: run.seed, members: [...members], by: user, guild: { id: g.id, name: g.name, tag: g.tag } };
+            for (const m of members) pushTo(m, info);
+            console.log(`[guild-dungeon] ${g.name} entered ${cfg.name} (${members.size} in the party)`);
+            return { runId: run.id, tier, seed: run.seed, members: [...members], run: runView(run), cfg: { name: cfg.name, floors: cfg.floors, boss: cfg.boss, mini: cfg.mini } };
+        }
+
+        // Reporting a floor done is the ONLY way to advance, and the server
+        // decides whether it believes you: a floor held for less than
+        // GUILD_FLOOR_MIN_MS was not walked, and a mini still standing on it
+        // means the stair is blocked.
+        if (action === 'floor_clear') {
+            const run = runFor(user);
+            if (!run) throw new Error('You are not in a guild dungeon.');
+            const cfg = ECON.GUILD_DUNGEONS[run.tier];
+            if (run.floor >= cfg.floors - 1) throw new Error('You are already at the boss.');
+            if (run.boss && run.boss.status !== 'dead') {
+                throw new Error(run.boss.mini ? `${ECON.GUILD_BOSSES[run.boss.id].name} is blocking the way.` : 'The boss still stands.');
+            }
+            const held = now - run.floorAt;
+            if (held < ECON.GUILD_FLOOR_MIN_MS) {
+                throw new Error(`That floor is not clear yet — ${Math.ceil((ECON.GUILD_FLOOR_MIN_MS - held) / 1000)}s left.`);
+            }
+            if (run.boss && run.boss.mini) { run.miniDone = true; run.boss = null; }
+            run.floor += 1;
+            run.floorAt = now;
+            let spawned = null;
+            // The mini blocks the middle floor the moment the party arrives.
+            if (!run.miniDone && cfg.mini && run.floor === ECON.miniFloorOf(cfg)) {
+                spawnGuildBoss(run, cfg.mini);
+                spawned = cfg.mini;
+            }
+            for (const m of run.members) {
+                if (m !== user) pushTo(m, { event: 'guild_dungeon', kind: 'floor', runId: run.id, floor: run.floor, by: user });
+            }
+            return { run: runView(run), floor: run.floor, mini: spawned, boss: guildBossView(run, now) };
+        }
+
+        if (action === 'boss_spawn') {
+            const run = runFor(user);
+            if (!run) throw new Error('You are not in a guild dungeon.');
+            const cfg = ECON.GUILD_DUNGEONS[run.tier];
+            // The boss room is the last floor and nowhere else.
+            if (run.floor !== cfg.floors - 1) throw new Error('The boss room is further down.');
+            if (run.boss) return { boss: guildBossView(run, now), run: runView(run) };
+            spawnGuildBoss(run, cfg.boss);
+            return { boss: guildBossView(run, now), run: runView(run) };
+        }
+
+        if (action === 'boss_hit') {
+            const run = runFor(user);
+            if (!run || !run.boss) throw new Error('There is nothing to fight.');
+            const b = run.boss;
+            if (b.status !== 'alive') throw new Error(b.status === 'rising' ? 'It has not fully risen.' : 'It is already dead.');
+            const weapon = msg.weapon === 'pistol' ? 'pistol' : 'sword';
+            const k = user + ':' + weapon;
+            if (now - (b.hitLast.get(k) || 0) < ECON.GUILD_BOSS.HIT_MIN_MS[weapon]) throw new Error('Too fast.');
+            let target;
+            if (msg.part === 'head') {
+                if (b.parts.some(p => p.hp > 0)) throw new Error('Break its guard first!');
+                target = b.head;
+            } else {
+                const i = nonNegInt(msg.part);
+                if (i == null || i >= b.parts.length) throw new Error('No such weak point.');
+                target = b.parts[i];
+            }
+            if (target.hp <= 0) throw new Error('That part is already down.');
+            b.hitLast.set(k, now);
+            if (!(b.damage[user] > 0)) { b.damage[user] = 0; rescaleGuildBoss(run); }
+            // Combat mastery is the only thing that scales a player's damage.
+            const mult = ECON.masteryCombatMult(masteryLevelOf(u, 'combat'))
+                * ECON.gearAttackMult(gearStatsOf(u).atk);
+            const dmg = Math.min(target.hp, Math.round(ECON.GUILD_BOSS.HIT_DMG[weapon] * mult));
+            target.hp -= dmg;
+            b.damage[user] = (b.damage[user] || 0) + dmg;
+            const downed = target.hp <= 0;
+            if (downed && msg.part !== 'head') {
+                grantMastery(user, u, 'combat', ECON.MASTERY_XP.boss_part);
+                runBroadcast(run, 'part_down', { part: nonNegInt(msg.part) });
+            } else if (downed) {
+                b.status = 'dead'; b.diedAt = now;
+                if (b.mini) {
+                    // A mini pays into the run's purse rather than out on the
+                    // spot, so it can't be farmed by re-entering its floor.
+                    run.miniPurse = (run.miniPurse || 0) + ECON.GUILD_BOSSES[b.id].reward;
+                    for (const m of Object.keys(b.damage)) grantMastery(m, userRec(m), 'combat', ECON.MASTERY_XP.boss_part);
+                }
+                runBroadcast(run, 'dead');
+            } else if (now - b.lastBroadcast > 150) {
+                b.lastBroadcast = now;
+                runBroadcast(run, 'hp');
+            }
+            return { part: msg.part, hp: target.hp, maxHp: target.maxHp, dmg, downed, dead: b.status === 'dead', mini: !!b.mini };
+        }
+
+        if (action === 'complete') {
+            const run = runFor(user);
+            if (!run) throw new Error('You are not in a guild dungeon.');
+            const cfg = ECON.GUILD_DUNGEONS[run.tier];
+            if (run.paid) throw new Error('This run has already paid out.');
+            if (run.floor !== cfg.floors - 1) throw new Error('You have not reached the boss room.');
+            if (!run.boss || run.boss.mini || run.boss.status !== 'dead') throw new Error('The boss still stands.');
+            // Two independent floors on how fast a run can possibly be: the run
+            // as a whole, and the boss fight inside it.
+            if (now - run.startedAt < ECON.GUILD_RUN_MIN_MS) throw new Error('That run was too short to be real.');
+            if (run.boss.diedAt - run.boss.spawnedAt < ECON.GUILD_BOSS_MIN_FIGHT_MS) throw new Error('That fight was too short to be real.');
+            const bossDef = ECON.GUILD_BOSSES[cfg.boss];
+            const capCfg = ECON.EARN_CAPS[run.tier];
+            const last = earnLast.get(user + ':' + run.tier) || 0;
+            if (capCfg && now - last < capCfg.cooldown) throw new Error(`Too soon — try again in ${Math.ceil((capCfg.cooldown - (now - last)) / 1000)}s.`);
+            run.paid = true;
+            const g = guildRec(run.gid);
+            // Only fighters who actually landed a hit on the boss share the purse.
+            const fighters = Object.keys(run.boss.damage).filter(x => run.members.has(x));
+            const share = fighters.length ? fighters : [...run.members];
+            const gross = Math.min(cfg.reward + bossDef.reward + (run.miniPurse || 0), capCfg ? capCfg.cap : Infinity);
+            const tithe = Math.floor(gross * ECON.GUILD_DUNGEON_CUT);
+            const pot = gross - tithe;
+            const each = Math.floor(pot / share.length);
+            const payouts = {}, loot = {};
+            for (const m of share) {
+                const rec = userRec(m);
+                const net = creditEarnings(m, rec, each, run.tier);
+                earnLast.set(m + ':' + run.tier, now);
+                grantMastery(m, rec, 'combat', ECON.MASTERY_XP.guild_clear);
+                const drop = grantGear(m, rec, run.tier);
+                loot[m] = drop.loot;
+                payouts[m] = { gross: each, net, money: moneyOf(rec), loot: drop.loot };
+                if (m !== user) pushTo(m, { event: 'guild_dungeon', kind: 'reward', runId: run.id, gained: each, money: moneyOf(rec), tithe, tier: run.tier, loot: drop.loot, gear: gearPackOf(rec) });
+            }
+            if (g) {
+                g.treasury += tithe;
+                g.clears += 1;
+                // Every GUILD_DUNGEONS_PER_POINT clears buys the Master one
+                // skill point; earned points are derived from the running total
+                // so they can never be double-granted by a replayed call.
+                const shouldHave = ECON.guildPointsEarned(g.clears);
+                const already = Math.max(0, Math.floor(+g.pointsGranted || 0));
+                if (shouldHave > already) {
+                    g.skillPoints += (shouldHave - already);
+                    g.pointsGranted = shouldHave;
+                    guildBroadcast(g, { kind: 'skill_point', points: g.skillPoints, clears: g.clears });
+                }
+                saveGuild(g);
+                guildBroadcast(g, { kind: 'clear', tier: run.tier, by: user, tithe, treasury: g.treasury, clears: g.clears });
+            }
+            console.log(`[guild-dungeon] ${cfg.name} cleared — $${gross} split ${share.length} ways, $${tithe} tithed`);
+            endGuildRun(run);
+            return { gained: each, gross, tithe, miniPurse: run.miniPurse || 0, money: moneyOf(u), party: payouts, guild: g ? guildView(g, user, now) : null, mastery: masteryView(u), loot: loot[user] || [], gear: gearPackOf(u) };
+        }
+
+        if (action === 'abandon') {
+            const run = runFor(user);
+            if (run) {
+                run.members.delete(user);
+                guildRunOf.delete(user);
+                if (!run.members.size) endGuildRun(run);
+                else runBroadcast(run, 'left', { user });
+            }
+            return { abandoned: true };
+        }
+
+        throw new Error('Unknown guild dungeon action.');
     },
 
     // Mayor's Treasury: fed by the 2.5% bank tax. Any staff can see it; only

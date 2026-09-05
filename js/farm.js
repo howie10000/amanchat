@@ -430,7 +430,7 @@
       : "";
     return `<div class="mealPreview" style="border-color:#22c55e;">
       <span class="luckPill">🍀 LUCK ${l.level}</span> <b>${l.emoji || "🍲"} ${escapeHtml(l.meal || "Meal")}</b> — <span id="luckLeft">${fmtDur(l.until - Date.now())}</span> left<br/>
-      <small class="muted">rare fish ×${e.fishWeightMult.toFixed(2)} · VEGAS wins +${Math.round(e.casinoBonus * 100)}% · ${Math.round(e.rerollChance * 100)}% to re-roll a lost bet</small>${queued}</div>`;
+      <small class="muted">rare fish ×${e.fishWeightMult.toFixed(2)} · VEGAS wins +${Math.round(e.casinoBonus * 100)}% · +${Math.round(e.winChance * 100)}% chance to win in VEGAS</small>${queued}</div>`;
   }
   async function openCooking(where) {
     _cookWhere = where || "lake";
@@ -456,7 +456,7 @@
       <div class="cookSlots">${slots}</div>
       <div class="mealPreview">${meal
         ? `<div style="font-size:30px">${meal.emoji}</div><b>${escapeHtml(meal.name)}</b> <span class="luckPill">🍀 LUCK ${meal.luck}</span><br/>
-           <small class="muted">${meal.pts} luck pts · lasts ${fmtDur(ECON.luckDurationMs(meal.luck))} · rare fish ×${eff.fishWeightMult.toFixed(2)} · VEGAS wins +${Math.round(eff.casinoBonus * 100)}% · ${Math.round(eff.rerollChance * 100)}% loss re-roll</small>
+           <small class="muted">${meal.pts} luck pts · lasts ${fmtDur(ECON.luckDurationMs(meal.luck))} · rare fish ×${eff.fishWeightMult.toFixed(2)} · VEGAS wins +${Math.round(eff.casinoBonus * 100)}% · +${Math.round(eff.winChance * 100)}% chance to win</small>
            <div class="btnRow" style="margin-top:8px;"><button class="menuBtn gold bigBtn" onclick="gameFarm.cook()">COOK IT</button><button class="menuBtn gray" onclick="gameFarm.potClear()">Empty pot</button></div>`
         : `<span class="muted">The pot is empty. Pick ingredients below.</span>`}</div>
       <h3 class="section">🧺 PANTRY</h3>`;

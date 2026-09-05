@@ -191,7 +191,9 @@ async function enterGame(user, data, role, mute) {
   state.data = data;
   setRole(role || "user");
   state.mute = mute || null;
-  state.hp = 100;
+  if (window.gameGear) gameGear.adoptFromRecord(data);
+  state.maxHp = window.gameGear ? gameGear.maxHp() : 100;
+  state.hp = state.maxHp;
   state.appearance = data.appearance || GFX.DEFAULT_APPEARANCE;
   state.friends = data.friends || {};
 
@@ -217,6 +219,9 @@ async function enterGame(user, data, role, mute) {
   initDMBadge();
   initNewsBadge();
   if (window.gameLake) gameLake.sync();   // is a Kraken already up at the pond?
+  // Guild membership and mastery levels drive HUD text, the guild door in the
+  // Adventurers Guild, and combat damage — pull them before the first frame.
+  if (window.gameGuild) gameGuild.refresh();
   setInterval(refreshUserCache, 4000);
   if (state.mute) toast(muteText(state.mute), 5000);
   if (typeof dailyBonusReady === "function" && dailyBonusReady()) {
@@ -336,7 +341,7 @@ let _economyWrapped = false;
 function wrapEconomyReplies() {
   if (_economyWrapped) return;
   _economyWrapped = true;
-  for (const fn of ["netEarn", "netCasino", "netFish", "netBank", "netBuy", "netFarm", "netCook"]) {
+  for (const fn of ["netEarn", "netCasino", "netFish", "netBank", "netBuy", "netFarm", "netCook", "netGear"]) {
     const orig = window[fn];
     if (typeof orig !== "function" || orig._wrapped) continue;
     const wrapped = async (...args) => {
@@ -350,7 +355,7 @@ function wrapEconomyReplies() {
         if (d.fishInventory && typeof d.fishInventory === "object") state.data.fishInventory = d.fishInventory;
         if (d.farm && typeof d.farm === "object") state.data.farm = d.farm;
         if (d.meals && typeof d.meals === "object") state.data.meals = d.meals;
-        if (d.luckReroll) toast("🍀 Your luck turned that loss around!", 2500);
+        if (d.luckWin) toast("🍀 Your luck carried that one.", 2500);
         if (d.luckBonus > 0) setTimeout(() => toast(`🍀 Lucky bonus <b>+$${(+d.luckBonus).toLocaleString()}</b> on that win!`, 2500), 900);
         updateHUD();
       }
@@ -421,7 +426,8 @@ document.getElementById("tutorialNext").onclick = async () => {
 // HUD / TOAST
 function updateHUD() {
   document.getElementById("hudMoney").textContent = (state.data.money || 0).toLocaleString();
-  document.getElementById("hudHp").textContent = Math.max(0, Math.floor(state.hp));
+  document.getElementById("hudHp").textContent =
+    Math.max(0, Math.floor(state.hp)) + ((state.maxHp || 100) !== 100 ? " / " + state.maxHp : "");
   // The dungeon / duel screens draw a big HP bar of their own — don't show two.
   { const hpRow = document.getElementById("hudHp").parentElement; if (hpRow) hpRow.style.display = (state.area === "dungeon" || state.area === "duel") ? "none" : "flex"; }
   const bank = Math.max(0, Math.floor(state.data.bankBalance || 0));
