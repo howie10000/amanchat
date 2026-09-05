@@ -292,7 +292,11 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
     // rest of the party only learns about the new floor through this push,
     // and it used to omit `boss` entirely, so a follower's client fell through
     // to treating the mini's floor as an ordinary maze instead of the arena.
-    const floorPush = member.events.slice().reverse().find(e => e.event === 'guild_dungeon' && e.kind === 'floor' && e.mini === cfg.mini);
+    let floorPush = null;
+    for (let i = 0; i < 20 && !floorPush; i++) {
+      floorPush = member.events.slice().reverse().find(e => e.event === 'guild_dungeon' && e.kind === 'floor' && e.mini === cfg.mini);
+      if (!floorPush) await sleep(50);
+    }
     assert(floorPush && floorPush.boss && floorPush.boss.mini === true && floorPush.boss.id === cfg.mini,
       'the floor push to the rest of the party also carries the mini as `boss`, not just `mini`');
     r = await tryRpc(master, 'guild_dungeon', { action: 'floor_clear' });

@@ -142,6 +142,13 @@
     };
     // A guild run's last floor is the sealed boss arena, built separately.
     if (isFinal && cfg.guild) return out;
+    // Same idea for the floor the mini blocks: it's meant to be its own
+    // sealed encounter (see enterArena), but this floor's plan was still
+    // getting a full roster of ordinary maze mobs nobody could ever reach —
+    // they live in the arena, not the maze. Those mobs' HP could never drop
+    // to 0, so floorCleared() stayed false forever and the door refused
+    // "something on this floor is still standing" even after the mini died.
+    if (cfg.guild && cfg.mini && floor === ECON.miniFloorOf(cfg)) return out;
     if (isFinal) {
       const center = cellCenter(MAZE_ROWS - 1, MAZE_COLS - 1);
       push("boss", center.x, center.y - 10);
