@@ -580,7 +580,13 @@ if (window.NET) {
       const wasMine = partyState && partyState.id === m.party;
       partyState = null;
       partyInvites = partyInvites.filter(i => i.party !== m.party);
-      if (wasMine) {
+      // party_start disbands the lobby (reason 'started') and pushes this to
+      // EVERY member, including the leader whose own party_start reply is
+      // what's putting them in the dungeon right now. Racing that reply with
+      // this push reopened the dungeon list right on top of (or right after)
+      // the leader's own transition in — "started" means the party is fine,
+      // it just isn't a lobby anymore.
+      if (wasMine && m.reason !== "started") {
         toast(m.kind === "removed" ? "You were removed from the party." : "The party broke up.", 4000);
         if (state.area.startsWith("interior_")) openDungeons();
       }

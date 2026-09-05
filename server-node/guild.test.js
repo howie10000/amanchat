@@ -288,6 +288,13 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
     r = await walkFloor();
     assert(r.ok && r.data.floor === 2 && r.data.mini === cfg.mini, `the mini (${miniDef.name}) blocks the middle floor`);
     assert(r.ok && r.data.boss && r.data.boss.mini === true && r.data.boss.id === cfg.mini, 'the mini is raised as a boss with the mini flag set');
+    // The reporter (master) got the boss in their own reply above — but the
+    // rest of the party only learns about the new floor through this push,
+    // and it used to omit `boss` entirely, so a follower's client fell through
+    // to treating the mini's floor as an ordinary maze instead of the arena.
+    const floorPush = member.events.slice().reverse().find(e => e.event === 'guild_dungeon' && e.kind === 'floor' && e.mini === cfg.mini);
+    assert(floorPush && floorPush.boss && floorPush.boss.mini === true && floorPush.boss.id === cfg.mini,
+      'the floor push to the rest of the party also carries the mini as `boss`, not just `mini`');
     r = await tryRpc(master, 'guild_dungeon', { action: 'floor_clear' });
     assert(!r.ok, 'you cannot walk past a mini that is still standing');
 

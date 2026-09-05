@@ -3674,8 +3674,13 @@ const ECONOMY_OPS = {
             // plan, so there is never a moment where two members are standing
             // on different floors of the same run.
             const state = run.floor < cfg.floors - 1 ? floorStateView(run) : null;
+            // The reporter's own reply carries `boss` (below) so they can enter
+            // the mini's arena; the rest of the party only heard about the new
+            // floor via this push, which never included it — they stayed on
+            // the maze floor while the reporter alone dropped into the fight.
+            const boss = spawned ? guildBossView(run, now) : null;
             for (const m of run.members) {
-                if (m !== user) pushTo(m, { event: 'guild_dungeon', kind: 'floor', runId: run.id, floor: run.floor, by: user, mini: spawned, state });
+                if (m !== user) pushTo(m, { event: 'guild_dungeon', kind: 'floor', runId: run.id, floor: run.floor, by: user, mini: spawned, state, boss });
             }
             return { run: runView(run), floor: run.floor, mini: spawned, boss: guildBossView(run, now), state };
         }
