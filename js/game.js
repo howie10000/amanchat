@@ -279,6 +279,10 @@ function handleKey(e) {
     toggleDoorLock();
   } else if (k === "r" && state.area === "interior_home" && state.interiorOf === state.user && (state.buildMode || state.placeMode)) {
     rotateBuildTarget();
+  } else if (k === "r" && state.area === "dungeon") {
+    // One tome per dungeon run. gameCombat decides whether this one is allowed
+    // (equipped? already spent? mid-cutscene?) and says so if it isn't.
+    gameCombat.useTome();
   } else if (k === "v" && state.isMayor) {
     toggleInvisible();
   } else if (k === "e") {
@@ -510,7 +514,7 @@ function triggerHotspotAction(action, hs) {
     case "quest_invite":     openCoopInvite(); break;
     case "duel_open":        openDuelChallenge(); break;
     case "guild_broker":     gameGuild.openBroker(); break;
-    case "gear_armoury":     gameGear.openArmoury(); break;
+    case "gear_armory":     gameGear.openArmory(); break;
     case "guild_home":       gameGuild.enterGuildHall(); break;
     case "guild_open":       gameGuild.openHall(); break;
     case "guild_bank":       gameGuild.openBank(); break;
@@ -1112,7 +1116,7 @@ function openQuestBoard() {
     </div>
     <p class="muted">Combat mastery scales both. <a href="#" onclick="gameGuild.openMastery();return false;">See your mastery levels</a>.</p>
     <h3 class="section">GEAR</h3>
-    <p class="muted">Anything you clear can drop a weapon, a helmet, a chestplate, leggings or a ring. The board's dungeons drop the bottom of the table; guild dungeons drop the rest of it. Equip and sell at <a href="#" onclick="gameGear.openArmoury();return false;">the Armoury</a> across the hall.</p>
+    <p class="muted">Anything you clear can drop a weapon, a helmet, a chestplate, leggings or a ring. The board's dungeons drop the bottom of the table; guild dungeons drop the rest of it. Equip and sell at <a href="#" onclick="gameGear.openArmory();return false;">the Armory</a> across the hall.</p>
     <p class="muted" style="margin-top:10px;">Aim with mouse. Left-click to attack. ESC to abandon.</p>
   `);
 }

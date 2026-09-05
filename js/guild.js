@@ -144,7 +144,7 @@ function openHall() {
       <button class="menuBtn gold" onclick="gameGuild.openBank()">GUILD BANK</button>
       <button class="menuBtn green" onclick="gameGuild.openTreasury()">TREASURY</button>
       <button class="menuBtn red" onclick="gameGuild.openDungeons()">DUNGEONS</button>
-      <button class="menuBtn" onclick="gameGear.openArmoury()">ARMOURY</button>
+      <button class="menuBtn" onclick="gameGear.openArmory()">ARMORY</button>
     </div>`;
 
   // --- skills ---
@@ -491,7 +491,7 @@ async function openDungeons() {
 
   let html = `<p>Longer, denser and sealed at the end by something the quest board will not name. Every clear tithes <b>${pct(guildState.rates.dungeonCut)}</b> to your treasury; the rest splits between everyone who landed a hit on the boss.</p>
     <p class="muted">Each extra fighter gives every part of the boss <b>+${Math.round(ECON.GUILD_BOSS.HP_PER_PLAYER * 100)}% HP</b> — bring people who will actually swing.</p>
-    <p class="muted">Everyone who lands a hit on the boss also rolls the loot table — armour, weapons and rings the quest board's dungeons cannot drop. <a href="#" onclick="gameGear.openArmoury();return false;">The Armoury</a> is where you wear it or sell it.</p>`;
+    <p class="muted">Everyone who lands a hit on the boss also rolls the loot table — armor, weapons and rings the quest board's dungeons cannot drop. <a href="#" onclick="gameGear.openArmory();return false;">The Armory</a> is where you wear it or sell it.</p>`;
 
   if (partyInvites.length) {
     html += `<h3 class="section">YOU'VE BEEN ASKED ALONG</h3>`;

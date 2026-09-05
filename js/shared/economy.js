@@ -954,72 +954,133 @@
     ATTACK_EVERY_MS: 2600, ENRAGE_FRAC: 0.35, ENRAGE_SPEED: 0.72,
     HIT_DMG: { sword: 55, pistol: 22 },
     HIT_MIN_MS: { sword: 180, pistol: 250 },
-    REACH: { sword: 130, pistol: 380 },
-    DEAD_LINGER_MS: 12000,
+    // Sword reach was tuned against the ANCHOR of a weak point, but the art is
+    // drawn 1.2-1.3x around that anchor — so a limb you were clearly standing
+    // under could still be out of reach depending on which side of it you were
+    // on. Reach is measured to the edge of the part's hit disc now (see
+    // BOSS_PART_HIT_R), and the numbers below are the distance from that edge.
+    REACH: { sword: 190, pistol: 420 },
+    // How big a weak point is to click, and how big the head is once the guard
+    // is down. Generous on purpose: the fight is about reading the telegraphs,
+    // not about pixel-hunting a bezier limb.
+    PART_HIT_R: 78,
+    HEAD_HIT_R: 104,
+    // The corpse has to stay on screen long enough for a party to walk to
+    // the chest it leaves behind and watch the lid come off — `complete` is
+    // claimed from the chest now, not from the kill.
+    DEAD_LINGER_MS: 75000,
     // Minis surface mid-run, fight briefly and drop back. No cutscene: they get
     // a short spawn flourish (see SPAWN_MS) and that's it.
     MINI_RISE_MS: 2600,
+    // How long the room is frozen while somebody reads a tome. Nothing moves,
+    // nothing swings, and the boss holds whatever it was winding up.
+    TOME_CINE_MS: 4200,
   };
-  // Every attack now carries a `tell` — the words that appear over the wind-up —
+  // Every attack carries a `tell` — the words that appear over the wind-up —
   // and a `dodge` hint describing the movement that beats it. Both are drawn by
   // the client, so a player learns the deck by fighting it rather than by dying
   // to it.
+  //
+  // Every boss owns its OWN vocabulary of shapes. The only moves shared across
+  // two decks are the ones that read as the same idea in both (a slam is a
+  // slam); everything else is built for the one thing that throws it, so
+  // learning the Warden teaches you nothing about the Smith except how to read
+  // a telegraph. The shapes themselves:
+  //
+  //   slam/rift/bolt/divebomb  circles under your feet
+  //   sweep/firewall           a band crossing the room
+  //   ring                     an expanding annulus — the gap is a radius
+  //   cross                    fixed beams radiating from the boss
+  //   orbit                    one beam sweeping around the boss like a hand
+  //   meteor                   many small circles landing in a stagger
+  //   pillars                  a grid of columns with one lane left open
+  //   safezone                 the whole floor burns except one circle
+  //   charge                   the boss itself comes down a lane
+  //   grasp                    hands out of the floor where you have been
+  //   chain/breath/whirlpool   as before
   const GUILD_BOSSES = {
+    // WARDEN — water pressure. Everything is a tide: rings that come out of it,
+    // the undertow that drags you back in, and hands that come up through the
+    // flooded floor. Nothing here is a straight line except the chain.
     warden: {
       name: "THE DROWNED WARDEN", parts: 4, partName: "chain", color: "#0e7490", accent: "#67e8f9",
       baseHp: 9000, reward: 3000, tier: "boss",
       cry: "THE WATER REMEMBERS EVERY NAME.",
       title: "WARDEN OF THE SUNKEN CRYPT",
       attacks: [
-        { type: "slam",   weight: 28, warnMs: 1500, r: 70,  dmg: 26, targets: 2, tell: "CHAIN SLAM",   dodge: "step out of the circles" },
-        { type: "sweep",  weight: 20, warnMs: 1700, band: 40, dmg: 24, durMs: 900, tell: "LOW SWEEP",  dodge: "get off the line" },
-        { type: "spit",   weight: 18, warnMs: 1100, r: 34,  dmg: 18, speed: 4.5, targets: 2, tell: "BRINE SPIT", dodge: "keep moving sideways" },
-        { type: "wave",   weight: 16, warnMs: 1500, r: 420, dmg: 16, durMs: 1600, tell: "TIDE",        dodge: "run to the far wall" },
-        { type: "chain",  weight: 18, warnMs: 1600, len: 320, w: 52, dmg: 24, targets: 1, tell: "CHAIN LASH", dodge: "leave the lane" },
+        { type: "ring",      weight: 24, warnMs: 1600, r: 430, band: 54, dmg: 26, durMs: 1500, tell: "TIDE RING", dodge: "let the ring pass — the gap is behind it" },
+        { type: "chain",     weight: 20, warnMs: 1600, len: 340, w: 52, dmg: 24, targets: 2, tell: "CHAIN LASH", dodge: "leave the lane" },
+        { type: "grasp",     weight: 18, warnMs: 1500, r: 52, dmg: 22, targets: 5, durMs: 900, tell: "DROWNED HANDS", dodge: "keep walking — they come up where you stood" },
+        { type: "whirlpool", weight: 14, warnMs: 1700, pull: 1.5, dmg: 20, durMs: 2800, tell: "UNDERTOW", dodge: "walk against the pull" },
+        { type: "safezone",  weight: 12, warnMs: 2100, r: 118, dmg: 34, durMs: 1600, tell: "THE FLOOD", dodge: "get inside the marked circle" },
+        { type: "spit",      weight: 12, warnMs: 1100, r: 34, dmg: 18, speed: 4.5, targets: 2, tell: "BRINE SPIT", dodge: "keep moving sideways" },
       ],
     },
+    // SMITH — a workshop swung at you. Hammers fall from the ceiling, the tongs
+    // sweep around it like a clock hand, and the quench lines split the floor.
     smith: {
       name: "THE EMBER SMITH", parts: 5, partName: "bellows", color: "#b45309", accent: "#fbbf24",
       baseHp: 15000, reward: 5500, tier: "boss",
       cry: "STILL WARM. STILL WORKING.",
       title: "MASTER OF THE EMBER FORGE",
       attacks: [
-        { type: "slam",     weight: 26, warnMs: 1400, r: 74,  dmg: 30, targets: 2, tell: "HAMMER FALL", dodge: "step out of the circles" },
-        { type: "firewall", weight: 20, warnMs: 1900, band: 46, dmg: 26, durMs: 1700, tell: "FIREWALL", dodge: "cross before it lights" },
-        { type: "spit",     weight: 20, warnMs: 1000, r: 36,  dmg: 22, speed: 5, targets: 3, tell: "SLAG SPRAY", dodge: "keep moving sideways" },
-        { type: "roar",     weight: 14, warnMs: 1500, r: 340, dmg: 20, tell: "FORGE ROAR",   dodge: "back away from the middle" },
-        { type: "sweep",    weight: 20, warnMs: 1600, band: 42, dmg: 24, durMs: 850, tell: "TONG SWEEP", dodge: "get off the line" },
+        { type: "meteor",   weight: 24, warnMs: 1500, r: 46, dmg: 22, targets: 9, durMs: 1500, tell: "ANVIL RAIN", dodge: "keep moving — they land where you were" },
+        { type: "orbit",    weight: 20, warnMs: 1700, len: 470, w: 58, dmg: 28, durMs: 2200, sweep: 4.2, tell: "TONG SWING", dodge: "run the way the arm is going" },
+        { type: "cross",    weight: 18, warnMs: 1800, arms: 4, len: 520, w: 56, dmg: 26, durMs: 1100, tell: "QUENCH LINES", dodge: "stand between the beams" },
+        { type: "slam",     weight: 16, warnMs: 1400, r: 74, dmg: 30, targets: 2, tell: "HAMMER FALL", dodge: "step out of the circles" },
+        { type: "firewall", weight: 12, warnMs: 1900, band: 46, dmg: 26, durMs: 1700, tell: "FIREWALL", dodge: "cross before it lights" },
+        { type: "spit",     weight: 10, warnMs: 1000, r: 36, dmg: 22, speed: 5, targets: 3, tell: "SLAG SPRAY", dodge: "keep moving sideways" },
       ],
     },
+    // TYRANT — geometry. It does not swing at you; it rewrites the floor into
+    // shapes you have to solve, and the answer is always one specific tile.
     tyrant: {
       name: "THE HOLLOW TYRANT", parts: 6, partName: "sigil", color: "#4c1d95", accent: "#c084fc",
       baseHp: 26000, reward: 10000, tier: "boss",
       cry: "YOU KNOCKED. HOW POLITE.",
       title: "THE THING BEHIND THE LAST DOOR",
       attacks: [
-        { type: "slam",      weight: 24, warnMs: 1350, r: 78,  dmg: 32, targets: 3, tell: "VOID SLAM", dodge: "step out of the circles" },
-        { type: "rift",      weight: 20, warnMs: 1700, r: 104, dmg: 26, durMs: 2400, targets: 2, tell: "RIFT",  dodge: "do not stand in the tear" },
-        { type: "spit",      weight: 18, warnMs: 950,  r: 38,  dmg: 24, speed: 5.5, targets: 3, tell: "HOLLOW BOLT", dodge: "keep moving sideways" },
-        { type: "sweep",     weight: 16, warnMs: 1600, band: 48, dmg: 28, durMs: 900, tell: "ARM SWEEP", dodge: "get off the line" },
-        { type: "roar",      weight: 12, warnMs: 1400, r: 440, dmg: 22, tell: "SCREAM",     dodge: "back away from the middle" },
-        { type: "whirlpool", weight: 10, warnMs: 1800, pull: 1.5, dmg: 18, durMs: 3000, tell: "COLLAPSE", dodge: "walk against the pull" },
+        { type: "pillars",  weight: 22, warnMs: 1900, r: 54, dmg: 30, durMs: 1200, tell: "HOLLOW SPIRES", dodge: "find the open lane and stand in it" },
+        { type: "safezone", weight: 20, warnMs: 2000, r: 104, dmg: 38, durMs: 1800, tell: "BANISHMENT", dodge: "get inside the sigil" },
+        { type: "cross",    weight: 18, warnMs: 1700, arms: 6, len: 560, w: 48, dmg: 26, durMs: 1200, tell: "SIX WAYS OUT", dodge: "stand between the beams" },
+        { type: "rift",     weight: 16, warnMs: 1700, r: 104, dmg: 26, durMs: 2400, targets: 2, tell: "RIFT", dodge: "do not stand in the tear" },
+        { type: "whirlpool",weight: 12, warnMs: 1800, pull: 1.5, dmg: 18, durMs: 3000, tell: "COLLAPSE", dodge: "walk against the pull" },
+        { type: "spit",     weight: 12, warnMs: 950,  r: 38, dmg: 24, speed: 5.5, targets: 3, tell: "HOLLOW BOLT", dodge: "keep moving sideways" },
       ],
     },
-    // The dragon is the top of the ladder: the longest run, the biggest purse,
-    // and the only fight with a breath attack that sweeps the whole floor.
+    // VARKAAL — the only boss that MOVES. It charges down lanes, it drops on
+    // you from the ceiling, and its breath is the one attack in the game that
+    // sweeps rather than lands.
     dragon: {
       name: "VARKAAL, THE ASHEN", parts: 6, partName: "wing-spar", color: "#7f1d1d", accent: "#fb923c",
       baseHp: 42000, reward: 17000, tier: "boss",
       cry: "I WAS OLD WHEN YOUR TOWN WAS A FIELD.",
       title: "THE LAST THING THAT FLIES",
       attacks: [
-        { type: "breath",    weight: 26, warnMs: 2000, len: 620, w: 150, dmg: 34, durMs: 2000, sweep: 1.25, tell: "FIRE BREATH", dodge: "run around behind the cone" },
-        { type: "slam",      weight: 22, warnMs: 1400, r: 84,  dmg: 34, targets: 3, tell: "TALON SLAM", dodge: "step out of the circles" },
-        { type: "divebomb",  weight: 18, warnMs: 2100, r: 150, dmg: 40, tell: "DIVE",        dodge: "leave the marked ground" },
-        { type: "spit",      weight: 16, warnMs: 900,  r: 40,  dmg: 26, speed: 6, targets: 3, tell: "EMBER SPIT", dodge: "keep moving sideways" },
-        { type: "sweep",     weight: 12, warnMs: 1600, band: 50, dmg: 30, durMs: 900, tell: "TAIL SWEEP", dodge: "get off the line" },
-        { type: "roar",      weight: 10, warnMs: 1500, r: 480, dmg: 24, tell: "ROAR",        dodge: "back away from the middle" },
+        { type: "breath",   weight: 24, warnMs: 2000, len: 620, w: 150, dmg: 34, durMs: 2000, sweep: 1.25, tell: "FIRE BREATH", dodge: "run around behind the cone" },
+        { type: "charge",   weight: 20, warnMs: 1800, len: 640, w: 108, dmg: 36, durMs: 700, tell: "WING CHARGE", dodge: "step out of the lane, not down it" },
+        { type: "meteor",   weight: 18, warnMs: 1600, r: 50, dmg: 24, targets: 8, durMs: 1600, tell: "EMBER FALL", dodge: "keep moving — they land where you were" },
+        { type: "divebomb", weight: 14, warnMs: 2100, r: 150, dmg: 40, tell: "DIVE", dodge: "leave the marked ground" },
+        { type: "sweep",    weight: 12, warnMs: 1600, band: 50, dmg: 30, durMs: 900, tell: "TAIL SWEEP", dodge: "get off the line" },
+        { type: "ring",     weight: 12, warnMs: 1700, r: 480, band: 60, dmg: 26, durMs: 1400, tell: "DOWNDRAFT", dodge: "let the ring pass" },
       ],
+      // ---- SECOND PHASE ----
+      // Varkaal does not die when its head goes down: it comes back lit, and
+      // the deck it comes back with is faster, wider and leaves less floor.
+      // DRAGON_PHASE2 below owns the revival itself.
+      phase2: {
+        name: "VARKAAL REKINDLED", color: "#dc2626", accent: "#fde047",
+        cry: "ASH IS NOT AN ENDING. IT IS A BED OF COALS.",
+        title: "THE FIRE THAT REFUSED TO GO OUT",
+        attacks: [
+          { type: "orbit",    weight: 22, warnMs: 1500, len: 560, w: 74, dmg: 34, durMs: 2400, sweep: 5.6, tell: "CINDER ARC", dodge: "run the way the fire is going" },
+          { type: "breath",   weight: 20, warnMs: 1500, len: 700, w: 190, dmg: 40, durMs: 2400, sweep: 2.1, tell: "WHITE BREATH", dodge: "run around behind the cone" },
+          { type: "safezone", weight: 16, warnMs: 1900, r: 96, dmg: 46, durMs: 1800, tell: "THE PYRE", dodge: "get inside the marked circle" },
+          { type: "meteor",   weight: 16, warnMs: 1300, r: 54, dmg: 28, targets: 12, durMs: 1800, tell: "FIRESTORM", dodge: "never stop moving" },
+          { type: "charge",   weight: 14, warnMs: 1500, len: 680, w: 124, dmg: 42, durMs: 620, tell: "BURNING CHARGE", dodge: "step out of the lane" },
+          { type: "cross",    weight: 12, warnMs: 1500, arms: 5, len: 600, w: 60, dmg: 32, durMs: 1100, tell: "ASH SPOKES", dodge: "stand between the beams" },
+        ],
+      },
     },
     // ---- minis: shorter fights that interrupt a run partway through ----
     ogrelord: {
@@ -1027,9 +1088,10 @@
       baseHp: 3200, reward: 700, tier: "mini",
       cry: "SMASH.",
       attacks: [
-        { type: "slam",  weight: 40, warnMs: 1500, r: 82,  dmg: 22, targets: 2, tell: "CLUB SLAM", dodge: "step out of the circles" },
-        { type: "sweep", weight: 32, warnMs: 1700, band: 44, dmg: 20, durMs: 800, tell: "WIDE SWING", dodge: "get off the line" },
-        { type: "roar",  weight: 28, warnMs: 1400, r: 260, dmg: 14, tell: "BELLOW", dodge: "back away from the middle" },
+        { type: "slam",   weight: 34, warnMs: 1500, r: 82, dmg: 22, targets: 2, tell: "CLUB SLAM", dodge: "step out of the circles" },
+        { type: "charge", weight: 26, warnMs: 1700, len: 620, w: 118, dmg: 24, durMs: 720, tell: "HEADLONG", dodge: "step out of the lane" },
+        { type: "sweep",  weight: 22, warnMs: 1700, band: 44, dmg: 20, durMs: 800, tell: "WIDE SWING", dodge: "get off the line" },
+        { type: "roar",   weight: 18, warnMs: 1400, r: 260, dmg: 14, tell: "BELLOW", dodge: "back away from the middle" },
       ],
     },
     tempest: {
@@ -1037,13 +1099,44 @@
       baseHp: 4200, reward: 950, tier: "mini",
       cry: "...",
       attacks: [
-        { type: "bolt",      weight: 38, warnMs: 1300, r: 56, dmg: 20, targets: 3, tell: "LIGHTNING", dodge: "leave the marked spots" },
-        { type: "spit",      weight: 26, warnMs: 950,  r: 34, dmg: 16, speed: 6, targets: 3, tell: "HAIL", dodge: "keep moving sideways" },
-        { type: "whirlpool", weight: 20, warnMs: 1700, pull: 1.2, dmg: 14, durMs: 2600, tell: "VORTEX", dodge: "walk against the pull" },
-        { type: "roar",      weight: 16, warnMs: 1400, r: 320, dmg: 16, tell: "THUNDERCLAP", dodge: "back away from the middle" },
+        { type: "meteor",    weight: 30, warnMs: 1300, r: 44, dmg: 18, targets: 7, durMs: 1400, tell: "LIGHTNING", dodge: "keep moving — it strikes where you were" },
+        { type: "ring",      weight: 24, warnMs: 1500, r: 380, band: 50, dmg: 20, durMs: 1300, tell: "SHOCK FRONT", dodge: "let the ring pass" },
+        { type: "whirlpool", weight: 18, warnMs: 1700, pull: 1.2, dmg: 14, durMs: 2600, tell: "VORTEX", dodge: "walk against the pull" },
+        { type: "spit",      weight: 16, warnMs: 950,  r: 34, dmg: 16, speed: 6, targets: 3, tell: "HAIL", dodge: "keep moving sideways" },
+        { type: "roar",      weight: 12, warnMs: 1400, r: 320, dmg: 16, tell: "THUNDERCLAP", dodge: "back away from the middle" },
       ],
     },
   };
+
+  // Varkaal's revival. When its head goes down for the FIRST time it does not
+  // die: it collapses, the ash around it catches, and it rises lit. The client
+  // plays the cinematic; the server owns the HP it comes back with.
+  const DRAGON_PHASE2 = {
+    CINE_MS: 8200,          // how long the death-and-rekindle cutscene runs
+    HP_FRAC: 0.62,          // the second phase's pool, as a fraction of the first
+    ATTACK_EVERY_MS: 2000,  // it also throws faster than it did
+  };
+  // The deck a boss is currently throwing from — phase 2 swaps Varkaal's out
+  // wholesale rather than adding to it.
+  function bossDeck(bossId, phase) {
+    const def = GUILD_BOSSES[bossId] || GUILD_BOSSES.warden;
+    if (phase === 2 && def.phase2 && def.phase2.attacks) return def.phase2.attacks;
+    return def.attacks;
+  }
+  // Name/colour/cry for a boss in a given phase, so every caller (HUD, name
+  // card, room lighting) reads the second phase the same way.
+  function bossLook(bossId, phase) {
+    const def = GUILD_BOSSES[bossId] || GUILD_BOSSES.warden;
+    const p2 = phase === 2 && def.phase2 ? def.phase2 : null;
+    return {
+      name: (p2 && p2.name) || def.name,
+      color: (p2 && p2.color) || def.color,
+      accent: (p2 && p2.accent) || def.accent,
+      cry: (p2 && p2.cry) || def.cry,
+      title: (p2 && p2.title) || def.title || "",
+      partName: def.partName,
+    };
+  }
   const GUILD_BOSS_ORDER = ["warden", "smith", "tyrant", "dragon"];
   const GUILD_MINIS = ["ogrelord", "tempest"];
   function isMiniBoss(id) { return !!GUILD_BOSSES[id] && GUILD_BOSSES[id].tier === "mini"; }
@@ -1063,9 +1156,9 @@
     return { x: cx + a * spread, y: cy + Math.abs(a) * 34 };
   }
   function guildBossHeadPos(w, h) { return { x: (w || 1024) / 2, y: (h || 640) * 0.34 }; }
-  function pickGuildBossAttack(bossId, rand) {
+  function pickGuildBossAttack(bossId, rand, phase) {
     rand = rand || Math.random;
-    const deck = (GUILD_BOSSES[bossId] || GUILD_BOSSES.warden).attacks;
+    const deck = bossDeck(bossId, phase);
     const total = deck.reduce((s, a) => s + a.weight, 0);
     let x = rand() * total;
     for (const a of deck) { if ((x -= a.weight) <= 0) return a; }
@@ -1081,13 +1174,14 @@
   // decides the slot, the flavour and how its power is split between the three
   // stats, the rarity multiplies that power, and a +/-15% roll makes two of
   // the same thing worth comparing.
-  const GEAR_SLOTS = ["weapon", "helmet", "chest", "legs", "ring"];
+  const GEAR_SLOTS = ["weapon", "helmet", "chest", "legs", "ring", "tome"];
   const GEAR_SLOT_INFO = {
     weapon: { label: "Weapon",     emoji: "⚔️" },
     helmet: { label: "Helmet",     emoji: "⛑️" },
     chest:  { label: "Chestplate", emoji: "🧥" },
     legs:   { label: "Leggings",   emoji: "👖" },
     ring:   { label: "Ring",       emoji: "💍" },
+    tome:   { label: "Tome",       emoji: "📕" },
   };
   const GEAR_STATS = ["atk", "def", "vit"];
   const GEAR_STAT_INFO = {
@@ -1236,16 +1330,21 @@
 
   function gearName(item) {
     if (!item) return "";
+    if (isTome(item)) return tomeName(item);
     const base = GEAR_BASE_BY_ID[item.base];
     return (base ? base.name : "Unknown Relic") + (item.affix ? " " + item.affix : "");
   }
   function gearPower(item) {
+    // A tome has no stats at all — it is never "better" or "worse" than the
+    // one you are carrying, so it must never be swept up by "sell the junk".
+    if (isTome(item)) return 0;
     if (!item || !item.stats) return 0;
     return GEAR_STATS.reduce((s, k) => s + (+item.stats[k] || 0), 0);
   }
   // Resale. The Adventurers Guild buys anything back at this, no haggling.
   function gearSellValue(item) {
     if (!item) return 0;
+    if (isTome(item)) return tomeSellValue(item);
     const lvl = Math.max(1, Math.min(GEAR_MAX_LEVEL, item.lvl | 0));
     const rar = GEAR_RARITY_INFO[item.rarity] || GEAR_RARITY_INFO.fine;
     return Math.max(10, Math.floor(GEAR_BASE_VALUE[lvl] * rar.value * (+item.roll || 1)));
@@ -1272,6 +1371,100 @@
   // A pack this size is generous but finite, so "sell the junk" stays something
   // players actually do rather than a button nobody presses.
   const GEAR_PACK_MAX = 60;
+
+
+  // ---------------------------------------------------------------- TOMES
+  // A tome is not armour: it occupies its own slot, adds no stats, and does
+  // exactly one thing — once per dungeon run, R opens it and the whole party
+  // gets an effect for a fixed number of seconds. That is the entire trade:
+  // you give up nothing to carry one, and you get one moment to spend it.
+  //
+  // Every tome is legendary except Eruption, which is mythic — it is the only
+  // one that does damage rather than protecting the people around you.
+  const TOME_SLOT = "tome";
+  const TOME_RARITY = { legendary: "legendary", mythic: "mythic" };
+  const TOMES = {
+    eruption: {
+      id: "eruption", name: "Tome of Eruption", emoji: "🌋", rarity: "mythic",
+      color: "#f97316", accent: "#fde047",
+      blurb: "The ground opens in a ring around you. Everything standing in it stops standing.",
+      // Instant: one big hit centred on the reader.
+      kind: "burst", radius: 300, dmg: 900, durMs: 0,
+      cry: "THE FLOOR REMEMBERS BEING MAGMA.",
+    },
+    recovery: {
+      id: "recovery", name: "Tome of Recovery", emoji: "💚", rarity: "legendary",
+      color: "#16a34a", accent: "#86efac",
+      blurb: "Heals you and every ally near you, a little at a time, for seven seconds.",
+      kind: "heal", radius: 340, healPerSec: 14, durMs: 7000,
+      cry: "STAND UP. AGAIN.",
+    },
+    protection: {
+      id: "protection", name: "Tome of Protection", emoji: "🛡️", rarity: "legendary",
+      color: "#2563eb", accent: "#93c5fd",
+      blurb: "You and your allies take 85% less damage for ten seconds.",
+      kind: "ward", radius: 340, dmgTakenMult: 0.15, durMs: 10000,
+      cry: "NOTHING GETS THROUGH.",
+    },
+    rage: {
+      id: "rage", name: "Tome of Rage", emoji: "🔥", rarity: "legendary",
+      color: "#dc2626", accent: "#fca5a5",
+      blurb: "You and your allies hit harder and move faster for thirteen seconds.",
+      kind: "rage", radius: 340, dmgMult: 1.85, speedMult: 1.4, durMs: 13000,
+      cry: "FASTER. HARDER. NOW.",
+    },
+  };
+  const TOME_ORDER = ["eruption", "recovery", "protection", "rage"];
+  const TOME_BY_ID = TOMES;
+  function tomeDef(id) { return TOMES[String(id || "")] || null; }
+  function isTome(item) { return !!(item && item.slot === TOME_SLOT && TOMES[item.tome]); }
+  function tomeName(item) {
+    const d = tomeDef(item && item.tome);
+    return d ? d.name : "Unknown Tome";
+  }
+  // Tomes are single-slot and never roll stats, so their price is flat per
+  // rarity rather than derived from a stat budget.
+  const TOME_VALUE = { legendary: 9000, mythic: 26000 };
+  function tomeSellValue(item) {
+    const d = tomeDef(item && item.tome);
+    return d ? (TOME_VALUE[d.rarity] || 9000) : 0;
+  }
+  function makeTome(id, rand, itemId) {
+    rand = rand || Math.random;
+    const d = tomeDef(id) || TOMES.recovery;
+    return {
+      id: itemId || ("t" + Math.floor(rand() * 0xffffffff).toString(36) + Date.now().toString(36)),
+      slot: TOME_SLOT, tome: d.id, rarity: d.rarity, lvl: 7, stats: {}, roll: 1, affix: "",
+    };
+  }
+  // Only the chest at the end of a GUILD run can hold a tome, and the deeper
+  // the dungeon the likelier it is. Eruption is deliberately rare inside that
+  // roll — it is the mythic of the set.
+  const TOME_DROP_CHANCE = {
+    guild_crypt:  0.06,
+    guild_forge:  0.10,
+    guild_void:   0.15,
+    guild_dragon: 0.22,
+  };
+  const TOME_PICK_WEIGHT = { recovery: 32, protection: 30, rage: 30, eruption: 8 };
+  // One roll, at most one tome. Returns null far more often than not.
+  function rollTomeDrop(tier, rand) {
+    rand = rand || Math.random;
+    const chance = TOME_DROP_CHANCE[String(tier || "").replace(/^quest_/, "")] || 0;
+    if (chance <= 0 || rand() >= chance) return null;
+    let total = 0;
+    for (const id of TOME_ORDER) total += TOME_PICK_WEIGHT[id] || 0;
+    let x = rand() * total;
+    for (const id of TOME_ORDER) {
+      if ((x -= TOME_PICK_WEIGHT[id] || 0) <= 0) return makeTome(id, rand);
+    }
+    return makeTome("recovery", rand);
+  }
+
+  // The chest is the new end of a run: the boss falls, a chest rises where it
+  // stood, and the loot is inside it rather than in a toast. This is how long
+  // the lid takes to open before what is inside is handed over.
+  const CHEST_OPEN_MS = 3200;
 
   return {
     COSMETICS, COSMETIC_DEFAULTS,
@@ -1314,6 +1507,10 @@
     GUILD_BOSS_ORDER, GUILD_MINIS, isMiniBoss, miniFloorOf,
     GUILD_FLOOR_MIN_MS, GUILD_RUN_MIN_MS, GUILD_BOSS_MIN_FIGHT_MS,
     guildBossMaxHp, guildBossPartPos, guildBossHeadPos, pickGuildBossAttack,
+    DRAGON_PHASE2, bossDeck, bossLook,
+    TOMES, TOME_ORDER, TOME_BY_ID, TOME_SLOT, TOME_DROP_CHANCE, TOME_RARITY,
+    tomeDef, tomeName, tomeSellValue, isTome, rollTomeDrop, makeTome,
+    CHEST_OPEN_MS,
     DUNGEON_HIT_DMG, DUNGEON_HIT_MIN_MS, DUNGEON_HIT_MAX_TARGETS, DUNGEON_KILL_MIN_MS,
     GEAR_SLOTS, GEAR_SLOT_INFO, GEAR_STATS, GEAR_STAT_INFO,
     GEAR_RARITIES, GEAR_RARITY_INFO, GEAR_MAX_LEVEL, GEAR_POWER, GEAR_BASE_VALUE,

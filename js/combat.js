@@ -85,7 +85,11 @@ async function startDungeon(tier, party, joining) {
     // and uses `plan`, which the server hands out (and re-hands out on every
     // floor change), so a party is provably in one dungeon.
     seedBase, plan,
+    // The chest at the end, and whether this player has spent their one tome.
+    chest: null, tomeUsed: false,
   };
+  state.buffs = {};
+  state.tomeCine = null;
   state.maxHp = window.gameGear ? gameGear.maxHp() : 100;
   state.hp = state.maxHp;
   state.questReward = cfg.reward;
@@ -324,6 +328,9 @@ function takePlayerDamage(amount) {
   // Armour is applied here, once, rather than at each of the dozen places that
   // can hurt you — so a new hazard is protected against for free.
   if (window.gameGear) amount *= (1 - gameGear.mitigation());
+  // A ward (Tome of Protection) applies after armour, so the two stack the way
+  // a player expects: armour eats its fraction, the ward eats most of the rest.
+  amount *= buffTakenMult();
   if (amount <= 0) return;
   state.hp -= amount;
   addParticles(state.pos.x, state.pos.y, "#ef4444", 10);
@@ -348,6 +355,14 @@ function checkFloorCleared() {
 }
 
 function updateDungeon() {
+  // A tome being read stops the world: nothing walks, nothing swings, nothing
+  // lands. Particles keep running so the room does not freeze dead.
+  if (tomeCineActive()) {
+    state.particles = state.particles.filter(p => p.life > 0);
+    state.particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life--; });
+    return;
+  }
+  tickBuffs();
   // movement
   let dx = 0, dy = 0;
   if (keys["w"] || keys["arrowup"])    dy -= 1;
@@ -356,7 +371,7 @@ function updateDungeon() {
   if (keys["d"] || keys["arrowright"]) dx += 1;
   const m = Math.hypot(dx, dy) || 1;
   if (dx || dy) {
-    const speed = WALK_SPEED; // same walking speed as the overworld (core.js)
+    const speed = WALK_SPEED * buffSpeedMult(); // Rage is what makes this fast
     const nx = state.pos.x + (dx/m) * speed;
     const ny = state.pos.y + (dy/m) * speed;
     moveWithWalls(state.pos, nx, ny, 12);
@@ -379,8 +394,12 @@ function updateDungeon() {
     if (_dungeonShake > 0) _dungeonShake *= 0.88;
     // The entrance cinematic runs itself out; nothing can hit you during it.
     if (d.cine && Date.now() - d.cine.t0 >= d.cine.dur) d.cine = null;
-    if (!d.cine) updateBossAttacks();
+    if (d.phaseCine && Date.now() - d.phaseCine.t0 >= d.phaseCine.dur) d.phaseCine = null;
+    // Varkaal getting back up holds the room exactly the way the entrance does.
+    const held = d.cine || d.phaseCine || (d.boss && d.boss.status === "reviving");
+    if (!held) updateBossAttacks();
     if (state.hp <= 0) return;
+    updateChest();
     // Once a mini is down its floor has an exit again: walk to the far door.
     if (d.isMini && (!d.boss || d.boss.status === "dead")) {
       const ex = { x: DUNGEON_W / 2, y: BOSS_ROOM.y + 30 };
@@ -557,6 +576,8 @@ function updateDungeon() {
   state.particles = state.particles.filter(p => p.life > 0);
   state.particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life--; });
 
+  updateChest();
+
   // Death cleanup
   const alive = [];
   for (const e of state.enemies) {
@@ -584,12 +605,15 @@ function updateDungeon() {
       if (cfg.guild) { advanceGuildFloor(); return; }
       state.dungeon.floor++;
       if (state.dungeon.floor >= cfg.floors) {
-        // endDungeon() is async (it awaits the reward call) and doesn't move
-        // the player away from the door until it finishes, so without this
-        // flag this block re-fired every frame while standing on the last
-        // floor's door — incrementing `floor` forever instead of winning.
+        // The run is won, but the purse is in the chest now: the door tile is
+        // where it sits, and opening it is what claims the reward.
+        // `keyPickedUp` is cleared for the same reason it always was — this
+        // block used to re-fire every frame while endDungeon awaited its
+        // reward call, incrementing `floor` forever instead of winning.
+        state.dungeon.floor = cfg.floors - 1;
         state.dungeon.keyPickedUp = false;
-        endDungeon(true);
+        spawnChest(dc.x, dc.y - 6, "quest");
+        toast("A chest is waiting where the door was. Stand by it and press E.", 6000);
       }
       else { setupFloor(); toast(`Floor ${state.dungeon.floor + 1}`); }
     }
@@ -709,7 +733,9 @@ function combatDamageMult() {
   const m = state.mastery && state.mastery.combat;
   // Mastery is what you have learned, gear is what you are carrying. They
   // multiply: the server applies exactly the same pair to guild-boss hits.
-  return ECON.masteryCombatMult(m ? m.level : 1) * (window.gameGear ? gameGear.attackMult() : 1);
+  return ECON.masteryCombatMult(m ? m.level : 1)
+    * (window.gameGear ? gameGear.attackMult() : 1)
+    * buffDamageMult();
 }
 
 function bossRoomWalls() {
@@ -846,13 +872,27 @@ async function enterBossRoom() {
 }
 
 // The server owns the boss; these events keep the local copy honest.
+// Somebody in the run opened a book. Everybody watches it; everybody benefits.
+if (window.NET) NET.on("guild_dungeon", (m) => {
+  const d = state.dungeon;
+  if (!d || m.kind !== "tome" || !d.runId || m.runId !== d.runId) return;
+  if (m.by === state.user) return;             // the reader already started it
+  startTomeCine(ECON.tomeDef(m.tome), m.by, false);
+});
+
 if (window.NET) NET.on("guild_boss", (m) => {
   const d = state.dungeon;
   if (!d || !d.bossRoom) return;
   if (m.boss) adoptBoss(m.boss);
   if (m.kind === "attack" && m.attack) queueBossAttack(m.attack);
   else if (m.kind === "part_down") { toast("A weak point collapses!", 1200); shakeDungeon(7); }
-  else if (m.kind === "alive") { d.cine = null; toast("It's fully up. GO.", 1500); }
+  else if (m.kind === "alive") { d.cine = null; d.phaseCine = null; toast("It's fully up. GO.", 1500); }
+  else if (m.kind === "phase2") {
+    // Varkaal's head went down, and it did not stay down.
+    d.phaseCine = gameBosses.startPhaseCinematic(d.boss);
+    d.bossAttacks = [];
+    shakeDungeon(16);
+  }
   else if (m.kind === "dead") onBossDead();
   else if (m.kind === "mini_fled" || m.kind === "mini_cleared") { d.boss = null; }
   else if (m.kind === "timeout") { toast("It sank back into the dark. The run is over."); endDungeon(false); }
@@ -898,10 +938,106 @@ function queueBossAttack(a) {
     const dir = rng() < 0.5 ? 1 : -1;
     // The cone starts to one side of you and sweeps across, so the dodge is to
     // run around behind it rather than to stand still.
-    shot.angle = aim - dir * a.sweep / 2;
-    shot.sweep = a.sweep * dir;
+    //
+    // `sweep` was not in the server's attack payload until now, which made both
+    // lines below NaN — and a NaN rotate() is a defined no-op, so the cone was
+    // drawn unrotated every single time: straight to the right, whatever the
+    // dragon was facing. The fallback keeps an old server honest too.
+    const arc = a.sweep || 1.25;
+    shot.angle = aim - dir * arc / 2;
+    shot.sweep = arc * dir;
+  }
+  // ---- the shapes added with the per-boss decks ----
+  if (a.type === "ring") {
+    // An expanding annulus out of the boss. The gap is a RADIUS: you beat it
+    // by being somewhere the front has already passed, or has not reached.
+    shot.band = a.band || 50;
+  }
+  if (a.type === "cross") {
+    // Fixed beams radiating from the boss, at a rotation picked per cast so
+    // the safe wedges are never in the same place twice.
+    shot.arms = Math.max(2, a.arms || 4);
+    shot.rot = rng() * Math.PI * 2;
+  }
+  if (a.type === "orbit") {
+    // One beam, swept around the boss like a clock hand. Run WITH it.
+    shot.angle = rng() * Math.PI * 2;
+    shot.sweep = (a.sweep || 4.2) * (rng() < 0.5 ? 1 : -1);
+  }
+  if (a.type === "meteor") {
+    // Many small circles landing in a stagger — the first couple aimed where
+    // you are, the rest scattered across the floor. Each one resolves on its
+    // own clock, which is what makes standing still lethal and moving safe.
+    shot.points = [];
+    const n = Math.max(1, a.targets || 6);
+    for (let i = 0; i < n; i++) {
+      const near = i < 2;
+      shot.points.push({
+        x: near ? state.pos.x + jitter(90) : BOSS_ROOM.x + 40 + rng() * (BOSS_ROOM.w - 80),
+        y: near ? state.pos.y + jitter(70) : BOSS_ROOM.y + 40 + rng() * (BOSS_ROOM.h - 80),
+        at: shot.fireAt + Math.floor((i / n) * (a.durMs || 1400)),
+        done: false,
+      });
+    }
+  }
+  if (a.type === "pillars") {
+    // A grid of columns with exactly one lane left open. There is always
+    // somewhere to stand; the wind-up is long enough to walk to it.
+    shot.points = [];
+    const cols = 6, rows = 4;
+    const openCol = Math.floor(rng() * cols);
+    const openRow = Math.floor(rng() * rows);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (c === openCol || r === openRow) continue;
+        shot.points.push({
+          x: BOSS_ROOM.x + (c + 0.5) * (BOSS_ROOM.w / cols),
+          y: BOSS_ROOM.y + (r + 0.5) * (BOSS_ROOM.h / rows),
+        });
+      }
+    }
+  }
+  if (a.type === "safezone") {
+    // The inverse of everything else: the whole floor burns EXCEPT one circle.
+    // It is placed away from where you are standing, so it has to be run to.
+    let sx, sy, tries = 0;
+    do {
+      sx = BOSS_ROOM.x + 90 + rng() * (BOSS_ROOM.w - 180);
+      sy = BOSS_ROOM.y + 90 + rng() * (BOSS_ROOM.h - 180);
+      tries++;
+    } while (Math.hypot(sx - state.pos.x, sy - state.pos.y) < 150 && tries < 12);
+    shot.safe = { x: sx, y: sy };
+  }
+  if (a.type === "charge") {
+    // The boss itself comes down a lane, from its own position through yours.
+    const t0 = pts[0] || { x: DUNGEON_W / 2, y: BOSS_ROOM.y + BOSS_ROOM.h - 60 };
+    shot.angle = Math.atan2(t0.y - head.y, t0.x - head.x);
+    shot.from = head;
+  }
+  if (a.type === "grasp") {
+    // Hands out of the flooded floor, in a ring around where you were — the
+    // middle is safe, so the dodge is to hold still rather than to run.
+    shot.points = [];
+    const n = Math.max(3, a.targets || 5);
+    const base = rng() * Math.PI * 2;
+    for (let i = 0; i < n; i++) {
+      const ang = base + (i / n) * Math.PI * 2;
+      shot.points.push({
+        x: Math.max(BOSS_ROOM.x + 24, Math.min(BOSS_ROOM.x + BOSS_ROOM.w - 24, state.pos.x + Math.cos(ang) * 92)),
+        y: Math.max(BOSS_ROOM.y + 24, Math.min(BOSS_ROOM.y + BOSS_ROOM.h - 24, state.pos.y + Math.sin(ang) * 92)),
+      });
+    }
   }
   d.bossAttacks.push(shot);
+}
+
+// Is (px,py) inside a beam that starts at `from`, points down `ang`, and is
+// `len` long and `w` wide? Every straight-line shape in the deck resolves
+// through this, so they all agree on what "in the lane" means.
+function inBeam(px, py, from, ang, len, w) {
+  const rel = (px - from.x) * Math.cos(ang) + (py - from.y) * Math.sin(ang);
+  const off = -(px - from.x) * Math.sin(ang) + (py - from.y) * Math.cos(ang);
+  return rel > -20 && rel < len && Math.abs(off) < w / 2;
 }
 
 function updateBossAttacks() {
@@ -928,6 +1064,43 @@ function updateBossAttacks() {
         if (state.hp <= 0) { endDungeon(false); return; }
       }
     }
+    // ---- the continuous shapes, checked every frame they are open ----
+    const open = now >= a.fireAt && now < a.fireAt + (a.durMs || 0);
+    if (a.type === "ring" && open) {
+      // The front expands from the boss; you are hit only while it is passing
+      // through you.
+      const k = (now - a.fireAt) / Math.max(1, a.durMs);
+      const front = (a.r || 400) * k;
+      const dist = Math.hypot(px - a.head.x, py - a.head.y);
+      if (Math.abs(dist - front) < (a.band || 50) / 2 && now - (a._lastBurn || 0) > 400) {
+        a._lastBurn = now;
+        takePlayerDamage(a.dmg); shakeDungeon(6);
+        if (state.hp <= 0) { endDungeon(false); return; }
+      }
+    }
+    if (a.type === "orbit" && open) {
+      const k = (now - a.fireAt) / Math.max(1, a.durMs);
+      const ang = a.angle + (a.sweep || 4.2) * k;
+      if (inBeam(px, py, a.head, ang, a.len || 470, a.w || 58) && now - (a._lastBurn || 0) > 380) {
+        a._lastBurn = now;
+        takePlayerDamage(a.dmg * 0.6); shakeDungeon(5);
+        if (state.hp <= 0) { endDungeon(false); return; }
+      }
+    }
+    if (a.type === "meteor") {
+      // Each impact is its own little slam on its own clock.
+      for (const pt of a.points) {
+        if (pt.done || now < pt.at) continue;
+        pt.done = true;
+        addParticles(pt.x, pt.y, "#f97316", 14);
+        if (Math.hypot(px - pt.x, py - pt.y) < (a.r || 46)) {
+          takePlayerDamage(a.dmg); shakeDungeon(5);
+          if (state.hp <= 0) { endDungeon(false); return; }
+        }
+      }
+      if (now > a.fireAt + (a.durMs || 0) + 400) a.resolved = true;
+      continue;
+    }
     if (a.resolved || now < a.fireAt) continue;
     a.resolved = true;
     let hit = false;
@@ -950,6 +1123,25 @@ function updateBossAttacks() {
       }
     } else if (a.type === "whirlpool") {
       if (Math.hypot(a.head.x - px, a.head.y - py) < 130) hit = true;
+    } else if (a.type === "pillars" || a.type === "grasp") {
+      for (const pt of a.points) {
+        if (Math.hypot(px - pt.x, py - pt.y) < (a.r || 54)) hit = true;
+        addParticles(pt.x, pt.y, a.type === "grasp" ? "#67e8f9" : "#c084fc", 10);
+      }
+    } else if (a.type === "cross") {
+      for (let i = 0; i < (a.arms || 4); i++) {
+        const ang = (a.rot || 0) + (i / (a.arms || 4)) * Math.PI * 2;
+        if (inBeam(px, py, a.head, ang, a.len || 520, a.w || 56)) hit = true;
+      }
+    } else if (a.type === "charge") {
+      if (inBeam(px, py, a.from || a.head, a.angle || 0, a.len || 620, a.w || 110)) hit = true;
+      shakeDungeon(9);
+    } else if (a.type === "safezone") {
+      // Standing anywhere but the marked circle is the whole failure mode.
+      if (a.safe && Math.hypot(px - a.safe.x, py - a.safe.y) > (a.r || 110)) hit = true;
+      for (let i = 0; i < 24; i++) {
+        addParticles(BOSS_ROOM.x + Math.random() * BOSS_ROOM.w, BOSS_ROOM.y + Math.random() * BOSS_ROOM.h, "#fbbf24", 1);
+      }
     }
     if (hit) {
       takePlayerDamage(a.dmg);
@@ -967,18 +1159,39 @@ async function bossAttackAt(mx, my) {
   const d = state.dungeon;
   const b = d && d.boss;
   if (!b || b.status !== "alive" || _bossHitPending || d.cine) return;
+  if (b.status === "reviving") return;
   const reach = ECON.GUILD_BOSS.REACH[state.weapon === "pistol" ? "pistol" : "sword"];
+  const PR = ECON.GUILD_BOSS.PART_HIT_R, HR = ECON.GUILD_BOSS.HEAD_HIT_R;
+  // A weak point is a DISC, not a point, and both checks measure to the EDGE of
+  // that disc rather than to its centre. Measuring to the centre is what made a
+  // limb you were plainly standing under unhittable from one side and fine from
+  // the other: the art is drawn 1.2-1.3x around the anchor, so the anchor is
+  // never where the thing looks like it is.
+  const guardUp = b.parts.some(p => p.hp > 0);
   let part = null, best = Infinity;
   b.parts.forEach((p, i) => {
     if (p.hp <= 0) return;
     const pos = bossPartScreenPos(i, b.parts.length);
     const dm = Math.hypot(mx - pos.x, my - pos.y);
-    const dp = Math.hypot(state.pos.x - pos.x, state.pos.y - pos.y);
-    if (dm < 60 && dp < reach && dp < best) { best = dp; part = i; }
+    const dp = Math.max(0, Math.hypot(state.pos.x - pos.x, state.pos.y - pos.y) - PR);
+    if (dm < PR && dp < reach && dp < best) { best = dp; part = i; }
   });
-  if (part === null && !b.parts.some(p => p.hp > 0)) {
+  // Clicked past every disc while standing in range of one anyway? Take the
+  // one the cursor is nearest. Aiming decides WHICH weak point you hit, never
+  // whether the swing counts at all.
+  if (part === null && guardUp) {
+    b.parts.forEach((p, i) => {
+      if (p.hp <= 0) return;
+      const pos = bossPartScreenPos(i, b.parts.length);
+      const dp = Math.max(0, Math.hypot(state.pos.x - pos.x, state.pos.y - pos.y) - PR);
+      const aim = Math.hypot(mx - pos.x, my - pos.y);
+      if (dp < reach && aim < best) { best = aim; part = i; }
+    });
+  }
+  if (part === null && !guardUp) {
     const hp = bossHeadScreenPos();
-    if (Math.hypot(mx - hp.x, my - hp.y) < 80 && Math.hypot(state.pos.x - hp.x, state.pos.y - hp.y) < reach) part = "head";
+    const dp = Math.max(0, Math.hypot(state.pos.x - hp.x, state.pos.y - hp.y) - HR);
+    if (dp < reach) part = "head";
   }
   if (part === null) return;
   _bossHitPending = true;
@@ -1008,17 +1221,17 @@ async function onBossDead() {
   if (_bossPaying) return;
   _bossPaying = true;
   toast("IT FALLS.", 2500);
-  try {
-    const res = await netGuildDungeon({ action: "complete" });
-    state.data.money = res.money;
-    if (res.mastery) state.mastery = res.mastery;
-    const bonus = res.miniPurse ? ` — includes $${res.miniPurse.toLocaleString()} in mini-boss bounties` : "";
-    toast(`Guild dungeon cleared! +$${res.gained.toLocaleString()} (guild tithe $${res.tithe.toLocaleString()})${bonus}`, 7000);
-    if (window.gameGear) gameGear.announceLoot(res.loot, res.gear);
-    if (window.gameGuild) gameGuild.refresh();
-  } catch (e) { toast(e.message, 5000); }
+  // What it was guarding is left behind, where it stood. `complete` is claimed
+  // from the chest (see claimChest) rather than from the kill, so the money and
+  // the loot both arrive when the lid comes off.
+  const hd = bossHeadScreenPos();
+  setTimeout(() => {
+    if (state.area !== "dungeon" || !state.dungeon) return;
+    spawnChest(DUNGEON_W / 2, hd.y + 200, "guild");
+    shakeDungeon(6);
+    toast("Something heavy settles where it stood. Stand by it and press E.", 7000);
+  }, 2400);
   _bossPaying = false;
-  setTimeout(() => { if (state.area === "dungeon") endDungeon(true, true); }, 2600);
 }
 
 function addParticles(x, y, color, count) {
@@ -1042,7 +1255,9 @@ async function endDungeon(victory, alreadyPaid) {
     // so the party isn't stuck holding a boss nobody is fighting.
     try { await netGuildDungeon({ action: "abandon" }); } catch (e) {}
   }
-  if (victory && !isGuild) {
+  // `alreadyPaid` now covers quest runs too: the chest claims the reward when
+  // its lid comes off (claimChest), so by the time we get here it is spent.
+  if (victory && !isGuild && !alreadyPaid) {
     // Reward is granted by the server's `earn` op (capped per tier + cooldown).
     const tier = (state.dungeon && state.dungeon.tier) || "easy";
     try {
@@ -1050,7 +1265,7 @@ async function endDungeon(victory, alreadyPaid) {
       state.data.money = data.money;
       toast(`Quest complete! +$${data.gained}`);
       if (window.gameGear) gameGear.announceLoot(data.loot, data.gear);
-      if (data.packFull) toast("Something else dropped, but your pack is full — sell some of it at the Armoury.", 6000);
+      if (data.packFull) toast("Something else dropped, but your pack is full — sell some of it at the Armory.", 6000);
     } catch (e) { toast(e.message); }
   } else if (!victory) {
     toast("Defeated! Returning to town.");
@@ -1246,6 +1461,7 @@ function drawBossRoom() {
 
   // ---- the boss, its attacks, and the player ----
   if (b) gameBosses.drawBoss(ctx, b, t);
+  if (d.chest) gameBosses.drawChest(ctx, d.chest, t);
   if (!d.cine && d.bossAttacks && d.bossAttacks.length) gameBosses.drawAttacks(ctx, d.bossAttacks, t, def);
 
   for (const p of state.particles) {
@@ -1274,13 +1490,19 @@ function drawBossRoom() {
     ctx.stroke(); ctx.setLineDash([]);
   }
 
-  // ---- the cinematic sits over the room, inside the same transform ----
+  // ---- the cinematics sit over the room, inside the same transform ----
   if (d.cine) gameBosses.drawCinematic(ctx, d.cine, b, t);
+  if (d.phaseCine) gameBosses.drawPhaseCinematic(ctx, d.phaseCine, b, t);
+  if (state.tomeCine) gameBosses.drawTomeCinematic(ctx, state.tomeCine, t);
 
   ctx.restore();
 
   // ---- HUD (screen space) ----
-  if (b && !d.cine) {
+  // The bar is deliberately visible DURING the entrance cutscene while the
+  // thing is still rising: it arrives empty and fills as the boss puts itself
+  // together, which is the whole point of the assembly beat. Everything else
+  // in the HUD still waits for the cutscene to finish.
+  if (b && (!d.cine || b.status === "rising") && !d.phaseCine && !state.tomeCine) {
     const rising = b.status === "rising";
     const w = 560, x0 = canvas.width / 2 - w / 2;
     GFX.roundFill(ctx, x0, 16, w, rising ? 46 : 66, 8, "rgba(0,0,0,.72)");
@@ -1289,9 +1511,23 @@ function drawBossRoom() {
     ctx.font = "bold " + (b.mini ? 15 : 17) + "px sans-serif";
     ctx.fillText(def ? def.name : "BOSS", canvas.width / 2, 38);
     if (rising) {
+      // The bar arrives EMPTY and fills as the thing puts itself together, so
+      // the entrance reads as something assembling rather than as a loading
+      // spinner. The number climbs with it, up to the real pool.
       const k = Math.max(0, Math.min(1, (t - (b._t0 || t)) / (b.riseMs || ECON.GUILD_BOSS.RISE_MS)));
-      ctx.fillStyle = "#000"; ctx.fillRect(x0 + 20, 44, w - 40, 8);
-      ctx.fillStyle = "#f97316"; ctx.fillRect(x0 + 20, 44, (w - 40) * k, 8);
+      const fill = k * k * (3 - 2 * k);        // smoothstep: slow, then a surge
+      ctx.fillStyle = "#000"; ctx.fillRect(x0 + 20, 44, w - 40, 13);
+      ctx.fillStyle = accent;
+      ctx.fillRect(x0 + 20, 44, (w - 40) * fill, 13);
+      // the leading edge, welding itself on
+      if (fill > 0.01 && fill < 0.999) {
+        const ex = x0 + 20 + (w - 40) * fill;
+        ctx.fillStyle = "rgba(255,255,255," + (0.5 + 0.5 * Math.sin(t / 60)) + ")";
+        ctx.fillRect(ex - 3, 42, 6, 17);
+      }
+      ctx.fillStyle = "#fff"; ctx.font = "bold 11px sans-serif";
+      ctx.fillText(Math.round(b.maxHp * fill).toLocaleString() + " / " + b.maxHp.toLocaleString(),
+        canvas.width / 2, 72);
     } else {
       ctx.fillStyle = "#000"; ctx.fillRect(x0 + 20, 46, w - 40, 13);
       ctx.fillStyle = b.enraged ? "#ef4444" : "#22c55e";
@@ -1314,13 +1550,56 @@ function drawBossRoom() {
   ctx.fillStyle = "#10b981"; ctx.fillRect(canvas.width - 232, 12, 220 * Math.max(0, state.hp / (state.maxHp || 100)), 22);
   ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "bold 13px sans-serif";
   ctx.fillText("HP " + Math.max(0, Math.floor(state.hp)) + " / " + (state.maxHp || 100), canvas.width - 122, 28);
-  if (!d.cine) {
+  if (!d.cine && !d.phaseCine && !state.tomeCine) {
     GFX.roundFill(ctx, 12, canvas.height - 64, 380, 48, 8, "rgba(0,0,0,.72)");
     ctx.fillStyle = "#fcd34d"; ctx.textAlign = "left"; ctx.font = "bold 12px sans-serif";
     ctx.fillText("Click a glowing weak point to strike it", 24, canvas.height - 42);
     ctx.fillStyle = "#9ca3af"; ctx.font = "11px sans-serif";
     ctx.fillText("1 = sword (close, hits hard) · 2 = pistol (reach) · read the red, then move", 24, canvas.height - 24);
+    drawTomeHud();
   }
+}
+
+// The R key and what it is holding, bottom-right, plus a row of bars for
+// whatever is currently running. Drawn in screen space by both the boss room
+// and the maze floors.
+function drawTomeHud() {
+  const st = tomeStatus();
+  if (st.def || st.why === "no tome equipped") {
+    const x = canvas.width - 250, y = canvas.height - 64;
+    GFX.roundFill(ctx, x, y, 238, 48, 8, "rgba(0,0,0,.72)");
+    const ready = st.ok;
+    ctx.textAlign = "left";
+    ctx.fillStyle = ready ? "#fde047" : "#52525b";
+    ctx.font = "bold 15px sans-serif";
+    ctx.fillText("[R]", x + 12, y + 30);
+    if (st.def) {
+      ctx.fillStyle = ready ? st.def.accent : "#6b7280";
+      ctx.font = "bold 12px sans-serif";
+      ctx.fillText(st.def.emoji + " " + st.def.name, x + 44, y + 20);
+      ctx.fillStyle = ready ? "#9ca3af" : "#6b7280";
+      ctx.font = "10px sans-serif";
+      ctx.fillText(ready ? "once per run" : st.why, x + 44, y + 36);
+    } else {
+      ctx.fillStyle = "#6b7280"; ctx.font = "11px sans-serif";
+      ctx.fillText("no tome equipped", x + 44, y + 28);
+    }
+  }
+  // running effects, as draining bars
+  const b = activeBuffs();
+  const rows = [];
+  if (b.ward) rows.push({ label: "PROTECTED", col: "#60a5fa", until: b.ward.until, dur: ECON.TOMES.protection.durMs });
+  if (b.rage) rows.push({ label: "ENRAGED", col: "#f87171", until: b.rage.until, dur: ECON.TOMES.rage.durMs });
+  if (b.heal) rows.push({ label: "MENDING", col: "#4ade80", until: b.heal.until, dur: ECON.TOMES.recovery.durMs });
+  rows.forEach((r, i) => {
+    const y = canvas.height - 84 - i * 22;
+    const left = Math.max(0, r.until - Date.now());
+    GFX.roundFill(ctx, canvas.width - 250, y, 238, 18, 5, "rgba(0,0,0,.72)");
+    ctx.fillStyle = r.col;
+    ctx.fillRect(canvas.width - 246, y + 3, 230 * (left / r.dur), 12);
+    ctx.fillStyle = "#0b0b0f"; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "left";
+    ctx.fillText(r.label + "  " + (left / 1000).toFixed(1) + "s", canvas.width - 242, y + 13);
+  });
 }
 
 
@@ -1449,6 +1728,10 @@ function drawDungeon() {
   gameMobs.drawDarkness(ctx, state.pos.x, state.pos.y,
     MAZE_OFFSET_X - 40, MAZE_OFFSET_Y - 40, MAZE_COLS * CELL_W + 80, MAZE_ROWS * CELL_H + 80);
 
+  // The chest is drawn AFTER the darkness so its own light is not eaten by it.
+  if (state.dungeon && state.dungeon.chest) gameBosses.drawChest(ctx, state.dungeon.chest, t);
+  if (state.tomeCine) gameBosses.drawTomeCinematic(ctx, state.tomeCine, t);
+
   ctx.restore(); // end VIEW_OX/VIEW_OY translate — maze content is done
 
   // HUD overlay (screen-anchored: left side bottom-anchored via canvas.height,
@@ -1471,6 +1754,7 @@ function drawDungeon() {
   GFX.roundFill(ctx, canvas.width - 200, canvas.height - 100, 188, 24, 6, "rgba(0,0,0,.7)");
   ctx.fillStyle = "#9ca3af"; ctx.font = "11px sans-serif";
   ctx.fillText("ESC to abandon quest", canvas.width - 106, canvas.height - 84);
+  if (!state.tomeCine) drawTomeHud();
 }
 
 // ---------- DUEL ----------
@@ -1715,8 +1999,217 @@ function dungeonPresence() {
   return d && d.runId ? { run: d.runId, dfloor: d.floor | 0 } : null;
 }
 
+
+// ============================================================== THE CHEST
+// A dungeon no longer pays out the moment the last thing in it falls. It
+// leaves a chest, and the chest is what you claim: walk to it, press E, watch
+// the lid come off, and what was inside goes into your pack. The reward call
+// itself is unchanged — the server still rolls every piece — it just happens
+// when the lid opens rather than when the boss lands.
+function spawnChest(x, y, kind) {
+  const d = state.dungeon;
+  if (!d || d.chest) return;
+  d.chest = {
+    x, y, kind,                      // "guild" | "quest"
+    state: "closed",                 // closed -> opening -> open
+    t0: 0, claimed: false, spawnedAt: Date.now(),
+  };
+}
+function chestPrompt() {
+  const c = state.dungeon && state.dungeon.chest;
+  if (!c || c.state !== "closed") return null;
+  return Math.hypot(state.pos.x - c.x, state.pos.y - c.y) < 46 ? c : null;
+}
+// Opening is a one-way door: the lid animation runs for CHEST_OPEN_MS and the
+// payout call goes out when it finishes.
+function openChest() {
+  const c = chestPrompt();
+  if (!c) return;
+  c.state = "opening";
+  c.t0 = Date.now();
+  shakeDungeon(4);
+  toast("The lid gives.", 1600);
+}
+function updateChest() {
+  const d = state.dungeon;
+  const c = d && d.chest;
+  if (!c) return;
+  if (c.state === "closed") {
+    // Pressing E next to it is the whole interaction.
+    if (keys["e"] && chestPrompt()) openChest();
+    return;
+  }
+  if (c.state === "opening") {
+    const k = (Date.now() - c.t0) / ECON.CHEST_OPEN_MS;
+    // light spilling out, harder and harder, as the lid comes up
+    if (Math.random() < 0.4 + k * 0.5) {
+      addParticles(c.x + (Math.random() - 0.5) * 40, c.y - 10 - k * 30, k > 0.6 ? "#fde047" : "#fbbf24", 2);
+    }
+    if (k >= 1) { c.state = "open"; claimChest(c); }
+  }
+}
+let _claiming = false;
+async function claimChest(c) {
+  if (c.claimed || _claiming) return;
+  _claiming = true;
+  c.claimed = true;
+  shakeDungeon(6);
+  try {
+    if (c.kind === "guild") {
+      const res = await netGuildDungeon({ action: "complete" });
+      state.data.money = res.money;
+      if (res.mastery) state.mastery = res.mastery;
+      const bonus = res.miniPurse ? ` — includes $${res.miniPurse.toLocaleString()} in mini-boss bounties` : "";
+      toast(`Guild dungeon cleared! +$${res.gained.toLocaleString()} (guild tithe $${res.tithe.toLocaleString()})${bonus}`, 7000);
+      if (window.gameGear) gameGear.announceLoot(res.loot, res.gear);
+      if (window.gameGuild) gameGuild.refresh();
+      setTimeout(() => { if (state.area === "dungeon") endDungeon(true, true); }, 3400);
+    } else {
+      const tier = (state.dungeon && state.dungeon.tier) || "easy";
+      const data = await netEarn({ source: `quest_${tier}`, amount: state.questReward });
+      state.data.money = data.money;
+      toast(`Quest complete! +$${data.gained}`, 5000);
+      if (window.gameGear) gameGear.announceLoot(data.loot, data.gear);
+      if (data.packFull) toast("Something else was in there, but your pack is full — sell some of it at the Armory.", 6000);
+      setTimeout(() => { if (state.area === "dungeon") endDungeon(true, true); }, 2600);
+    }
+  } catch (e) {
+    toast(e.message, 5000);
+    // A failed claim must not strand the party in a cleared room.
+    setTimeout(() => { if (state.area === "dungeon") endDungeon(true, true); }, 3000);
+  }
+  _claiming = false;
+}
+
+// =============================================================== TOMES
+// One read per player per dungeon run. R opens the book, every client in the
+// run watches the same short cutscene (during which nothing moves and nothing
+// can be hit), and then the effect lands on everyone standing in the room.
+//
+// The server decides WHETHER you may read one (see the tome_use op); the
+// effect itself is resolved here because it is positional and the server has
+// no in-dungeon coordinates to measure against.
+function activeBuffs() {
+  const now = Date.now();
+  const b = state.buffs || (state.buffs = {});
+  for (const k of Object.keys(b)) if (b[k].until <= now) delete b[k];
+  return b;
+}
+function buffDamageMult() { const b = activeBuffs().rage; return b ? b.dmgMult : 1; }
+function buffTakenMult() { const b = activeBuffs().ward; return b ? b.dmgTakenMult : 1; }
+function buffSpeedMult() { const b = activeBuffs().rage; return b ? b.speedMult : 1; }
+
+function equippedTome() {
+  const it = window.gameGear ? gameGear.equippedItem(ECON.TOME_SLOT) : null;
+  return ECON.isTome(it) ? it : null;
+}
+// Why R is greyed out, in the words the HUD uses.
+function tomeStatus() {
+  const d = state.dungeon;
+  if (!d) return { ok: false, why: "" };
+  const it = equippedTome();
+  if (!it) return { ok: false, why: "no tome equipped" };
+  const def = ECON.tomeDef(it.tome);
+  if (d.tomeUsed) return { ok: false, why: "already read this run", def };
+  if (d.cine || state.tomeCine) return { ok: false, why: "not now", def };
+  return { ok: true, def };
+}
+let _tomePending = false;
+async function useTome() {
+  const st = tomeStatus();
+  if (!st.ok) { if (st.why && st.why !== "not now") toast(`Tome: ${st.why}.`, 2000); return; }
+  if (_tomePending) return;
+  const d = state.dungeon;
+  _tomePending = true;
+  try {
+    // A guild run is refereed; a solo quest run has nobody to referee it, so
+    // the once-per-run rule is kept locally.
+    if (d.cfg && d.cfg.guild) await netGuildDungeon({ action: "tome_use" });
+    d.tomeUsed = true;
+    startTomeCine(st.def, state.user, true);
+  } catch (e) {
+    toast(e.message, 3000);
+  }
+  _tomePending = false;
+}
+// The cutscene every client in the run plays: the reader opens the book, the
+// room goes white, and it comes back with the effect running.
+function startTomeCine(def, by, mine) {
+  if (!def) return;
+  state.tomeCine = {
+    def, by, mine: !!mine, t0: Date.now(), dur: ECON.GUILD_BOSS.TOME_CINE_MS,
+    applied: false, motes: [],
+  };
+}
+function tomeCineActive() {
+  const c = state.tomeCine;
+  if (!c) return false;
+  if (Date.now() - c.t0 >= c.dur) {
+    if (!c.applied) { c.applied = true; applyTome(c.def, c.by, c.mine); }
+    state.tomeCine = null;
+    return false;
+  }
+  return true;
+}
+// The effect itself. Everyone in the room is "near" the reader — a boss arena
+// is one room and a maze floor is six cells wide, so the radius is a flavour
+// number rather than a gate, and a party member who is present gets the buff.
+function applyTome(def, by, mine) {
+  const now = Date.now();
+  const b = state.buffs || (state.buffs = {});
+  const who = mine ? "You read" : `${by} reads`;
+  if (def.kind === "burst") {
+    // ERUPTION. Ordinary enemies inside the ring simply stop existing; the
+    // boss's share of it is applied by the server (see the tome_use op), so it
+    // cannot be turned into free damage by a patched client.
+    const killed = [];
+    for (const e of state.enemies) {
+      if (Math.hypot(e.x - state.pos.x, e.y - state.pos.y) > def.radius) continue;
+      e.hp = 0; killed.push(e.id);
+      addParticles(e.x, e.y, "#f97316", 22);
+    }
+    for (let i = 0; i < killed.length; i += ECON.DUNGEON_HIT_MAX_TARGETS) {
+      const chunk = killed.slice(i, i + ECON.DUNGEON_HIT_MAX_TARGETS);
+      if (state.dungeon && state.dungeon.cfg.guild) reportEnemyKill(chunk);
+    }
+    state.enemies = state.enemies.filter(e => e.hp > 0);
+    checkFloorCleared();
+    for (let i = 0; i < 60; i++) {
+      const a = Math.random() * Math.PI * 2, r = Math.random() * def.radius;
+      addParticles(state.pos.x + Math.cos(a) * r, state.pos.y + Math.sin(a) * r * 0.6, i % 2 ? "#f97316" : "#fde047", 1);
+    }
+    shakeDungeon(18);
+    toast(`${who} the ${def.name.replace("Tome of ", "")} — the floor opens.`, 4000);
+  } else if (def.kind === "heal") {
+    b.heal = { until: now + def.durMs, perSec: def.healPerSec, last: now };
+    toast(`${who} the Tome of Recovery — mending for ${Math.round(def.durMs / 1000)}s.`, 4000);
+  } else if (def.kind === "ward") {
+    b.ward = { until: now + def.durMs, dmgTakenMult: def.dmgTakenMult };
+    toast(`${who} the Tome of Protection — ${Math.round((1 - def.dmgTakenMult) * 100)}% less damage for ${Math.round(def.durMs / 1000)}s.`, 4000);
+  } else if (def.kind === "rage") {
+    b.rage = { until: now + def.durMs, dmgMult: def.dmgMult, speedMult: def.speedMult };
+    toast(`${who} the Tome of Rage — faster and harder for ${Math.round(def.durMs / 1000)}s.`, 4000);
+  }
+}
+// Recovery ticks here rather than on a timer, so it stops the moment the run
+// does.
+function tickBuffs() {
+  const b = activeBuffs();
+  if (!b.heal) return;
+  const now = Date.now();
+  const dt = now - b.heal.last;
+  if (dt < 250) return;
+  b.heal.last = now;
+  const before = state.hp;
+  state.hp = Math.min(state.maxHp, state.hp + b.heal.perSec * (dt / 1000));
+  if (state.hp > before && Math.random() < 0.5) addParticles(state.pos.x, state.pos.y - 10, "#86efac", 2);
+}
+
+window.gameCombatTomes = { useTome, tomeStatus, startTomeCine, buffDamageMult, buffTakenMult, buffSpeedMult };
+
 window.gameCombat = {
   startDungeon, updateDungeon, drawDungeon, doAttack: doAttackWithDuel,
+  useTome, tomeStatus, openChest, chestPrompt,
   startDuel, updateDuel, drawDuel, duelId, endDungeon,
   adoptServerFloor, applyEnemyChanges, dungeonPresence,
   resumeGuildRunIfAny,

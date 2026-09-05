@@ -86,7 +86,7 @@ const INTERIORS = {
       { x: 200, y: 360, label: "INVITE FRIEND", action: "quest_invite", icon: "people" },
       { x: 824, y: 360, label: "DUEL ARENA", action: "duel_open", icon: "swords" },
       { x: 262, y: 208, label: "TALK TO THE BROKER", action: "guild_broker", icon: "people" },
-      { x: 762, y: 208, label: "THE ARMOURY", action: "gear_armoury", icon: "hammer" },
+      { x: 762, y: 208, label: "THE ARMORY", action: "gear_armory", icon: "hammer" },
     ],
   },
   // A guild's own hall, reached through the door that appears beside the broker
@@ -2398,7 +2398,7 @@ const guildRoom = {
     if (window.gameGuild && gameGuild.myGuild()) drawGuildDoor(74, 208, t);
     drawShadyBroker(262, 208, t);
     wallSign(room.x + 130, room.y + 24, "HEARTH & HOME", { size: 8, serif: true, bg: "#2a1a0e", border: "#d4a017", color: "#fde68a" });
-    wallSign(room.x + room.w - 150, room.y + 30, "ARMOURY", { size: 8, serif: true, bg: "#2a1a0e", border: "#d4a017", color: "#fde68a" });
+    wallSign(room.x + room.w - 150, room.y + 30, "ARMORY", { size: 8, serif: true, bg: "#2a1a0e", border: "#d4a017", color: "#fde68a" });
   },
 };
 

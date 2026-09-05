@@ -2109,6 +2109,11 @@ function gearView(u) {
 function grantGear(user, u, tier) {
     const pack = gearPackOf(u);
     const drops = ECON.rollGearDrops(tier);
+    // The chest at the end of a guild run gets one extra, independent roll for
+    // a tome. Quest-board dungeons roll nothing here — TOME_DROP_CHANCE has no
+    // entry for them — which is the whole reason to run a guild dungeon.
+    const tome = ECON.rollTomeDrop(tier);
+    if (tome) drops.push(tome);
     const kept = [];
     let full = false;
     for (const it of drops) {
@@ -2179,11 +2184,16 @@ function guildBossView(run, now) {
     if (!b) return null;
     now = now || Date.now();
     const def = ECON.GUILD_BOSSES[b.id];
+    const look = ECON.bossLook(b.id, b.phase);
     const mini = def.tier === 'mini';
     const hp = b.head.hp + b.parts.reduce((s, p) => s + p.hp, 0);
     return {
-        id: b.id, name: def.name, cry: def.cry, color: def.color, accent: def.accent,
-        title: def.title || '', tier: def.tier, mini,
+        id: b.id, name: look.name, cry: look.cry, color: look.color, accent: look.accent,
+        title: look.title, tier: def.tier, mini, phase: b.phase || 1,
+        // A phase change is a cutscene on every client, so it needs its own
+        // clock the same way the entrance rise does.
+        revivedFor: b.revivedAt ? now - b.revivedAt : 0,
+        reviveMs: ECON.DRAGON_PHASE2.CINE_MS,
         partName: def.partName, status: b.status, hpMult: b.hpMult,
         elapsed: now - b.spawnedAt, riseMs: mini ? ECON.GUILD_BOSS.MINI_RISE_MS : ECON.GUILD_BOSS.RISE_MS,
         leavesIn: Math.max(0, ECON.GUILD_BOSS.MAX_LIFE_MS - (now - b.spawnedAt)),
@@ -2211,7 +2221,7 @@ function spawnGuildBoss(run, bossId) {
     const partHp = Math.floor((maxHp - headHp) / def.parts);
     const riseMs = mini ? ECON.GUILD_BOSS.MINI_RISE_MS : ECON.GUILD_BOSS.RISE_MS;
     run.boss = {
-        id: bossId, mini, status: 'rising', spawnedAt: now, diedAt: 0,
+        id: bossId, mini, status: 'rising', spawnedAt: now, diedAt: 0, phase: 1,
         baseHead: headHp, basePart: partHp, hpMult: 1,
         maxHp: headHp + partHp * def.parts,
         head: { hp: headHp, maxHp: headHp },
@@ -2221,6 +2231,28 @@ function spawnGuildBoss(run, bossId) {
     };
     console.log(`[guild-boss] ${def.name} awoke for run ${run.id} (${run.members.size} in the party)`);
     runBroadcast(run, 'spawn');
+}
+// Varkaal does not die the first time its head goes down. It drops, the ash
+// under it catches, and it comes back lit with a fresh (smaller) pool and a
+// different deck. The revival is a cutscene on every client, so nothing may be
+// hit until guildBossTick flips it back to 'alive'.
+function beginDragonPhase2(run, now) {
+    const b = run.boss;
+    b.phase = 2;
+    b.status = 'reviving';
+    b.revivedAt = now;
+    const pool = Math.round(ECON.guildBossMaxHp('dragon', 1) * ECON.DRAGON_PHASE2.HP_FRAC);
+    b.baseHead = Math.floor(pool * ECON.GUILD_BOSS.HEAD_FRAC);
+    b.basePart = Math.floor((pool - b.baseHead) / b.parts.length);
+    b.head = { hp: Math.round(b.baseHead * b.hpMult), maxHp: Math.round(b.baseHead * b.hpMult) };
+    b.parts = b.parts.map(() => ({ hp: Math.round(b.basePart * b.hpMult), maxHp: Math.round(b.basePart * b.hpMult) }));
+    b.maxHp = b.head.maxHp + b.parts.reduce((s, p) => s + p.maxHp, 0);
+    // The clock that would have timed the fight out gets the whole second
+    // phase to run in, not the remainder of the first.
+    b.spawnedAt = now;
+    b.nextAttackAt = now + ECON.DRAGON_PHASE2.CINE_MS + 1400;
+    console.log(`[guild-boss] VARKAAL rose again for run ${run.id}`);
+    runBroadcast(run, 'phase2');
 }
 // Same "keep the fraction, grow the bar" rule the sea beasts use, so a bar
 // never jumps when a latecomer lands their first hit — it just drains slower.
@@ -2241,8 +2273,8 @@ function rescaleGuildBoss(run) {
 }
 function rollGuildBossAttack(run) {
     const b = run.boss;
-    let a = ECON.pickGuildBossAttack(b.id);
-    if (a === b.lastAttack && Math.random() < 0.6) a = ECON.pickGuildBossAttack(b.id);
+    let a = ECON.pickGuildBossAttack(b.id, null, b.phase);
+    if (a === b.lastAttack && Math.random() < 0.6) a = ECON.pickGuildBossAttack(b.id, null, b.phase);
     b.lastAttack = a;
     // Positions are picked by each client against its own boss-room geometry;
     // the server only decides WHICH attack and its shape/timing, so the fight
@@ -2251,6 +2283,12 @@ function rollGuildBossAttack(run) {
         type: a.type, warnMs: a.warnMs, dmg: a.dmg, durMs: a.durMs || 0,
         r: a.r || 0, band: a.band || 0, len: a.len || 0, w: a.w || 0,
         speed: a.speed || 0, pull: a.pull || 0, targets: a.targets || 1,
+        // Shape and labels the client cannot re-derive on its own. `sweep` in
+        // particular used to be dropped here: the breath cone then computed a
+        // NaN angle, and a NaN rotate() is defined as a no-op, so every one of
+        // Varkaal's breaths came out at angle 0 — straight to the right.
+        sweep: a.sweep || 0, arms: a.arms || 0,
+        tell: a.tell || '', dodge: a.dodge || '',
         seed: (Math.random() * 0x7fffffff) | 0,
     };
 }
@@ -2365,6 +2403,15 @@ function guildBossTick() {
             }
             continue;
         }
+        // Coming back for the second phase: nothing swings, nothing can be
+        // hit, and the whole party is watching the same cutscene.
+        if (b.status === 'reviving') {
+            if (now - (b.revivedAt || 0) >= ECON.DRAGON_PHASE2.CINE_MS) {
+                b.status = 'alive';
+                runBroadcast(run, 'alive');
+            }
+            continue;
+        }
         if (b.status === 'rising' && now - b.spawnedAt >= (b.mini ? ECON.GUILD_BOSS.MINI_RISE_MS : ECON.GUILD_BOSS.RISE_MS)) {
             b.status = 'alive';
             runBroadcast(run, 'alive');
@@ -2375,7 +2422,8 @@ function guildBossTick() {
                 const hp = b.head.hp + b.parts.reduce((s, p) => s + p.hp, 0);
                 const speed = hp / b.maxHp < ECON.GUILD_BOSS.ENRAGE_FRAC ? ECON.GUILD_BOSS.ENRAGE_SPEED : 1;
                 const attack = rollGuildBossAttack(run);
-                b.nextAttackAt = now + Math.floor((ECON.GUILD_BOSS.ATTACK_EVERY_MS + Math.random() * 800 + (attack.durMs || 0) * 0.5) * speed);
+                const cadence = (b.phase || 1) >= 2 ? ECON.DRAGON_PHASE2.ATTACK_EVERY_MS : ECON.GUILD_BOSS.ATTACK_EVERY_MS;
+                b.nextAttackAt = now + Math.floor((cadence + Math.random() * 800 + (attack.durMs || 0) * 0.5) * speed);
                 runBroadcast(run, 'attack', { attack });
             } else if (now - b.lastBroadcast > 1000) {
                 b.lastBroadcast = now;
@@ -3434,6 +3482,40 @@ const ECONOMY_OPS = {
             return ECONOMY_OPS.gear(user, { action: 'sell', pieces: doomed });
         }
 
+        // Staff only: put a specific, named piece straight into the pack. This
+        // is the tool that used to mean editing the save by hand — it rolls the
+        // item through exactly the same makeGear/makeTome the dungeons use, so
+        // a granted piece is indistinguishable from a dropped one, and every
+        // grant is logged with who did it.
+        if (action === 'grant') {
+            if (!isStaff(user)) throw new Error('Staff only.');
+            const target = String(msg.target || user);
+            if (target !== user && roleOf(user) !== 'owner') throw new Error('Only owners can grant to another player.');
+            const tu = target === user ? u : userRec(target);
+            if (!tu) throw new Error('No such player.');
+            const tpack = gearPackOf(tu);
+            if (Object.keys(tpack).length >= ECON.GEAR_PACK_MAX) throw new Error('That pack is full.');
+            let it;
+            if (msg.tome) {
+                if (!ECON.tomeDef(String(msg.tome))) throw new Error('No such tome.');
+                it = ECON.makeTome(String(msg.tome));
+            } else {
+                const baseId = String(msg.base || '');
+                if (!ECON.GEAR_BASE_BY_ID[baseId]) throw new Error('No such item.');
+                const rarity = ECON.GEAR_RARITY_INFO[String(msg.rarity)] ? String(msg.rarity) : 'fine';
+                it = ECON.makeGear(baseId, rarity);
+            }
+            while (tpack[it.id]) it.id = it.id + 'x';
+            tpack[it.id] = it;
+            saveGear(target, tu);
+            console.log(`[gear] STAFF ${user} granted ${ECON.gearName(it)} (${it.rarity}) to ${target}`);
+            if (target !== user) {
+                pushTo(target, { event: 'gear_granted', by: user, item: it, gear: gearPackOf(tu) });
+                return { granted: it, target };
+            }
+            return Object.assign(gearView(tu), { granted: it, target });
+        }
+
         throw new Error('Unknown gear action.');
     },
 
@@ -3700,7 +3782,11 @@ const ECONOMY_OPS = {
             const run = runFor(user);
             if (!run || !run.boss) throw new Error('There is nothing to fight.');
             const b = run.boss;
-            if (b.status !== 'alive') throw new Error(b.status === 'rising' ? 'It has not fully risen.' : 'It is already dead.');
+            if (b.status !== 'alive') {
+            throw new Error(b.status === 'rising' ? 'It has not fully risen.'
+                : b.status === 'reviving' ? 'It is getting back up.'
+                : 'It is already dead.');
+        }
             const weapon = msg.weapon === 'pistol' ? 'pistol' : 'sword';
             const k = user + ':' + weapon;
             if (now - (b.hitLast.get(k) || 0) < ECON.GUILD_BOSS.HIT_MIN_MS[weapon]) throw new Error('Too fast.');
@@ -3726,6 +3812,8 @@ const ECONOMY_OPS = {
             if (downed && msg.part !== 'head') {
                 grantMastery(user, u, 'combat', ECON.MASTERY_XP.boss_part);
                 runBroadcast(run, 'part_down', { part: nonNegInt(msg.part) });
+            } else if (downed && b.id === 'dragon' && !b.mini && (b.phase || 1) < 2) {
+                beginDragonPhase2(run, now);
             } else if (downed) {
                 b.status = 'dead'; b.diedAt = now;
                 if (b.mini) {
@@ -3796,6 +3884,65 @@ const ECONOMY_OPS = {
             console.log(`[guild-dungeon] ${cfg.name} cleared — $${gross} split ${share.length} ways, $${tithe} tithed`);
             endGuildRun(run);
             return { gained: each, gross, tithe, miniPurse: run.miniPurse || 0, money: moneyOf(u), party: payouts, guild: g ? guildView(g, user, now) : null, mastery: masteryView(u), loot: loot[user] || [], gear: gearPackOf(u) };
+        }
+
+        // Reading a tome. The effect itself is resolved on each client (it is
+        // positional, and the server has no in-dungeon coordinates), but WHO
+        // may read one and HOW OFTEN is decided here: one per player per run,
+        // and only a tome they are actually wearing.
+        if (action === 'tome_use') {
+            const run = runFor(user);
+            if (!run) throw new Error('You are not in a guild dungeon.');
+            const eq = equippedOf(u), pack = gearPackOf(u);
+            const worn = eq[ECON.TOME_SLOT] && pack[eq[ECON.TOME_SLOT]];
+            if (!ECON.isTome(worn)) throw new Error('You have no tome equipped.');
+            if (!run.tomesUsed) run.tomesUsed = {};
+            if (run.tomesUsed[user]) throw new Error('You have already read a tome on this run.');
+            run.tomesUsed[user] = worn.tome;
+            // The room holds its breath: the boss keeps whatever it was about
+            // to throw until the reading is over.
+            if (run.boss && run.boss.status === 'alive') {
+                run.boss.nextAttackAt = Math.max(run.boss.nextAttackAt, now + ECON.GUILD_BOSS.TOME_CINE_MS + 600);
+            }
+            // Eruption is the one tome that DEALS damage, so its damage is
+            // applied here rather than on the reader's client — a boss's HP is
+            // server-owned, and a client that could subtract from it directly
+            // would be a client that could subtract whatever it liked.
+            let erupted = 0;
+            if (worn.tome === 'eruption' && run.boss && run.boss.status === 'alive') {
+                const b = run.boss;
+                let budget = Math.round(ECON.TOMES.eruption.dmg * b.hpMult);
+                // It chews through the guard first, exactly like a swing does,
+                // and only reaches the head once nothing is left standing.
+                for (const target of b.parts.concat([b.head])) {
+                    if (budget <= 0) break;
+                    if (target.hp <= 0) continue;
+                    if (target === b.head && b.parts.some(x => x.hp > 0)) break;
+                    const dealt = Math.min(target.hp, budget);
+                    target.hp -= dealt; budget -= dealt; erupted += dealt;
+                }
+                b.damage[user] = (b.damage[user] || 0) + erupted;
+                // Eruption can finish a fight, so it has to be able to end one
+                // the same way a killing blow does.
+                if (b.head.hp <= 0) {
+                    if (b.id === 'dragon' && !b.mini && (b.phase || 1) < 2) {
+                        beginDragonPhase2(run, now);
+                    } else {
+                        b.status = 'dead'; b.diedAt = now;
+                        if (b.mini) {
+                            run.miniPurse = (run.miniPurse || 0) + ECON.GUILD_BOSSES[b.id].reward;
+                            for (const m of Object.keys(b.damage)) grantMastery(m, userRec(m), 'combat', ECON.MASTERY_XP.boss_part);
+                        }
+                        runBroadcast(run, 'dead');
+                    }
+                } else {
+                    runBroadcast(run, 'hp');
+                }
+            }
+            const payload = { event: 'guild_dungeon', kind: 'tome', runId: run.id, by: user, tome: worn.tome, at: now, erupted };
+            for (const m of run.members) pushTo(m, payload);
+            console.log(`[tome] ${user} read ${ECON.tomeName(worn)} in run ${run.id}${erupted ? ` for ${erupted} damage` : ''}`);
+            return { tome: worn.tome, at: now, erupted };
         }
 
         if (action === 'abandon') {

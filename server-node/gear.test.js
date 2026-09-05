@@ -54,7 +54,24 @@ async function tryRpc(c, op, args) { try { return { ok: true, data: await c.rpc(
     {
         const bad = ECON.GEAR_BASES.filter(b => Math.abs(Object.values(b.split).reduce((s, x) => s + x, 0) - 1) > 1e-9);
         assert(!bad.length, 'every base spends exactly its power budget' + (bad.length ? ' (' + bad.map(b => b.id) + ')' : ''));
-        assert(ECON.GEAR_SLOTS.every(s => ECON.GEAR_BASES.some(b => b.slot === s && b.lvl === 7)), 'every slot has a top-level base');
+        // The tome slot is deliberately not made of bases — a tome is picked
+        // from ECON.TOMES, has no stat budget and no level ladder — so the
+        // invariant is about the ARMOUR slots.
+        const gearSlots = ECON.GEAR_SLOTS.filter(s => s !== ECON.TOME_SLOT);
+        assert(gearSlots.every(s => ECON.GEAR_BASES.some(b => b.slot === s && b.lvl === 7)), 'every equipment slot has a top-level base');
+        assert(ECON.TOME_ORDER.every(id => ECON.TOMES[id] && ECON.TOMES[id].kind), 'every tome does something');
+        assert(ECON.TOMES.eruption.rarity === 'mythic', 'eruption is the mythic of the set');
+        assert(ECON.TOME_ORDER.filter(id => ECON.TOMES[id].rarity === 'legendary').length === 3, 'the other three are legendary');
+        {
+            // Only guild dungeons can hand one out, and the deepest one most often.
+            let quest = 0, dragon = 0;
+            for (let i = 0; i < 20000; i++) {
+                if (ECON.rollTomeDrop('hard')) quest++;
+                if (ECON.rollTomeDrop('guild_dragon')) dragon++;
+            }
+            assert(quest === 0, 'the quest board never drops a tome');
+            assert(dragon > 3000 && dragon < 5500, `the Ashen Roost drops one about a fifth of the time (got ${(dragon / 200).toFixed(1)}%)`);
+        }
     }
     {
         const worn = ECON.makeGear('ashen_maw', 'worn', () => 0.5);

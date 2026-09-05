@@ -607,12 +607,185 @@
   };
 
   // ============================================================ THE BOSS
+  // ============================================================ PRESENCE
+  // The heads and limbs were drawn well but they were drawn ALONE: a face and
+  // some arms floating in an empty room, which is what made the thing at the
+  // end of a six-floor run read smaller than the sea beasts. This is the layer
+  // underneath all of it — a body for the head to sit on, a shadow it casts on
+  // the floor, and the air around it doing something. It is drawn once, behind
+  // everything else, and every boss gets it.
+  const PRESENCE = {
+    warden: { torso: 210, shoulder: 250, motes: "103,232,249", moteKind: "bubble", throne: true },
+    smith:  { torso: 225, shoulder: 275, motes: "251,146,60",  moteKind: "ember",  anvil: true },
+    tyrant: { torso: 235, shoulder: 265, motes: "192,132,252", moteKind: "rune",   throne: true },
+    dragon: { torso: 250, shoulder: 300, motes: "251,146,60",  moteKind: "ember",  tail: true },
+    ogrelord: { torso: 150, shoulder: 190, motes: "163,230,53", moteKind: "ember" },
+    tempest:  { torso: 140, shoulder: 200, motes: "125,211,252", moteKind: "bubble" },
+  };
+
+  function drawPresence(ctx, boss, t) {
+    const P = PRESENCE[boss.id] || PRESENCE.warden;
+    const look = ECON.bossLook(boss.id, boss.phase);
+    const hd = headPos();
+    const em = easeOut(headEmergeOf(boss, t));
+    if (em <= 0) return;
+    const fade = deadFade(boss, t);
+    const dead = boss.status === "dead";
+    const a = (1 - fade * 0.8) * em;
+    if (a <= 0) return;
+    const rgb = hexToRgb(dead ? "#2a2529" : look.color);
+    const arg = hexToRgb(look.accent);
+    const groundY = hd.y + 250;
+    const breathe = dead ? 0 : Math.sin(t / 900) * 5;
+
+    ctx.save();
+    ctx.globalAlpha = a;
+
+    // --- the shadow it stands in, which is most of the sense of weight ---
+    const sg = ctx.createRadialGradient(hd.x, groundY, 20, hd.x, groundY, P.shoulder * 1.5);
+    sg.addColorStop(0, "rgba(0,0,0,.62)");
+    sg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = sg;
+    ctx.beginPath(); ctx.ellipse(hd.x, groundY, P.shoulder * 1.5, P.shoulder * 0.42, 0, 0, TAU); ctx.fill();
+
+    // --- what it is sitting on / standing at ---
+    if (P.throne && !dead) {
+      // a high seat-back rising behind the whole silhouette
+      ctx.fillStyle = `rgba(${rgb},.5)`;
+      ctx.beginPath();
+      ctx.moveTo(hd.x - P.shoulder * 0.9, groundY);
+      ctx.lineTo(hd.x - P.shoulder * 0.62, hd.y - 190);
+      ctx.lineTo(hd.x + P.shoulder * 0.62, hd.y - 190);
+      ctx.lineTo(hd.x + P.shoulder * 0.9, groundY);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = `rgba(${arg},.35)`; ctx.lineWidth = 3; ctx.stroke();
+      // ribs of the back, catching the light
+      ctx.strokeStyle = `rgba(${arg},.22)`; ctx.lineWidth = 6;
+      for (let k = -2; k <= 2; k++) {
+        ctx.beginPath();
+        ctx.moveTo(hd.x + k * P.shoulder * 0.3, groundY - 20);
+        ctx.lineTo(hd.x + k * P.shoulder * 0.22, hd.y - 176);
+        ctx.stroke();
+      }
+    }
+    if (P.anvil && !dead) {
+      // the anvil it never stops working at, at its feet
+      ctx.fillStyle = `rgba(${rgb},.85)`;
+      ctx.fillRect(hd.x - 96, groundY - 40, 192, 26);
+      ctx.fillRect(hd.x - 46, groundY - 14, 92, 22);
+      ctx.fillStyle = `rgba(${arg},${0.35 + 0.3 * Math.abs(Math.sin(t / 380))})`;
+      ctx.fillRect(hd.x - 96, groundY - 44, 192, 5);
+      // sparks off it, in time with the bellows
+      for (let k = 0; k < 5; k++) {
+        const ph = ((t / 500) + k * 0.2) % 1;
+        ctx.fillStyle = `rgba(253,224,71,${1 - ph})`;
+        ctx.fillRect(hd.x - 30 + k * 16 + ph * 40, groundY - 46 - ph * 60, 3, 3);
+      }
+    }
+
+    // --- the body: a mass under the head, so it is not a floating face ---
+    const topY = hd.y + 44;
+    const bg = ctx.createLinearGradient(hd.x, topY, hd.x, groundY);
+    bg.addColorStop(0, `rgba(${rgb},.95)`);
+    bg.addColorStop(0.6, `rgba(${rgb},.7)`);
+    bg.addColorStop(1, "rgba(8,4,12,.85)");
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.moveTo(hd.x - P.shoulder * 0.52, topY + 10);
+    ctx.quadraticCurveTo(hd.x - P.shoulder * 0.78, topY + 60 + breathe, hd.x - P.shoulder * 0.6, groundY);
+    ctx.lineTo(hd.x + P.shoulder * 0.6, groundY);
+    ctx.quadraticCurveTo(hd.x + P.shoulder * 0.78, topY + 60 + breathe, hd.x + P.shoulder * 0.52, topY + 10);
+    ctx.quadraticCurveTo(hd.x, topY - 22, hd.x - P.shoulder * 0.52, topY + 10);
+    ctx.closePath(); ctx.fill();
+    // a rim of its own accent along the shoulder line, which is what reads as
+    // "lit from behind" rather than "a shape"
+    ctx.strokeStyle = `rgba(${arg},${dead ? 0.12 : 0.4})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(hd.x - P.shoulder * 0.52, topY + 10);
+    ctx.quadraticCurveTo(hd.x, topY - 22, hd.x + P.shoulder * 0.52, topY + 10);
+    ctx.stroke();
+    // plating down the chest
+    ctx.strokeStyle = `rgba(0,0,0,.35)`; ctx.lineWidth = 3;
+    for (let k = 1; k <= 3; k++) {
+      const yy = topY + 30 + k * 44;
+      if (yy > groundY - 10) break;
+      ctx.beginPath();
+      ctx.moveTo(hd.x - P.shoulder * (0.56 - k * 0.02), yy);
+      ctx.quadraticCurveTo(hd.x, yy + 16, hd.x + P.shoulder * (0.56 - k * 0.02), yy);
+      ctx.stroke();
+    }
+
+    // --- a tail, for the only one that has one ---
+    if (P.tail) {
+      ctx.strokeStyle = `rgba(${rgb},.9)`; ctx.lineWidth = 34; ctx.lineCap = "round";
+      const swish = dead ? 0 : Math.sin(t / 1100) * 90;
+      ctx.beginPath();
+      ctx.moveTo(hd.x, groundY - 30);
+      ctx.quadraticCurveTo(hd.x + 180 + swish, groundY + 20, hd.x + 320 + swish, groundY - 60);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(${arg},.5)`; ctx.lineWidth = 8;
+      ctx.stroke();
+      ctx.lineCap = "butt";
+    }
+
+    // --- the air around it ---
+    if (!dead) {
+      for (let k = 0; k < 22; k++) {
+        const ph = ((t / (P.moteKind === "ember" ? 2600 : 4200)) + k * 0.045) % 1;
+        const mx = hd.x + Math.sin(k * 2.3 + t / 1400) * (P.shoulder * 1.15);
+        const my = P.moteKind === "bubble" ? groundY - ph * 420 : groundY - 40 - ph * 380;
+        const al = (P.moteKind === "bubble" ? ph : 1 - ph) * 0.6;
+        ctx.fillStyle = `rgba(${P.motes},${al})`;
+        if (P.moteKind === "rune") {
+          ctx.fillRect(mx - 3, my - 3, 6, 6);
+        } else if (P.moteKind === "bubble") {
+          ctx.beginPath(); ctx.arc(mx, my, 2 + (k % 3), 0, TAU); ctx.fill();
+        } else {
+          ctx.fillRect(mx, my, 3, 3);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  // Varkaal in its second phase is the same geometry lit differently: every
+  // pass below is drawn through a hot overlay rather than redrawn from scratch.
+  function phaseTint(ctx, boss, t, fn) {
+    if ((boss.phase || 1) < 2) return fn();
+    const out = fn();
+    const hd = headPos();
+    ctx.save();
+    ctx.globalCompositeOperation = "overlay";
+    const g = ctx.createRadialGradient(hd.x, hd.y + 60, 20, hd.x, hd.y + 60, 420);
+    const pulse = 0.35 + 0.2 * Math.abs(Math.sin(t / 420));
+    g.addColorStop(0, `rgba(255,237,160,${pulse})`);
+    g.addColorStop(0.5, `rgba(220,38,38,${pulse * 0.8})`);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(hd.x, hd.y + 60, 420, 0, TAU); ctx.fill();
+    ctx.restore();
+    // and it is visibly burning
+    ctx.save();
+    for (let k = 0; k < 26; k++) {
+      const ph = ((t / 1500) + k * 0.038) % 1;
+      const fx = hd.x + Math.sin(k * 1.7 + t / 700) * 260;
+      const fy = hd.y + 200 - ph * 340;
+      ctx.fillStyle = `rgba(253,${170 + (k * 37) % 80},71,${(1 - ph) * 0.8})`;
+      ctx.fillRect(fx, fy, 4, 4);
+    }
+    ctx.restore();
+    return out;
+  }
+
   // How much bigger than its own geometry each boss is drawn. The ANCHORS the
   // fight uses (guildBossPartPos / guildBossHeadPos) never move — only the art
   // around them grows — so scaling this up cannot desync what you can click
   // from what you can see.
-  const HEAD_SCALE = { warden: 1.3, smith: 1.3, tyrant: 1.32, dragon: 1.34, ogrelord: 1.16, tempest: 1.2 };
-  const PART_SCALE = { warden: 1.25, smith: 1.25, tyrant: 1.2, dragon: 1.3, ogrelord: 1.1, tempest: 1.15 };
+  // Big enough to be the thing at the end of a six-floor run, small enough
+  // that the floor you have to dodge on is still readable underneath it.
+  const HEAD_SCALE = { warden: 1.46, smith: 1.5, tyrant: 1.5, dragon: 1.52, ogrelord: 1.24, tempest: 1.3 };
+  const PART_SCALE = { warden: 1.4, smith: 1.42, tyrant: 1.36, dragon: 1.46, ogrelord: 1.14, tempest: 1.2 };
 
   function aroundAnchor(ctx, ax, ay, s, fn) {
     ctx.save();
@@ -624,10 +797,15 @@
 
   function drawBoss(ctx, boss, t) {
     if (!boss) return;
+    phaseTint(ctx, boss, t, () => drawBossBody(ctx, boss, t));
+  }
+  function drawBossBody(ctx, boss, t) {
     const R = RENDER[boss.id] || RENDER.warden;
     const hs = HEAD_SCALE[boss.id] || 1.4, ps = PART_SCALE[boss.id] || 1.2;
     const hp = headPos();
     const n = boss.parts.length;
+    // The body, the shadow and the air it displaces, under everything else.
+    drawPresence(ctx, boss, t);
     const drawParts = () => {
       for (let i = 0; i < n; i++) {
         const A = partPos(i, n);
@@ -803,11 +981,211 @@
           ctx.beginPath(); ctx.arc(0, 0, Math.max(0, rr), t / 300 + ring, t / 300 + ring + 4.4); ctx.stroke();
         }
         ctx.restore();
+      } else if (a.type === "ring") {
+        // An expanding front. The wind-up shows where it starts and how thick
+        // it is; the strike is the annulus itself travelling outwards.
+        const band = a.band || 50;
+        if (winding) {
+          ctx.strokeStyle = `rgba(239,68,68,${0.3 + 0.4 * warn})`; ctx.lineWidth = 3 + 4 * warn;
+          ctx.beginPath(); ctx.arc(a.head.x, a.head.y, 40 + 30 * warn, 0, TAU); ctx.stroke();
+          ctx.setLineDash([10, 12]);
+          ctx.strokeStyle = `rgba(254,202,202,${0.25 + 0.3 * warn})`; ctx.lineWidth = band;
+          ctx.beginPath(); ctx.arc(a.head.x, a.head.y, (a.r || 400) * 0.55, 0, TAU); ctx.stroke();
+          ctx.setLineDash([]);
+        } else {
+          const k = clamp01(after / Math.max(1, life));
+          const front = (a.r || 400) * k;
+          const g = ctx.createRadialGradient(a.head.x, a.head.y, Math.max(1, front - band), a.head.x, a.head.y, front + band);
+          g.addColorStop(0, "rgba(255,255,255,0)");
+          g.addColorStop(0.5, `rgba(255,255,255,${0.75 * (1 - k)})`);
+          g.addColorStop(1, `rgba(${hexToRgb(acc)},0)`);
+          ctx.strokeStyle = g; ctx.lineWidth = band;
+          ctx.beginPath(); ctx.arc(a.head.x, a.head.y, Math.max(1, front), 0, TAU); ctx.stroke();
+          ctx.strokeStyle = `rgba(${hexToRgb(acc)},${0.9 * (1 - k)})`; ctx.lineWidth = 4;
+          ctx.beginPath(); ctx.arc(a.head.x, a.head.y, Math.max(1, front), 0, TAU); ctx.stroke();
+        }
+      } else if (a.type === "cross") {
+        // Fixed spokes. The safe answer is the wedge between two of them.
+        const arms = a.arms || 4, len = a.len || 520, w = a.w || 56;
+        for (let i = 0; i < arms; i++) {
+          const ang = (a.rot || 0) + (i / arms) * TAU;
+          ctx.save(); ctx.translate(a.head.x, a.head.y); ctx.rotate(ang);
+          if (winding) {
+            ctx.fillStyle = `rgba(239,68,68,${0.08 + 0.16 * warn})`;
+            ctx.fillRect(0, -w / 2, len, w);
+            ctx.fillStyle = "rgba(239,68,68,.3)";
+            ctx.fillRect(0, -w / 2, len * warn, w);
+            ctx.strokeStyle = "#fecaca"; ctx.lineWidth = 2; ctx.strokeRect(0, -w / 2, len, w);
+          } else {
+            const k = clamp01(after / Math.max(1, life));
+            const g = ctx.createLinearGradient(0, 0, len, 0);
+            g.addColorStop(0, `rgba(255,255,255,${0.9 * fade})`);
+            g.addColorStop(0.4, `rgba(${hexToRgb(acc)},${0.8 * fade})`);
+            g.addColorStop(1, "rgba(0,0,0,0)");
+            ctx.fillStyle = g;
+            ctx.fillRect(0, -w / 2 * (1 - k * 0.4), len, w * (1 - k * 0.4));
+          }
+          ctx.restore();
+        }
+      } else if (a.type === "orbit") {
+        // One beam swept around the boss like a clock hand.
+        const len = a.len || 470, w = a.w || 58;
+        const sweep = a.sweep || 4.2;
+        if (winding) {
+          ctx.save(); ctx.translate(a.head.x, a.head.y);
+          ctx.fillStyle = `rgba(239,68,68,${0.05 + 0.09 * warn})`;
+          ctx.beginPath(); ctx.moveTo(0, 0);
+          ctx.arc(0, 0, len, a.angle, a.angle + sweep, sweep < 0);
+          ctx.closePath(); ctx.fill();
+          ctx.rotate(a.angle);
+          ctx.fillStyle = `rgba(239,68,68,${0.2 + 0.3 * warn})`;
+          ctx.fillRect(0, -w / 2, len, w);
+          ctx.strokeStyle = "#fecaca"; ctx.lineWidth = 2 + 2 * warn;
+          ctx.strokeRect(0, -w / 2, len, w);
+          ctx.restore();
+        } else {
+          const k = clamp01(after / Math.max(1, life));
+          ctx.save(); ctx.translate(a.head.x, a.head.y); ctx.rotate(a.angle + sweep * k);
+          // the trail the arm has already swept through
+          ctx.fillStyle = `rgba(${hexToRgb(acc)},${0.18 * fade})`;
+          ctx.beginPath(); ctx.moveTo(0, 0);
+          ctx.arc(0, 0, len, -sweep * k, 0, sweep > 0);
+          ctx.closePath(); ctx.fill();
+          const g = ctx.createLinearGradient(0, 0, len, 0);
+          g.addColorStop(0, `rgba(255,255,255,${0.95 * fade})`);
+          g.addColorStop(0.45, `rgba(${hexToRgb(acc)},${0.85 * fade})`);
+          g.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.fillStyle = g; ctx.fillRect(0, -w / 2, len, w);
+          for (let e = 0; e < 10; e++) {
+            const dd = ((t / 2 + e * 61) % len);
+            ctx.fillStyle = `rgba(255,255,255,${0.5 * fade})`;
+            ctx.fillRect(dd, Math.sin(e * 2 + t / 80) * w * 0.3, 4, 4);
+          }
+          ctx.restore();
+        }
+      } else if (a.type === "meteor") {
+        // Every impact keeps its own clock, so the circles light and land in a
+        // stagger rather than all at once.
+        for (const pt of a.points) {
+          const leftP = pt.at - t;
+          const r = a.r || 46;
+          if (leftP > 0) {
+            dangerCircle(ctx, pt.x, pt.y, r, clamp01(1 - leftP / Math.max(1, a.warnMs)));
+            // the thing on its way down
+            const fall = clamp01(1 - leftP / 700);
+            if (fall > 0) {
+              ctx.fillStyle = `rgba(${hexToRgb(acc)},.9)`;
+              ctx.beginPath(); ctx.arc(pt.x, pt.y - (1 - fall) * 320, 9, 0, TAU); ctx.fill();
+              ctx.strokeStyle = `rgba(255,237,160,.5)`; ctx.lineWidth = 3;
+              ctx.beginPath(); ctx.moveTo(pt.x, pt.y - (1 - fall) * 320 - 30); ctx.lineTo(pt.x, pt.y - (1 - fall) * 320); ctx.stroke();
+            }
+          } else {
+            const k = clamp01(-leftP / 420);
+            if (k >= 1) continue;
+            ctx.strokeStyle = `rgba(255,255,255,${0.85 * (1 - k)})`; ctx.lineWidth = 5 * (1 - k) + 1;
+            ctx.beginPath(); ctx.ellipse(pt.x, pt.y, r * (0.5 + k), r * (0.5 + k) * 0.55, 0, 0, TAU); ctx.stroke();
+          }
+        }
+      } else if (a.type === "pillars") {
+        // A grid of columns with one lane left open.
+        for (const pt of a.points) {
+          const r = a.r || 54;
+          if (winding) {
+            dangerCircle(ctx, pt.x, pt.y, r * 0.8, warn);
+          } else {
+            const k = clamp01(after / Math.max(1, life));
+            const hgt = 150 * (1 - k) * (k < 0.25 ? k / 0.25 : 1);
+            ctx.fillStyle = `rgba(${hexToRgb(body)},${0.9 * fade})`;
+            ctx.fillRect(pt.x - r * 0.42, pt.y - hgt, r * 0.84, hgt);
+            ctx.fillStyle = `rgba(${hexToRgb(acc)},${0.8 * fade})`;
+            ctx.fillRect(pt.x - r * 0.42, pt.y - hgt, r * 0.84, 6);
+          }
+        }
+      } else if (a.type === "safezone") {
+        // The inverse telegraph: everything is lethal except the marked circle,
+        // so the circle is the only thing drawn in a friendly colour.
+        const r = a.r || 110;
+        const safe = a.safe || { x: W / 2, y: H / 2 };
+        if (winding) {
+          ctx.fillStyle = `rgba(239,68,68,${0.05 + 0.16 * warn})`;
+          ctx.fillRect(0, 0, W, H);
+          ctx.save();
+          ctx.globalCompositeOperation = "destination-out";
+          ctx.beginPath(); ctx.arc(safe.x, safe.y, r, 0, TAU); ctx.fill();
+          ctx.restore();
+          ctx.strokeStyle = `rgba(74,222,128,${0.6 + 0.4 * warn})`; ctx.lineWidth = 4;
+          ctx.beginPath(); ctx.arc(safe.x, safe.y, r, 0, TAU); ctx.stroke();
+          ctx.strokeStyle = `rgba(74,222,128,${0.3})`; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(safe.x, safe.y, r * (0.4 + 0.6 * (1 - warn)), 0, TAU); ctx.stroke();
+        } else {
+          const k = clamp01(after / Math.max(1, life));
+          ctx.fillStyle = `rgba(${hexToRgb(acc)},${0.5 * (1 - k)})`;
+          ctx.fillRect(0, 0, W, H);
+          ctx.save();
+          ctx.globalCompositeOperation = "destination-out";
+          ctx.beginPath(); ctx.arc(safe.x, safe.y, r, 0, TAU); ctx.fill();
+          ctx.restore();
+        }
+      } else if (a.type === "charge") {
+        // The boss coming down a lane. The wind-up is the lane; the strike is
+        // the shape of it travelling.
+        const from = a.from || a.head, len = a.len || 620, w = a.w || 110;
+        ctx.save(); ctx.translate(from.x, from.y); ctx.rotate(a.angle || 0);
+        if (winding) {
+          ctx.fillStyle = `rgba(239,68,68,${0.08 + 0.2 * warn})`;
+          ctx.fillRect(0, -w / 2, len, w);
+          ctx.fillStyle = "rgba(239,68,68,.34)";
+          ctx.fillRect(0, -w / 2, len * warn, w);
+          ctx.strokeStyle = "#fecaca"; ctx.lineWidth = 3;
+          ctx.strokeRect(0, -w / 2, len, w);
+          for (let ch = 0; ch < 4; ch++) {
+            const cx2 = len * (0.2 + ch * 0.2);
+            ctx.strokeStyle = `rgba(254,202,202,${0.3 + 0.5 * warn})`; ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(cx2 - 14, -w * 0.3); ctx.lineTo(cx2 + 6, 0); ctx.lineTo(cx2 - 14, w * 0.3);
+            ctx.stroke();
+          }
+        } else {
+          const k = clamp01(after / Math.max(1, life));
+          const cx2 = len * k;
+          ctx.fillStyle = `rgba(${hexToRgb(body)},${0.85 * fade})`;
+          ctx.beginPath(); ctx.ellipse(cx2, 0, 66, w / 2, 0, 0, TAU); ctx.fill();
+          const g = ctx.createLinearGradient(cx2 - 240, 0, cx2, 0);
+          g.addColorStop(0, "rgba(255,255,255,0)");
+          g.addColorStop(1, `rgba(${hexToRgb(acc)},${0.8 * fade})`);
+          ctx.fillStyle = g; ctx.fillRect(cx2 - 240, -w / 2, 240, w);
+        }
+        ctx.restore();
+      } else if (a.type === "grasp") {
+        // Hands coming up out of the floor in a ring around where you stood.
+        for (const pt of a.points) {
+          const r = a.r || 52;
+          if (winding) {
+            dangerCircle(ctx, pt.x, pt.y, r * 0.75, warn);
+            ctx.strokeStyle = `rgba(103,232,249,${0.3 + 0.4 * warn})`; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.ellipse(pt.x, pt.y, r * 0.5 * warn, r * 0.25 * warn, 0, 0, TAU); ctx.stroke();
+          } else {
+            const k = clamp01(after / Math.max(1, life));
+            const up = Math.sin(clamp01(k * 1.6) * Math.PI) * 54;
+            ctx.strokeStyle = `rgba(14,116,144,${0.9 * fade})`; ctx.lineWidth = 9; ctx.lineCap = "round";
+            ctx.beginPath(); ctx.moveTo(pt.x, pt.y); ctx.lineTo(pt.x - 4, pt.y - up); ctx.stroke();
+            ctx.strokeStyle = `rgba(103,232,249,${0.9 * fade})`; ctx.lineWidth = 4;
+            for (const fx of [-12, -4, 5, 13]) {
+              ctx.beginPath();
+              ctx.moveTo(pt.x - 4, pt.y - up);
+              ctx.lineTo(pt.x - 4 + fx, pt.y - up - 16 + Math.abs(fx) * 0.4);
+              ctx.stroke();
+            }
+            ctx.lineCap = "butt";
+          }
+        }
       }
 
       // The name of the move, over the wind-up, plus how to beat it.
       if (winding && a.tell) {
-        const anchor = a.points && a.points[0] ? a.points[0] : { x: W / 2, y: a.y || H * 0.62 };
+        const anchor = a.safe ? { x: a.safe.x, y: a.safe.y - (a.r || 110) - 10 }
+          : a.points && a.points[0] ? a.points[0]
+          : { x: W / 2, y: a.y || H * 0.62 };
         const row = labelRow++;
         const ty = Math.max(28 + row * 34, anchor.y - (a.r || 60) - 22 - row * 34);
         ctx.textAlign = "center";
@@ -917,6 +1295,43 @@
     if (k >= BEAT.stir) {
       const kk = clamp01((k - BEAT.stir) / (BEAT.rise - BEAT.stir));
       cine.shake = Math.max(cine.shake, kk * 10);
+      // ASSEMBLY. Pieces of the thing come in out of the dark from every side
+      // and lock into place, in step with the HP bar filling on the HUD — so
+      // the entrance reads as something being PUT TOGETHER rather than as
+      // something fading in. The pieces are seeded per boss, so the Smith's
+      // plates always fly the same way in.
+      const hdA = headPos();
+      const frag = ECON.mulberry32(ECON.strToSeed(cine.id + "|assembly"));
+      const FRAGS = 26;
+      for (let fI = 0; fI < FRAGS; fI++) {
+        // each shard has its own slot in the sequence, so they land in a run
+        const slot = fI / FRAGS;
+        const fk = clamp01((kk - slot * 0.55) / 0.4);
+        if (fk <= 0) continue;
+        const ang = frag() * TAU;
+        const far = 340 + frag() * 300;
+        const size = 9 + frag() * 26;
+        const tx = hdA.x + (frag() - 0.5) * 300;
+        const ty = hdA.y + 30 + (frag() - 0.5) * 250;
+        const e = easeOut(fk);
+        const px = lerp(tx + Math.cos(ang) * far, tx, e);
+        const py = lerp(ty + Math.sin(ang) * far, ty, e);
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(ang + (1 - e) * 7);
+        ctx.globalAlpha = Math.min(1, fk * 2) * (fk >= 1 ? 0.75 : 1);
+        ctx.fillStyle = `rgba(${hexToRgb(cine.color)},.95)`;
+        ctx.fillRect(-size / 2, -size / 2, size, size * 0.7);
+        ctx.strokeStyle = `rgba(${hexToRgb(cine.accent)},${0.5 + 0.5 * (1 - e)})`;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-size / 2, -size / 2, size, size * 0.7);
+        ctx.restore();
+        // the flash of it seating itself
+        if (fk > 0.9 && fk < 1) {
+          ctx.fillStyle = `rgba(255,255,255,${(1 - fk) * 10})`;
+          ctx.beginPath(); ctx.arc(tx, ty, size, 0, TAU); ctx.fill();
+        }
+      }
       for (let d = 0; d < 2; d++) {
         cine.dust.push({ x: Math.random() * W, y: H * 0.2 + Math.random() * H * 0.5, vy: -0.6 - Math.random() * 1.4, life: 50 });
       }
@@ -1031,8 +1446,424 @@
     return m ? `${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)}` : "255,255,255";
   }
 
+
+  // ==================================================== VARKAAL, SECOND PHASE
+  // Its head goes down, it falls, and the ash it fell into catches. Eight
+  // seconds, six beats, and it comes back lit — the deck it comes back with is
+  // in ECON.GUILD_BOSSES.dragon.phase2.
+  function startPhaseCinematic(boss) {
+    const look = ECON.bossLook("dragon", 2);
+    return {
+      kind: "phase2", t0: Date.now(), dur: ECON.DRAGON_PHASE2.CINE_MS,
+      name: look.name, cry: look.cry, title: look.title,
+      accent: look.accent, color: look.color,
+      embers: [], dust: [], shake: 0, roared: false,
+    };
+  }
+  const PBEAT = { fall: 0.18, still: 0.34, spark: 0.50, ignite: 0.66, rise: 0.82, roar: 0.92 };
+
+  function drawPhaseCinematic(ctx, cine, boss, t) {
+    const k = clamp01((t - cine.t0) / cine.dur);
+    const hd = headPos();
+    const groundY = hd.y + 210;
+
+    // The room goes dark, then hot. The second half is lit by the thing in it.
+    const dark = k < PBEAT.ignite ? lerp(0.35, 0.88, clamp01(k / PBEAT.ignite))
+                                  : lerp(0.88, 0.2, clamp01((k - PBEAT.ignite) / (1 - PBEAT.ignite)));
+    ctx.fillStyle = `rgba(3,1,6,${dark})`;
+    ctx.fillRect(0, 0, W, H);
+
+    // --- beat 1: it comes down. The silhouette slumps toward the floor. ---
+    if (k < PBEAT.spark) {
+      const kk = clamp01(k / PBEAT.fall);
+      const drop = easeIn(kk) * 150;
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = "#2b0f0f";
+      ctx.beginPath();
+      ctx.ellipse(hd.x, hd.y + drop, 150 - kk * 30, 92 - kk * 34, 0, 0, TAU);
+      ctx.fill();
+      // wings folding in as it goes
+      ctx.strokeStyle = "#451a03"; ctx.lineWidth = 16 * (1 - kk * 0.4); ctx.lineCap = "round";
+      for (const sgn of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(hd.x + sgn * 40, hd.y + drop);
+        ctx.quadraticCurveTo(hd.x + sgn * (230 - kk * 130), hd.y + drop + 20 + kk * 90, hd.x + sgn * (150 - kk * 90), groundY - 20);
+        ctx.stroke();
+      }
+      ctx.lineCap = "butt"; ctx.globalAlpha = 1;
+      if (kk >= 1 && k < PBEAT.still) {
+        for (let d = 0; d < 2; d++) {
+          cine.dust.push({ x: hd.x + (Math.random() - 0.5) * 420, y: groundY, vy: -0.5 - Math.random(), life: 60 });
+        }
+      }
+      if (k < PBEAT.fall) cine.shake = Math.max(cine.shake, easeIn(kk) * 16);
+    }
+
+    // --- beat 2: nothing. Then one coal, in all that ash, refuses to go out. ---
+    if (k >= PBEAT.still && k < PBEAT.ignite) {
+      const kk = clamp01((k - PBEAT.still) / (PBEAT.ignite - PBEAT.still));
+      const cx = hd.x, cy = groundY - 26;
+      const pulse = 0.5 + 0.5 * Math.sin(t / 110);
+      const r = 6 + kk * 54 * (0.85 + pulse * 0.15);
+      const g = ctx.createRadialGradient(cx, cy, 1, cx, cy, r * 2.6);
+      g.addColorStop(0, `rgba(255,255,255,${0.5 + 0.5 * kk})`);
+      g.addColorStop(0.25, `rgba(253,224,71,${0.8 * kk + 0.2})`);
+      g.addColorStop(0.6, `rgba(249,115,22,${0.5 * kk})`);
+      g.addColorStop(1, "rgba(127,29,29,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(cx, cy, r * 2.6, 0, TAU); ctx.fill();
+      if (k >= PBEAT.spark) {
+        for (let e = 0; e < 3; e++) {
+          cine.embers.push({
+            x: cx + (Math.random() - 0.5) * 120 * kk, y: cy,
+            vx: (Math.random() - 0.5) * 1.2, vy: -0.8 - Math.random() * 2.2,
+            life: 70 + Math.random() * 50,
+          });
+        }
+      }
+    }
+
+    // --- beat 3: the ring of fire races out from under it ---
+    if (k >= PBEAT.ignite) {
+      const kk = clamp01((k - PBEAT.ignite) / (PBEAT.rise - PBEAT.ignite));
+      const R = 60 + easeOut(kk) * 520;
+      for (let ring = 0; ring < 3; ring++) {
+        const rr = R - ring * 46;
+        if (rr <= 0) continue;
+        ctx.strokeStyle = `rgba(${ring ? "249,115,22" : "255,237,160"},${(1 - kk * 0.5) * (1 - ring * 0.25)})`;
+        ctx.lineWidth = 16 - ring * 4;
+        ctx.beginPath(); ctx.ellipse(hd.x, groundY - 10, rr, rr * 0.42, 0, 0, TAU); ctx.stroke();
+      }
+      // burning floor inside the ring
+      const fg = ctx.createRadialGradient(hd.x, groundY - 10, 10, hd.x, groundY - 10, Math.max(20, R));
+      fg.addColorStop(0, `rgba(253,224,71,${0.32 * (1 - kk * 0.4)})`);
+      fg.addColorStop(0.6, `rgba(220,38,38,${0.22 * (1 - kk * 0.4)})`);
+      fg.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = fg; ctx.fillRect(0, 0, W, H);
+      cine.shake = Math.max(cine.shake, 6 + kk * 8);
+      for (let e = 0; e < 4; e++) {
+        cine.embers.push({
+          x: hd.x + (Math.random() - 0.5) * R * 1.4, y: groundY - Math.random() * 30,
+          vx: (Math.random() - 0.5) * 1.6, vy: -1.4 - Math.random() * 2.8,
+          life: 60 + Math.random() * 60,
+        });
+      }
+    }
+
+    // --- beat 4: it stands back up, and this time it is on fire ---
+    if (k >= PBEAT.rise) {
+      const kk = clamp01((k - PBEAT.rise) / (1 - PBEAT.rise));
+      const up = easeOutBack(Math.min(1, kk * 1.6));
+      const cy = groundY - up * 200;
+      // wings, thrown wide, membranes lit from behind
+      for (const sgn of [-1, 1]) {
+        const spread = up * 300;
+        const g = ctx.createLinearGradient(hd.x, cy, hd.x + sgn * spread, cy - 90);
+        g.addColorStop(0, `rgba(220,38,38,${0.85 * up})`);
+        g.addColorStop(1, `rgba(253,224,71,${0.25 * up})`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(hd.x + sgn * 30, cy + 30);
+        ctx.quadraticCurveTo(hd.x + sgn * spread * 0.8, cy - 150 * up, hd.x + sgn * spread, cy - 40 * up);
+        ctx.quadraticCurveTo(hd.x + sgn * spread * 0.5, cy + 110 * up, hd.x + sgn * 30, cy + 110);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = `rgba(255,237,160,${0.8 * up})`; ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(hd.x + sgn * 30, cy + 30);
+        ctx.quadraticCurveTo(hd.x + sgn * spread * 0.8, cy - 150 * up, hd.x + sgn * spread, cy - 40 * up);
+        ctx.stroke();
+      }
+      // the body, burning
+      const bg = ctx.createRadialGradient(hd.x, cy, 12, hd.x, cy, 170);
+      bg.addColorStop(0, "rgba(255,255,255,.95)");
+      bg.addColorStop(0.3, `rgba(253,224,71,${0.9 * up})`);
+      bg.addColorStop(0.7, `rgba(220,38,38,${0.8 * up})`);
+      bg.addColorStop(1, "rgba(69,10,10,0)");
+      ctx.fillStyle = bg;
+      ctx.beginPath(); ctx.ellipse(hd.x, cy, 120 * up, 96 * up, 0, 0, TAU); ctx.fill();
+      // two eyes, white-hot
+      for (const sgn of [-1, 1]) {
+        ctx.fillStyle = `rgba(255,255,255,${up})`;
+        ctx.beginPath(); ctx.ellipse(hd.x + sgn * 42, cy - 16, 13 * up, 9 * up, sgn * 0.2, 0, TAU); ctx.fill();
+      }
+      cine.shake = Math.max(cine.shake, 10 * up);
+
+      // --- beat 5: THE ROAR ---
+      if (k >= PBEAT.roar) {
+        const rk = clamp01((k - PBEAT.roar) / (1 - PBEAT.roar));
+        cine.shake = Math.max(cine.shake, 26 * (1 - rk * 0.6));
+        // the sound made visible: rings punched out of the air
+        for (let ring = 0; ring < 5; ring++) {
+          const kk2 = clamp01(rk * 1.5 - ring * 0.14);
+          if (kk2 <= 0) continue;
+          ctx.strokeStyle = `rgba(255,255,255,${0.75 * (1 - kk2)})`;
+          ctx.lineWidth = 14 * (1 - kk2) + 1;
+          ctx.beginPath(); ctx.arc(hd.x, cy, 60 + kk2 * 760, 0, TAU); ctx.stroke();
+        }
+        // the jaw open, throat white
+        ctx.fillStyle = `rgba(255,255,255,${0.9 * Math.sin(clamp01(rk * 1.4) * Math.PI)})`;
+        ctx.beginPath(); ctx.ellipse(hd.x, cy + 26, 34, 46 * Math.sin(clamp01(rk * 1.4) * Math.PI), 0, 0, TAU); ctx.fill();
+        if (rk < 0.14) {
+          ctx.fillStyle = `rgba(255,255,255,${(1 - rk / 0.14) * 0.9})`;
+          ctx.fillRect(0, 0, W, H);
+        }
+        nameCard(ctx, cine, clamp01((rk - 0.12) / 0.4));
+      }
+    }
+
+    // embers and dust ride over the whole thing
+    for (const e of cine.embers) {
+      e.x += e.vx; e.y += e.vy; e.vy += 0.012; e.life--;
+      if (e.life <= 0) continue;
+      ctx.fillStyle = `rgba(253,${180 + Math.floor(Math.random() * 60)},71,${clamp01(e.life / 70)})`;
+      ctx.fillRect(e.x, e.y, 3, 3);
+    }
+    cine.embers = cine.embers.filter(e => e.life > 0).slice(-420);
+    ctx.fillStyle = "rgba(120,113,108,.45)";
+    for (const d of cine.dust) { d.y += d.vy; d.life--; if (d.life > 0) ctx.fillRect(d.x, d.y, 2, 2); }
+    cine.dust = cine.dust.filter(d => d.life > 0).slice(-240);
+
+    letterbox(ctx, k < 0.05 ? k / 0.05 : k > 0.96 ? (1 - k) / 0.04 : 1);
+    if (cine.shake > 0) cine.shake *= 0.9;
+  }
+
+  // ================================================================ THE CHEST
+  // What a cleared dungeon leaves behind. Closed it is a prompt; opening it is
+  // a three-second lid; open it is a column of light. combat.js owns when each
+  // of those happens — this only draws the state it is handed.
+  function drawChest(ctx, c, t) {
+    if (!c) return;
+    const opening = c.state === "opening";
+    const open = c.state === "open";
+    const k = opening ? clamp01((t - c.t0) / ECON.CHEST_OPEN_MS) : (open ? 1 : 0);
+    const x = c.x, y = c.y;
+    const lid = easeOut(clamp01((k - 0.45) / 0.55));      // the lid only moves late
+    const rattle = opening && k < 0.45 ? Math.sin(t / 34) * (2 + k * 5) : 0;
+
+    // the glow it sits in, which grows as the lid comes up
+    const gr = 70 + k * 190;
+    const g = ctx.createRadialGradient(x, y, 4, x, y, gr);
+    g.addColorStop(0, `rgba(253,224,71,${0.28 + k * 0.5})`);
+    g.addColorStop(1, "rgba(253,224,71,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, gr, 0, TAU); ctx.fill();
+
+    ctx.save();
+    ctx.translate(x + rattle, y);
+
+    // shadow
+    ctx.fillStyle = "rgba(0,0,0,.45)";
+    ctx.beginPath(); ctx.ellipse(0, 26, 46, 12, 0, 0, TAU); ctx.fill();
+
+    // the light pouring out, drawn BEHIND the front panel
+    if (k > 0.45) {
+      const beam = ctx.createLinearGradient(0, -20, 0, -240 * lid);
+      beam.addColorStop(0, `rgba(255,255,255,${0.85 * lid})`);
+      beam.addColorStop(1, "rgba(253,224,71,0)");
+      ctx.fillStyle = beam;
+      ctx.beginPath();
+      ctx.moveTo(-34, -14);
+      ctx.lineTo(-34 - 60 * lid, -240 * lid);
+      ctx.lineTo(34 + 60 * lid, -240 * lid);
+      ctx.lineTo(34, -14);
+      ctx.closePath(); ctx.fill();
+    }
+
+    // ---- the lid, hinged at the back ----
+    ctx.save();
+    ctx.translate(0, -16);
+    ctx.rotate(-lid * 1.35);
+    ctx.fillStyle = "#78350f";
+    ctx.beginPath();
+    ctx.moveTo(-40, 0); ctx.lineTo(40, 0);
+    ctx.quadraticCurveTo(40, -26, 0, -26);
+    ctx.quadraticCurveTo(-40, -26, -40, 0);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 3; ctx.stroke();
+    // banding
+    ctx.fillStyle = "#b45309";
+    ctx.fillRect(-8, -26, 16, 26);
+    ctx.restore();
+
+    // ---- the body ----
+    ctx.fillStyle = "#5b2f0c";
+    ctx.fillRect(-40, -16, 80, 42);
+    ctx.fillStyle = "#7c3f10";
+    ctx.fillRect(-40, -16, 80, 8);
+    ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 3;
+    ctx.strokeRect(-40, -16, 80, 42);
+    ctx.fillStyle = "#b45309";
+    ctx.fillRect(-8, -16, 16, 42);
+    // the lock, which springs open with the lid
+    ctx.fillStyle = lid > 0.05 ? "#fde047" : "#fbbf24";
+    ctx.beginPath(); ctx.arc(0, 4 + lid * 6, 7, 0, TAU); ctx.fill();
+    ctx.fillStyle = "#3f2405";
+    ctx.fillRect(-2, 2 + lid * 6, 4, 7);
+    ctx.restore();
+
+    // motes of light climbing out of it once it is open
+    if (k > 0.5) {
+      for (let i = 0; i < 12; i++) {
+        const ph = ((t / 900) + i / 12) % 1;
+        const mx = x + Math.sin(t / 500 + i * 2) * (18 + i * 2);
+        ctx.fillStyle = `rgba(255,237,160,${(1 - ph) * lid})`;
+        ctx.fillRect(mx, y - 20 - ph * 150, 3, 3);
+      }
+    }
+
+    // ---- the words ----
+    ctx.textAlign = "center";
+    if (c.state === "closed") {
+      const pulse = 0.6 + 0.4 * Math.sin(t / 260);
+      ctx.fillStyle = `rgba(253,224,71,${pulse})`;
+      ctx.font = "bold 14px sans-serif";
+      ctx.fillText("PRESS E", x, y - 56);
+      ctx.fillStyle = "rgba(226,232,240,.7)";
+      ctx.font = "11px sans-serif";
+      ctx.fillText("what it was guarding", x, y - 40);
+    } else if (opening && k > 0.45) {
+      ctx.fillStyle = `rgba(255,255,255,${lid})`;
+      ctx.font = "bold 15px serif";
+      ctx.fillText("...", x, y - 90);
+    }
+  }
+
+  // ============================================================== TOME READING
+  // Everyone in the run watches this. A book comes up at the camera, opens,
+  // the page burns through with the tome's own colour, and the room comes back
+  // with the effect running. The perspective is faked the way the rest of this
+  // file fakes it: a scale about a vanishing point, plus a skew per page.
+  function drawTomeCinematic(ctx, cine, t) {
+    const def = cine.def;
+    if (!def) return;
+    const k = clamp01((t - cine.t0) / cine.dur);
+    const cx = W / 2, cy = H * 0.52;
+    const rgb = hexToRgb(def.color), argb = hexToRgb(def.accent);
+
+    // the room drops away
+    const dark = k < 0.72 ? lerp(0.55, 0.92, clamp01(k / 0.72)) : lerp(0.92, 0, clamp01((k - 0.72) / 0.28));
+    ctx.fillStyle = `rgba(2,2,6,${dark})`;
+    ctx.fillRect(0, 0, W, H);
+
+    // --- the book comes up out of the dark, toward the camera ---
+    const rise = easeOut(clamp01(k / 0.28));
+    const scale = 0.35 + rise * 0.85 + clamp01((k - 0.3) / 0.4) * 0.35;
+    const spread = easeOut(clamp01((k - 0.24) / 0.3));    // how far open
+    const tilt = lerp(0.55, 0.16, clamp01(k / 0.55));     // laid flat -> facing you
+
+    if (k < 0.78) {
+      ctx.save();
+      ctx.translate(cx, cy + (1 - rise) * 190);
+      ctx.scale(scale, scale * (0.55 + tilt * 0.7));
+      ctx.globalAlpha = clamp01(k / 0.12);
+
+      // the aura the book is carried in
+      const ag = ctx.createRadialGradient(0, 0, 10, 0, 0, 300);
+      ag.addColorStop(0, `rgba(${argb},${0.35 + spread * 0.3})`);
+      ag.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = ag;
+      ctx.beginPath(); ctx.arc(0, 0, 300, 0, TAU); ctx.fill();
+
+      // two covers, each skewed away from the spine — the whole 3D of it
+      for (const side of [-1, 1]) {
+        const w = 150 * (0.35 + spread * 0.65);
+        ctx.save();
+        ctx.transform(1, 0, side * (0.42 - spread * 0.34), 1, 0, 0);
+        // page stack
+        ctx.fillStyle = "#e7e5e4";
+        ctx.fillRect(side < 0 ? -w : 0, -104, w, 208);
+        ctx.fillStyle = "#d6d3d1";
+        for (let l = 1; l < 6; l++) {
+          ctx.fillRect(side < 0 ? -w : 0, -104 + l * 34, w, 2);
+        }
+        // cover, showing along the outer edge
+        ctx.fillStyle = `rgba(${rgb},1)`;
+        ctx.fillRect(side < 0 ? -w - 12 : w, -112, 12, 224);
+        ctx.fillStyle = `rgba(${rgb},.9)`;
+        ctx.fillRect(side < 0 ? -w : 0, -112, w, 10);
+        ctx.fillRect(side < 0 ? -w : 0, 102, w, 10);
+        // the writing on the open page, burning brighter as it is read
+        const heat = clamp01((k - 0.3) / 0.35);
+        ctx.fillStyle = `rgba(${argb},${0.35 + heat * 0.65})`;
+        for (let l = 0; l < 7; l++) {
+          const lw = w * (0.55 + ((l * 37) % 40) / 100) * spread;
+          ctx.fillRect(side < 0 ? -w + 14 : 14, -78 + l * 24, Math.max(0, lw - 24), 4);
+        }
+        ctx.restore();
+      }
+      // the spine, dead centre
+      ctx.fillStyle = `rgba(${rgb},1)`;
+      ctx.fillRect(-9, -114, 18, 228);
+      ctx.strokeStyle = `rgba(${argb},.9)`; ctx.lineWidth = 2;
+      ctx.strokeRect(-9, -114, 18, 228);
+
+      // the sigil rising off the page
+      if (k > 0.34) {
+        const sk = clamp01((k - 0.34) / 0.34);
+        ctx.globalAlpha = (1 - sk * 0.2) * clamp01(k / 0.12);
+        ctx.save();
+        ctx.translate(0, -60 - sk * 150);
+        ctx.rotate(sk * 1.4);
+        ctx.scale(0.6 + sk * 1.5, 0.6 + sk * 1.5);
+        ctx.strokeStyle = `rgba(${argb},${1 - sk * 0.3})`; ctx.lineWidth = 4;
+        ctx.beginPath();
+        for (let s = 0; s < 6; s++) {
+          const a = (s / 6) * TAU - Math.PI / 2;
+          const px = Math.cos(a) * 40, py = Math.sin(a) * 40;
+          s ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+        }
+        ctx.closePath(); ctx.stroke();
+        ctx.beginPath();
+        for (let s = 0; s < 6; s++) {
+          const a = (s / 6) * TAU - Math.PI / 2;
+          ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * 40, Math.sin(a) * 40);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // --- the flash of light ---
+    if (k > 0.62 && k < 0.84) {
+      const fk = (k - 0.62) / 0.22;
+      const a = fk < 0.35 ? fk / 0.35 : 1 - (fk - 0.35) / 0.65;
+      ctx.fillStyle = `rgba(255,255,255,${clamp01(a)})`;
+      ctx.fillRect(0, 0, W, H);
+      // the shockwave the flash leaves behind, in the tome's colour
+      const rr = fk * 760;
+      ctx.strokeStyle = `rgba(${argb},${(1 - fk) * 0.9})`;
+      ctx.lineWidth = 22 * (1 - fk) + 2;
+      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, TAU); ctx.stroke();
+    }
+
+    // --- the name, over the whole thing ---
+    if (k > 0.2) {
+      const tk = clamp01((k - 0.2) / 0.2) * (k > 0.9 ? clamp01((1 - k) / 0.1) : 1);
+      ctx.textAlign = "center";
+      ctx.globalAlpha = tk;
+      ctx.fillStyle = "rgba(0,0,0,.6)";
+      ctx.font = "bold 34px serif";
+      ctx.fillText(def.name.toUpperCase(), cx + 2, H * 0.2 + 2);
+      ctx.fillStyle = def.accent;
+      ctx.fillText(def.name.toUpperCase(), cx, H * 0.2);
+      ctx.fillStyle = "rgba(226,232,240,.85)";
+      ctx.font = "italic 14px serif";
+      ctx.fillText(cine.mine ? "read by you" : "read by " + cine.by, cx, H * 0.2 + 24);
+      if (k > 0.5 && def.cry) {
+        ctx.fillStyle = `rgba(255,255,255,${clamp01((k - 0.5) / 0.2) * tk})`;
+        ctx.font = "bold 16px serif";
+        ctx.fillText(def.cry, cx, H * 0.86);
+      }
+      ctx.globalAlpha = 1;
+    }
+    letterbox(ctx, k < 0.08 ? k / 0.08 : k > 0.9 ? (1 - k) / 0.1 : 1);
+  }
+
   window.gameBosses = {
     drawBoss, drawAttacks, startCinematic, drawCinematic,
+    startPhaseCinematic, drawPhaseCinematic,
+    drawChest, drawTomeCinematic,
     flashPart, partPos, headPos, hexToRgb, W, H,
   };
 })();
