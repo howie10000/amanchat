@@ -462,6 +462,10 @@ async function leaveParty() {
   catch (e) { toast(e.message, 4000); }
 }
 async function startParty() {
+  // Close the lobby the moment you commit to starting, rather than waiting
+  // on the round trip and whatever startDungeon() does afterward — the party
+  // list has no reason to still be on screen once you've asked to go in.
+  closeMenu();
   try {
     const res = await netGuildDungeon({ action: "party_start" });
     partyState = null;

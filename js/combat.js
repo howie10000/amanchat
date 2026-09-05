@@ -626,17 +626,28 @@ async function reportEnemyHits(ids, weapon) {
     return;
   }
   _swingPending = true;
+  // A queued retry firing the moment the in-flight call resolves almost
+  // always lands back inside the server's per-swing rate limit (a network
+  // round trip is rarely as long as DUNGEON_HIT_MIN_MS) and got "Too fast" —
+  // which used to just be swallowed, silently dropping that swing's kills
+  // forever instead of retrying once the window actually clears.
+  let retryDelay = 0;
   try {
     const res = await netGuildDungeon({ action: "enemy_hit", enemies: ids, weapon });
     applyEnemyChanges(res.changed);
   } catch (e) {
-    if (!/Too fast/.test(e.message)) toast(e.message, 1200);
+    if (/Too fast/.test(e.message)) {
+      _queuedIds = (_queuedIds || []).concat(ids);
+      _queuedWeapon = _queuedWeapon || weapon;
+      retryDelay = (ECON.DUNGEON_HIT_MIN_MS[weapon] || 150) + 20;
+    } else toast(e.message, 1200);
   }
   _swingPending = false;
   if (_queuedIds && _queuedIds.length) {
-    const nextIds = _queuedIds, nextWeapon = _queuedWeapon;
+    const nextIds = [...new Set(_queuedIds)], nextWeapon = _queuedWeapon;
     _queuedIds = null; _queuedWeapon = null;
-    reportEnemyHits(nextIds, nextWeapon);
+    if (retryDelay) setTimeout(() => reportEnemyHits(nextIds, nextWeapon), retryDelay);
+    else reportEnemyHits(nextIds, nextWeapon);
   }
 }
 // A bomber's detonation (and whatever it catches in the blast) kills without
@@ -659,16 +670,21 @@ async function reportEnemyKill(ids) {
   _killPending = true;
   const batch = ids.slice(0, ECON.DUNGEON_HIT_MAX_TARGETS);
   const overflow = ids.slice(ECON.DUNGEON_HIT_MAX_TARGETS);
+  let failed = false;
   try {
     const res = await netGuildDungeon({ action: "enemy_kill", enemies: batch });
     applyEnemyChanges(res.changed);
   } catch (e) {
-    if (!/Too fast/.test(e.message)) toast(e.message, 1200);
+    if (/Too fast/.test(e.message)) failed = true;   // retry below, don't drop it
+    else toast(e.message, 1200);
   }
-  if (overflow.length) _queuedKillIds = (_queuedKillIds || []).concat(overflow);
+  // A failed batch goes back in FRONT of the queue — it's the death that's
+  // actually due; overflow can wait one more round.
+  const requeue = (failed ? batch : []).concat(overflow);
+  if (requeue.length) _queuedKillIds = requeue.concat(_queuedKillIds || []);
   _killPending = false;
   if (_queuedKillIds && _queuedKillIds.length) {
-    const nextIds = _queuedKillIds;
+    const nextIds = [...new Set(_queuedKillIds)];
     _queuedKillIds = null;
     setTimeout(() => reportEnemyKill(nextIds), ECON.DUNGEON_KILL_MIN_MS + 30);
   }
