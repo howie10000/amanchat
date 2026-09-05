@@ -2,9 +2,9 @@
 
 // ---------- DUNGEON ----------
 const QUEST_TIERS = {
-  easy:   { floors: 3, enemyMin: 4,  enemyMax: 6,  hpMult: 1.0, reward: 250,  speedMult: 1.0, name: "Goblin Caves" },
-  medium: { floors: 4, enemyMin: 6,  enemyMax: 9,  hpMult: 1.4, reward: 700,  speedMult: 1.15, name: "Bandit Hideout" },
-  hard:   { floors: 5, enemyMin: 8,  enemyMax: 12, hpMult: 1.9, reward: 1800, speedMult: 1.35, name: "Demon Lair" },
+  easy:   { tier: "easy",   floors: 3, enemyMin: 4,  enemyMax: 6,  hpMult: 1.0, reward: 250,  speedMult: 1.0, name: "Goblin Caves" },
+  medium: { tier: "medium", floors: 4, enemyMin: 6,  enemyMax: 9,  hpMult: 1.4, reward: 700,  speedMult: 1.15, name: "Bandit Hideout" },
+  hard:   { tier: "hard",   floors: 5, enemyMin: 8,  enemyMax: 12, hpMult: 1.9, reward: 1800, speedMult: 1.35, name: "Demon Lair" },
 };
 // Guild dungeons come straight off the shared table so the client and server
 // never disagree about how long a run is or which boss waits at the end. They
@@ -13,19 +13,24 @@ const QUEST_TIERS = {
 for (const id of ECON.GUILD_DUNGEON_ORDER) {
   const g = ECON.GUILD_DUNGEONS[id];
   QUEST_TIERS[id] = {
+    tier: id,
     floors: g.floors, enemyMin: g.enemyMin, enemyMax: g.enemyMax,
     hpMult: g.hpMult, speedMult: g.speedMult, reward: g.reward,
     name: g.name, guild: true, boss: g.boss, blurb: g.blurb,
   };
 }
 
-const DUNGEON_W = 1024, DUNGEON_H = 640;
-
-// Maze grid: 6 cols x 4 rows
-const MAZE_COLS = 6, MAZE_ROWS = 4;
-const CELL_W = 160, CELL_H = 140;
-const MAZE_OFFSET_X = 32, MAZE_OFFSET_Y = 56;
-const WALL_THICK = 8;
+// Geometry, the maze generator and the enemy table are shared with the server
+// (js/shared/dungeon.js): a guild party's floor is BUILT there and shipped, so
+// there can only be one definition of what a floor looks like.
+const DUNGEON_W = DUNGEON.DUNGEON_W, DUNGEON_H = DUNGEON.DUNGEON_H;
+const MAZE_COLS = DUNGEON.MAZE_COLS, MAZE_ROWS = DUNGEON.MAZE_ROWS;
+const CELL_W = DUNGEON.CELL_W, CELL_H = DUNGEON.CELL_H;
+const MAZE_OFFSET_X = DUNGEON.MAZE_OFFSET_X, MAZE_OFFSET_Y = DUNGEON.MAZE_OFFSET_Y;
+const WALL_THICK = DUNGEON.WALL_THICK;
+const cellCenter = DUNGEON.cellCenter;
+const buildWallSegments = DUNGEON.buildWallSegments;
+const ENEMY_TYPES = DUNGEON.ENEMY_TYPES;
 
 // Hash a string to a numeric seed for mulberry32 (defined in world.js).
 function strToSeed(str) {
@@ -44,88 +49,6 @@ function partyPairKey() {
   return [state.user, other].sort().join("__");
 }
 
-// Generate maze using recursive backtracking
-function generateMaze(rng) {
-  const cells = [];
-  for (let r = 0; r < MAZE_ROWS; r++) {
-    cells[r] = [];
-    for (let c = 0; c < MAZE_COLS; c++) {
-      cells[r][c] = { walls: { n: true, e: true, s: true, w: true }, visited: false };
-    }
-  }
-  function neighbors(r, c) {
-    const list = [];
-    if (r > 0 && !cells[r-1][c].visited) list.push({ r: r-1, c, dir: "n", opp: "s" });
-    if (c < MAZE_COLS-1 && !cells[r][c+1].visited) list.push({ r, c: c+1, dir: "e", opp: "w" });
-    if (r < MAZE_ROWS-1 && !cells[r+1][c].visited) list.push({ r: r+1, c, dir: "s", opp: "n" });
-    if (c > 0 && !cells[r][c-1].visited) list.push({ r, c: c-1, dir: "w", opp: "e" });
-    return list;
-  }
-  // Iterative DFS
-  const stack = [{ r: 0, c: 0 }];
-  cells[0][0].visited = true;
-  while (stack.length) {
-    const cur = stack[stack.length - 1];
-    const ns = neighbors(cur.r, cur.c);
-    if (!ns.length) { stack.pop(); continue; }
-    const n = ns[Math.floor(rng() * ns.length)];
-    cells[cur.r][cur.c].walls[n.dir] = false;
-    cells[n.r][n.c].walls[n.opp] = false;
-    cells[n.r][n.c].visited = true;
-    stack.push({ r: n.r, c: n.c });
-  }
-  // Knock out a few extra walls to make rooms feel less linear
-  for (let i = 0; i < 6; i++) {
-    const r = Math.floor(rng() * MAZE_ROWS);
-    const c = Math.floor(rng() * MAZE_COLS);
-    const dirs = [];
-    if (r > 0) dirs.push("n");
-    if (c < MAZE_COLS-1) dirs.push("e");
-    if (r < MAZE_ROWS-1) dirs.push("s");
-    if (c > 0) dirs.push("w");
-    const d = dirs[Math.floor(rng() * dirs.length)];
-    cells[r][c].walls[d] = false;
-    if (d === "n") cells[r-1][c].walls.s = false;
-    if (d === "s") cells[r+1][c].walls.n = false;
-    if (d === "e") cells[r][c+1].walls.w = false;
-    if (d === "w") cells[r][c-1].walls.e = false;
-  }
-  return cells;
-}
-
-function cellCenter(r, c) {
-  return {
-    x: MAZE_OFFSET_X + c * CELL_W + CELL_W/2,
-    y: MAZE_OFFSET_Y + r * CELL_H + CELL_H/2,
-  };
-}
-
-// Wall segments collected from maze for collision/render
-function buildWallSegments(maze) {
-  const segs = [];
-  // outer border
-  segs.push({ x: MAZE_OFFSET_X - WALL_THICK, y: MAZE_OFFSET_Y - WALL_THICK, w: MAZE_COLS * CELL_W + WALL_THICK*2, h: WALL_THICK }); // top
-  segs.push({ x: MAZE_OFFSET_X - WALL_THICK, y: MAZE_OFFSET_Y + MAZE_ROWS * CELL_H, w: MAZE_COLS * CELL_W + WALL_THICK*2, h: WALL_THICK }); // bottom
-  segs.push({ x: MAZE_OFFSET_X - WALL_THICK, y: MAZE_OFFSET_Y - WALL_THICK, w: WALL_THICK, h: MAZE_ROWS * CELL_H + WALL_THICK*2 }); // left
-  segs.push({ x: MAZE_OFFSET_X + MAZE_COLS * CELL_W, y: MAZE_OFFSET_Y - WALL_THICK, w: WALL_THICK, h: MAZE_ROWS * CELL_H + WALL_THICK*2 }); // right
-  // interior walls
-  for (let r = 0; r < MAZE_ROWS; r++) {
-    for (let c = 0; c < MAZE_COLS; c++) {
-      const cell = maze[r][c];
-      const x0 = MAZE_OFFSET_X + c * CELL_W;
-      const y0 = MAZE_OFFSET_Y + r * CELL_H;
-      // Only draw E and S walls per cell to avoid duplicates (N and W handled by neighbors / outer border)
-      if (cell.walls.e && c < MAZE_COLS - 1) {
-        segs.push({ x: x0 + CELL_W - WALL_THICK/2, y: y0, w: WALL_THICK, h: CELL_H });
-      }
-      if (cell.walls.s && r < MAZE_ROWS - 1) {
-        segs.push({ x: x0, y: y0 + CELL_H - WALL_THICK/2, w: CELL_W, h: WALL_THICK });
-      }
-    }
-  }
-  return segs;
-}
-
 // `joining` = { runId, seed } when the server has ALREADY put us in a party's
 // run (a guildmate opened it and named us). Calling `start` again in that case
 // would open a second run and tear down the leader's, so followers take this
@@ -136,15 +59,20 @@ async function startDungeon(tier, party, joining) {
   // A guild run is opened on the server first: it owns the party list, the
   // boss and the payout, and it hands back the seed every member's maze is
   // built from so a party sees the same floors.
-  let runId = null, seedBase = partyPairKey() + "|" + tier;
+  let runId = null, seedBase = partyPairKey() + "|" + tier, plan = null;
   if (cfg.guild && joining) {
     runId = joining.runId;
     seedBase = "guildrun|" + joining.seed;
+    plan = joining.state && joining.state.plan;
+    if (joining.state) plan = withServerHp(joining.state);
   } else if (cfg.guild) {
     try {
-      const res = await netGuildDungeon({ action: "start", tier, party: party || [] });
+      // Solo entry. A party goes through the lobby (gameGuild.startParty),
+      // which calls party_start and arrives here as `joining`.
+      const res = await netGuildDungeon({ action: "start", tier });
       runId = res.runId;
       seedBase = "guildrun|" + res.seed;
+      plan = withServerHp(res.state);
     } catch (e) { toast(e.message); return; }
   }
   state.area = "dungeon";
@@ -153,9 +81,10 @@ async function startDungeon(tier, party, joining) {
     cleared: false, keyPickedUp: false,
     maze: null, walls: null, doorCell: null, keyCell: null,
     bossRoom: false, boss: null, bossAttacks: [],
-    // Same seedBase for both co-op partners (see partyPairKey) -> identical
-    // maze/enemies/key per floor on both clients, with no server round-trip.
-    seedBase,
+    // Solo runs build their own floors from this seed. A guild run ignores it
+    // and uses `plan`, which the server hands out (and re-hands out on every
+    // floor change), so a party is provably in one dungeon.
+    seedBase, plan,
   };
   state.maxHp = window.gameGear ? gameGear.maxHp() : 100;
   state.hp = state.maxHp;
@@ -167,54 +96,50 @@ async function startDungeon(tier, party, joining) {
   updateHUD();
 }
 
-function setupFloor() {
-  // Fresh seeded RNG per floor, derived from (party pair, tier, floor) — both
-  // co-op partners compute this independently and get the identical stream.
-  const rng = mulberry32(strToSeed(state.dungeon.seedBase + "|" + state.dungeon.floor));
-  state.dungeon.rng = rng;
-  const maze = generateMaze(rng);
-  const walls = buildWallSegments(maze);
-  state.dungeon.maze = maze;
-  state.dungeon.walls = walls;
-  // Player spawn at top-left cell
-  const spawn = cellCenter(0, 0);
-  state.pos.x = spawn.x; state.pos.y = spawn.y;
-  state.facing = "right";
-  // Key in random non-spawn cell
-  const allCells = [];
-  for (let r = 0; r < MAZE_ROWS; r++) for (let c = 0; c < MAZE_COLS; c++) allCells.push({r,c});
-  const candKey = allCells.filter(({r,c}) => !(r===0 && c===0));
-  state.dungeon.keyCell = candKey[Math.floor(rng() * candKey.length)];
-  // Door at bottom-right cell (visible regardless)
-  state.dungeon.doorCell = { r: MAZE_ROWS - 1, c: MAZE_COLS - 1 };
-  // Spawn enemies
-  // Set dressing (torches, bones, barrels) is laid out once per floor from the
-  // same seeded stream, so it is identical for both co-op partners and does not
-  // shuffle itself every frame.
-  state.dungeon.props = gameMobs.buildProps(rng, maze, cellCenter, MAZE_ROWS, MAZE_COLS);
-  spawnDungeonEnemies(rng);
-  state.bullets = []; state.enemyBullets = []; state.particles = [];
-  state.dungeon.cleared = false;
-  state.dungeon.keyPickedUp = false;
-  // A new maze invalidates last floor's routing.
-  state.dungeon.flow = null;
-  state.dungeon.flowCell = null;
-  refreshFlow();
+// The server sends the roster with live HP (an enemy a guildmate already killed
+// comes back at 0), which is what lets somebody join or reconnect mid-floor.
+function withServerHp(st) {
+  if (!st || !st.plan) return null;
+  const hp = {};
+  for (const e of (st.enemies || [])) hp[e.id] = e.hp;
+  const plan = st.plan;
+  for (const e of plan.enemies) if (hp[e.id] != null) e.hp = hp[e.id];
+  return plan;
 }
 
-const ENEMY_TYPES = {
-  melee:   { color: "#dc2626", size: 14, speed: 1.1, hp: 50,  dmg: 8,  ai: "chase",   name: "Brute",   sight: 320 },
-  fast:    { color: "#3b82f6", size: 11, speed: 2.1, hp: 28,  dmg: 5,  ai: "chase",   name: "Imp",     sight: 380 },
-  tank:    { color: "#16a34a", size: 18, speed: 0.55,hp: 130, dmg: 14, ai: "chase",   name: "Ogre",    sight: 260 },
-  ranged:  { color: "#a855f7", size: 12, speed: 0.9, hp: 40,  dmg: 10, ai: "ranged",  name: "Mage",    sight: 400, shootCd: 100, projSpeed: 4, ideal: 180 },
-  // ---- the second wave of the roster ----
-  archer:  { color: "#e11d48", size: 12, speed: 1.25,hp: 46,  dmg: 12, ai: "ranged",  name: "Archer",  sight: 460, shootCd: 78,  projSpeed: 6.4, ideal: 250 },
-  bomber:  { color: "#f97316", size: 13, speed: 1.5, hp: 34,  dmg: 30, ai: "bomber",  name: "Bomber",  sight: 340, fuse: 46, blast: 74 },
-  shaman:  { color: "#14b8a6", size: 13, speed: 1.0, hp: 60,  dmg: 6,  ai: "healer",  name: "Shaman",  sight: 420, healCd: 150, healAmt: 22, healRange: 190 },
-  stalker: { color: "#7c3aed", size: 12, speed: 2.6, hp: 38,  dmg: 16, ai: "stalker", name: "Stalker", sight: 300, lurk: 150 },
-  warden:  { color: "#64748b", size: 17, speed: 0.85,hp: 150, dmg: 16, ai: "chase",   name: "Warden",  sight: 300, shield: true },
-  boss:    { color: "#7f1d1d", size: 30, speed: 0.85,hp: 320, dmg: 18, ai: "boss",    name: "BOSS",    sight: 999, shootCd: 80,  projSpeed: 5 },
-};
+function setupFloor() {
+  const d = state.dungeon;
+  // A guild floor is whatever the server said it is. A solo floor is built
+  // locally from the same shared generator — identical code, no round-trip,
+  // because there is nobody to agree with.
+  const plan = d.cfg.guild
+    ? d.plan
+    : DUNGEON.buildFloorPlan(d.seedBase, d.cfg, d.floor);
+  if (!plan) { toast("Waiting for the floor..."); return; }
+  d.plan = plan;
+  d.maze = plan.maze;
+  d.walls = buildWallSegments(plan.maze);
+  state.pos.x = plan.spawn.x; state.pos.y = plan.spawn.y;
+  state.facing = "right";
+  d.keyCell = plan.keyCell;
+  d.doorCell = plan.doorCell;
+  // Set dressing (torches, bones, barrels) is laid out once per floor from the
+  // plan's own seed, so it matches across the party and does not shuffle itself
+  // every frame.
+  d.props = gameMobs.buildProps(mulberry32(plan.propSeed >>> 0), plan.maze, cellCenter, MAZE_ROWS, MAZE_COLS);
+  adoptEnemies(plan.enemies);
+  state.bullets = []; state.enemyBullets = []; state.particles = [];
+  d.cleared = false;
+  d.keyPickedUp = false;
+  d.key = null;
+  // A new maze invalidates last floor's routing.
+  d.flow = null;
+  d.flowCell = null;
+  refreshFlow();
+  // A floor whose roster arrived already dead (you joined late) is cleared the
+  // moment you land on it.
+  checkFloorCleared();
+}
 
 // ---------- pathfinding ----------
 // Enemies used to walk straight at the player and pile into whatever wall was
@@ -286,67 +211,34 @@ function refreshFlow() {
   d.flow = computeFlowField(d.maze, r, c);
 }
 
-function spawnDungeonEnemies(rng) {
-  const cfg = state.dungeon.cfg;
-  const floor = state.dungeon.floor;
-  const isFinal = (floor === cfg.floors - 1);
+// Turn the plan's roster (id, type, position, HP) into the objects the local
+// AI and renderer work with. Behaviour is looked up from the shared table, so
+// the server never has to ship it.
+function adoptEnemies(roster) {
   state.enemies = [];
-  // A guild run's final floor is the sealed boss room, which is built by
-  // enterBossRoom() instead — no maze enemies there at all.
-  if (isFinal && cfg.guild) return;
-  // Boss on final floor + a few minions
-  if (isFinal) {
-    const center = cellCenter(MAZE_ROWS - 1, MAZE_COLS - 1);
-    pushEnemy("boss", center.x, center.y - 10, cfg);
-    for (let i = 0; i < 5; i++) {
-      const r = Math.floor(rng() * MAZE_ROWS);
-      const c = Math.floor(rng() * MAZE_COLS);
-      if (r === 0 && c === 0) continue;
-      const cc = cellCenter(r, c);
-      const t = ["melee", "fast", "ranged", "archer", "shaman"][i % 5];
-      pushEnemy(t, cc.x, cc.y, cfg);
-    }
-    return;
+  for (const row of (roster || [])) {
+    if (!(row.hp > 0)) continue;          // already dead when we arrived
+    const t = ENEMY_TYPES[row.type];
+    if (!t) continue;
+    state.enemies.push({
+      id: row.id, type: row.type, x: row.x, y: row.y, vx: 0, vy: 0,
+      hp: row.hp, maxHp: row.maxHp, speed: row.speed,
+      color: t.color, size: t.size, dmg: t.dmg,
+      ai: t.ai, name: t.name, sight: t.sight || 320,
+      shootCd: 30, kbX: 0, kbY: 0, hitFlash: 0,
+      // Enemies start unaware and wake when you come into sight — a corridor
+      // you haven't reached yet isn't already sprinting at you.
+      awake: false, wander: Math.random() * Math.PI * 2, wanderT: 0,
+      fuse: 0, healCd: Math.floor(Math.random() * 90), lurking: row.type === "stalker",
+      isBoss: row.type === "boss",
+    });
   }
-  // Otherwise a random mix in random non-spawn cells. The roster widens with
-  // the tier so an easy run still reads as goblins and a guild run doesn't.
-  const count = cfg.enemyMin + Math.floor(rng() * (cfg.enemyMax - cfg.enemyMin + 1)) + floor;
-  const used = new Set(["0,0"]);
-  const types = ["melee", "melee", "fast", "ranged"];
-  if (cfg !== QUEST_TIERS.easy) types.push("tank", "archer");
-  if (cfg === QUEST_TIERS.hard || cfg.guild) types.push("bomber", "stalker", "shaman");
-  if (cfg.guild) types.push("warden", "archer", "bomber");
-  for (let i = 0; i < count; i++) {
-    let r, c, key, tries = 0;
-    do {
-      r = Math.floor(rng() * MAZE_ROWS);
-      c = Math.floor(rng() * MAZE_COLS);
-      key = `${r},${c}`;
-      tries++;
-    } while (used.has(key) && tries < 20);
-    used.add(key);
-    const cc = cellCenter(r, c);
-    const t = types[Math.floor(rng() * types.length)];
-    pushEnemy(t, cc.x + (rng()-0.5)*40, cc.y + (rng()-0.5)*30, cfg);
-  }
+  // A floor that spawned with nothing on it (or everything already dead) still
+  // needs its key.
+  state.dungeon.spawnedCount = (roster || []).length;
 }
 
-function pushEnemy(type, x, y, cfg) {
-  const t = ENEMY_TYPES[type];
-  state.enemies.push({
-    type, x, y, vx: 0, vy: 0,
-    hp: t.hp * cfg.hpMult, maxHp: t.hp * cfg.hpMult,
-    speed: t.speed * cfg.speedMult,
-    color: t.color, size: t.size, dmg: t.dmg,
-    ai: t.ai, name: t.name, sight: t.sight || 320,
-    shootCd: 30, kbX: 0, kbY: 0, hitFlash: 0,
-    // Enemies start unaware and wake when you come into sight — a corridor you
-    // haven't reached yet isn't already sprinting at you.
-    awake: false, wander: Math.random() * Math.PI * 2, wanderT: 0,
-    fuse: 0, healCd: Math.floor(Math.random() * 90), lurking: type === "stalker",
-    isBoss: type === "boss",
-  });
-}
+
 
 function rectOverlap(x, y, r, rect) {
   const cx = Math.max(rect.x, Math.min(x, rect.x + rect.w));
@@ -395,6 +287,20 @@ function takePlayerDamage(amount) {
   }
 }
 
+// The key only drops when the floor is empty. In a guild run "empty" means
+// empty for the PARTY — a guildmate's kills come in on the `enemies` event and
+// land here the same way your own do.
+function checkFloorCleared() {
+  const d = state.dungeon;
+  if (!d || d.bossRoom) return;
+  if (state.enemies.length > 0) { d.cleared = false; return; }
+  if (!(d.spawnedCount > 0)) return;
+  if (d.cleared) return;
+  d.cleared = true;
+  const kc = cellCenter(d.keyCell.r, d.keyCell.c);
+  d.key = { x: kc.x, y: kc.y };
+}
+
 function updateDungeon() {
   // movement
   let dx = 0, dy = 0;
@@ -433,6 +339,10 @@ function updateDungeon() {
     if (d.isMini && (!d.boss || d.boss.status === "dead")) {
       const ex = { x: DUNGEON_W / 2, y: BOSS_ROOM.y + 30 };
       if (Math.hypot(state.pos.x - ex.x, state.pos.y - ex.y) < 34) advanceGuildFloor();
+    }
+    if (d.tracers && d.tracers.length) {
+      for (const tr of d.tracers) { tr.x += tr.vx; tr.y += tr.vy; tr.life--; }
+      d.tracers = d.tracers.filter(tr => tr.life > 0);
     }
     state.particles = state.particles.filter(p => p.life > 0);
     state.particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life--; });
@@ -564,6 +474,7 @@ function updateDungeon() {
     for (const e of state.enemies) {
       if (Math.hypot(b.x - e.x, b.y - e.y) < e.size + 4) {
         e.hp -= b.dmg;
+        reportEnemyHits([e.id], "pistol");
         e.hitFlash = 6;
         e.awake = true; e.lurking = false;
         const k = 1.5;
@@ -599,12 +510,9 @@ function updateDungeon() {
     if (e.hp <= 0) addParticles(e.x, e.y, e.color, 16);
     else alive.push(e);
   }
-  if (alive.length === 0 && state.enemies.length > 0) {
-    state.dungeon.cleared = true;
-    const kc = cellCenter(state.dungeon.keyCell.r, state.dungeon.keyCell.c);
-    state.dungeon.key = { x: kc.x, y: kc.y };
-  }
+  const died = alive.length !== state.enemies.length;
   state.enemies = alive;
+  if (died) checkFloorCleared();
 
   // Pickup key
   if (state.dungeon.cleared && state.dungeon.key && !state.dungeon.keyPickedUp) {
@@ -641,6 +549,39 @@ function updateDungeon() {
 // attacks against its own position, but every point of damage DEALT goes
 // through the `guild_dungeon` op, so the fight can't be skipped from a console.
 const BOSS_ROOM = { x: 60, y: 52, w: DUNGEON_W - 120, h: DUNGEON_H - 140 };
+
+// In a guild run the server owns every enemy's HP, so a swing is a REQUEST:
+// the damage is applied locally straight away (so the game stays responsive)
+// and the server's answer is what the rest of the party sees. Solo runs skip
+// all of this and just take the local number.
+let _swingPending = false;
+async function reportEnemyHits(ids, weapon) {
+  const d = state.dungeon;
+  if (!d || !d.cfg.guild || !ids.length || _swingPending) return;
+  _swingPending = true;
+  try {
+    const res = await netGuildDungeon({ action: "enemy_hit", enemies: ids, weapon });
+    applyEnemyChanges(res.changed);
+  } catch (e) {
+    if (!/Too fast/.test(e.message)) toast(e.message, 1200);
+  }
+  _swingPending = false;
+}
+// Server HP wins: it is the only copy the whole party agrees on.
+function applyEnemyChanges(changed) {
+  const d = state.dungeon;
+  if (!d || !Array.isArray(changed)) return;
+  for (const c of changed) {
+    const e = state.enemies.find(x => x.id === c.id);
+    if (!e) continue;
+    e.hp = c.hp;
+    e.hitFlash = 6;
+    e.awake = true; e.lurking = false;
+    if (c.dead) addParticles(e.x, e.y, e.color, 16);
+  }
+  state.enemies = state.enemies.filter(e => e.hp > 0);
+  checkFloorCleared();
+}
 
 function combatDamageMult() {
   const m = state.mastery && state.mastery.combat;
@@ -706,21 +647,9 @@ async function advanceGuildFloor() {
   _advancing = true;
   try {
     const res = await netGuildDungeon({ action: "floor_clear" });
-    const d = state.dungeon;
-    if (!d) return;
-    d.floor = res.floor;
-    const cfg = d.cfg;
-    if (res.mini && res.boss) {
-      toast("Something drops into the stairwell.", 2500);
-      enterArena(res.boss);
-    } else if (d.floor === cfg.floors - 1) {
-      toast("The door seals behind you.", 2500);
-      await enterBossRoom();
-    } else {
-      d.bossRoom = false; d.isMini = false; d.boss = null; d.cine = null;
-      setupFloor();
-      toast(`Floor ${d.floor + 1} of ${cfg.floors}`);
-    }
+    if (!state.dungeon) return;
+    // Exactly the path every other member takes, off the same payload.
+    adoptServerFloor({ runId: state.dungeon.runId, floor: res.floor, mini: res.mini, boss: res.boss, state: res.state });
   } catch (e) {
     toast(e.message, 2600);
   }
@@ -964,9 +893,27 @@ function doAttack() {
   // In the boss room the swing is a request to the server, which owns the
   // boss's HP — the local animation still plays either way.
   if (state.dungeon && state.dungeon.bossRoom) {
-    if (state.dungeon.cine) return;         // the entrance plays out first
-    state.attackCooldown = state.weapon === "sword" ? 12 : 16;
-    state.swingT = 14;
+    const d = state.dungeon;
+    if (d.cine) return;                     // the entrance plays out first
+    const dx = state.mouse.x - state.pos.x, dy = state.mouse.y - state.pos.y;
+    const m = Math.hypot(dx, dy) || 1;
+    if (state.weapon === "pistol") {
+      // A shot, not a slash: a tracer down the barrel and a muzzle flash. The
+      // arena has no local physics, so the tracer is purely cosmetic and dies
+      // at the end of the pistol's reach.
+      state.attackCooldown = 16;
+      d.tracers = d.tracers || [];
+      d.tracers.push({
+        x: state.pos.x + dx / m * 16, y: state.pos.y + dy / m * 16,
+        vx: dx / m * 11, vy: dy / m * 11,
+        life: Math.round(ECON.GUILD_BOSS.REACH.pistol / 11),
+      });
+      addParticles(state.pos.x + dx / m * 16, state.pos.y + dy / m * 16, "#fde047", 3);
+    } else {
+      state.attackCooldown = 12;
+      state.swingT = 14;
+      state.swingAng = Math.atan2(dy, dx);
+    }
     bossAttackAt(state.mouse.x, state.mouse.y);
     return;
   }
@@ -977,6 +924,7 @@ function doAttack() {
     const dy = state.mouse.y - state.pos.y;
     const ang = Math.atan2(dy, dx);
     let hit = 0;
+    const swept = [];
     for (const e of state.enemies) {
       const ex = e.x - state.pos.x, ey = e.y - state.pos.y;
       const d = Math.hypot(ex, ey);
@@ -985,6 +933,7 @@ function doAttack() {
         let diff = Math.abs(a2 - ang); if (diff > Math.PI) diff = 2*Math.PI - diff;
         if (diff < Math.PI / 1.6) { // ~112° arc
           e.hp -= 55 * combatDamageMult();
+          swept.push(e.id);
           e.hitFlash = 6;
           e.awake = true; e.lurking = false;
           const km = 4;
@@ -997,10 +946,13 @@ function doAttack() {
       }
     }
     state.swingT = 14;
+    state.swingAng = ang;
+    reportEnemyHits(swept.slice(0, ECON.DUNGEON_HIT_MAX_TARGETS), "sword");
     if (hit > 1) toast(`Multi-hit x${hit}!`, 800);
   } else {
     // Pistol: slower fire, ranged, less damage per shot
     state.attackCooldown = 18;
+    state.swingT = 0;
     const dx = state.mouse.x - state.pos.x;
     const dy = state.mouse.y - state.pos.y;
     const m = Math.hypot(dx, dy) || 1;
@@ -1010,6 +962,25 @@ function doAttack() {
       life: 80, dmg: 22 * combatDamageMult(),
     });
     addParticles(state.pos.x + dx/m * 14, state.pos.y + dy/m * 14, "#fde047", 3);
+  }
+}
+
+// Your guildmates, drawn from the same presence feed the town uses. Only the
+// people in YOUR run are drawn: presence carries the run id, so two parties in
+// the same tier never see each other.
+function drawPartyMembers(t) {
+  const d = state.dungeon;
+  if (!d || !d.runId || !state.others) return;
+  for (const [name, o] of Object.entries(state.others)) {
+    if (!o || o.area !== "dungeon" || o.run !== d.runId) continue;
+    // Followers on another floor are somewhere else entirely.
+    if ((o.dfloor | 0) !== (d.floor | 0)) continue;
+    GFX.drawCharacter(ctx, o.dx == null ? o.x : o.dx, o.dy == null ? o.y : o.dy, o.appearance, {
+      facing: o.facing, walking: o.walking, name,
+    });
+    ctx.fillStyle = "rgba(226,232,240,.85)";
+    ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(name, o.dx == null ? o.x : o.dx, (o.dy == null ? o.y : o.dy) - 30);
   }
 }
 
@@ -1090,9 +1061,16 @@ function drawBossRoom() {
     ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, p.life / 40);
     ctx.fillRect(p.x - 2, p.y - 2, 4, 4); ctx.globalAlpha = 1;
   }
+  drawPartyMembers(t);
   GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance, { facing: state.facing, walking: state.walking });
-  if (state.swingT > 0) {
-    const ang = Math.atan2(state.mouse.y - state.pos.y, state.mouse.x - state.pos.x);
+  for (const tr of (d.tracers || [])) {
+    ctx.fillStyle = "rgba(253,224,71,.4)";
+    ctx.beginPath(); ctx.arc(tr.x, tr.y, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#fde047";
+    ctx.beginPath(); ctx.arc(tr.x, tr.y, 4, 0, Math.PI * 2); ctx.fill();
+  }
+  if (state.swingT > 0 && state.weapon === "sword") {
+    const ang = state.swingAng || 0;
     ctx.strokeStyle = "rgba(252,211,77," + (state.swingT / 14) + ")"; ctx.lineWidth = 6;
     ctx.beginPath(); ctx.arc(state.pos.x, state.pos.y, 50, ang - Math.PI / 1.6, ang + Math.PI / 1.6); ctx.stroke();
   } else if (b && b.status === "alive") {
@@ -1218,6 +1196,8 @@ function drawDungeon() {
   // behind them instead of z-fighting at random.
   const order = state.enemies.slice().sort((a, b) => a.y - b.y);
   for (const e of order) gameMobs.drawEnemy(ctx, e, t, ENEMY_TYPES);
+
+  drawPartyMembers(t);
 
 
   // Bullets (player)
@@ -1514,8 +1494,39 @@ function doAttackWithDuel() {
   }
 }
 
+// A floor the SERVER moved the party onto. Everyone in the run gets this, so
+// the party is never split across two floors: whoever reports the stair moves
+// all of them.
+function adoptServerFloor(msg) {
+  const d = state.dungeon;
+  if (!d || !d.cfg.guild || d.runId !== msg.runId) return;
+  d.floor = msg.floor;
+  const cfg = d.cfg;
+  if (msg.mini && msg.boss) {
+    toast("Something drops into the stairwell.", 2500);
+    enterArena(msg.boss);
+    return;
+  }
+  if (d.floor === cfg.floors - 1) {
+    toast("The door seals behind you.", 2500);
+    enterBossRoom();
+    return;
+  }
+  d.bossRoom = false; d.isMini = false; d.boss = null; d.cine = null;
+  d.plan = withServerHp(msg.state);
+  setupFloor();
+  toast(`Floor ${d.floor + 1} of ${cfg.floors}`);
+}
+
+// Which run and floor we are on, so presence can scope who is drawn beside us.
+function dungeonPresence() {
+  const d = state.dungeon;
+  return d && d.runId ? { run: d.runId, dfloor: d.floor | 0 } : null;
+}
+
 window.gameCombat = {
   startDungeon, updateDungeon, drawDungeon, doAttack: doAttackWithDuel,
   startDuel, updateDuel, drawDuel, duelId, endDungeon,
+  adoptServerFloor, applyEnemyChanges, dungeonPresence,
   QUEST_TIERS, ENEMY_TYPES,
 };

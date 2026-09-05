@@ -525,6 +525,13 @@ async function pushPresence() {
     // Staff-only; the server drops an invisible client from every broadcast.
     invisible: state.invisible || undefined,
   };
+  // Which guild run and floor, so a party is drawn together in the dungeon and
+  // two parties in the same tier never see each other (combat.js
+  // drawPartyMembers).
+  if (area === "dungeon" && window.gameCombat) {
+    const dp = gameCombat.dungeonPresence();
+    if (dp) { data.run = dp.run; data.dfloor = dp.dfloor; }
+  }
   if (look !== _sentAppearance) { data.appearance = state.appearance; _sentAppearance = look; }
   netPresence(data).then(r => {
     // The server has no look on file for this socket — send it again next tick.

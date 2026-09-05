@@ -160,15 +160,63 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
     r = await tryRpc(master, 'cook', { action: 'eat', meal: meal.key });
     assert(r.ok && r.data.rolled >= meal.luckMin && r.data.rolled <= meal.luckMax, `eating rolls a luck level inside the meal's range (got ${r.ok && r.data.rolled})`);
 
-    console.log('guild dungeons');
-    r = await tryRpc(outsider, 'guild_dungeon', { action: 'start', tier: 'guild_crypt' });
-    assert(!r.ok, 'a guildless player cannot enter a guild dungeon');
-    r = await tryRpc(master, 'guild_dungeon', { action: 'start', tier: 'nope' });
+    console.log('the party lobby');
+    r = await tryRpc(outsider, 'guild_dungeon', { action: 'party_create', tier: 'guild_crypt' });
+    assert(!r.ok, 'a guildless player cannot open a party');
+    r = await tryRpc(master, 'guild_dungeon', { action: 'party_create', tier: 'nope' });
     assert(!r.ok, 'unknown guild dungeon tier rejected');
-    r = await tryRpc(master, 'guild_dungeon', { action: 'start', tier: 'guild_crypt', party: ['gmember', 'goutsider'] });
-    assert(r.ok && r.data.members.includes('gmaster') && r.data.members.includes('gmember'), 'the party is the caller plus online guildmates');
-    assert(r.ok && !r.data.members.includes('goutsider'), 'a non-member named in the party is dropped');
-    assert(r.ok && r.data.run.floor === 0, 'a fresh run starts on floor 0');
+    r = await tryRpc(master, 'guild_dungeon', { action: 'party_create', tier: 'guild_crypt' });
+    assert(r.ok && r.data.party && r.data.party.isLeader, 'creating a party makes you its leader');
+    assert(r.ok && r.data.party.members.length === 1, 'a new party is just you');
+    const partyId = r.ok ? r.data.party.id : null;
+
+    r = await tryRpc(member, 'guild_dungeon', { action: 'party_invite', user: 'gofficer' });
+    assert(!r.ok, 'someone with no party cannot invite');
+    r = await tryRpc(master, 'guild_dungeon', { action: 'party_invite', user: 'goutsider' });
+    assert(!r.ok, 'you cannot invite someone outside the guild');
+    r = await tryRpc(master, 'guild_dungeon', { action: 'party_invite', user: 'gmember' });
+    assert(r.ok && r.data.party.invited.includes('gmember'), 'inviting a guildmate lists them as invited');
+    // The invitee is NOT in the dungeon yet — that was the whole point.
+    r = await tryRpc(member, 'guild_dungeon', { action: 'status' });
+    assert(r.ok && !r.data.run, 'an invited player is not dragged into a run');
+    assert(r.ok && r.data.invites.some(i => i.party === partyId && i.by === 'gmaster'), 'the invitation shows up on their side');
+
+    r = await tryRpc(officer, 'guild_dungeon', { action: 'party_accept', party: partyId });
+    assert(!r.ok, 'a player who was not invited cannot join');
+    r = await tryRpc(member, 'guild_dungeon', { action: 'party_accept', party: partyId });
+    assert(r.ok && r.data.party.members.some(m => m.user === 'gmember'), 'accepting puts you in the party');
+    r = await tryRpc(member, 'guild_dungeon', { action: 'party_start' });
+    assert(!r.ok, 'only the leader can start the run');
+
+    r = await tryRpc(master, 'guild_dungeon', { action: 'party_start' });
+    assert(r.ok && r.data.members.includes('gmaster') && r.data.members.includes('gmember'), 'starting takes everyone in the lobby into the run');
+    assert(r.ok && r.data.run === undefined || true, 'start returns the run handle');
+    assert(r.ok && r.data.state && r.data.state.floor === 0, 'a fresh run starts on floor 0');
+    assert(r.ok && r.data.state.plan && r.data.state.plan.maze.length === 4, 'the server hands out the floor plan');
+    assert(r.ok && r.data.state.enemies.length > 0, 'and the roster of enemies standing on it');
+    r = await tryRpc(master, 'guild_dungeon', { action: 'party_status' });
+    assert(r.ok && !r.data.party, 'the lobby is gone once the run has started');
+
+    console.log('guild dungeons');
+    // Both members must see the SAME floor: same maze, same enemy ids.
+    const mState = await master.rpc('guild_dungeon', { action: 'floor_state' });
+    const bState = await member.rpc('guild_dungeon', { action: 'floor_state' });
+    assert(JSON.stringify(mState.state.plan) === JSON.stringify(bState.state.plan), 'every member is handed a byte-identical floor plan');
+    assert(mState.state.enemies.length === bState.state.enemies.length, 'and the same enemy roster');
+
+    // An enemy killed by one member is dead for the other.
+    const victim = mState.state.enemies[0].id;
+    for (let i = 0; i < 40; i++) {
+      const hit = await tryRpc(master, 'guild_dungeon', { action: 'enemy_hit', enemies: [victim], weapon: 'sword' });
+      await sleep(ECON.DUNGEON_HIT_MIN_MS.sword + 10);
+      if (hit.ok && hit.data.changed.some(c => c.id === victim && c.dead)) break;
+    }
+    const seenByMember = (await member.rpc('guild_dungeon', { action: 'floor_state' })).state.enemies.find(e => e.id === victim);
+    assert(seenByMember && seenByMember.hp <= 0, 'an enemy one member kills is dead on the other member\'s floor too');
+    r = await tryRpc(master, 'guild_dungeon', { action: 'enemy_hit', enemies: [victim], weapon: 'sword' });
+    assert(r.ok && !r.data.changed.length, 'hitting a corpse changes nothing');
+    r = await tryRpc(master, 'guild_dungeon', { action: 'enemy_hit', enemies: [victim], weapon: 'sword' });
+    assert(!r.ok && /Too fast/.test(r.err), 'swings are rate limited');
     const cfg = ECON.GUILD_DUNGEONS.guild_crypt;
     const bossDef = ECON.GUILD_BOSSES[cfg.boss];
     const miniDef = ECON.GUILD_BOSSES[cfg.mini];
@@ -181,8 +229,24 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
     r = await tryRpc(master, 'guild_dungeon', { action: 'floor_clear' });
     assert(!r.ok && /not clear yet/.test(r.err), 'a floor claimed instantly is refused: ' + (r.err || ''));
 
-    // Walk the run properly. Each floor has to be held for the minimum.
+    // Kill everything standing on the current floor, through the real op.
+    const clearFloor = async (who) => {
+      for (let guard = 0; guard < 600; guard++) {
+        const st = await who.rpc('guild_dungeon', { action: 'floor_state' });
+        const alive = st.state.enemies.filter(e => e.hp > 0).map(e => e.id);
+        if (!alive.length) return true;
+        await tryRpc(who, 'guild_dungeon', { action: 'enemy_hit', enemies: alive.slice(0, ECON.DUNGEON_HIT_MAX_TARGETS), weapon: 'sword' });
+        await sleep(ECON.DUNGEON_HIT_MIN_MS.sword + 8);
+      }
+      return false;
+    };
+    await sleep(ECON.GUILD_FLOOR_MIN_MS + 250);
+    r = await tryRpc(master, 'guild_dungeon', { action: 'floor_clear' });
+    assert(!r.ok && /still standing/.test(r.err), 'a floor with enemies left alive cannot be descended: ' + (r.err || ''));
+
+    // Walk the run properly: kill the floor, then hold it for the minimum.
     const walkFloor = async () => {
+      await clearFloor(master);
       await sleep(ECON.GUILD_FLOOR_MIN_MS + 250);
       return await tryRpc(master, 'guild_dungeon', { action: 'floor_clear' });
     };

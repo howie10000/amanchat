@@ -922,6 +922,17 @@
   // (hp / dps) given HIT_MIN_MS, so anything faster than this is not a fight.
   const GUILD_BOSS_MIN_FIGHT_MS = 8000;
 
+  // ---- maze-floor combat (the floors BEFORE the boss room) ----
+  // A guild run's ordinary enemies are server-owned too: their HP lives in the
+  // run, so a party kills one enemy rather than one each. These are the same
+  // numbers the client animates with, kept here so both sides agree on what a
+  // swing is worth.
+  const DUNGEON_HIT_DMG = { sword: 55, pistol: 22 };
+  // One swing may sweep several enemies, so the floor is per SWING, not per
+  // enemy, and a swing may name at most this many targets.
+  const DUNGEON_HIT_MIN_MS = { sword: 110, pistol: 150 };
+  const DUNGEON_HIT_MAX_TARGETS = 6;
+
   // Guild bosses — the tier above the sea beasts. Same shape as BEASTS (parts +
   // a head, telegraphed attack deck) so the client can reuse the lake fight's
   // rise cinematic and HP furniture, but tuned much harder and scaled by party
@@ -1297,6 +1308,7 @@
     GUILD_BOSS_ORDER, GUILD_MINIS, isMiniBoss, miniFloorOf,
     GUILD_FLOOR_MIN_MS, GUILD_RUN_MIN_MS, GUILD_BOSS_MIN_FIGHT_MS,
     guildBossMaxHp, guildBossPartPos, guildBossHeadPos, pickGuildBossAttack,
+    DUNGEON_HIT_DMG, DUNGEON_HIT_MIN_MS, DUNGEON_HIT_MAX_TARGETS,
     GEAR_SLOTS, GEAR_SLOT_INFO, GEAR_STATS, GEAR_STAT_INFO,
     GEAR_RARITIES, GEAR_RARITY_INFO, GEAR_MAX_LEVEL, GEAR_POWER, GEAR_BASE_VALUE,
     GEAR_BASES, GEAR_BASE_BY_ID, GEAR_AFFIXES, GEAR_SOURCES, GEAR_PACK_MAX,

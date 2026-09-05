@@ -42,6 +42,7 @@ if (!JS_DIR) {
     process.exit(1);
 }
 const ECON = require(path.join(JS_DIR, 'shared', 'economy.js'));
+const DUNGEON = require(path.join(JS_DIR, 'shared', 'dungeon.js'));
 const { FURNITURE_CATALOG, FURNITURE_LIST } = require(path.join(JS_DIR, 'furniture.js'));
 const GAMES = require('./games.js');
 const HOUSE_COUNT = 60;
@@ -663,6 +664,12 @@ function presenceView(c) {
         y: Number.isFinite(p.y) ? Math.round(p.y) : 0,
         area: p.area,
         floor: p.floor,
+        // Which guild run and which of its floors, so a dungeon party is drawn
+        // together and two parties in the same tier stay invisible to each
+        // other. Stamped from the server's own run table, never from the
+        // client's claim, so nobody can walk into a run they aren't in.
+        run: p.area === 'dungeon' ? (guildRunOf.get(c.user) || undefined) : undefined,
+        dfloor: p.area === 'dungeon' ? (p.dfloor | 0) : undefined,
         facing: p.facing,
         hp: p.hp,
         emote: p.emote,
@@ -2101,6 +2108,48 @@ function grantGear(user, u, tier) {
     return { loot: kept, packFull: full };
 }
 
+
+// ------------------------------------------------------------ GUILD PARTIES
+// A party is the LOBBY that exists before a run: the leader picks a dungeon,
+// invites guildmates who are online, and everyone waits in it until the leader
+// starts. Keeping it separate from the run means an invitation can be declined,
+// a member can drop out, and nobody is dragged into a dungeon they didn't agree
+// to — which is what happened when `start` took a list of names directly.
+const guildParties = new Map();       // partyId -> party
+const guildPartyOf = new Map();       // user -> partyId
+function partyFor(user) {
+    const id = guildPartyOf.get(user);
+    return id ? guildParties.get(id) || null : null;
+}
+function partyView(party, viewer) {
+    if (!party) return null;
+    const cfg = ECON.GUILD_DUNGEONS[party.tier];
+    return {
+        id: party.id, tier: party.tier, name: cfg ? cfg.name : party.tier,
+        leader: party.leader, isLeader: party.leader === viewer,
+        members: [...party.members].map(u => ({ user: u, online: byUser.has(u), leader: u === party.leader })),
+        invited: [...party.invited],
+        max: ECON.GUILD_MAX_MEMBERS, createdAt: party.createdAt,
+    };
+}
+function partyBroadcast(party, kind, extra) {
+    const msg = Object.assign({ event: 'guild_party', kind, party: party.id }, extra || {});
+    for (const u of party.members) pushTo(u, Object.assign({}, msg, { view: partyView(party, u) }));
+}
+function disbandParty(party, reason) {
+    if (!party) return;
+    for (const u of party.members) if (guildPartyOf.get(u) === party.id) guildPartyOf.delete(u);
+    guildParties.delete(party.id);
+    for (const u of party.members) pushTo(u, { event: 'guild_party', kind: 'disbanded', party: party.id, reason: reason || '' });
+}
+// A party nobody has started in half an hour is a tab someone closed.
+function sweepParties() {
+    const now = Date.now();
+    for (const party of [...guildParties.values()]) {
+        if (now - party.createdAt > 30 * 60000) disbandParty(party, 'expired');
+    }
+}
+
 // ------------------------------------------------------- GUILD DUNGEON RUNS
 // One in-memory run per party. The maze itself stays client-side (same as the
 // public quests), but the BOSS is server-authoritative — every hit is checked
@@ -2197,8 +2246,92 @@ function endGuildRun(run, reason) {
     guildRuns.delete(run.id);
     if (reason) runBroadcast(run, 'ended', { reason });
 }
+
+// Open invitations addressed to one player, so the lobby menu can show them.
+function partyInvitesFor(user) {
+    const out = [];
+    for (const party of guildParties.values()) {
+        if (!party.invited.has(user)) continue;
+        const g = guildRec(party.gid);
+        const cfg = ECON.GUILD_DUNGEONS[party.tier];
+        out.push({
+            party: party.id, by: party.leader, tier: party.tier,
+            name: cfg ? cfg.name : party.tier, members: party.members.size,
+            guild: g ? { name: g.name, tag: g.tag } : null,
+        });
+    }
+    return out;
+}
+
+// ---- server-owned floors ----
+// The maze, the key and the enemy roster are generated HERE and shipped to the
+// party, and every enemy's HP lives in the run. That is what makes a party one
+// dungeon rather than several: kill an Ogre and it is dead on everyone's
+// screen, and nobody can walk down a stair the floor has not earned.
+function floorPlan(run, floor) {
+    if (!run.plans[floor]) {
+        const cfg = ECON.GUILD_DUNGEONS[run.tier];
+        const plan = DUNGEON.buildFloorPlan(run.seed, Object.assign({ guild: true }, cfg), floor);
+        run.plans[floor] = plan;
+        const hp = {};
+        for (const e of plan.enemies) hp[e.id] = e.hp;
+        run.enemyHp[floor] = hp;
+    }
+    return run.plans[floor];
+}
+function floorEnemies(run, floor) {
+    floorPlan(run, floor);
+    const hp = run.enemyHp[floor] || {};
+    return Object.entries(hp).map(([id, h]) => ({ id, hp: h }));
+}
+function floorCleared(run, floor) {
+    floorPlan(run, floor);
+    const hp = run.enemyHp[floor] || {};
+    return Object.values(hp).every(h => h <= 0);
+}
+function floorStateView(run) {
+    return { floor: run.floor, plan: floorPlan(run, run.floor), enemies: floorEnemies(run, run.floor) };
+}
+
+// Creating the run itself, shared by `party_start` and the solo `start` path.
+function startGuildRun(leader, tier, members) {
+    const g = guildRequire(leader);
+    const cfg = ECON.GUILD_DUNGEONS[tier];
+    if (!cfg) throw new Error('No such guild dungeon.');
+    const existing = runFor(leader);
+    if (existing) endGuildRun(existing);
+    const set = new Set([leader]);
+    for (const raw of (members || []).slice(0, ECON.GUILD_MAX_MEMBERS)) {
+        const p = String(raw || '').trim().toLowerCase();
+        if (!p || p === leader || !g.members[p] || !byUser.has(p) || guildRunOf.has(p)) continue;
+        set.add(p);
+    }
+    const now = Date.now();
+    const run = {
+        id: pushId(), tier, gid: g.id, members: set, startedAt: now,
+        floor: 0, floorAt: now, miniDone: false, miniPurse: 0, boss: null, paid: false,
+        seed: (Math.random() * 0x7fffffff) | 0,
+        plans: {}, enemyHp: {}, hitLast: new Map(), leader,
+    };
+    guildRuns.set(run.id, run);
+    for (const m of set) guildRunOf.set(m, run.id);
+    const state = floorStateView(run);
+    const info = {
+        event: 'guild_dungeon', kind: 'start', runId: run.id, tier, seed: run.seed,
+        members: [...set], by: leader, guild: { id: g.id, name: g.name, tag: g.tag },
+        state,
+    };
+    for (const m of set) pushTo(m, info);
+    console.log(`[guild-dungeon] ${g.name} entered ${cfg.name} (${set.size} in the party)`);
+    return {
+        runId: run.id, tier, seed: run.seed, members: [...set], state,
+        cfg: { name: cfg.name, floors: cfg.floors, boss: cfg.boss, mini: cfg.mini },
+    };
+}
+
 function guildBossTick() {
     const now = Date.now();
+    sweepParties();
     for (const run of [...guildRuns.values()]) {
         const b = run.boss;
         // A run nobody has touched in 30 minutes is abandoned (disconnects,
@@ -3288,35 +3421,168 @@ const ECONOMY_OPS = {
 
         if (action === 'status') {
             const run = runFor(user);
-            return { run: runView(run), boss: run ? guildBossView(run, now) : null };
+            return {
+                run: runView(run), boss: run ? guildBossView(run, now) : null,
+                state: run ? floorStateView(run) : null,
+                party: partyView(partyFor(user), user), invites: partyInvitesFor(user),
+            };
         }
 
-        if (action === 'start') {
+        // ---- the lobby, before anyone is in a dungeon ----
+        if (action === 'party_status') {
+            return { party: partyView(partyFor(user), user), invites: partyInvitesFor(user) };
+        }
+
+        if (action === 'party_create') {
             const g = guildRequire(user);
             const tier = String(msg.tier || '');
-            const cfg = ECON.GUILD_DUNGEONS[tier];
-            if (!cfg) throw new Error('No such guild dungeon.');
-            const existing = runFor(user);
-            if (existing) endGuildRun(existing);
-            // A party is the caller plus any guildmates they name who are online
-            // and not already running something.
-            const members = new Set([user]);
-            for (const raw of (Array.isArray(msg.party) ? msg.party : []).slice(0, ECON.GUILD_MAX_MEMBERS)) {
-                const p = String(raw || '').trim().toLowerCase();
-                if (!p || p === user || !g.members[p] || !byUser.has(p) || guildRunOf.has(p)) continue;
-                members.add(p);
-            }
-            const run = {
-                id: pushId(), tier, gid: g.id, members, startedAt: now,
-                floor: 0, floorAt: now, miniDone: false, miniPurse: 0, boss: null, paid: false,
-                seed: (Math.random() * 0x7fffffff) | 0,
+            if (!ECON.GUILD_DUNGEONS[tier]) throw new Error('No such guild dungeon.');
+            if (runFor(user)) throw new Error('You are already in a dungeon.');
+            const existing = partyFor(user);
+            if (existing) disbandParty(existing, 'replaced');
+            const party = {
+                id: pushId(), gid: g.id, tier, leader: user,
+                members: new Set([user]), invited: new Set(), createdAt: now,
             };
-            guildRuns.set(run.id, run);
-            for (const m of members) guildRunOf.set(m, run.id);
-            const info = { event: 'guild_dungeon', kind: 'start', runId: run.id, tier, seed: run.seed, members: [...members], by: user, guild: { id: g.id, name: g.name, tag: g.tag } };
-            for (const m of members) pushTo(m, info);
-            console.log(`[guild-dungeon] ${g.name} entered ${cfg.name} (${members.size} in the party)`);
-            return { runId: run.id, tier, seed: run.seed, members: [...members], run: runView(run), cfg: { name: cfg.name, floors: cfg.floors, boss: cfg.boss, mini: cfg.mini } };
+            guildParties.set(party.id, party);
+            guildPartyOf.set(user, party.id);
+            return { party: partyView(party, user) };
+        }
+
+        if (action === 'party_invite') {
+            const party = partyFor(user);
+            if (!party) throw new Error('You have no party.');
+            if (party.leader !== user) throw new Error('Only the party leader can invite.');
+            const who = String(msg.user || '').trim().toLowerCase();
+            const g = guildRec(party.gid);
+            if (!g || !g.members[who]) throw new Error('They are not in your guild.');
+            if (party.members.has(who)) throw new Error('They are already in the party.');
+            if (party.members.size + party.invited.size >= ECON.GUILD_MAX_MEMBERS) throw new Error('The party is full.');
+            if (!byUser.has(who)) throw new Error('They are not online.');
+            if (guildRunOf.has(who)) throw new Error('They are already in a dungeon.');
+            party.invited.add(who);
+            pushTo(who, {
+                event: 'guild_party', kind: 'invited', party: party.id, by: user,
+                tier: party.tier, name: ECON.GUILD_DUNGEONS[party.tier].name,
+                guild: { name: g.name, tag: g.tag },
+            });
+            partyBroadcast(party, 'roster');
+            return { party: partyView(party, user), invited: who };
+        }
+
+        if (action === 'party_accept') {
+            const party = guildParties.get(String(msg.party || ''));
+            if (!party) throw new Error('That party is gone.');
+            if (!party.invited.has(user)) throw new Error('You were not invited to it.');
+            if (runFor(user)) throw new Error('You are already in a dungeon.');
+            const mine = partyFor(user);
+            if (mine) disbandParty(mine, 'replaced');
+            party.invited.delete(user);
+            party.members.add(user);
+            guildPartyOf.set(user, party.id);
+            partyBroadcast(party, 'joined', { user });
+            return { party: partyView(party, user) };
+        }
+
+        if (action === 'party_decline') {
+            const party = guildParties.get(String(msg.party || ''));
+            if (party) { party.invited.delete(user); partyBroadcast(party, 'roster'); }
+            return { ok: true, invites: partyInvitesFor(user) };
+        }
+
+        if (action === 'party_leave') {
+            const party = partyFor(user);
+            if (!party) return { party: null };
+            guildPartyOf.delete(user);
+            party.members.delete(user);
+            // The leader walking out ends the lobby rather than silently
+            // promoting somebody who never asked to run it.
+            if (party.leader === user || !party.members.size) disbandParty(party, 'leader left');
+            else partyBroadcast(party, 'left', { user });
+            return { party: null };
+        }
+
+        if (action === 'party_kick') {
+            const party = partyFor(user);
+            if (!party) throw new Error('You have no party.');
+            if (party.leader !== user) throw new Error('Only the party leader can remove people.');
+            const who = String(msg.user || '').trim().toLowerCase();
+            if (who === user) throw new Error('You cannot remove yourself — leave instead.');
+            party.invited.delete(who);
+            if (party.members.delete(who)) {
+                guildPartyOf.delete(who);
+                pushTo(who, { event: 'guild_party', kind: 'removed', party: party.id, by: user });
+            }
+            partyBroadcast(party, 'roster');
+            return { party: partyView(party, user) };
+        }
+
+        // The lobby becomes a run. Everyone still in it enters together, which
+        // is the only way anybody gets into a guild dungeon.
+        if (action === 'party_start') {
+            const party = partyFor(user);
+            if (!party) throw new Error('You have no party.');
+            if (party.leader !== user) throw new Error('Only the party leader can start the run.');
+            const members = [...party.members].filter(u => byUser.has(u) && !guildRunOf.has(u));
+            if (!members.includes(user)) throw new Error('You are not able to start right now.');
+            const out = startGuildRun(user, party.tier, members);
+            disbandParty(party, 'started');
+            return out;
+        }
+
+        // The floor as the SERVER sees it: the maze everyone is standing in and
+        // how much life every enemy on it has left. A client that reconnects,
+        // or one that joined the run late, rebuilds from this.
+        if (action === 'floor_state') {
+            const run = runFor(user);
+            if (!run) throw new Error('You are not in a guild dungeon.');
+            return { run: runView(run), state: floorStateView(run), boss: guildBossView(run, now) };
+        }
+
+        // One swing. A sword sweeps several enemies at once, so the rate limit
+        // is per swing rather than per enemy, and the server decides what the
+        // swing was worth — mastery and equipped attack, exactly as the boss
+        // fight does it.
+        //
+        // What this CANNOT check is range: under the shared-world model the
+        // enemies move on each client, so the server has no position to measure
+        // against. It is a rate limit and a liveness check, not proof of a hit.
+        if (action === 'enemy_hit') {
+            const run = runFor(user);
+            if (!run) throw new Error('You are not in a guild dungeon.');
+            const floor = run.floor;
+            floorPlan(run, floor);
+            const hp = run.enemyHp[floor] || {};
+            const weapon = msg.weapon === 'pistol' ? 'pistol' : 'sword';
+            const k = user + ':swing:' + weapon;
+            if (now - (run.hitLast.get(k) || 0) < ECON.DUNGEON_HIT_MIN_MS[weapon]) throw new Error('Too fast.');
+            run.hitLast.set(k, now);
+            const ids = (Array.isArray(msg.enemies) ? msg.enemies : [])
+                .slice(0, ECON.DUNGEON_HIT_MAX_TARGETS).map(x => String(x || ''));
+            const mult = ECON.masteryCombatMult(masteryLevelOf(u, 'combat')) * ECON.gearAttackMult(gearStatsOf(u).atk);
+            const dmg = Math.max(1, Math.round(ECON.DUNGEON_HIT_DMG[weapon] * mult));
+            const changed = [];
+            for (const id of ids) {
+                if (!(hp[id] > 0)) continue;
+                hp[id] = Math.max(0, hp[id] - dmg);
+                changed.push({ id, hp: hp[id], dead: hp[id] <= 0 });
+            }
+            if (changed.length) {
+                const cleared = floorCleared(run, floor);
+                for (const m of run.members) {
+                    if (m === user) continue;
+                    pushTo(m, { event: 'guild_dungeon', kind: 'enemies', runId: run.id, floor, changed, by: user, cleared });
+                }
+                return { changed, dmg, cleared };
+            }
+            return { changed: [], dmg, cleared: floorCleared(run, floor) };
+        }
+
+
+        // Entering alone. A party goes through party_create/party_start
+        // instead, so nobody is pulled into a run without accepting it.
+        if (action === 'start') {
+            return startGuildRun(user, String(msg.tier || ''), []);
         }
 
         // Reporting a floor done is the ONLY way to advance, and the server
@@ -3335,6 +3601,7 @@ const ECONOMY_OPS = {
             if (held < ECON.GUILD_FLOOR_MIN_MS) {
                 throw new Error(`That floor is not clear yet — ${Math.ceil((ECON.GUILD_FLOOR_MIN_MS - held) / 1000)}s left.`);
             }
+            if (!floorCleared(run, run.floor)) throw new Error('Something on this floor is still standing.');
             if (run.boss && run.boss.mini) { run.miniDone = true; run.boss = null; }
             run.floor += 1;
             run.floorAt = now;
@@ -3344,10 +3611,14 @@ const ECONOMY_OPS = {
                 spawnGuildBoss(run, cfg.mini);
                 spawned = cfg.mini;
             }
+            // The whole party moves at once: everyone gets the new floor's
+            // plan, so there is never a moment where two members are standing
+            // on different floors of the same run.
+            const state = run.floor < cfg.floors - 1 ? floorStateView(run) : null;
             for (const m of run.members) {
-                if (m !== user) pushTo(m, { event: 'guild_dungeon', kind: 'floor', runId: run.id, floor: run.floor, by: user });
+                if (m !== user) pushTo(m, { event: 'guild_dungeon', kind: 'floor', runId: run.id, floor: run.floor, by: user, mini: spawned, state });
             }
-            return { run: runView(run), floor: run.floor, mini: spawned, boss: guildBossView(run, now) };
+            return { run: runView(run), floor: run.floor, mini: spawned, boss: guildBossView(run, now), state };
         }
 
         if (action === 'boss_spawn') {
@@ -3464,6 +3735,8 @@ const ECONOMY_OPS = {
         }
 
         if (action === 'abandon') {
+            const party = partyFor(user);
+            if (party) { guildPartyOf.delete(user); party.members.delete(user); if (party.leader === user || !party.members.size) disbandParty(party, 'abandoned'); }
             const run = runFor(user);
             if (run) {
                 run.members.delete(user);

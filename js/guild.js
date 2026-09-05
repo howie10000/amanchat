@@ -311,22 +311,141 @@ async function treasury(which) {
   } catch (e) { toast(e.message, 4000); }
 }
 
+// ---------------- THE PARTY LOBBY ----------------
+// Guild dungeons are entered as a party, and a party is a room you stand in
+// before the run: the leader picks the dungeon and invites guildmates, they
+// accept or don't, and only when the leader hits START does anybody load into
+// a floor. The server owns all of it — this renders what it reports.
+let partyState = null;      // the lobby I'm in, or null
+let partyInvites = [];      // lobbies that have asked for me
+
+async function refreshParty() {
+  try {
+    const res = await netGuildDungeon({ action: "party_status" });
+    partyState = res.party || null;
+    partyInvites = res.invites || [];
+  } catch (e) { partyState = null; partyInvites = []; }
+}
+
+// Open a lobby for a dungeon (the CREATE PARTY button on each row).
+async function createParty(tier) {
+  try {
+    const res = await netGuildDungeon({ action: "party_create", tier });
+    partyState = res.party;
+    openParty();
+  } catch (e) { toast(e.message, 4000); }
+}
+
+function openParty() {
+  if (!partyState) { openDungeons(); return; }
+  const p = partyState;
+  const inParty = new Set(p.members.map(m => m.user));
+  const pending = new Set(p.invited);
+  // Everyone in the guild who is online, not already in, and not mid-invite.
+  const askable = (guildState ? guildState.members : [])
+    .filter(m => m.online && !inParty.has(m.user) && !pending.has(m.user));
+
+  let html = `<div class="guildHead">
+      <b>${esc(p.name)}</b>
+      <div class="muted">party of ${p.members.length} · led by ${esc(p.leader)}</div>
+    </div>
+    <p class="muted">Nobody enters until you start. Each extra fighter gives every part of the boss <b>+${Math.round(ECON.GUILD_BOSS.HP_PER_PLAYER * 100)}% HP</b>, and the purse splits between everyone who lands a hit on it.</p>`;
+
+  html += `<h3 class="section">IN THE PARTY</h3>`;
+  for (const m of p.members) {
+    html += `<div class="friendItem">
+      <div class="info"><span class="statusDot ${m.online ? "online" : ""}"></span><b>${esc(m.user)}</b>
+        ${m.leader ? `<small class="muted">party leader</small>` : ""}</div>
+      <div class="flexRow">${p.isLeader && !m.leader ? `<button class="menuBtn red" onclick="gameGuild.kickFromParty('${esc(m.user)}')">REMOVE</button>` : ""}</div>
+    </div>`;
+  }
+
+  if (p.invited.length) {
+    html += `<h3 class="section">WAITING TO ANSWER</h3>`;
+    for (const u of p.invited) {
+      html += `<div class="friendItem"><div class="info"><b>${esc(u)}</b> <small class="muted">invited</small></div>
+        <div class="flexRow">${p.isLeader ? `<button class="menuBtn" onclick="gameGuild.kickFromParty('${esc(u)}')">CANCEL</button>` : ""}</div></div>`;
+    }
+  }
+
+  if (p.isLeader) {
+    html += `<h3 class="section">INVITE — GUILDMATES ONLINE</h3>`;
+    if (!askable.length) {
+      html += `<p class="muted">Nobody else from the guild is online right now. You can still run it alone.</p>`;
+    } else {
+      for (const m of askable) {
+        html += `<div class="friendItem">
+          <div class="info"><span class="statusDot online"></span><b>${esc(m.user)}</b>
+            <small class="muted">${esc(ECON.GUILD_RANK_INFO[m.rank].label)}</small></div>
+          <button class="menuBtn green" onclick="gameGuild.inviteToParty('${esc(m.user)}')">INVITE</button>
+        </div>`;
+      }
+    }
+  }
+
+  html += `<div class="flexRow" style="margin-top:14px">
+    ${p.isLeader
+      ? `<button class="menuBtn red" onclick="gameGuild.startParty()">START THE RUN</button>`
+      : `<p class="muted">Waiting for ${esc(p.leader)} to start.</p>`}
+    <button class="menuBtn" onclick="gameGuild.leaveParty()">${p.isLeader ? "DISBAND" : "LEAVE PARTY"}</button>
+  </div>`;
+  openMenu("PARTY", html);
+}
+
+async function inviteToParty(user) {
+  try { const res = await netGuildDungeon({ action: "party_invite", user }); partyState = res.party; toast(`Asked ${user}.`, 2500); openParty(); }
+  catch (e) { toast(e.message, 4000); }
+}
+async function kickFromParty(user) {
+  try { const res = await netGuildDungeon({ action: "party_kick", user }); partyState = res.party; openParty(); }
+  catch (e) { toast(e.message, 4000); }
+}
+async function leaveParty() {
+  try { await netGuildDungeon({ action: "party_leave" }); partyState = null; openDungeons(); }
+  catch (e) { toast(e.message, 4000); }
+}
+async function startParty() {
+  try {
+    const res = await netGuildDungeon({ action: "party_start" });
+    partyState = null;
+    // The leader loads in from the reply; everyone else gets the `start` event.
+    gameCombat.startDungeon(res.tier, [], { runId: res.runId, seed: res.seed, state: res.state });
+  } catch (e) { toast(e.message, 4000); }
+}
+async function acceptParty(id) {
+  try { const res = await netGuildDungeon({ action: "party_accept", party: id }); partyState = res.party; partyInvites = []; openParty(); }
+  catch (e) { toast(e.message, 4000); }
+}
+async function declineParty(id) {
+  try { const res = await netGuildDungeon({ action: "party_decline", party: id }); partyInvites = res.invites || []; closeMenu(); }
+  catch (e) { toast(e.message, 4000); }
+}
+
 // ---------------- GUILD DUNGEONS ----------------
-function openDungeons() {
+async function openDungeons() {
   if (!guildState) { toast("Guild dungeons are for guilds. Talk to the broker."); return; }
-  const online = guildState.members.filter(m => m.online && m.user !== state.user);
+  await refreshParty();
+  // Already in a lobby? That is the screen you want, not the list.
+  if (partyState) { openParty(); return; }
+
   let html = `<p>Longer, denser and sealed at the end by something the quest board will not name. Every clear tithes <b>${pct(guildState.rates.dungeonCut)}</b> to your treasury; the rest splits between everyone who landed a hit on the boss.</p>
     <p class="muted">Each extra fighter gives every part of the boss <b>+${Math.round(ECON.GUILD_BOSS.HP_PER_PLAYER * 100)}% HP</b> — bring people who will actually swing.</p>
     <p class="muted">Everyone who lands a hit on the boss also rolls the loot table — armour, weapons and rings the quest board's dungeons cannot drop. <a href="#" onclick="gameGear.openArmoury();return false;">The Armoury</a> is where you wear it or sell it.</p>`;
-  html += `<h3 class="section">PARTY</h3>`;
-  if (!online.length) {
-    html += `<p class="muted">Nobody else from the guild is online. You can still go alone.</p>`;
-  } else {
-    for (const m of online) {
-      html += `<label class="checkRow"><input type="checkbox" class="gdParty" value="${esc(m.user)}" /> ${esc(m.user)}</label>`;
+
+  if (partyInvites.length) {
+    html += `<h3 class="section">YOU'VE BEEN ASKED ALONG</h3>`;
+    for (const inv of partyInvites) {
+      html += `<div class="shopItem"><div class="info"><b>${esc(inv.name)}</b><br/>
+        <small>${esc(inv.by)}'s party · ${inv.members} ${inv.members === 1 ? "member" : "members"}</small></div>
+        <div class="flexRow">
+          <button class="menuBtn green" onclick="gameGuild.acceptParty('${esc(inv.party)}')">JOIN</button>
+          <button class="menuBtn red" onclick="gameGuild.declineParty('${esc(inv.party)}')">NO</button>
+        </div></div>`;
     }
   }
-  html += `<h3 class="section">CHOOSE A DUNGEON</h3>`;
+
+  html += `<h3 class="section">CHOOSE A DUNGEON</h3>
+    <p class="muted">Opening one makes you the party leader. Invite whoever you want from the guild, then start when everyone's in.</p>`;
   for (const id of ECON.GUILD_DUNGEON_ORDER) {
     const d = ECON.GUILD_DUNGEONS[id];
     const boss = ECON.GUILD_BOSSES[d.boss];
@@ -336,13 +455,9 @@ function openDungeons() {
       <small>${d.floors} floors · boss: ${esc(boss.name)} · purse up to ${money(purse)}</small><br/>
       ${mini ? `<small class="muted">${esc(mini.name)} blocks floor ${ECON.miniFloorOf(d) + 1} — its bounty is paid with the run.</small><br/>` : ""}
       <small class="muted">${esc(d.blurb)}</small></div>
-      <button class="menuBtn red" onclick="gameGuild.startRun('${id}')">ENTER</button></div>`;
+      <button class="menuBtn red" onclick="gameGuild.createParty('${id}')">CREATE PARTY</button></div>`;
   }
   openMenu("GUILD DUNGEONS", html);
-}
-function startRun(tier) {
-  const party = [...document.querySelectorAll(".gdParty:checked")].map(el => el.value);
-  gameCombat.startDungeon(tier, party);
 }
 
 // ---------------- MASTERY ----------------
@@ -393,14 +508,48 @@ if (window.NET) {
     if (m.kind === "joined") toast(`${m.user} joined the guild.`, 3500);
     refresh();
   });
+  NET.on("guild_party", (m) => {
+    if (m.kind === "invited") {
+      partyInvites = partyInvites.filter(i => i.party !== m.party);
+      partyInvites.push({ party: m.party, by: m.by, tier: m.tier, name: m.name, members: 1, guild: m.guild });
+      toast(`${m.by} wants you in a party for ${m.name} — open GUILD DUNGEONS to answer.`, 7000);
+      return;
+    }
+    if (m.kind === "disbanded" || m.kind === "removed") {
+      const wasMine = partyState && partyState.id === m.party;
+      partyState = null;
+      partyInvites = partyInvites.filter(i => i.party !== m.party);
+      if (wasMine) {
+        toast(m.kind === "removed" ? "You were removed from the party." : "The party broke up.", 4000);
+        if (state.area.startsWith("interior_")) openDungeons();
+      }
+      return;
+    }
+    // roster / joined / left — the server sends the whole view, so just take it.
+    if (m.view) {
+      partyState = m.view;
+      if (m.kind === "joined" && m.user !== state.user) toast(`${m.user} joined the party.`, 3000);
+      if (m.kind === "left") toast(`${m.user} left the party.`, 3000);
+      const menu = document.getElementById("menuTitle");
+      if (menu && menu.textContent === "PARTY") openParty();
+    }
+  });
+
   NET.on("guild_dungeon", (m) => {
     if (m.kind === "start" && m.by !== state.user) {
-      // A guildmate opened a run and put you in the party — follow them in.
+      // The leader started the party's run — everyone loads the same floor.
+      partyState = null;
       toast(`${m.by} is taking the party into ${ECON.GUILD_DUNGEONS[m.tier].name}.`, 5000);
       if (state.area === "neighborhood" || state.area.startsWith("interior_")) {
         // The server already has us in this run — join it, don't open another.
-        gameCombat.startDungeon(m.tier, [], { runId: m.runId, seed: m.seed });
+        gameCombat.startDungeon(m.tier, [], { runId: m.runId, seed: m.seed, state: m.state });
       }
+    } else if (m.kind === "enemies") {
+      // A guildmate's kills, applied to our copy of the floor.
+      gameCombat.applyEnemyChanges(m.changed);
+    } else if (m.kind === "floor") {
+      // Whoever reported the stair moves the WHOLE party down it.
+      gameCombat.adoptServerFloor(m);
     } else if (m.kind === "reward") {
       state.data.money = m.money;
       toast(`Guild dungeon cleared — your share ${money(m.gained)}.`, 5000);
@@ -422,5 +571,7 @@ window.gameGuild = {
   openBroker, createGuild, acceptInvite, declineInvite, browse,
   openHall, invite, setRank, kick, saveRates, spendSkill, leave,
   openBank, bank, openTreasury, treasury,
-  openDungeons, startRun, openMastery, enterGuildHall,
+  openDungeons, openMastery, enterGuildHall,
+  createParty, openParty, inviteToParty, kickFromParty, leaveParty, startParty,
+  acceptParty, declineParty, refreshParty,
 };
