@@ -114,6 +114,25 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
     assert(r.ok && r.data.guild.taxRate === ECON.GUILD_TAX_MAX, 'the guild tax is clamped to its maximum');
     await master.rpc('guild', { action: 'set_rates', taxRate: 0.05 });
 
+    console.log('rebranding');
+    r = await tryRpc(member, 'guild', { action: 'rename', name: 'Should Not Work' });
+    assert(!r.ok, 'a member cannot rename the guild');
+    r = await tryRpc(master, 'guild', { action: 'rename', name: 'Iron Wolves' });
+    assert(!r.ok, 'renaming to the same name and tag is refused');
+    const beforeRenameMoney = (await master.rpc('guild', { action: 'status' })).money;
+    r = await tryRpc(master, 'guild', { action: 'rename', name: 'Silver Wolves' });
+    assert(r.ok && r.data.guild.name === 'Silver Wolves' && r.data.guild.tag === 'WOLF', 'the Master renames just the name, tag untouched');
+    assert(r.ok && r.data.money === beforeRenameMoney - ECON.GUILD_RENAME_COST, 'a name-only rename charges only the rename cost');
+    r = await tryRpc(master, 'guild', { action: 'rename', tag: 'SLVR' });
+    assert(r.ok && r.data.guild.name === 'Silver Wolves' && r.data.guild.tag === 'SLVR', 'the Master renames just the tag, name untouched');
+    assert(r.ok && r.data.money === beforeRenameMoney - ECON.GUILD_RENAME_COST - ECON.GUILD_TAG_CHANGE_COST, 'a tag-only rename charges only the tag cost');
+    r = await tryRpc(outsider, 'guild', { action: 'create', name: 'Copycats', tag: 'SLVR' });
+    assert(!r.ok, 'a renamed tag is still protected against a fresh guild taking it');
+    await setMoney(master, 'gmaster', 1);
+    r = await tryRpc(master, 'guild', { action: 'rename', name: 'Broke Wolves' });
+    assert(!r.ok, 'renaming without enough cash is rejected');
+    await setMoney(master, 'gmaster', 500000);
+
     await setMoney(member, 'gmember', 100000);
     const beforeTreasury = (await master.rpc('guild', { action: 'status' })).guild.treasury;
     r = await tryRpc(member, 'guild', { action: 'bank_deposit', amount: 10000 });

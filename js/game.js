@@ -516,6 +516,7 @@ function triggerHotspotAction(action, hs) {
     case "guild_bank":       gameGuild.openBank(); break;
     case "guild_treasury":   gameGuild.openTreasury(); break;
     case "guild_dungeons":   gameGuild.openDungeons(); break;
+    case "guild_leader_npc": gameGuild.openLeaderNPC(); break;
     case "job_pizza":        openPizzaJob(); break;
     case "job_typing":       openTypingJob(); break;
     case "job_whack":        openWhackJob(); break;

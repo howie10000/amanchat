@@ -806,6 +806,9 @@
 
   // ---------- guilds ----------
   const GUILD_CREATE_COST = 100000;
+  // A rebrand isn't free — a fifth/tenth of founding cost each, so it's not
+  // something to fiddle with every day but nowhere near locked in forever.
+  const GUILD_RENAME_COST = 20000, GUILD_TAG_CHANGE_COST = 10000;
   const GUILD_NAME_MIN = 3, GUILD_NAME_MAX = 24, GUILD_TAG_MAX = 5;
   const GUILD_MAX_MEMBERS = 20;
   const GUILD_RANKS = ["master", "officer", "member"];
@@ -1301,7 +1304,7 @@
     MASTERY_SKILLS, MASTERY_INFO, MASTERY_MAX_LEVEL, MASTERY_XP,
     masteryXpForNext, masteryLevel, masteryT,
     masteryFishBonus, masteryCookBias, masteryFarmBonus, masteryCombatMult,
-    GUILD_CREATE_COST, GUILD_NAME_MIN, GUILD_NAME_MAX, GUILD_TAG_MAX, GUILD_MAX_MEMBERS,
+    GUILD_CREATE_COST, GUILD_RENAME_COST, GUILD_TAG_CHANGE_COST, GUILD_NAME_MIN, GUILD_NAME_MAX, GUILD_TAG_MAX, GUILD_MAX_MEMBERS,
     GUILD_RANKS, GUILD_RANK_INFO, guildRankAtLeast, guildCan,
     GUILD_BANK_MAYOR_TAX, GUILD_TREASURY_MAYOR_TAX, TRANSFER_TAX_RATE, GUILD_DUNGEON_CUT,
     GUILD_TAX_MAX, GUILD_INTEREST_MAX, GUILD_INTEREST_PERIOD, GUILD_INTEREST_MAX_PERIODS,

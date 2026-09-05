@@ -1995,6 +1995,20 @@ function guildRequirePower(user, power) {
     if (!ECON.guildCan(guildRankOf(g, user), power)) throw new Error('Your rank does not allow that.');
     return g;
 }
+// Shared by 'create' and 'rename' so a rebrand can't land a name/tag a fresh
+// charter would have been refused. `ignoreGid` lets a guild keep its OWN
+// current name/tag out of the "someone already has that" check.
+function checkGuildNameTag(name, tag, ignoreGid) {
+    if (name.length < ECON.GUILD_NAME_MIN || name.length > ECON.GUILD_NAME_MAX) throw new Error(`Guild names are ${ECON.GUILD_NAME_MIN}-${ECON.GUILD_NAME_MAX} characters.`);
+    if (!/^[A-Za-z0-9 '\-]+$/.test(name)) throw new Error('Guild names use letters, numbers, spaces, apostrophes and dashes.');
+    if (!tag || tag.length > ECON.GUILD_TAG_MAX || !/^[A-Z0-9]+$/.test(tag)) throw new Error(`Tags are 1-${ECON.GUILD_TAG_MAX} letters or numbers.`);
+    const all = store.get('guilds') || {};
+    for (const [gid, other] of Object.entries(all)) {
+        if (!other || typeof other !== 'object' || gid === ignoreGid) continue;
+        if (String(other.name || '').toLowerCase() === name.toLowerCase()) throw new Error('A guild already carries that name.');
+        if (String(other.tag || '').toUpperCase() === tag) throw new Error('A guild already carries that tag.');
+    }
+}
 // Notify every online member (a rank change, a payout, someone joining).
 function guildBroadcast(g, msg) {
     for (const u of Object.keys(g.members || {})) pushTo(u, Object.assign({ event: 'guild', guild: g.id }, msg));
@@ -3087,15 +3101,7 @@ const ECONOMY_OPS = {
             if (guildIdOf(user)) throw new Error('Leave your current guild first.');
             const name = String(msg.name || '').trim().replace(/\s+/g, ' ');
             const tag = String(msg.tag || '').trim().toUpperCase();
-            if (name.length < ECON.GUILD_NAME_MIN || name.length > ECON.GUILD_NAME_MAX) throw new Error(`Guild names are ${ECON.GUILD_NAME_MIN}-${ECON.GUILD_NAME_MAX} characters.`);
-            if (!/^[A-Za-z0-9 '\-]+$/.test(name)) throw new Error('Guild names use letters, numbers, spaces, apostrophes and dashes.');
-            if (!tag || tag.length > ECON.GUILD_TAG_MAX || !/^[A-Z0-9]+$/.test(tag)) throw new Error(`Tags are 1-${ECON.GUILD_TAG_MAX} letters or numbers.`);
-            const all = store.get('guilds') || {};
-            for (const other of Object.values(all)) {
-                if (!other || typeof other !== 'object') continue;
-                if (String(other.name || '').toLowerCase() === name.toLowerCase()) throw new Error('A guild already carries that name.');
-                if (String(other.tag || '').toUpperCase() === tag) throw new Error('A guild already carries that tag.');
-            }
+            checkGuildNameTag(name, tag);
             if (moneyOf(u) < ECON.GUILD_CREATE_COST) throw new Error(`Founding a guild costs $${ECON.GUILD_CREATE_COST.toLocaleString()}.`);
             setMoney(user, u, moneyOf(u) - ECON.GUILD_CREATE_COST);
             // The founding fee is not burned — it goes to the Mayor, like every
@@ -3114,6 +3120,28 @@ const ECONOMY_OPS = {
             store.put(`users/${user}/guild`, gid);
             console.log(`[guild] ${user} founded "${name}" [${tag}]`);
             return { guild: guildView(g, user, now), money: moneyOf(u), created: true };
+        }
+
+        // The Master can rebrand either the name, the tag, or both in one go.
+        // Each costs separately since they're independent asks; sending both
+        // in one call is cheaper than two round trips but not cheaper in cash.
+        if (action === 'rename') {
+            const g = guildRequirePower(user, 'canSetRates');
+            const wantName = msg.name != null ? String(msg.name).trim().replace(/\s+/g, ' ') : g.name;
+            const wantTag = msg.tag != null ? String(msg.tag).trim().toUpperCase() : g.tag;
+            const renamingName = wantName !== g.name, renamingTag = wantTag !== g.tag;
+            if (!renamingName && !renamingTag) throw new Error('That is already the guild\'s name and tag.');
+            checkGuildNameTag(wantName, wantTag, g.id);
+            const cost = (renamingName ? ECON.GUILD_RENAME_COST : 0) + (renamingTag ? ECON.GUILD_TAG_CHANGE_COST : 0);
+            if (moneyOf(u) < cost) throw new Error(`Renaming costs $${cost.toLocaleString()}.`);
+            setMoney(user, u, moneyOf(u) - cost);
+            addTreasury(cost);   // a rebrand is paperwork, and paperwork is the Mayor's
+            const oldName = g.name, oldTag = g.tag;
+            g.name = wantName; g.tag = wantTag;
+            saveGuild(g);
+            guildBroadcast(g, { kind: 'renamed', name: g.name, tag: g.tag });
+            console.log(`[guild] ${user} renamed "${oldName}" [${oldTag}] to "${g.name}" [${g.tag}]`);
+            return { guild: guildView(g, user, now), money: moneyOf(u) };
         }
 
         if (action === 'invite') {

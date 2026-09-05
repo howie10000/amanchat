@@ -98,6 +98,7 @@ const INTERIORS = {
       { x: 220, y: 340, label: "GUILD BANK", action: "guild_bank", icon: "vault" },
       { x: 804, y: 340, label: "GUILD TREASURY", action: "guild_treasury", icon: "coin" },
       { x: 512, y: 452, label: "GUILD DUNGEONS", action: "guild_dungeons", icon: "swords" },
+      { x: 700, y: 552, label: "ASK THE GUILD LEADER", action: "guild_leader_npc", icon: "people" },
     ],
   },
   interior_job: {
@@ -2503,8 +2504,23 @@ const guildHallRoom = {
       { size: 9, serif: true, bg: "#0b0f18", border: "#fbbf24", color: "#fde68a" });
     wallSign(220, room.y + 250, "BANK", { size: 8, serif: true, bg: "#0b0f18", border: "#fbbf24", color: "#fde68a" });
     wallSign(804, room.y + 250, "TREASURY", { size: 8, serif: true, bg: "#0b0f18", border: "#fbbf24", color: "#fde68a" });
+    drawGuildLeaderNPC(700, room.y + 552, t);
   },
 };
+
+// A fixed, always-the-same NPC standing in every guild's hall — not the
+// actual Guild Master (who is a player and usually elsewhere), but a retainer
+// who exists purely to explain how guilds work. Reuses the ordinary player
+// renderer with a set appearance so it doesn't need its own art.
+function drawGuildLeaderNPC(x, y, t) {
+  const bob = Math.sin(t / 500) * 1.5;
+  GFX.drawCharacter(ctx, x, y + bob, {
+    skin: "#e8b48a", hair: "long", hairColor: "#d1d5db",
+    shirt: "#78350f", pants: "#1c1917", hat: "crown", hatColor: "#fbbf24",
+    accessory: "none", aura: "none", pet: "none",
+  }, { facing: "down" });
+  wallSign(x, y - 46, "GUILD LEADER", { size: 7, serif: true, bg: "#0b0f18", border: "#fbbf24", color: "#fde68a" });
+}
 
 // ---------------- JOBS CENTER ----------------
 function drawOfficeDesk(x, y, t, seed) {

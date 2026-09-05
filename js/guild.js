@@ -194,7 +194,13 @@ function openHall() {
       <div class="formRow"><label>Interest % per ${Math.round(g.rates.interestPeriod / 60000)} min</label>
         <input id="gInt" class="menuInput" type="number" min="0" max="${ECON.GUILD_INTEREST_MAX * 100}" step="0.01" value="${(g.interestRate * 100).toFixed(2)}" /></div>
       <div class="formRow"><input id="gMotd" class="menuInput" maxlength="200" placeholder="Message of the day" value="${esc(g.motd)}" /></div>
-      <button class="menuBtn gold" onclick="gameGuild.saveRates()">SAVE</button>`;
+      <button class="menuBtn gold" onclick="gameGuild.saveRates()">SAVE</button>
+
+      <h3 class="section">REBRAND</h3>
+      <p class="muted">A new name costs ${money(ECON.GUILD_RENAME_COST)}, a new tag costs ${money(ECON.GUILD_TAG_CHANGE_COST)} — pay for whichever you actually change. Leave a field as it is to skip its cost.</p>
+      <div class="formRow"><input id="gRenameName" class="menuInput" maxlength="${ECON.GUILD_NAME_MAX}" placeholder="Guild name" value="${esc(g.name)}" /></div>
+      <div class="formRow"><input id="gRenameTag" class="menuInput" maxlength="${ECON.GUILD_TAG_MAX}" placeholder="TAG" style="text-transform:uppercase" value="${esc(g.tag)}" /></div>
+      <button class="menuBtn gold" onclick="gameGuild.renameGuild()">REBRAND</button>`;
   }
   if (g.myRank !== "master") {
     html += `<h3 class="section">LEAVE</h3>
@@ -226,6 +232,18 @@ async function saveRates() {
   try { const res = await netGuild({ action: "set_rates", taxRate: tax, interestRate: int, motd }); guildState = res.guild; toast("Settings saved."); openHall(); }
   catch (e) { toast(e.message, 4000); }
 }
+async function renameGuild() {
+  const name = (document.getElementById("gRenameName") || {}).value || "";
+  const tag = (document.getElementById("gRenameTag") || {}).value || "";
+  try {
+    const res = await netGuild({ action: "rename", name, tag });
+    guildState = res.guild;
+    state.data.money = res.money;
+    toast(`Now [${res.guild.tag}] ${res.guild.name}.`, 4000);
+    updateHUD();
+    openHall();
+  } catch (e) { toast(e.message, 4000); }
+}
 async function spendSkill(skill) {
   try { const res = await netGuild({ action: "spend_skill", skill }); guildState = res; toast(`${ECON.MASTERY_INFO[skill].label} mastery rank ${res.rank} for the whole guild.`, 4000); await refresh(); openHall(); }
   catch (e) { toast(e.message, 4000); }
@@ -239,6 +257,45 @@ async function leave() {
     toast(res.refunded > 0 ? `You're out. ${money(res.refunded)} returned.` : "You're out.", 4000);
     updateHUD(); closeMenu();
   } catch (e) { toast(e.message, 4000); }
+}
+
+// ---------------- THE GUILD LEADER (help NPC) ----------------
+// Not the actual Guild Master — a fixture standing in every hall, purely to
+// answer the same handful of "how does this work" questions new members ask.
+// Entirely client-side: canned text, no round trip, nothing it says depends
+// on which guild you're in beyond the numbers already in guildState.
+const LEADER_FAQ = [
+  { q: "How do I invite someone?", a: () =>
+    `Only a Guild Master or Officer can invite, and only someone already in your guild's roster of trust — an outsider first has to hear about you and ask in person. Open the ROSTER here in the hall, type their name under INVITE, and they'll see it waiting next time they visit the Broker.` },
+  { q: "What's the guild bank for?", a: () =>
+    `Your own savings, just held by the guild instead of the Mayor's bank. Every deposit and withdrawal pays the Mayor's cut plus your Master's guild tax — currently ${pct((guildState && guildState.taxRate) || 0)} — and that tax is the ONLY thing that fills the treasury. Nothing forces you to use it over your own pocket; it exists so a guild has money to work with.` },
+  { q: "What's the treasury, and where does interest come from?", a: () =>
+    `The treasury is the guild's shared pot, filled only by members' bank taxes. The Master sets an interest rate paid out of it periodically to every banked member — set it higher than the treasury can actually cover and everyone just gets a smaller share, so a generous rate needs a treasury to back it.` },
+  { q: "How do guild dungeons work?", a: () =>
+    `A party walks a maze together, floor by floor — the server tracks it as ONE run, so an enemy any of you kills is dead for everyone. A mini-boss blocks the middle floor of longer runs, and a full boss waits behind the sealed door on the last one. Clearing it pays the party and tithes a cut to the treasury.` },
+  { q: "How do skill points work?", a: () =>
+    `Every ${ECON.GUILD_DUNGEONS_PER_POINT} guild dungeon clears earns the guild one skill point. Only the Master can spend it, on a mastery track that then trains faster for every member — not just whoever cleared the run.` },
+  { q: "How do ranks work?", a: () =>
+    `Master outranks Officer outranks Member. Only the Master can change tax and interest rates, spend skill points, or hand off the guild. Officers can invite and kick same as the Master, but can't touch a peer's rank or the guild's settings.` },
+  { q: "How much does founding or rebranding cost?", a: () =>
+    `Chartering a new guild runs ${money(ECON.GUILD_CREATE_COST)}. Once you have one, the Master can rebrand it — a new name costs ${money(ECON.GUILD_RENAME_COST)}, a new tag costs ${money(ECON.GUILD_TAG_CHANGE_COST)}, charged separately since you might only want one.` },
+];
+function openLeaderNPC() {
+  if (!guildState) { toast("You have no guild."); return; }
+  let html = `<p class="brokerSay">"Ask away. I've heard every question there is about how this place runs."</p>`;
+  for (let i = 0; i < LEADER_FAQ.length; i++) {
+    html += `<button class="menuBtn" style="display:block;width:100%;text-align:left;margin-top:6px" onclick="gameGuild.askLeader(${i})">${esc(LEADER_FAQ[i].q)}</button>`;
+  }
+  openMenu("THE GUILD LEADER", html);
+}
+function askLeader(i) {
+  const item = LEADER_FAQ[i];
+  if (!item) return openLeaderNPC();
+  openMenu("THE GUILD LEADER", `
+    <p class="brokerSay">"${esc(item.q)}"</p>
+    <p>${esc(item.a())}</p>
+    <button class="menuBtn gold" onclick="gameGuild.openLeaderNPC()">ASK SOMETHING ELSE</button>
+  `);
 }
 
 // ---------------- GUILD BANK ----------------
@@ -569,7 +626,8 @@ if (window.NET) {
 window.gameGuild = {
   refresh, myGuild, myRank,
   openBroker, createGuild, acceptInvite, declineInvite, browse,
-  openHall, invite, setRank, kick, saveRates, spendSkill, leave,
+  openHall, invite, setRank, kick, saveRates, renameGuild, spendSkill, leave,
+  openLeaderNPC, askLeader,
   openBank, bank, openTreasury, treasury,
   openDungeons, openMastery, enterGuildHall,
   createParty, openParty, inviteToParty, kickFromParty, leaveParty, startParty,

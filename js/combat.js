@@ -641,7 +641,12 @@ async function reportEnemyHits(ids, weapon) {
 }
 // A bomber's detonation (and whatever it catches in the blast) kills without
 // any weapon swing behind it, so it needs its own report — see enemy_kill on
-// the server. Same queue-not-drop treatment as reportEnemyHits.
+// the server. A single enemy_kill call can only carry DUNGEON_HIT_MAX_TARGETS
+// ids (same cap the server enforces), and unlike a sword swing there's no
+// "swing again in a moment" to naturally pick up an overflow — a big enough
+// blast dies on screen all at once regardless. So overflow is sent as a
+// follow-up batch after the kill rate limit clears, instead of the excess
+// past the cap just staying alive forever server-side.
 let _killPending = false;
 let _queuedKillIds = null;
 async function reportEnemyKill(ids) {
@@ -652,17 +657,20 @@ async function reportEnemyKill(ids) {
     return;
   }
   _killPending = true;
+  const batch = ids.slice(0, ECON.DUNGEON_HIT_MAX_TARGETS);
+  const overflow = ids.slice(ECON.DUNGEON_HIT_MAX_TARGETS);
   try {
-    const res = await netGuildDungeon({ action: "enemy_kill", enemies: ids });
+    const res = await netGuildDungeon({ action: "enemy_kill", enemies: batch });
     applyEnemyChanges(res.changed);
   } catch (e) {
     if (!/Too fast/.test(e.message)) toast(e.message, 1200);
   }
+  if (overflow.length) _queuedKillIds = (_queuedKillIds || []).concat(overflow);
   _killPending = false;
   if (_queuedKillIds && _queuedKillIds.length) {
     const nextIds = _queuedKillIds;
     _queuedKillIds = null;
-    reportEnemyKill(nextIds);
+    setTimeout(() => reportEnemyKill(nextIds), ECON.DUNGEON_KILL_MIN_MS + 30);
   }
 }
 // Server HP wins: it is the only copy the whole party agrees on.
@@ -1023,6 +1031,16 @@ function doAttack() {
     const ang = Math.atan2(dy, dx);
     let hit = 0;
     const swept = [];
+    // A guild swing can only ever REPORT DUNGEON_HIT_MAX_TARGETS ids — the
+    // rest of `swept` used to be damaged and removed locally anyway (and
+    // silently sliced off before ever reaching the server), so a pile of
+    // more than 6 enemies died on screen while several of them stayed alive
+    // forever in the run's real HP map, with no enemy left to swing at to
+    // ever report it. Capping what actually takes damage THIS swing, not
+    // just what gets reported, keeps the two in sync — the rest just take
+    // another swing, same as a real crowd would.
+    const isGuild = !!(state.dungeon && state.dungeon.cfg.guild);
+    const cap = isGuild ? ECON.DUNGEON_HIT_MAX_TARGETS : Infinity;
     for (const e of state.enemies) {
       const ex = e.x - state.pos.x, ey = e.y - state.pos.y;
       const d = Math.hypot(ex, ey);
@@ -1030,6 +1048,7 @@ function doAttack() {
         const a2 = Math.atan2(ey, ex);
         let diff = Math.abs(a2 - ang); if (diff > Math.PI) diff = 2*Math.PI - diff;
         if (diff < Math.PI / 1.6) { // ~112° arc
+          if (swept.length >= cap) continue;
           e.hp -= 55 * combatDamageMult();
           swept.push(e.id);
           e.hitFlash = 6;
@@ -1045,7 +1064,7 @@ function doAttack() {
     }
     state.swingT = 14;
     state.swingAng = ang;
-    reportEnemyHits(swept.slice(0, ECON.DUNGEON_HIT_MAX_TARGETS), "sword");
+    reportEnemyHits(swept, "sword");
     if (hit > 1) toast(`Multi-hit x${hit}!`, 800);
   } else {
     // Pistol: slower fire, ranged, less damage per shot
