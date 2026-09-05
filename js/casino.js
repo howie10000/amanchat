@@ -2501,8 +2501,10 @@ window.bacDeal = async (side) => {
 // =====================================================================
 // MINES — 5x5 field, cash out any time before you find one
 // =====================================================================
-// Each safe reveal multiplies the pot by (tiles left / safe left) × 0.97,
-// so the game prices itself fairly at any mine count minus a 3% edge.
+// Each safe reveal multiplies the pot by (tiles left / safe left) × an edge
+// that widens past 5 mines (see minesEdge in server-node/games.js), so a
+// dangerous board doesn't pay the same generous rate per tile as an easy one.
+// The server computes and returns `mult` — this client never derives it.
 const MINES_GRID = 25;
 let _mines = null;
 function openMines() {

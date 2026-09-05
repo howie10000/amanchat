@@ -375,9 +375,16 @@ function blackjack(user, action, args, balance, rand) {
 }
 
 // =====================================================================
-// MINES — 5x5, each safe reveal multiplies by (tilesLeft/safeLeft) x 0.97
+// MINES — 5x5, each safe reveal multiplies by (tilesLeft/safeLeft) x edge.
+// A flat 3% edge meant a dangerous board (few safe tiles left relative to
+// total) started paying off just as generously per tile as the easy 1-mine
+// board — 10 mines opened its very first safe tile at ~1.6x. Low mine counts
+// are untouched; the edge only widens past 5 mines, so a 10-mine board's
+// first tile is a modest 1.3x and later tiles still climb, just less
+// explosively.
 // =====================================================================
 const MINES_GRID = 25;
+function minesEdge(n) { return Math.max(0.55, 0.97 - Math.max(0, n - 5) * 0.038); }
 function minesView(st, ended) {
     const revealed = [];
     for (let i = 0; i < MINES_GRID; i++) if (st.revealed[i]) revealed.push(i);
@@ -412,7 +419,7 @@ function mines(user, action, args, balance, rand) {
         }
         const opened = st.revealed.filter(Boolean).length;
         const tilesLeft = MINES_GRID - opened + 1, safeLeft = tilesLeft - st.mines;
-        st.mult *= (tilesLeft / safeLeft) * 0.97;
+        st.mult *= (tilesLeft / safeLeft) * minesEdge(st.mines);
         if (opened >= MINES_GRID - st.mines) { // cleared every safe tile — auto cash out
             st.status = 'cashed'; st.payout = Math.floor(st.bet * st.mult);
             setRound(user, 'mines', null);
@@ -541,18 +548,30 @@ function plinkoDrop(bet, risk, balls, rand) {
 
 // =====================================================================
 // HIGHER OR LOWER — each correct call multiplies the pot by the TRUE odds
-// of that call (with a 4% house edge), ties lose. A flat 1.6x was +EV:
-// "higher" on a 2 wins 11/13 of the time, so you could farm it.
-// =====================================================================
-const HL_EDGE = 0.96;
+// of that call (with a house edge), ties lose. A flat 1.6x was +EV: "higher"
+// on a 2 wins 11/13 of the time, so you could farm it.
+// A real jackpot streak is still possible without being a
+// reliable way to print money. Trimmed the edge and gave the deck a slight
+// grudge against whichever way you called it — both shave a little off the
+// long-run payout without capping anything or making a streak feel rigged.
+const HL_EDGE = 0.94;
 const HL_MAX_FACTOR = 12;
+// The draw is nudged just slightly toward the rank that would make the call
+// WRONG (e.g. calling "higher" makes the next card a little more likely to
+// land low). Small enough that it isn't noticeable call-to-call.
+const HL_BIAS = 0.07;
 function hlFactor(curRankIdx, dir) {
     const p = dir === 'higher' ? (12 - curRankIdx) / 13 : curRankIdx / 13;
     if (p <= 0) return 0;              // impossible call — you just lose
     return Math.min(HL_MAX_FACTOR, HL_EDGE / p);
 }
 const HL_MULT = hlFactor;              // exported for tests
-function hlDraw(rand) { return { r: RANKS[Math.floor(rand() * 13)], s: SUITS[Math.floor(rand() * 4)] }; }
+function hlDraw(rand, dir) {
+    let u = rand();
+    if (dir === 'higher') u = Math.pow(u, 1 + HL_BIAS);            // skews toward low ranks
+    else if (dir === 'lower') u = 1 - Math.pow(1 - u, 1 + HL_BIAS); // skews toward high ranks
+    return { r: RANKS[Math.min(12, Math.floor(u * 13))], s: SUITS[Math.floor(rand() * 4)] };
+}
 function hlRank(c) { return RANKS.indexOf(c.r); }
 function hlView(st) { return { cards: st.cards.slice(), pot: st.pot, mult: st.pot / st.bet, streak: st.streak, bet: st.bet, status: st.status, payout: st.payout || 0 }; }
 function highlow(user, action, args, balance, rand) {
@@ -568,7 +587,7 @@ function highlow(user, action, args, balance, rand) {
     if (action === 'guess') {
         const dir = args.dir;
         if (dir !== 'higher' && dir !== 'lower') throw new Error('Bad guess.');
-        const cur = st.cards[st.cards.length - 1], next = hlDraw(rand);
+        const cur = st.cards[st.cards.length - 1], next = hlDraw(rand, dir);
         st.cards.push(next);
         const correct = dir === 'higher' ? hlRank(next) > hlRank(cur) : hlRank(next) < hlRank(cur);
         if (!correct) {

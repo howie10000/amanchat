@@ -93,7 +93,7 @@ console.log('round flow');
     const st = G.getRound(u, 'mines');
     const safe = st.board.findIndex(b => !b);
     r = G.play(u, 'mines', 'pick', { cell: safe }, 900, 0, rng(3));
-    near(r.data.mult, (25 / 20) * 0.97, 1e-9, 'mines first safe pick: 25/20 x 0.97');
+    near(r.data.mult, (25 / 20) * 0.97, 1e-9, 'mines first safe pick: 25/20 x 0.97 (mine count <= 5 is unchanged)');
     r = G.play(u, 'mines', 'cashout', {}, 900, 0, rng(3));
     ok(r.data.status === 'cashed' && r.delta === Math.floor(100 * 1.2125) && Array.isArray(r.data.bombs), 'mines cashout pays bet x mult and reveals bombs');
     assert.throws(() => G.play(u, 'mines', 'cashout', {}, 900), /No round/);
@@ -115,9 +115,9 @@ console.log('round flow');
     r = G.play(u, 'highlow', 'start', { bet: 100 }, 1000, 0, seq([0.99, 0.1])); // ace
     ok(r.data.cards[0].r === 'A', 'highlow start deals the first card');
     r = G.play(u, 'highlow', 'guess', { dir: 'lower' }, 900, 0, seq([0.01, 0.1])); // a 2
-    ok(r.data.status === 'playing' && r.data.pot === 104, 'highlow: lower on an ace is a 12/13 shot, pays 0.96/p = 1.04x');
+    ok(r.data.status === 'playing' && r.data.pot === 102, 'highlow: lower on an ace is a 12/13 shot, pays 0.94/p = 1.018x');
     r = G.play(u, 'highlow', 'bank', {}, 900);
-    ok(r.delta === 104 && r.data.status === 'banked', 'highlow bank pays the pot');
+    ok(r.delta === 102 && r.data.status === 'banked', 'highlow bank pays the pot');
     r = G.play(u, 'highlow', 'start', { bet: 100 }, 1000, 0, seq([0.5, 0.1]));
     r = G.play(u, 'highlow', 'guess', { dir: 'higher' }, 900, 0, seq([0.5, 0.1])); // same rank: tie loses
     ok(r.data.status === 'lost' && r.data.tie === true, 'highlow tie goes to the house');
