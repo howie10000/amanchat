@@ -764,10 +764,32 @@ function adoptBoss(view) {
 // held for less time than a floor can physically take, or if the mini standing
 // on it is still alive — so "walk to the door" is a request, not a fact.
 let _advancing = false;
+// True while any enemy death is still on its way to the server (a swing report
+// in flight, a queued follow-up waiting on the rate limit, or the same for a
+// bomber kill). floor_clear asks the server to check its authoritative HP map,
+// so if we ask before these drain the server still sees a dead-on-screen enemy
+// as standing and refuses with "Something on this floor is still standing".
+function enemyReportsPending() {
+  return _swingPending || _killPending
+    || !!(_queuedIds && _queuedIds.length) || !!(_queuedKillIds && _queuedKillIds.length);
+}
+function waitForEnemyReports(timeoutMs = 4000) {
+  return new Promise((resolve) => {
+    const t0 = Date.now();
+    const tick = () => {
+      if (!enemyReportsPending() || Date.now() - t0 > timeoutMs) return resolve();
+      setTimeout(tick, 60);
+    };
+    tick();
+  });
+}
 async function advanceGuildFloor() {
   if (_advancing || !state.dungeon) return;
   _advancing = true;
   try {
+    // Let every kill this floor land server-side before we ask it to check.
+    await waitForEnemyReports();
+    if (!state.dungeon) return;
     const res = await netGuildDungeon({ action: "floor_clear" });
     if (!state.dungeon) return;
     // Exactly the path every other member takes, off the same payload.
