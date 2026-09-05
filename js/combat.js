@@ -783,7 +783,7 @@ function waitForEnemyReports(timeoutMs = 4000) {
     tick();
   });
 }
-async function advanceGuildFloor() {
+async function advanceGuildFloor(reconcileTries = 0) {
   if (_advancing || !state.dungeon) return;
   _advancing = true;
   try {
@@ -795,9 +795,45 @@ async function advanceGuildFloor() {
     // Exactly the path every other member takes, off the same payload.
     adoptServerFloor({ runId: state.dungeon.runId, floor: res.floor, mini: res.mini, boss: res.boss, state: res.state });
   } catch (e) {
+    // "Still standing" after every visible enemy is dead means the server's
+    // authoritative HP map and our screen disagree — a kill report was lost
+    // (a network blip, a reconnect, an error that wasn't "Too fast"), and the
+    // enemy is already gone locally so there's nothing left to swing at to
+    // re-report it. Reconcile directly: ask the server what it still has
+    // standing, and for anything we've already killed locally, resend the kill.
+    if (/still standing/i.test(e.message || "") && state.dungeon && reconcileTries < 3) {
+      const repaired = await reconcileFloorKills();
+      _advancing = false;
+      if (repaired) return advanceGuildFloor(reconcileTries + 1);
+      toast(e.message, 2600);
+      return;
+    }
     toast(e.message, 2600);
   }
   _advancing = false;
+}
+
+// Returns true if it found (and re-reported) at least one server-side enemy we
+// had already killed locally.
+async function reconcileFloorKills() {
+  const d = state.dungeon;
+  if (!d || !d.cfg.guild) return false;
+  try {
+    const res = await netGuildDungeon({ action: "floor_state" });
+    const serverEnemies = (res.state && res.state.enemies) || [];
+    const liveLocal = new Set(state.enemies.map(e => e.id));
+    const ghosts = serverEnemies
+      .filter(e => e.hp > 0 && !liveLocal.has(String(e.id)))
+      .map(e => String(e.id));
+    if (!ghosts.length) return false;
+    for (let i = 0; i < ghosts.length; i += ECON.DUNGEON_HIT_MAX_TARGETS) {
+      reportEnemyKill(ghosts.slice(i, i + ECON.DUNGEON_HIT_MAX_TARGETS));
+    }
+    await waitForEnemyReports();
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 async function enterBossRoom() {
