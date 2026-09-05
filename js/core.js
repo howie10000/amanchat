@@ -222,6 +222,11 @@ async function enterGame(user, data, role, mute) {
   // Guild membership and mastery levels drive HUD text, the guild door in the
   // Adventurers Guild, and combat damage — pull them before the first frame.
   if (window.gameGuild) gameGuild.refresh();
+  // A guild run survives a dropped connection server-side — rejoin it if the
+  // login that just happened was actually a refresh mid-dungeon, otherwise
+  // the server keeps insisting "you are already in a dungeon" with no way
+  // back in.
+  if (window.gameCombat) gameCombat.resumeGuildRunIfAny();
   setInterval(refreshUserCache, 4000);
   if (state.mute) toast(muteText(state.mute), 5000);
   if (typeof dailyBonusReady === "function" && dailyBonusReady()) {

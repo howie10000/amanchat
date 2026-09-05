@@ -96,6 +96,52 @@ async function startDungeon(tier, party, joining) {
   updateHUD();
 }
 
+// A page refresh (or any dropped connection) doesn't end a guild run — the
+// server keeps it alive under the user so a party isn't wrecked by one
+// member's flaky wifi (see the `status` guild_dungeon action). But nothing
+// asked for it back on login, so reloading mid-run left you stuck in the
+// neighborhood while the server still considered you "in a dungeon" —
+// starting a new one, or even a fresh solo quest, was refused, with no way
+// back into the run you were actually still holding. Called once at login.
+async function resumeGuildRunIfAny() {
+  let res;
+  try { res = await netGuildDungeon({ action: "status" }); } catch (e) { return; }
+  const run = res && res.run;
+  if (!run || state.area === "dungeon") return;
+  const cfg = QUEST_TIERS[run.tier];
+  if (!cfg) return;
+  state.area = "dungeon";
+  state.dungeon = {
+    tier: run.tier, cfg, floor: run.floor, runId: run.id,
+    cleared: false, keyPickedUp: false,
+    maze: null, walls: null, doorCell: null, keyCell: null,
+    bossRoom: false, boss: null, bossAttacks: [],
+    seedBase: "guildrun|" + run.seed, plan: null,
+  };
+  state.maxHp = window.gameGear ? gameGear.maxHp() : 100;
+  state.hp = state.maxHp;
+  state.questReward = cfg.reward;
+  state.swingT = 0;
+  if (res.boss) {
+    // A boss (mini or final) is up server-side, so the run was mid-fight —
+    // rejoin the arena directly rather than the maze it interrupted.
+    enterArena(res.boss);
+    // Only play the rise-up cinematic for a boss that hasn't finished
+    // rising — rejoining a fight already underway shouldn't replay its
+    // intro and stall damage resolution while it plays out again.
+    if (res.boss.status !== "rising") state.dungeon.cine = null;
+  } else if (run.floor >= cfg.floors - 1) {
+    // On the boss floor, but nobody had reached the door yet when the
+    // connection dropped — raise it, same as walking through fresh.
+    enterBossRoom();
+  } else {
+    state.dungeon.plan = withServerHp(res.state);
+    setupFloor();
+  }
+  toast(`Welcome back — Floor ${run.floor + 1} of ${cfg.floors}`, 3500);
+  updateHUD();
+}
+
 // The server sends the roster with live HP (an enemy a guildmate already killed
 // comes back at 0), which is what lets somebody join or reconnect mid-floor.
 function withServerHp(st) {
@@ -1580,5 +1626,6 @@ window.gameCombat = {
   startDungeon, updateDungeon, drawDungeon, doAttack: doAttackWithDuel,
   startDuel, updateDuel, drawDuel, duelId, endDungeon,
   adoptServerFloor, applyEnemyChanges, dungeonPresence,
+  resumeGuildRunIfAny,
   QUEST_TIERS, ENEMY_TYPES,
 };

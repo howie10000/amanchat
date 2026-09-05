@@ -57,31 +57,8 @@ function benchFacing(bx, by, tx, ty) {
   return Math.atan2(-dx, dy);
 }
 
+// Central Park has no benches — removed at the fountain plaza entirely.
 const PARK_BENCHES = [];
-(function genBenches() {
-  // Ring of benches around the fountain, all facing inward
-  const N = 8, R = 150;
-  for (let i = 0; i < N; i++) {
-    const a = (i / N) * Math.PI * 2;
-    const bx = FOUNTAIN.x + Math.cos(a) * R;
-    const by = FOUNTAIN.y + Math.sin(a) * R * 0.72;
-    // Skip the spot directly north of the fountain — the tall central jet
-    // and stacked tiers extend straight up from there, so a bench placed
-    // there visually cuts into the fountain right where the water shoots out.
-    if (Math.abs(bx - FOUNTAIN.x) < 20 && by < FOUNTAIN.y) continue;
-    PARK_BENCHES.push({ x: bx, y: by, ang: benchFacing(bx, by, FOUNTAIN.x, FOUNTAIN.y) });
-  }
-  // Outer ring, larger radius, also facing the fountain
-  const N2 = 10, R2 = 260;
-  for (let i = 0; i < N2; i++) {
-    const a = (i / N2) * Math.PI * 2 + 0.3;
-    const bx = FOUNTAIN.x + Math.cos(a) * R2;
-    const by = FOUNTAIN.y + Math.sin(a) * R2 * 0.62;
-    if (bx < PARK.x + 60 || bx > PARK.x + PARK.w - 60) continue;
-    if (Math.abs(bx - FOUNTAIN.x) < 20 && by < FOUNTAIN.y) continue;
-    PARK_BENCHES.push({ x: bx, y: by, ang: benchFacing(bx, by, FOUNTAIN.x, FOUNTAIN.y) });
-  }
-})();
 
 // ACTIVITY ZONES ---------------------------------------------------------
 // Fishing pond (west) — solo activity
