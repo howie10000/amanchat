@@ -217,6 +217,19 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
     assert(r.ok && !r.data.changed.length, 'hitting a corpse changes nothing');
     r = await tryRpc(master, 'guild_dungeon', { action: 'enemy_hit', enemies: [victim], weapon: 'sword' });
     assert(!r.ok && /Too fast/.test(r.err), 'swings are rate limited');
+
+    // A bomber's self-detonation isn't a weapon swing — it used to only kill
+    // the enemy on the client that saw it explode, leaving it alive in the
+    // run's HP map forever (the door then refused with "something on this
+    // floor is still standing" even though every enemy was visibly gone).
+    const bombVictim = mState.state.enemies[1].id;
+    r = await tryRpc(master, 'guild_dungeon', { action: 'enemy_kill', enemies: [bombVictim] });
+    assert(r.ok && r.data.changed.some(c => c.id === bombVictim && c.dead), 'enemy_kill (a bomber detonation) kills in one report');
+    const seenAfterKill = (await member.rpc('guild_dungeon', { action: 'floor_state' })).state.enemies.find(e => e.id === bombVictim);
+    assert(seenAfterKill && seenAfterKill.hp <= 0, 'that kill is visible to the other party member too');
+    r = await tryRpc(master, 'guild_dungeon', { action: 'enemy_kill', enemies: [bombVictim] });
+    assert(!r.ok && /Too fast/.test(r.err), 'enemy_kill is rate limited same as a swing');
+
     const cfg = ECON.GUILD_DUNGEONS.guild_crypt;
     const bossDef = ECON.GUILD_BOSSES[cfg.boss];
     const miniDef = ECON.GUILD_BOSSES[cfg.mini];

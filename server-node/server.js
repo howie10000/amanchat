@@ -3578,6 +3578,37 @@ const ECONOMY_OPS = {
             return { changed: [], dmg, cleared: floorCleared(run, floor) };
         }
 
+        // A bomber's self-detonation (and whatever it catches in the blast) is
+        // an environmental death, not a weapon swing — it was previously only
+        // resolved on the client that saw it happen, so the enemy vanished on
+        // one screen while the server (and the door check) still had it alive.
+        // Same trust model as enemy_hit — this is a liveness report, not proof.
+        if (action === 'enemy_kill') {
+            const run = runFor(user);
+            if (!run) throw new Error('You are not in a guild dungeon.');
+            const floor = run.floor;
+            floorPlan(run, floor);
+            const hp = run.enemyHp[floor] || {};
+            const k = user + ':kill';
+            if (now - (run.hitLast.get(k) || 0) < ECON.DUNGEON_KILL_MIN_MS) throw new Error('Too fast.');
+            run.hitLast.set(k, now);
+            const ids = (Array.isArray(msg.enemies) ? msg.enemies : [])
+                .slice(0, ECON.DUNGEON_HIT_MAX_TARGETS).map(x => String(x || ''));
+            const changed = [];
+            for (const id of ids) {
+                if (!(hp[id] > 0)) continue;
+                hp[id] = 0;
+                changed.push({ id, hp: 0, dead: true });
+            }
+            const cleared = floorCleared(run, floor);
+            if (changed.length) {
+                for (const m of run.members) {
+                    if (m === user) continue;
+                    pushTo(m, { event: 'guild_dungeon', kind: 'enemies', runId: run.id, floor, changed, by: user, cleared });
+                }
+            }
+            return { changed, cleared };
+        }
 
         // Entering alone. A party goes through party_create/party_start
         // instead, so nobody is pulled into a run without accepting it.

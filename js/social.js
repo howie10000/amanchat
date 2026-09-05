@@ -176,15 +176,21 @@ if (window.NET) NET.on("dm", (m) => {
     else if (!m.data || !m.data.text) renderIMMessages(m.thread);
   }
 });
+// Only snap to the newest message if the reader was already down there —
+// otherwise a live push or the 20s safety poll (see renderIMMessages) was
+// yanking anyone scrolled up to read older messages straight back to the
+// bottom, mid-scroll, with no way to tell why it "randomly" jumped.
+function imNearBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 60; }
 function appendIMMessage(msg) {
   const el = document.getElementById("imMsgs");
   if (!el) return;
+  const stick = imNearBottom(el);
   const note = el.querySelector(".imDay.muted");
   const div = document.createElement("div");
   div.className = "imBubble " + (msg.from === state.user ? "me" : "them");
   div.innerHTML = escapeHtml(msg.text) + `<span class="ts" title="${escapeHtml(new Date(msg.ts).toLocaleString())}">${formatTs(msg.ts)}</span>`;
   if (note) el.insertBefore(div, note); else el.appendChild(div);
-  el.scrollTop = el.scrollHeight;
+  if (stick) el.scrollTop = el.scrollHeight;
   if (window.markThreadSeen && state.dmThread) markThreadSeen(state.dmThread);
 }
 window.openDMThread = openDMThread;
@@ -196,6 +202,13 @@ async function renderIMMessages(tid) {
   const el = document.getElementById("imMsgs");
   if (!el) return;
   if (window.markThreadSeen && state.dmThread) markThreadSeen(state.dmThread);
+  // A fresh open of the thread has an empty (so "at the bottom") element,
+  // which is exactly the case that should stick to the newest message —
+  // this one check covers both that and every later re-render. When the
+  // reader has scrolled up, the full rebuild below still has to preserve
+  // roughly where they were rather than just resetting to the top.
+  const stick = imNearBottom(el);
+  const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
   el.innerHTML = "";
   let lastDay = "";
   for (const m of msgs.slice(-100)) {
@@ -218,7 +231,7 @@ async function renderIMMessages(tid) {
   note.style.fontStyle = "italic";
   note.textContent = "Messages disappear 7 days after they're sent.";
   el.appendChild(note);
-  el.scrollTop = el.scrollHeight;
+  el.scrollTop = stick ? el.scrollHeight : Math.max(0, el.scrollHeight - el.clientHeight - fromBottom);
 }
 function formatTs(ts) {
   const d = new Date(ts); return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });

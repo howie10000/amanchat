@@ -932,6 +932,9 @@
   // enemy, and a swing may name at most this many targets.
   const DUNGEON_HIT_MIN_MS = { sword: 110, pistol: 150 };
   const DUNGEON_HIT_MAX_TARGETS = 6;
+  // A bomber's fuse (see ENEMY_TYPES.bomber in combat.js) is well over a
+  // second, so detonations can't come in nearly as fast as sword/pistol hits.
+  const DUNGEON_KILL_MIN_MS = 300;
 
   // Guild bosses — the tier above the sea beasts. Same shape as BEASTS (parts +
   // a head, telegraphed attack deck) so the client can reuse the lake fight's
@@ -1308,7 +1311,7 @@
     GUILD_BOSS_ORDER, GUILD_MINIS, isMiniBoss, miniFloorOf,
     GUILD_FLOOR_MIN_MS, GUILD_RUN_MIN_MS, GUILD_BOSS_MIN_FIGHT_MS,
     guildBossMaxHp, guildBossPartPos, guildBossHeadPos, pickGuildBossAttack,
-    DUNGEON_HIT_DMG, DUNGEON_HIT_MIN_MS, DUNGEON_HIT_MAX_TARGETS,
+    DUNGEON_HIT_DMG, DUNGEON_HIT_MIN_MS, DUNGEON_HIT_MAX_TARGETS, DUNGEON_KILL_MIN_MS,
     GEAR_SLOTS, GEAR_SLOT_INFO, GEAR_STATS, GEAR_STAT_INFO,
     GEAR_RARITIES, GEAR_RARITY_INFO, GEAR_MAX_LEVEL, GEAR_POWER, GEAR_BASE_VALUE,
     GEAR_BASES, GEAR_BASE_BY_ID, GEAR_AFFIXES, GEAR_SOURCES, GEAR_PACK_MAX,

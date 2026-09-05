@@ -408,11 +408,18 @@ function updateDungeon() {
             takePlayerDamage(e.dmg);
             if (state.hp <= 0) { endDungeon(false); return; }
           }
+          const killed = [e.id];
           for (const o of state.enemies) {
             if (o === e) continue;
-            if (Math.hypot(o.x - e.x, o.y - e.y) < blast) { o.hp -= e.dmg * 1.5; o.hitFlash = 6; o.awake = true; }
+            if (Math.hypot(o.x - e.x, o.y - e.y) < blast) {
+              o.hp -= e.dmg * 1.5; o.hitFlash = 6; o.awake = true;
+              if (o.hp <= 0) killed.push(o.id);
+            }
           }
           e.hp = 0;
+          // This is a death nobody swung for — report it or the server never
+          // hears about it and the floor stays "not cleared" forever.
+          reportEnemyKill(killed);
         }
       } else {
         moveWithWalls(e, e.x + (gx / gd) * e.speed, e.y + (gy / gd) * e.speed, e.size);
@@ -554,10 +561,24 @@ const BOSS_ROOM = { x: 60, y: 52, w: DUNGEON_W - 120, h: DUNGEON_H - 140 };
 // the damage is applied locally straight away (so the game stays responsive)
 // and the server's answer is what the rest of the party sees. Solo runs skip
 // all of this and just take the local number.
+//
+// A swing that landed while a previous report was still in flight used to be
+// dropped outright — the enemy died on screen (see the local hp hit in
+// doAttack/updateDungeon) but the server never heard about it, so it stayed
+// alive in the run's authoritative HP map forever and the door would refuse
+// to open with "something on this floor is still standing" even after every
+// visible enemy was gone. Queue instead of drop: nothing reported ever goes
+// unsent, it's just sent right after the in-flight call resolves.
 let _swingPending = false;
+let _queuedIds = null, _queuedWeapon = null;
 async function reportEnemyHits(ids, weapon) {
   const d = state.dungeon;
-  if (!d || !d.cfg.guild || !ids.length || _swingPending) return;
+  if (!d || !d.cfg.guild || !ids.length) return;
+  if (_swingPending) {
+    _queuedIds = (_queuedIds || []).concat(ids);
+    _queuedWeapon = _queuedWeapon || weapon;
+    return;
+  }
   _swingPending = true;
   try {
     const res = await netGuildDungeon({ action: "enemy_hit", enemies: ids, weapon });
@@ -566,6 +587,37 @@ async function reportEnemyHits(ids, weapon) {
     if (!/Too fast/.test(e.message)) toast(e.message, 1200);
   }
   _swingPending = false;
+  if (_queuedIds && _queuedIds.length) {
+    const nextIds = _queuedIds, nextWeapon = _queuedWeapon;
+    _queuedIds = null; _queuedWeapon = null;
+    reportEnemyHits(nextIds, nextWeapon);
+  }
+}
+// A bomber's detonation (and whatever it catches in the blast) kills without
+// any weapon swing behind it, so it needs its own report — see enemy_kill on
+// the server. Same queue-not-drop treatment as reportEnemyHits.
+let _killPending = false;
+let _queuedKillIds = null;
+async function reportEnemyKill(ids) {
+  const d = state.dungeon;
+  if (!d || !d.cfg.guild || !ids.length) return;
+  if (_killPending) {
+    _queuedKillIds = (_queuedKillIds || []).concat(ids);
+    return;
+  }
+  _killPending = true;
+  try {
+    const res = await netGuildDungeon({ action: "enemy_kill", enemies: ids });
+    applyEnemyChanges(res.changed);
+  } catch (e) {
+    if (!/Too fast/.test(e.message)) toast(e.message, 1200);
+  }
+  _killPending = false;
+  if (_queuedKillIds && _queuedKillIds.length) {
+    const nextIds = _queuedKillIds;
+    _queuedKillIds = null;
+    reportEnemyKill(nextIds);
+  }
 }
 // Server HP wins: it is the only copy the whole party agrees on.
 function applyEnemyChanges(changed) {
