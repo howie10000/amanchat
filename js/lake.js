@@ -856,7 +856,6 @@
     const s = C3.f / dz;
     return { x: C3.W / 2 + (X - C3.cam.x) * s, y: C3.H * C3.horizon + C3.cam.pitch + (C3.h - Y) * s, s };
   }
-  function waterY(Z) { const p = proj(0, 0, Z); return p ? p.y : C3.H; }
   const cutFx = [];   // 3D splash particles { X, Y, Z, vx, vy, vz, life, max, col }
   function splash3(X, Z, n, opts) {
     opts = opts || {};
@@ -919,12 +918,10 @@
     ctx.fillStyle = rgb(lerpCol([30, 62, 28], [8, 14, 10], storm));
     for (let x = 0; x < W; x += 14) { const th = 10 + ((x * 7) % 13); ctx.fillRect(x, hy - th, 9, th + 2); ctx.beginPath(); ctx.moveTo(x - 2, hy - th); ctx.lineTo(x + 4.5, hy - th - 9); ctx.lineTo(x + 11, hy - th); ctx.fill(); }
     // ---- water + beast ----
-    const deep = lerpCol([12, 74, 110], [6, 24, 44], storm), shallow = lerpCol([34, 211, 238], [40, 80, 120], storm);
-    // Backstop under everything below the horizon. The band loop below starts
-    // at Z = 60, which already projects ~22px BELOW the horizon line, so the
-    // strip between the shore and the first water row was never painted and
-    // the live game world showed through it in a bar across the screen. This
-    // fill closes that for the GL path and the fallback alike.
+    const deep = lerpCol([12, 74, 110], [6, 24, 44], storm);
+    // Backstop under everything below the horizon, in case the GL frame is a
+    // moment late: without it the live game world shows through in a bar
+    // across the middle of the screen.
     ctx.fillStyle = rgb(lerpCol(deep, lerpCol([252, 196, 120], [70, 64, 92], storm), 0.5));
     ctx.fillRect(0, hy, W, H - hy + 1);
 
@@ -945,35 +942,8 @@
     if (gl) {
       ctx.drawImage(gl, 0, 0, W, H);
       if (flash > 0.05) { ctx.fillStyle = `rgba(255,255,255,${0.18 * flash})`; ctx.fillRect(0, hy, W, H - hy); }
-    } else {
-      // ---- fallback: the original perspective-band painter ----
-      for (let Z = 60; Z > 0.4; Z *= 0.9) {
-        const y0 = waterY(Z), y1 = waterY(Z * 0.9);
-        const k = clamp01(Z / 60);
-        ctx.fillStyle = rgb(lerpCol(shallow, deep, Math.sqrt(k)));
-        ctx.fillRect(0, y0, W, Math.max(1, y1 - y0 + 1));
-        // wave glints drifting toward the camera
-        const ph = ((t / 900 + Z * 0.37) % 1);
-        ctx.fillStyle = `rgba(255,255,255,${0.16 * (1 - k) * (0.5 + 0.5 * Math.sin(ph * TAU))})`;
-        for (let i = 0; i < 6; i++) { const wx = ((i * 173 + t * 0.03 * (1 + i)) % W); ctx.fillRect(wx, y0 + (y1 - y0) * 0.5, 30 * (1 - k) + 8, 1.2); }
-      }
-      // sky reflection sheen + lightning on the water
-      { const g = ctx.createLinearGradient(0, hy, 0, H); g.addColorStop(0, `rgba(255,255,255,${0.18 - 0.1 * storm})`); g.addColorStop(0.3, "rgba(255,255,255,0)"); ctx.fillStyle = g; ctx.fillRect(0, hy, W, H - hy); }
-      if (flash > 0.05) { ctx.fillStyle = `rgba(255,255,255,${0.25 * flash})`; ctx.fillRect(0, hy, W, H - hy); }
-      if (kind === "kraken") drawKraken3D(ct, t, lunge); else drawSerpent3D(ct, t, lunge);
     }
-    // ---- splash particles ----
-    // Under GL these were already stepped and handed to the depth-tested point
-    // cloud above; here they are only painted for the fallback painter.
-    if (!gl) {
-      stepCutFx();
-      for (const p of cutFx) {
-        const q = proj(p.X, p.Y, p.Z); if (!q) continue;
-        ctx.globalAlpha = 1 - p.life / p.max; ctx.fillStyle = p.col;
-        const sz = Math.max(1.5, p.size * q.s); ctx.fillRect(q.x - sz / 2, q.y - sz / 2, sz, sz);
-      }
-      ctx.globalAlpha = 1;
-    }
+
     // ---- bobber + line target ----
     let bobJerk = 0, bobX = 0.7, bobZ = 9;
     if (kind === "kraken" && ct > 2000 && ct < 3600) bobJerk = Math.abs(Math.sin(t / 60)) * 0.35;
@@ -1087,148 +1057,6 @@
   }
   function rgb(c) { return `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`; }
   function lerpCol(a, b, t) { return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)]; }
-  // Stroke a 3D polyline as tapered segments (width in world units).
-  function tube3(pts, w0, w1, col, hiCol) {
-    ctx.lineCap = "round";
-    let prev = null;
-    for (let i = 0; i < pts.length; i++) {
-      const p = pts[i], q = proj(p.X, p.Y, p.Z);
-      if (!q) { prev = null; continue; }
-      if (prev) {
-        const w = lerp(w0, w1, i / (pts.length - 1)) * q.s;
-        ctx.strokeStyle = col; ctx.lineWidth = Math.max(2, w);
-        ctx.beginPath(); ctx.moveTo(prev.x, prev.y); ctx.lineTo(q.x, q.y); ctx.stroke();
-        if (hiCol) { ctx.strokeStyle = hiCol; ctx.lineWidth = Math.max(1, w * 0.3); ctx.beginPath(); ctx.moveTo(prev.x - w * 0.25, prev.y); ctx.lineTo(q.x - w * 0.25, q.y); ctx.stroke(); }
-      }
-      prev = q;
-    }
-    ctx.lineCap = "butt";
-  }
-  // Where the tentacles and coils come out of the water. lake3d.js poses the
-  // meshes from these same anchors, so the GL beast and the 2D foam agree.
-  const KRAKEN_BASES = [[-9, 26], [7, 27], [-12, 19], [11, 20], [-5, 15], [5, 14]];
-  const SERPENT_BASES = [[-9, 24], [8, 25], [-4, 17], [5, 16], [-11, 19]];
-
-  function drawKraken3D(ct, t, lunge) {
-    lunge = lunge || 0;
-    // tentacle bases around (0, 0, 20): far ones first (painter's order)
-    const bases = KRAKEN_BASES.map((b, i) => ({ X: b[0], Z: b[1], i })).sort((a, b) => b.Z - a.Z);
-    const headE = easeOutBack(clamp01((ct - 8000) / 2800));
-    // head first if it's behind the front tentacles (it sits at Z ~ 21); during
-    // the lunge it rushes the camera (Z 21 -> 4) with the beak wide open
-    const drawHead = () => {
-      if (headE <= 0) return;
-      const HZ = 21 - 17 * lunge, top = 7.5 * headE - 1.5 + 2 * lunge, wy = waterY(HZ);
-      const c = proj(0, top - 4.2, HZ); if (!c) return;
-      ctx.save(); ctx.beginPath(); ctx.rect(0, 0, C3.W, wy + 2); ctx.clip();
-      const rx = 6.4 * c.s, ry = 5.2 * c.s;
-      const g = ctx.createRadialGradient(c.x - rx * 0.3, c.y - ry * 0.6, rx * 0.1, c.x, c.y - ry * 0.2, rx * 1.3);
-      g.addColorStop(0, "#9333ea"); g.addColorStop(0.55, "#6b21a8"); g.addColorStop(1, "#3b0764");
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.moveTo(c.x - rx, c.y + ry * 0.6); ctx.bezierCurveTo(c.x - rx * 1.1, c.y - ry * 0.5, c.x - rx * 0.7, c.y - ry * 1.45, c.x, c.y - ry * 1.5); ctx.bezierCurveTo(c.x + rx * 0.7, c.y - ry * 1.45, c.x + rx * 1.1, c.y - ry * 0.5, c.x + rx, c.y + ry * 0.6); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = "rgba(240,171,252,.35)";
-      for (const [sx, sy, r] of [[-0.6, -0.5, 0.35], [0.4, -0.9, 0.3], [0.7, -0.2, 0.25], [-0.2, -1.2, 0.2], [0.1, 0.1, 0.3]]) { ctx.beginPath(); ctx.arc(c.x + sx * rx, c.y + sy * ry, r * c.s, 0, TAU); ctx.fill(); }
-      drawEyes(c.x, c.y - ry * 0.35, rx * 0.42, rx * 0.19, ry * 0.26, { x: 0, y: 0.6 }, false, ct > 9800, t);
-      const open = 0.08 * c.s + 0.1 * c.s * Math.abs(Math.sin(t / 400)) + 0.6 * c.s * lunge;
-      ctx.fillStyle = "#1c0a2e";
-      ctx.beginPath(); ctx.moveTo(c.x - (0.18 + 0.5 * lunge) * c.s, c.y + ry * 0.35 - open); ctx.lineTo(c.x + (0.18 + 0.5 * lunge) * c.s, c.y + ry * 0.35 - open); ctx.lineTo(c.x, c.y + ry * 0.55 + open); ctx.closePath(); ctx.fill();
-      if (lunge > 0.2) { ctx.fillStyle = "#fafaf9"; for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(c.x + i * 0.14 * c.s - 0.05 * c.s, c.y + ry * 0.35 - open); ctx.lineTo(c.x + i * 0.14 * c.s, c.y + ry * 0.35 - open + 0.22 * c.s * lunge); ctx.lineTo(c.x + i * 0.14 * c.s + 0.05 * c.s, c.y + ry * 0.35 - open); ctx.closePath(); ctx.fill(); } }
-      ctx.restore();
-      // foam at the waterline
-      ctx.strokeStyle = `rgba(255,255,255,${headE < 1 ? 0.9 : 0.5})`; ctx.lineWidth = 3; ring3(0, HZ, 6.8 + Math.sin(t / 250) * 0.3);
-      if (headE < 1 && Math.random() < 0.8) splash3(0, HZ, 4, { speed: 1.2, up: 0.9, spread: 12, size: 0.25 });
-    };
-    let headDrawn = false;
-    for (const b of bases) {
-      if (!headDrawn && b.Z <= 21) { drawHead(); headDrawn = true; }
-      const em = easeOut(clamp01((ct - (4500 + b.i * 520)) / 1200));
-      if (em <= 0) continue;
-      const Hh = 9 * em, sway = Math.sin(t / 590 + b.i * 1.3) * 1.6, curl = Math.sin(t / 430 + b.i * 2.1) * 1.4;
-      const pts = [];
-      for (let s = 0; s <= 12; s++) { const u = s / 12; pts.push({ X: b.X + sway * (u * u) * 1.5 + curl * u * u * u, Y: Hh * u, Z: b.Z - u * 2.5 + Math.sin(u * 3 + t / 700) * 0.4 }); }
-      // shadow / ripple at the base
-      ctx.strokeStyle = `rgba(255,255,255,${0.5 * em})`; ctx.lineWidth = 2; ring3(b.X, b.Z, 1.4 + ((t / 800 + b.i) % 1) * 2);
-      tube3(pts, 2.2 * em, 0.4 * em, "#4c1d95", "#7e22ce");
-      // suckers up the inner face
-      ctx.fillStyle = "#f0abfc";
-      for (let s = 2; s < 12; s += 2) { const p = pts[s], q = proj(p.X, p.Y, p.Z); if (!q) continue; const r = (0.3 - 0.2 * (s / 12)) * em * q.s; ctx.beginPath(); ctx.arc(q.x + 0.35 * em * q.s, q.y, Math.max(1.2, r), 0, TAU); ctx.fill(); }
-      if (em < 1 && Math.random() < 0.7) splash3(b.X, b.Z, 3, { speed: 0.8, up: 0.7, spread: 2, size: 0.2 });
-    }
-    if (!headDrawn) drawHead();
-  }
-  function drawSerpent3D(ct, t, lunge) {
-    lunge = lunge || 0;
-    // 0-2 calm · 2-5 bobber dragged, shadow circles · 5-8.2 bursts out in an arc · 8.2+ dives; coils + head rise
-    if (ct > 3200 && ct < 5300) {
-      // a long dark shape circling beneath the surface
-      const k = (ct - 3200) / 900;
-      const pts = [];
-      for (let s = 0; s <= 14; s++) { const u = s / 14, a = k * 2.2 - u * 1.6; pts.push({ X: Math.cos(a) * 4.5, Y: -0.05, Z: 11 + Math.sin(a) * 3 }); }
-      ctx.globalAlpha = 0.55; tube3(pts, 1.6, 0.4, "#082f49", null); ctx.globalAlpha = 1;
-      ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.lineWidth = 1.5; const hp = pts[pts.length - 1]; ring3(hp.X, hp.Z, 0.6 + ((t / 400) % 1) * 1.2);
-    }
-    const burst = clamp01((ct - 5000) / 900);         // rises out
-    const slide = clamp01((ct - 5600) / 2400);        // travels through the arc
-    const dive = clamp01((ct - 8200) / 700);
-    const body = serpentArc(burst, dive);
-    if (burst > 0 && dive < 1) {
-      // the visible stretch of body: a window sliding along the arc
-      const head = Math.min(1, 0.3 + slide * 0.7), tail = Math.max(0, head - 0.55);
-      const pts = [];
-      for (let s = 0; s <= 22; s++) { const u = lerp(tail, head, s / 22); const p = body(u); if (p.Y > -0.5) pts.push(p); }
-      if (pts.length > 2) {
-        tube3(pts, 1.5, 1.9, "#0f766e", "#2dd4bf");
-        // belly + dorsal fin
-        ctx.fillStyle = "#f97316";
-        for (let s = 1; s < pts.length - 1; s += 2) { const p = pts[s], q = proj(p.X, p.Y, p.Z), q2 = proj(p.X, p.Y + 1.3, p.Z); if (!q || !q2) continue; ctx.beginPath(); ctx.moveTo(q.x - 0.3 * q.s, q.y); ctx.lineTo(q2.x, q2.y); ctx.lineTo(q.x + 0.3 * q.s, q.y); ctx.closePath(); ctx.fill(); }
-        // head at the front of the window
-        const hp = body(head), hq = proj(hp.X, hp.Y, hp.Z), hq2 = proj(hp.X + 2.2, hp.Y - 0.6, hp.Z - 1);
-        if (hq && hq2) {
-          ctx.fillStyle = "#0f766e"; ctx.beginPath(); ctx.ellipse(hq.x, hq.y, 1.3 * hq.s, 0.9 * hq.s, Math.atan2(hq2.y - hq.y, hq2.x - hq.x), 0, TAU); ctx.fill();
-          ctx.fillStyle = "#e7e5e4"; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(hq.x, hq.y - 0.5 * hq.s); ctx.lineTo(hq.x + s * 0.6 * hq.s, hq.y - 1.8 * hq.s); ctx.lineTo(hq.x + s * 0.2 * hq.s, hq.y - 0.7 * hq.s); ctx.closePath(); ctx.fill(); }
-          ctx.fillStyle = "#1c0a0a"; ctx.beginPath(); ctx.ellipse(hq2.x, hq2.y, 0.9 * hq.s, 0.35 * hq.s, 0, 0, TAU); ctx.fill();
-          ctx.fillStyle = "#fca5a5"; ctx.beginPath(); ctx.arc(hq.x + 0.5 * hq.s, hq.y - 0.3 * hq.s, 0.22 * hq.s, 0, TAU); ctx.fill(); ctx.fillStyle = "#0a0412"; ctx.fillRect(hq.x + 0.45 * hq.s, hq.y - 0.45 * hq.s, 0.1 * hq.s, 0.3 * hq.s);
-        }
-        // water sheeting off the body at the exit + entry points
-        const ex = body(tail), en = body(head);
-        if (burst < 1 || slide < 0.4) splash3(ex.X, ex.Z, 4, { speed: 1.4, up: 1.1, spread: 3, size: 0.25 });
-        if (en.Y < 1.5) splash3(en.X, en.Z, 3, { speed: 1, up: 0.8, spread: 2, size: 0.25 });
-      }
-    }
-    if (dive > 0) {
-      // coils and the head rear up around the lake
-      const bases = SERPENT_BASES.map((b, i) => ({ X: b[0], Z: b[1], i })).sort((a, b) => b.Z - a.Z);
-      for (const b of bases) {
-        const em = easeOut(clamp01((ct - (8400 + b.i * 380)) / 1000));
-        if (em <= 0) continue;
-        const pts = [];
-        for (let s = 0; s <= 12; s++) { const u = s / 12; pts.push({ X: b.X - 2.2 + 4.4 * u, Y: Math.sin(u * Math.PI) * (3.6 + (b.i % 2)) * em, Z: b.Z + Math.sin(u * Math.PI) * 0.4 }); }
-        ctx.strokeStyle = `rgba(255,255,255,${0.5 * em})`; ctx.lineWidth = 2; ring3(b.X - 2.2, b.Z, 0.8 + ((t / 800 + b.i) % 1) * 1.4); ring3(b.X + 2.2, b.Z, 0.8 + ((t / 800 + b.i + 0.5) % 1) * 1.4);
-        tube3(pts, 1.3 * em, 1.3 * em, "#0f766e", "#2dd4bf");
-        ctx.fillStyle = "#f97316";
-        for (let s = 2; s < 11; s += 2) { const p = pts[s], q = proj(p.X, p.Y, p.Z), q2 = proj(p.X, p.Y + 1.1 * em, p.Z); if (!q || !q2) continue; ctx.beginPath(); ctx.moveTo(q.x - 0.25 * q.s, q.y); ctx.lineTo(q2.x, q2.y); ctx.lineTo(q.x + 0.25 * q.s, q.y); ctx.closePath(); ctx.fill(); }
-        if (em < 1 && Math.random() < 0.7) splash3(b.X, b.Z, 3, { speed: 0.8, up: 0.7, spread: 4, size: 0.2 });
-      }
-      const he = easeOutBack(clamp01((ct - 9000) / 1600));
-      if (he > 0) {
-        // during the lunge the neck whips forward and the head fills the frame
-        const HZ = 20, neckH = 9 * he - 5.5 * lunge, headZ = HZ - 1.5 - 14 * lunge;
-        const pts = []; for (let s = 0; s <= 10; s++) { const u = s / 10; pts.push({ X: Math.sin(u * 2 + t / 900) * 0.8, Y: neckH * u, Z: HZ - u * (1.5 + 14 * lunge) }); }
-        tube3(pts, 2.0, 1.6, "#0f766e", "#a7f3d0");
-        const top = pts[pts.length - 1], hq = proj(top.X, top.Y + 0.6, headZ), jq = proj(top.X, top.Y - 0.9, headZ - 1.2);
-        if (hq && jq) {
-          ctx.fillStyle = "#0f766e"; ctx.beginPath(); ctx.moveTo(hq.x - 1.6 * hq.s, hq.y); ctx.quadraticCurveTo(hq.x, hq.y - 2.2 * hq.s, hq.x + 1.6 * hq.s, hq.y); ctx.quadraticCurveTo(hq.x + 1.1 * hq.s, hq.y + 1.6 * hq.s, hq.x, hq.y + 2.4 * hq.s); ctx.quadraticCurveTo(hq.x - 1.1 * hq.s, hq.y + 1.6 * hq.s, hq.x - 1.6 * hq.s, hq.y); ctx.closePath(); ctx.fill();
-          ctx.fillStyle = "#e7e5e4"; for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(hq.x + s * 0.9 * hq.s, hq.y - 1.2 * hq.s); ctx.quadraticCurveTo(hq.x + s * 1.9 * hq.s, hq.y - 2.4 * hq.s, hq.x + s * 1.3 * hq.s, hq.y - 3.2 * hq.s); ctx.quadraticCurveTo(hq.x + s * 1.4 * hq.s, hq.y - 2.2 * hq.s, hq.x + s * 0.5 * hq.s, hq.y - 1.5 * hq.s); ctx.closePath(); ctx.fill(); }
-          const open = (0.3 + 0.3 * Math.abs(Math.sin(t / 420)) + 1.2 * lunge) * hq.s;
-          ctx.fillStyle = "#1c0a0a"; ctx.beginPath(); ctx.moveTo(hq.x - 0.9 * hq.s, hq.y + 0.9 * hq.s); ctx.quadraticCurveTo(hq.x, hq.y + 1.1 * hq.s + open, hq.x + 0.9 * hq.s, hq.y + 0.9 * hq.s); ctx.lineTo(hq.x, hq.y + 2.2 * hq.s + open * 0.6); ctx.closePath(); ctx.fill();
-          ctx.fillStyle = "#fafaf9"; for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.moveTo(hq.x + i * 0.24 * hq.s - 0.08 * hq.s, hq.y + 0.95 * hq.s); ctx.lineTo(hq.x + i * 0.24 * hq.s, hq.y + 1.3 * hq.s + open * 0.3); ctx.lineTo(hq.x + i * 0.24 * hq.s + 0.08 * hq.s, hq.y + 0.95 * hq.s); ctx.closePath(); ctx.fill(); }
-          drawEyes(hq.x, hq.y - 0.4 * hq.s, 0.8 * hq.s, 0.34 * hq.s, 0.4 * hq.s, { x: 0, y: 0.7 }, false, true, t);
-        }
-        ctx.strokeStyle = `rgba(255,255,255,${he < 1 ? 0.9 : 0.5})`; ctx.lineWidth = 3; ring3(0, HZ, 2.6 + Math.sin(t / 250) * 0.3);
-        if (he < 1 && Math.random() < 0.8) splash3(0, HZ, 4, { speed: 1.2, up: 1, spread: 5, size: 0.25 });
-      }
-    }
-  }
 
   // The serpent's leap. Flatter and longer than a half-circle so the whole
   // animal is in frame at once. lake3d.js builds the mesh from the identical
@@ -1240,17 +1068,13 @@
   });
 
   // Where the beast meets the water: the expanding foam rings and the spray it
-  // throws. These used to live inside drawKraken3D/drawSerpent3D; the GL pass
-  // renders the creature but has no business owning surface effects.
+  // throws. The GL pass renders the creature; these are the
+  // surface it disturbs, fed in as data so they share its depth buffer.
   //
   // `sink` collects the rings as plain data for lake3d.js to draw inside the
-  // depth-tested pass, so the beast occludes its own wake. Pass null to have
-  // them stroked straight onto the 2D canvas instead.
+  // depth-tested pass, so the beast occludes its own wake.
   function cutsceneWaterFx(kind, ct, t, lunge, sink) {
-    const ring = (X, Z, r, a) => {
-      if (sink) { if (sink.length < 16) sink.push({ X, Z, r, a }); return; }
-      ctx.strokeStyle = `rgba(255,255,255,${a})`; ctx.lineWidth = 2; ring3(X, Z, r);
-    };
+    const ring = (X, Z, r, a) => { if (sink.length < 16) sink.push({ X, Z, r, a }); };
     if (kind === "kraken") {
       for (let i = 0; i < KRAKEN_BASES.length; i++) {
         const b = KRAKEN_BASES[i];
