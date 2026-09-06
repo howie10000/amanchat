@@ -1236,160 +1236,50 @@
       dust: [], shake: 0,
     };
   }
-  // Beat boundaries as fractions of the cutscene.
-  const BEAT = { seal: 0.16, stir: 0.40, rise: 0.74, reveal: 1 };
+  // Where the name card lands. The rest of the beat structure — the seal, the
+  // dark, the stir, the assembly — lives in js/dungeon3d.js, which owns the
+  // camera and the room those beats happen in.
+  const BEAT = { rise: 0.78 };
+
+  // How many of you walked in. The cutscene opens on the party coming through
+  // the gate, so it needs a count: you, plus everyone on this floor of this
+  // run. Falls back to one, which is what a solo quest run is.
+  function partySize() {
+    try {
+      // `state` is a top-level let in core.js, so it is reachable by name but
+      // is NOT on window — checking window.state pinned every party at one.
+      if (typeof state === "undefined" || !state) return 1;
+      const d = state.dungeon;
+      if (!d || !d.runId || !state.others) return 1;
+      let n = 1;
+      for (const o of Object.values(state.others)) {
+        if (o && o.area === "dungeon" && o.run === d.runId && (o.dfloor | 0) === (d.floor | 0)) n++;
+      }
+      return Math.max(1, Math.min(4, n));
+    } catch (e) { return 1; }
+  }
 
   function drawCinematic(ctx, cine, boss, t) {
     const k = clamp01((t - cine.t0) / cine.dur);
-    if (cine.mini) return drawMiniEntrance(ctx, cine, boss, t, k);
-    const el = t - cine.t0;
 
-    // --- the room drops to near-black and comes back up on the reveal ---
-    const dark = k < BEAT.rise ? lerp(0.85, 0.55, clamp01(k / BEAT.rise)) : lerp(0.55, 0.12, clamp01((k - BEAT.rise) / (1 - BEAT.rise)));
-    ctx.fillStyle = `rgba(4,2,8,${dark})`;
-    ctx.fillRect(0, 0, W, H);
+    // The whole room is rendered in 3D (js/dungeon3d.js) and composited over
+    // the top-down view for the duration. Only the type stays on the 2D
+    // canvas — a name card wants crisp pixels, not a textured quad.
+    const gl = (window.DungeonGL && DungeonGL.available())
+      ? DungeonGL.render({ mode: "entrance", id: cine.id, mini: !!cine.mini, k, t,
+                           party: partySize(), color: cine.color, accent: cine.accent })
+      : null;
+    if (gl) ctx.drawImage(gl, 0, 0, W, H);
+    else { ctx.fillStyle = "rgba(4,2,8,.9)"; ctx.fillRect(0, 0, W, H); }
 
-    // --- beat 1: the door seals ---
-    if (k < BEAT.stir) {
-      const kk = clamp01(k / BEAT.seal);
-      ctx.fillStyle = "#1c1917";
-      ctx.fillRect(W / 2 - 60, H - 90 - 0, 120, 90 * (1 - easeOut(kk)) === 0 ? 90 : 90);
-      // portcullis dropping across the entrance
-      const drop = easeIn(clamp01(k / BEAT.seal)) * 92;
-      ctx.fillStyle = "#3f3f46";
-      ctx.fillRect(W / 2 - 74, H - 96, 148, drop);
-      ctx.fillStyle = "#52525b";
-      for (let b = 0; b < 6; b++) ctx.fillRect(W / 2 - 68 + b * 24, H - 96, 6, drop);
-      if (kk >= 1 && k < BEAT.stir) {
-        // dust knocked loose by the impact
-        for (let d = 0; d < 3; d++) {
-          cine.dust.push({ x: W / 2 - 70 + Math.random() * 140, y: H - 96, vy: -1 - Math.random(), life: 40 });
-        }
-      }
-    }
+    // The camera does the shaking now; the room underneath must not, or the
+    // composited frame slides around inside its own borders.
+    cine.shake = 0;
 
-    // --- beat 2: something moves in the dark; two eyes open ---
-    if (k >= BEAT.seal && k < BEAT.rise) {
-      const kk = clamp01((k - BEAT.seal) / (BEAT.rise - BEAT.seal));
-      const hd = headPos();
-      const ey = hd.y + 120 - kk * 60;
-      const open = clamp01((kk - 0.25) / 0.4);
-      for (const s of [-1, 1]) {
-        const ex = hd.x + s * 46;
-        const g = ctx.createRadialGradient(ex, ey, 2, ex, ey, 60 * open);
-        g.addColorStop(0, `rgba(${hexToRgb(cine.accent)},${0.9 * open})`);
-        g.addColorStop(1, `rgba(${hexToRgb(cine.accent)},0)`);
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ex, ey, 60 * open, 0, TAU); ctx.fill();
-        ctx.fillStyle = `rgba(255,255,255,${open})`;
-        ctx.beginPath(); ctx.ellipse(ex, ey, 12 * open, 15 * open, 0, 0, TAU); ctx.fill();
-        ctx.fillStyle = `rgba(10,4,16,${open})`;
-        ctx.beginPath(); ctx.ellipse(ex, ey, 4 * open, 12 * open, 0, 0, TAU); ctx.fill();
-      }
-      // a low shape shifting behind the dark
-      ctx.fillStyle = `rgba(${hexToRgb(cine.color)},${0.25 * kk})`;
-      ctx.beginPath();
-      ctx.ellipse(hd.x, ey + 120, 200 * kk, 70 * kk, 0, 0, TAU); ctx.fill();
-    }
-
-    // --- beat 3: it comes up, and the room shakes ---
-    if (k >= BEAT.stir) {
-      const kk = clamp01((k - BEAT.stir) / (BEAT.rise - BEAT.stir));
-      cine.shake = Math.max(cine.shake, kk * 10);
-      // ASSEMBLY. Pieces of the thing come in out of the dark from every side
-      // and lock into place, in step with the HP bar filling on the HUD — so
-      // the entrance reads as something being PUT TOGETHER rather than as
-      // something fading in. The pieces are seeded per boss, so the Smith's
-      // plates always fly the same way in.
-      const hdA = headPos();
-      const frag = ECON.mulberry32(ECON.strToSeed(cine.id + "|assembly"));
-      const FRAGS = 26;
-      for (let fI = 0; fI < FRAGS; fI++) {
-        // each shard has its own slot in the sequence, so they land in a run
-        const slot = fI / FRAGS;
-        const fk = clamp01((kk - slot * 0.55) / 0.4);
-        if (fk <= 0) continue;
-        const ang = frag() * TAU;
-        const far = 340 + frag() * 300;
-        const size = 9 + frag() * 26;
-        const tx = hdA.x + (frag() - 0.5) * 300;
-        const ty = hdA.y + 30 + (frag() - 0.5) * 250;
-        const e = easeOut(fk);
-        const px = lerp(tx + Math.cos(ang) * far, tx, e);
-        const py = lerp(ty + Math.sin(ang) * far, ty, e);
-        ctx.save();
-        ctx.translate(px, py);
-        ctx.rotate(ang + (1 - e) * 7);
-        ctx.globalAlpha = Math.min(1, fk * 2) * (fk >= 1 ? 0.75 : 1);
-        ctx.fillStyle = `rgba(${hexToRgb(cine.color)},.95)`;
-        ctx.fillRect(-size / 2, -size / 2, size, size * 0.7);
-        ctx.strokeStyle = `rgba(${hexToRgb(cine.accent)},${0.5 + 0.5 * (1 - e)})`;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(-size / 2, -size / 2, size, size * 0.7);
-        ctx.restore();
-        // the flash of it seating itself
-        if (fk > 0.9 && fk < 1) {
-          ctx.fillStyle = `rgba(255,255,255,${(1 - fk) * 10})`;
-          ctx.beginPath(); ctx.arc(tx, ty, size, 0, TAU); ctx.fill();
-        }
-      }
-      for (let d = 0; d < 2; d++) {
-        cine.dust.push({ x: Math.random() * W, y: H * 0.2 + Math.random() * H * 0.5, vy: -0.6 - Math.random() * 1.4, life: 50 });
-      }
-      // floor cracks radiating from under it, gone by the time the name lands
-      const hd = headPos();
-      const crackFade = k < BEAT.rise ? 1 : clamp01(1 - (k - BEAT.rise) / 0.12);
-      ctx.strokeStyle = `rgba(${hexToRgb(cine.accent)},${0.5 * kk * crackFade})`;
-      ctx.lineWidth = 3;
-      for (let c = 0; c < 9; c++) {
-        const a = (c / 9) * TAU + 0.3;
-        ctx.beginPath(); ctx.moveTo(hd.x, hd.y + 150);
-        ctx.lineTo(hd.x + Math.cos(a) * 300 * kk, hd.y + 150 + Math.sin(a) * 130 * kk);
-        ctx.stroke();
-      }
-    }
-
-    // --- beat 4: the reveal, with a white flash and the name card ---
-    if (k >= BEAT.rise) {
-      const kk = clamp01((k - BEAT.rise) / (1 - BEAT.rise));
-      if (kk < 0.18) {
-        ctx.fillStyle = `rgba(255,255,255,${(1 - kk / 0.18) * 0.85})`;
-        ctx.fillRect(0, 0, W, H);
-      }
-      nameCard(ctx, cine, clamp01((kk - 0.1) / 0.4));
-    }
-
-    // dust, drawn over everything in the cutscene
-    ctx.fillStyle = "rgba(214,211,209,.5)";
-    for (const d of cine.dust) { d.y += d.vy; d.life--; if (d.life > 0) ctx.fillRect(d.x, d.y, 2, 2); }
-    cine.dust = cine.dust.filter(d => d.life > 0).slice(-260);
-
-    letterbox(ctx, k < 0.06 ? k / 0.06 : k > 0.94 ? (1 - k) / 0.06 : 1);
-    if (cine.shake > 0) cine.shake *= 0.93;
-  }
-
-  // Minis do not get a cutscene: they drop in, the floor cracks, their name
-  // flashes, and the fight is on inside three seconds.
-  function drawMiniEntrance(ctx, cine, boss, t, k) {
-    const hd = headPos();
-    const impact = 0.34;
-    if (k < impact) {
-      // the shadow of the thing growing as it falls
-      const kk = clamp01(k / impact);
-      ctx.fillStyle = `rgba(0,0,0,${0.5 * kk})`;
-      ctx.beginPath(); ctx.ellipse(hd.x, hd.y + 150, 40 + 110 * kk, 16 + 44 * kk, 0, 0, TAU); ctx.fill();
-      ctx.strokeStyle = `rgba(254,202,202,${kk})`; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.ellipse(hd.x, hd.y + 150, 40 + 110 * kk, 16 + 44 * kk, 0, 0, TAU); ctx.stroke();
-    } else {
-      const kk = clamp01((k - impact) / (1 - impact));
-      cine.shake = Math.max(cine.shake, (1 - kk) * 14);
-      // shockwave out from the landing
-      ctx.strokeStyle = `rgba(255,255,255,${0.8 * (1 - kk)})`; ctx.lineWidth = 9 * (1 - kk) + 1;
-      ctx.beginPath(); ctx.ellipse(hd.x, hd.y + 150, 60 + kk * 420, (60 + kk * 420) * 0.4, 0, 0, TAU); ctx.stroke();
-      if (kk < 0.5) {
-        for (let d = 0; d < 3; d++) cine.dust.push({ x: hd.x + (Math.random() - 0.5) * 300, y: hd.y + 150, vy: -1.5 - Math.random() * 2, life: 34 });
-      }
-      // name flash, no card, no letterbox
-      const a = kk < 0.7 ? 1 : clamp01((1 - kk) / 0.3);
+    if (cine.mini) {
+      // Minis get a name flash and no card: they are in the room and hitting
+      // you three seconds after they land.
+      const a = k < 0.7 ? Math.min(1, k * 5) : clamp01((1 - k) / 0.3);
       ctx.textAlign = "center";
       ctx.fillStyle = `rgba(${hexToRgb(cine.accent)},${a})`;
       ctx.font = "bold 30px sans-serif";
@@ -1397,11 +1287,11 @@
       ctx.fillStyle = `rgba(226,232,240,${a * 0.8})`;
       ctx.font = "italic 13px sans-serif";
       ctx.fillText("MINI BOSS", W / 2, 132);
+      return;
     }
-    ctx.fillStyle = "rgba(214,211,209,.5)";
-    for (const d of cine.dust) { d.y += d.vy; d.life--; if (d.life > 0) ctx.fillRect(d.x, d.y, 2, 2); }
-    cine.dust = cine.dust.filter(d => d.life > 0).slice(-200);
-    if (cine.shake > 0) cine.shake *= 0.9;
+
+    if (k >= BEAT.rise) nameCard(ctx, cine, clamp01((k - BEAT.rise - 0.02) / 0.3));
+    letterbox(ctx, k < 0.06 ? k / 0.06 : k > 0.94 ? (1 - k) / 0.06 : 1);
   }
 
   function nameCard(ctx, cine, k) {
@@ -1409,7 +1299,10 @@
     const slide = easeOut(k);
     ctx.save();
     ctx.globalAlpha = Math.min(1, k * 2);
-    const cy = H * 0.76;
+    // The card runs from cy-34 down to cy+92 (the cry). At 0.76 of a 640-tall
+    // frame that put the cry at y 578 — exactly where the letterbox starts,
+    // so the boss's one line was always half-eaten by the bar.
+    const cy = H * 0.63;
     // the rule above and below, sliding out from the middle
     ctx.strokeStyle = cine.accent; ctx.lineWidth = 3;
     ctx.beginPath();
@@ -1435,7 +1328,7 @@
     ctx.restore();
   }
   function letterbox(ctx, k) {
-    const h = 62 * clamp01(k);
+    const h = 52 * clamp01(k);
     if (h <= 0) return;
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, W, h);
@@ -1464,167 +1357,25 @@
 
   function drawPhaseCinematic(ctx, cine, boss, t) {
     const k = clamp01((t - cine.t0) / cine.dur);
-    const hd = headPos();
-    const groundY = hd.y + 210;
 
-    // The room goes dark, then hot. The second half is lit by the thing in it.
-    const dark = k < PBEAT.ignite ? lerp(0.35, 0.88, clamp01(k / PBEAT.ignite))
-                                  : lerp(0.88, 0.2, clamp01((k - PBEAT.ignite) / (1 - PBEAT.ignite)));
-    ctx.fillStyle = `rgba(3,1,6,${dark})`;
-    ctx.fillRect(0, 0, W, H);
+    const gl = (window.DungeonGL && DungeonGL.available())
+      ? DungeonGL.render({ mode: "phase2", id: "dragon", mini: false, k, t,
+                           party: partySize(), color: cine.color, accent: cine.accent })
+      : null;
+    if (gl) ctx.drawImage(gl, 0, 0, W, H);
+    else { ctx.fillStyle = "rgba(3,1,6,.9)"; ctx.fillRect(0, 0, W, H); }
+    cine.shake = 0;
 
-    // --- beat 1: it comes down. The silhouette slumps toward the floor. ---
-    if (k < PBEAT.spark) {
-      const kk = clamp01(k / PBEAT.fall);
-      const drop = easeIn(kk) * 150;
-      ctx.globalAlpha = 0.85;
-      ctx.fillStyle = "#2b0f0f";
-      ctx.beginPath();
-      ctx.ellipse(hd.x, hd.y + drop, 150 - kk * 30, 92 - kk * 34, 0, 0, TAU);
-      ctx.fill();
-      // wings folding in as it goes
-      ctx.strokeStyle = "#451a03"; ctx.lineWidth = 16 * (1 - kk * 0.4); ctx.lineCap = "round";
-      for (const sgn of [-1, 1]) {
-        ctx.beginPath();
-        ctx.moveTo(hd.x + sgn * 40, hd.y + drop);
-        ctx.quadraticCurveTo(hd.x + sgn * (230 - kk * 130), hd.y + drop + 20 + kk * 90, hd.x + sgn * (150 - kk * 90), groundY - 20);
-        ctx.stroke();
-      }
-      ctx.lineCap = "butt"; ctx.globalAlpha = 1;
-      if (kk >= 1 && k < PBEAT.still) {
-        for (let d = 0; d < 2; d++) {
-          cine.dust.push({ x: hd.x + (Math.random() - 0.5) * 420, y: groundY, vy: -0.5 - Math.random(), life: 60 });
-        }
-      }
-      if (k < PBEAT.fall) cine.shake = Math.max(cine.shake, easeIn(kk) * 16);
+    // One line, held through the quiet, so the silence has something in it.
+    if (k > PBEAT.still && k < PBEAT.ignite) {
+      const a = Math.sin(clamp01((k - PBEAT.still) / (PBEAT.ignite - PBEAT.still)) * Math.PI);
+      ctx.textAlign = "center";
+      ctx.fillStyle = `rgba(251,146,60,${a * 0.75})`;
+      ctx.font = "italic 17px Georgia, 'Times New Roman', serif";
+      ctx.fillText("it is not finished", W / 2, H * 0.30);
     }
-
-    // --- beat 2: nothing. Then one coal, in all that ash, refuses to go out. ---
-    if (k >= PBEAT.still && k < PBEAT.ignite) {
-      const kk = clamp01((k - PBEAT.still) / (PBEAT.ignite - PBEAT.still));
-      const cx = hd.x, cy = groundY - 26;
-      const pulse = 0.5 + 0.5 * Math.sin(t / 110);
-      const r = 6 + kk * 54 * (0.85 + pulse * 0.15);
-      const g = ctx.createRadialGradient(cx, cy, 1, cx, cy, r * 2.6);
-      g.addColorStop(0, `rgba(255,255,255,${0.5 + 0.5 * kk})`);
-      g.addColorStop(0.25, `rgba(253,224,71,${0.8 * kk + 0.2})`);
-      g.addColorStop(0.6, `rgba(249,115,22,${0.5 * kk})`);
-      g.addColorStop(1, "rgba(127,29,29,0)");
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(cx, cy, r * 2.6, 0, TAU); ctx.fill();
-      if (k >= PBEAT.spark) {
-        for (let e = 0; e < 3; e++) {
-          cine.embers.push({
-            x: cx + (Math.random() - 0.5) * 120 * kk, y: cy,
-            vx: (Math.random() - 0.5) * 1.2, vy: -0.8 - Math.random() * 2.2,
-            life: 70 + Math.random() * 50,
-          });
-        }
-      }
-    }
-
-    // --- beat 3: the ring of fire races out from under it ---
-    if (k >= PBEAT.ignite) {
-      const kk = clamp01((k - PBEAT.ignite) / (PBEAT.rise - PBEAT.ignite));
-      const R = 60 + easeOut(kk) * 520;
-      for (let ring = 0; ring < 3; ring++) {
-        const rr = R - ring * 46;
-        if (rr <= 0) continue;
-        ctx.strokeStyle = `rgba(${ring ? "249,115,22" : "255,237,160"},${(1 - kk * 0.5) * (1 - ring * 0.25)})`;
-        ctx.lineWidth = 16 - ring * 4;
-        ctx.beginPath(); ctx.ellipse(hd.x, groundY - 10, rr, rr * 0.42, 0, 0, TAU); ctx.stroke();
-      }
-      // burning floor inside the ring
-      const fg = ctx.createRadialGradient(hd.x, groundY - 10, 10, hd.x, groundY - 10, Math.max(20, R));
-      fg.addColorStop(0, `rgba(253,224,71,${0.32 * (1 - kk * 0.4)})`);
-      fg.addColorStop(0.6, `rgba(220,38,38,${0.22 * (1 - kk * 0.4)})`);
-      fg.addColorStop(1, "rgba(0,0,0,0)");
-      ctx.fillStyle = fg; ctx.fillRect(0, 0, W, H);
-      cine.shake = Math.max(cine.shake, 6 + kk * 8);
-      for (let e = 0; e < 4; e++) {
-        cine.embers.push({
-          x: hd.x + (Math.random() - 0.5) * R * 1.4, y: groundY - Math.random() * 30,
-          vx: (Math.random() - 0.5) * 1.6, vy: -1.4 - Math.random() * 2.8,
-          life: 60 + Math.random() * 60,
-        });
-      }
-    }
-
-    // --- beat 4: it stands back up, and this time it is on fire ---
-    if (k >= PBEAT.rise) {
-      const kk = clamp01((k - PBEAT.rise) / (1 - PBEAT.rise));
-      const up = easeOutBack(Math.min(1, kk * 1.6));
-      const cy = groundY - up * 200;
-      // wings, thrown wide, membranes lit from behind
-      for (const sgn of [-1, 1]) {
-        const spread = up * 300;
-        const g = ctx.createLinearGradient(hd.x, cy, hd.x + sgn * spread, cy - 90);
-        g.addColorStop(0, `rgba(220,38,38,${0.85 * up})`);
-        g.addColorStop(1, `rgba(253,224,71,${0.25 * up})`);
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.moveTo(hd.x + sgn * 30, cy + 30);
-        ctx.quadraticCurveTo(hd.x + sgn * spread * 0.8, cy - 150 * up, hd.x + sgn * spread, cy - 40 * up);
-        ctx.quadraticCurveTo(hd.x + sgn * spread * 0.5, cy + 110 * up, hd.x + sgn * 30, cy + 110);
-        ctx.closePath(); ctx.fill();
-        ctx.strokeStyle = `rgba(255,237,160,${0.8 * up})`; ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.moveTo(hd.x + sgn * 30, cy + 30);
-        ctx.quadraticCurveTo(hd.x + sgn * spread * 0.8, cy - 150 * up, hd.x + sgn * spread, cy - 40 * up);
-        ctx.stroke();
-      }
-      // the body, burning
-      const bg = ctx.createRadialGradient(hd.x, cy, 12, hd.x, cy, 170);
-      bg.addColorStop(0, "rgba(255,255,255,.95)");
-      bg.addColorStop(0.3, `rgba(253,224,71,${0.9 * up})`);
-      bg.addColorStop(0.7, `rgba(220,38,38,${0.8 * up})`);
-      bg.addColorStop(1, "rgba(69,10,10,0)");
-      ctx.fillStyle = bg;
-      ctx.beginPath(); ctx.ellipse(hd.x, cy, 120 * up, 96 * up, 0, 0, TAU); ctx.fill();
-      // two eyes, white-hot
-      for (const sgn of [-1, 1]) {
-        ctx.fillStyle = `rgba(255,255,255,${up})`;
-        ctx.beginPath(); ctx.ellipse(hd.x + sgn * 42, cy - 16, 13 * up, 9 * up, sgn * 0.2, 0, TAU); ctx.fill();
-      }
-      cine.shake = Math.max(cine.shake, 10 * up);
-
-      // --- beat 5: THE ROAR ---
-      if (k >= PBEAT.roar) {
-        const rk = clamp01((k - PBEAT.roar) / (1 - PBEAT.roar));
-        cine.shake = Math.max(cine.shake, 26 * (1 - rk * 0.6));
-        // the sound made visible: rings punched out of the air
-        for (let ring = 0; ring < 5; ring++) {
-          const kk2 = clamp01(rk * 1.5 - ring * 0.14);
-          if (kk2 <= 0) continue;
-          ctx.strokeStyle = `rgba(255,255,255,${0.75 * (1 - kk2)})`;
-          ctx.lineWidth = 14 * (1 - kk2) + 1;
-          ctx.beginPath(); ctx.arc(hd.x, cy, 60 + kk2 * 760, 0, TAU); ctx.stroke();
-        }
-        // the jaw open, throat white
-        ctx.fillStyle = `rgba(255,255,255,${0.9 * Math.sin(clamp01(rk * 1.4) * Math.PI)})`;
-        ctx.beginPath(); ctx.ellipse(hd.x, cy + 26, 34, 46 * Math.sin(clamp01(rk * 1.4) * Math.PI), 0, 0, TAU); ctx.fill();
-        if (rk < 0.14) {
-          ctx.fillStyle = `rgba(255,255,255,${(1 - rk / 0.14) * 0.9})`;
-          ctx.fillRect(0, 0, W, H);
-        }
-        nameCard(ctx, cine, clamp01((rk - 0.12) / 0.4));
-      }
-    }
-
-    // embers and dust ride over the whole thing
-    for (const e of cine.embers) {
-      e.x += e.vx; e.y += e.vy; e.vy += 0.012; e.life--;
-      if (e.life <= 0) continue;
-      ctx.fillStyle = `rgba(253,${180 + Math.floor(Math.random() * 60)},71,${clamp01(e.life / 70)})`;
-      ctx.fillRect(e.x, e.y, 3, 3);
-    }
-    cine.embers = cine.embers.filter(e => e.life > 0).slice(-420);
-    ctx.fillStyle = "rgba(120,113,108,.45)";
-    for (const d of cine.dust) { d.y += d.vy; d.life--; if (d.life > 0) ctx.fillRect(d.x, d.y, 2, 2); }
-    cine.dust = cine.dust.filter(d => d.life > 0).slice(-240);
-
-    letterbox(ctx, k < 0.05 ? k / 0.05 : k > 0.96 ? (1 - k) / 0.04 : 1);
-    if (cine.shake > 0) cine.shake *= 0.9;
+    if (k >= PBEAT.roar) nameCard(ctx, cine, clamp01((k - PBEAT.roar - 0.01) / 0.22));
+    letterbox(ctx, k < 0.05 ? k / 0.05 : k > 0.95 ? (1 - k) / 0.05 : 1);
   }
 
   // ================================================================ THE CHEST
