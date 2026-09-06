@@ -865,6 +865,13 @@
       cutFx.push({ X: X + (Math.random() - 0.5) * (opts.spread || 1), Y: 0, Z: Z + (Math.random() - 0.5) * (opts.spread || 1), vx: Math.cos(a) * sp * 0.4, vy: (opts.up || 0.5) * (0.6 + Math.random()), vz: Math.sin(a) * sp * 0.4, life: 0, max: 30 + Math.random() * 25, col: opts.col || "#e0f2fe", size: opts.size || 0.12 });
     }
   }
+  function stepCutFx() {
+    for (const p of cutFx) {
+      p.X += p.vx; p.Y += p.vy; p.Z += p.vz; p.vy -= 0.04; p.life++;
+      if (p.Y < 0) p.life = p.max;
+    }
+    for (let i = cutFx.length - 1; i >= 0; i--) if (cutFx[i].life >= cutFx[i].max) cutFx.splice(i, 1);
+  }
   function drawCutscene(t) {
     if (!cine || (cine.kind !== "kraken" && cine.kind !== "serpent")) return;
     const ct = cineT(), kind = cine.kind;
@@ -911,33 +918,62 @@
     ctx.beginPath(); ctx.moveTo(0, hy + 1); for (let x = 0; x <= W; x += 24) ctx.lineTo(x, hy - 18 - Math.sin(x / 140) * 10 - Math.sin(x / 47) * 4); ctx.lineTo(W, hy + 1); ctx.closePath(); ctx.fill();
     ctx.fillStyle = rgb(lerpCol([30, 62, 28], [8, 14, 10], storm));
     for (let x = 0; x < W; x += 14) { const th = 10 + ((x * 7) % 13); ctx.fillRect(x, hy - th, 9, th + 2); ctx.beginPath(); ctx.moveTo(x - 2, hy - th); ctx.lineTo(x + 4.5, hy - th - 9); ctx.lineTo(x + 11, hy - th); ctx.fill(); }
-    // ---- water: perspective bands ----
+    // ---- water + beast ----
     const deep = lerpCol([12, 74, 110], [6, 24, 44], storm), shallow = lerpCol([34, 211, 238], [40, 80, 120], storm);
-    for (let Z = 60; Z > 0.4; Z *= 0.9) {
-      const y0 = waterY(Z), y1 = waterY(Z * 0.9);
-      const k = clamp01(Z / 60);
-      ctx.fillStyle = rgb(lerpCol(shallow, deep, Math.sqrt(k)));
-      ctx.fillRect(0, y0, W, Math.max(1, y1 - y0 + 1));
-      // wave glints drifting toward the camera
-      const ph = ((t / 900 + Z * 0.37) % 1);
-      ctx.fillStyle = `rgba(255,255,255,${0.16 * (1 - k) * (0.5 + 0.5 * Math.sin(ph * TAU))})`;
-      for (let i = 0; i < 6; i++) { const wx = ((i * 173 + t * 0.03 * (1 + i)) % W); ctx.fillRect(wx, y0 + (y1 - y0) * 0.5, 30 * (1 - k) + 8, 1.2); }
+    // Backstop under everything below the horizon. The band loop below starts
+    // at Z = 60, which already projects ~22px BELOW the horizon line, so the
+    // strip between the shore and the first water row was never painted and
+    // the live game world showed through it in a bar across the screen. This
+    // fill closes that for the GL path and the fallback alike.
+    ctx.fillStyle = rgb(lerpCol(deep, lerpCol([252, 196, 120], [70, 64, 92], storm), 0.5));
+    ctx.fillRect(0, hy, W, H - hy + 1);
+
+    // The WebGL layer owns the water surface and the beast: real lighting, a
+    // real depth buffer, and a displaced water mesh whose far edge fades into
+    // the horizon. Everything else in this cutscene stays 2D on purpose.
+    //
+    // The foam rings and the spray go in WITH it rather than over the top of
+    // it. Painted on the 2D canvas afterwards they have no depth, so a ripple
+    // twenty units behind a tentacle still drew in front of it.
+    let gl = null;
+    if (window.LakeGL && LakeGL.available()) {
+      const rings = [];
+      cutsceneWaterFx(kind, ct, t, lunge, rings);
+      stepCutFx();
+      gl = LakeGL.render({ kind, ct, t, lunge, storm, flash, W, H, f: C3.f, camH: C3.h, horizon: C3.horizon, cam: C3.cam, rings, particles: cutFx });
     }
-    // sky reflection sheen + lightning on the water
-    { const g = ctx.createLinearGradient(0, hy, 0, H); g.addColorStop(0, `rgba(255,255,255,${0.18 - 0.1 * storm})`); g.addColorStop(0.3, "rgba(255,255,255,0)"); ctx.fillStyle = g; ctx.fillRect(0, hy, W, H - hy); }
-    if (flash > 0.05) { ctx.fillStyle = `rgba(255,255,255,${0.25 * flash})`; ctx.fillRect(0, hy, W, H - hy); }
-    // ---- the beast ----
-    if (kind === "kraken") drawKraken3D(ct, t, lunge); else drawSerpent3D(ct, t, lunge);
-    // ---- 3D splash particles ----
-    for (const p of cutFx) {
-      p.X += p.vx; p.Y += p.vy; p.Z += p.vz; p.vy -= 0.04; p.life++;
-      if (p.Y < 0) p.life = p.max;
-      const q = proj(p.X, p.Y, p.Z); if (!q) continue;
-      ctx.globalAlpha = 1 - p.life / p.max; ctx.fillStyle = p.col;
-      const sz = Math.max(1.5, p.size * q.s); ctx.fillRect(q.x - sz / 2, q.y - sz / 2, sz, sz);
+    if (gl) {
+      ctx.drawImage(gl, 0, 0, W, H);
+      if (flash > 0.05) { ctx.fillStyle = `rgba(255,255,255,${0.18 * flash})`; ctx.fillRect(0, hy, W, H - hy); }
+    } else {
+      // ---- fallback: the original perspective-band painter ----
+      for (let Z = 60; Z > 0.4; Z *= 0.9) {
+        const y0 = waterY(Z), y1 = waterY(Z * 0.9);
+        const k = clamp01(Z / 60);
+        ctx.fillStyle = rgb(lerpCol(shallow, deep, Math.sqrt(k)));
+        ctx.fillRect(0, y0, W, Math.max(1, y1 - y0 + 1));
+        // wave glints drifting toward the camera
+        const ph = ((t / 900 + Z * 0.37) % 1);
+        ctx.fillStyle = `rgba(255,255,255,${0.16 * (1 - k) * (0.5 + 0.5 * Math.sin(ph * TAU))})`;
+        for (let i = 0; i < 6; i++) { const wx = ((i * 173 + t * 0.03 * (1 + i)) % W); ctx.fillRect(wx, y0 + (y1 - y0) * 0.5, 30 * (1 - k) + 8, 1.2); }
+      }
+      // sky reflection sheen + lightning on the water
+      { const g = ctx.createLinearGradient(0, hy, 0, H); g.addColorStop(0, `rgba(255,255,255,${0.18 - 0.1 * storm})`); g.addColorStop(0.3, "rgba(255,255,255,0)"); ctx.fillStyle = g; ctx.fillRect(0, hy, W, H - hy); }
+      if (flash > 0.05) { ctx.fillStyle = `rgba(255,255,255,${0.25 * flash})`; ctx.fillRect(0, hy, W, H - hy); }
+      if (kind === "kraken") drawKraken3D(ct, t, lunge); else drawSerpent3D(ct, t, lunge);
     }
-    ctx.globalAlpha = 1;
-    for (let i = cutFx.length - 1; i >= 0; i--) if (cutFx[i].life >= cutFx[i].max) cutFx.splice(i, 1);
+    // ---- splash particles ----
+    // Under GL these were already stepped and handed to the depth-tested point
+    // cloud above; here they are only painted for the fallback painter.
+    if (!gl) {
+      stepCutFx();
+      for (const p of cutFx) {
+        const q = proj(p.X, p.Y, p.Z); if (!q) continue;
+        ctx.globalAlpha = 1 - p.life / p.max; ctx.fillStyle = p.col;
+        const sz = Math.max(1.5, p.size * q.s); ctx.fillRect(q.x - sz / 2, q.y - sz / 2, sz, sz);
+      }
+      ctx.globalAlpha = 1;
+    }
     // ---- bobber + line target ----
     let bobJerk = 0, bobX = 0.7, bobZ = 9;
     if (kind === "kraken" && ct > 2000 && ct < 3600) bobJerk = Math.abs(Math.sin(t / 60)) * 0.35;
@@ -1068,10 +1104,15 @@
     }
     ctx.lineCap = "butt";
   }
+  // Where the tentacles and coils come out of the water. lake3d.js poses the
+  // meshes from these same anchors, so the GL beast and the 2D foam agree.
+  const KRAKEN_BASES = [[-9, 26], [7, 27], [-12, 19], [11, 20], [-5, 15], [5, 14]];
+  const SERPENT_BASES = [[-9, 24], [8, 25], [-4, 17], [5, 16], [-11, 19]];
+
   function drawKraken3D(ct, t, lunge) {
     lunge = lunge || 0;
     // tentacle bases around (0, 0, 20): far ones first (painter's order)
-    const bases = [[-9, 26], [7, 27], [-12, 19], [11, 20], [-5, 15], [5, 14]].map((b, i) => ({ X: b[0], Z: b[1], i })).sort((a, b) => b.Z - a.Z);
+    const bases = KRAKEN_BASES.map((b, i) => ({ X: b[0], Z: b[1], i })).sort((a, b) => b.Z - a.Z);
     const headE = easeOutBack(clamp01((ct - 8000) / 2800));
     // head first if it's behind the front tentacles (it sits at Z ~ 21); during
     // the lunge it rushes the camera (Z 21 -> 4) with the beak wide open
@@ -1129,7 +1170,7 @@
     const burst = clamp01((ct - 5000) / 900);         // rises out
     const slide = clamp01((ct - 5600) / 2400);        // travels through the arc
     const dive = clamp01((ct - 8200) / 700);
-    const body = (u) => ({ X: -11 + 22 * u, Y: 11 * Math.sin(u * Math.PI) * (burst - dive), Z: 21 - 6 * u + 2 * Math.sin(u * TAU) });
+    const body = serpentArc(burst, dive);
     if (burst > 0 && dive < 1) {
       // the visible stretch of body: a window sliding along the arc
       const head = Math.min(1, 0.3 + slide * 0.7), tail = Math.max(0, head - 0.55);
@@ -1156,7 +1197,7 @@
     }
     if (dive > 0) {
       // coils and the head rear up around the lake
-      const bases = [[-9, 24], [8, 25], [-4, 17], [5, 16], [-11, 19]].map((b, i) => ({ X: b[0], Z: b[1], i })).sort((a, b) => b.Z - a.Z);
+      const bases = SERPENT_BASES.map((b, i) => ({ X: b[0], Z: b[1], i })).sort((a, b) => b.Z - a.Z);
       for (const b of bases) {
         const em = easeOut(clamp01((ct - (8400 + b.i * 380)) / 1000));
         if (em <= 0) continue;
@@ -1185,6 +1226,90 @@
         }
         ctx.strokeStyle = `rgba(255,255,255,${he < 1 ? 0.9 : 0.5})`; ctx.lineWidth = 3; ring3(0, HZ, 2.6 + Math.sin(t / 250) * 0.3);
         if (he < 1 && Math.random() < 0.8) splash3(0, HZ, 4, { speed: 1.2, up: 1, spread: 5, size: 0.25 });
+      }
+    }
+  }
+
+  // The serpent's leap. Flatter and longer than a half-circle so the whole
+  // animal is in frame at once. lake3d.js builds the mesh from the identical
+  // curve — if you change one, change both.
+  const serpentArc = (burst, dive) => (u) => ({
+    X: -13 + 26 * u,
+    Y: 8.2 * Math.sin(u * Math.PI) * (burst - dive),
+    Z: 22 - 8 * u + 2 * Math.sin(u * TAU),
+  });
+
+  // Where the beast meets the water: the expanding foam rings and the spray it
+  // throws. These used to live inside drawKraken3D/drawSerpent3D; the GL pass
+  // renders the creature but has no business owning surface effects.
+  //
+  // `sink` collects the rings as plain data for lake3d.js to draw inside the
+  // depth-tested pass, so the beast occludes its own wake. Pass null to have
+  // them stroked straight onto the 2D canvas instead.
+  function cutsceneWaterFx(kind, ct, t, lunge, sink) {
+    const ring = (X, Z, r, a) => {
+      if (sink) { if (sink.length < 16) sink.push({ X, Z, r, a }); return; }
+      ctx.strokeStyle = `rgba(255,255,255,${a})`; ctx.lineWidth = 2; ring3(X, Z, r);
+    };
+    if (kind === "kraken") {
+      for (let i = 0; i < KRAKEN_BASES.length; i++) {
+        const b = KRAKEN_BASES[i];
+        const em = easeOut(clamp01((ct - (4500 + i * 520)) / 1200));
+        if (em <= 0) continue;
+        ring(b[0], b[1], 1.4 + ((t / 800 + i) % 1) * 2, 0.5 * em);
+        if (em < 1 && Math.random() < 0.7) splash3(b[0], b[1], 3, { speed: 0.8, up: 0.7, spread: 2, size: 0.2 });
+      }
+      const headE = easeOutBack(clamp01((ct - 8000) / 2800));
+      if (headE > 0) {
+        const HZ = 21 - 17 * lunge;
+        ring(0, HZ, 6.8 + Math.sin(t / 250) * 0.3, headE < 1 ? 0.9 : 0.5);
+        if (headE < 1 && Math.random() < 0.8) splash3(0, HZ, 4, { speed: 1.2, up: 0.9, spread: 12, size: 0.25 });
+      }
+      return;
+    }
+    // serpent
+    const burst = clamp01((ct - 5000) / 900), slide = clamp01((ct - 5600) / 2400), dive = clamp01((ct - 8200) / 700);
+    const body = serpentArc(burst, dive);
+    if (ct > 3200 && ct < 5300) {
+      // the wake of the shape circling under the surface
+      const k = (ct - 3200) / 900, a = k * 2.2 - 1.6;
+      ring(Math.cos(a) * 4.5, 11 + Math.sin(a) * 3, 0.6 + ((t / 400) % 1) * 1.2, 0.35);
+    }
+    if (burst > 0 && dive < 1) {
+      const headU = Math.min(1, 0.3 + slide * 0.7), tailU = Math.max(0, headU - 0.55);
+      const ex = body(tailU), en = body(headU);
+      // The exit wound in the water: a hard crown of spray where the body is
+      // still tearing free, and a ring that keeps spreading long after.
+      if (burst < 1 || slide < 0.45) {
+        splash3(ex.X, ex.Z, 9, { speed: 2.0, up: 1.7, spread: 3, size: 0.3 });
+        ring(ex.X, ex.Z, 1.2 + burst * 3.2, 0.85 * (1 - slide));
+      }
+      const exitAge = clamp01((ct - 5000) / 2600);
+      if (exitAge > 0 && exitAge < 1) ring(-13, 22, 1.5 + exitAge * 9, 0.55 * (1 - exitAge));
+      // and the entry, once the head is coming back down
+      if (en.Y < 3.0) {
+        splash3(en.X, en.Z, 6, { speed: 1.5, up: 1.2, spread: 2.5, size: 0.28 });
+        ring(en.X, en.Z, 1.0 + (1 - clamp01(en.Y / 3)) * 3.0, 0.7);
+      }
+      // water sheeting off the underside of the arc
+      if (Math.random() < 0.75) {
+        const u = lerp(tailU, headU, Math.random()), p = body(u);
+        splash3(p.X, p.Z, 1, { speed: 0.35, up: 0.15, spread: 0.6, size: 0.22 });
+      }
+    }
+    if (dive > 0) {
+      for (let i = 0; i < SERPENT_BASES.length; i++) {
+        const b = SERPENT_BASES[i];
+        const em = easeOut(clamp01((ct - (8400 + i * 380)) / 1000));
+        if (em <= 0) continue;
+        ring(b[0] - 2.2, b[1], 0.8 + ((t / 800 + i) % 1) * 1.4, 0.5 * em);
+        ring(b[0] + 2.2, b[1], 0.8 + ((t / 800 + i + 0.5) % 1) * 1.4, 0.5 * em);
+        if (em < 1 && Math.random() < 0.7) splash3(b[0], b[1], 3, { speed: 0.8, up: 0.7, spread: 4, size: 0.2 });
+      }
+      const he = easeOutBack(clamp01((ct - 9000) / 1600));
+      if (he > 0) {
+        ring(0, 20, 2.6 + Math.sin(t / 250) * 0.3, he < 1 ? 0.9 : 0.5);
+        if (he < 1 && Math.random() < 0.8) splash3(0, 20, 4, { speed: 1.2, up: 1, spread: 5, size: 0.25 });
       }
     }
   }
