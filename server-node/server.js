@@ -2408,12 +2408,14 @@ function guildBossTick() {
         if (b.status === 'reviving') {
             if (now - (b.revivedAt || 0) >= ECON.DRAGON_PHASE2.CINE_MS) {
                 b.status = 'alive';
+                b.invulnUntil = now + 600;   // no hit lands on the first frame back
                 runBroadcast(run, 'alive');
             }
             continue;
         }
         if (b.status === 'rising' && now - b.spawnedAt >= (b.mini ? ECON.GUILD_BOSS.MINI_RISE_MS : ECON.GUILD_BOSS.RISE_MS)) {
             b.status = 'alive';
+            b.invulnUntil = now + 600;
             runBroadcast(run, 'alive');
             continue;
         }
@@ -3787,6 +3789,10 @@ const ECONOMY_OPS = {
                 : b.status === 'reviving' ? 'It is getting back up.'
                 : 'It is already dead.');
         }
+            // A short grace either side of a cutscene, held by the referee
+            // rather than the client: a swing that was in flight while the
+            // room was locked must not land on the frame it unlocks.
+            if (now < (b.invulnUntil || 0)) throw new Error('It is still getting up.');
             const weapon = msg.weapon === 'pistol' ? 'pistol' : 'sword';
             const k = user + ':' + weapon;
             if (now - (b.hitLast.get(k) || 0) < ECON.GUILD_BOSS.HIT_MIN_MS[weapon]) throw new Error('Too fast.');

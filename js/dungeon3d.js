@@ -225,12 +225,15 @@
     room.add(sigilInner);
 
     // walls + back wall
+    const sideWalls = [];
     for (const sx of [-1, 1]) {
       const w = new THREE.Mesh(new THREE.BoxGeometry(1.5, ROOM.wallH, ROOM.len + 30), stone(0x1d1728, 0.95, [22, 6]));
       w.position.set(sx * (ROOM.halfW + 0.75), ROOM.wallH / 2, -14);
-      room.add(w);
+      w.userData.sx = sx;
+      room.add(w); sideWalls.push(w);
     }
     const back = new THREE.Mesh(new THREE.BoxGeometry(ROOM.halfW * 2 + 3, ROOM.wallH, 1.5), stone(0x1a1424, 0.95, [9, 6]));
+    room.userData.backWall = back;
     back.position.set(0, ROOM.wallH / 2, ROOM.backZ);
     room.add(back);
     // a suggestion of a vault overhead, to close the room in
@@ -240,15 +243,20 @@
     room.add(ceil);
 
     // pillars down both sides
+    const pillars = [];
     for (let i = 0; i < 6; i++) {
       const z = 2 - i * 8;
       for (const sx of [-1, 1]) {
+        const g = new THREE.Group();
         const col = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.35, ROOM.wallH, 10), stone(0x2a2236, 0.95, [3, 6]));
-        col.position.set(sx * (ROOM.halfW - 1.8), ROOM.wallH / 2, z);
-        room.add(col);
+        col.position.y = ROOM.wallH / 2;
         const cap = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.0, 3.4), stone(0x342b42, 0.95, [2, 1]));
-        cap.position.set(sx * (ROOM.halfW - 1.8), ROOM.wallH - 0.5, z);
-        room.add(cap);
+        cap.position.y = ROOM.wallH - 0.5;
+        g.add(col, cap);
+        g.position.set(sx * (ROOM.halfW - 1.8), 0, z);
+        room.add(g);
+        // Kept so the second phase can bring them down on cue.
+        pillars.push({ g, sx, z, i: pillars.length });
       }
     }
 
@@ -312,6 +320,10 @@
     doorGlow.position.set(0, 6.5, ROOM.doorZ + 3);
     room.add(doorGlow);
     room.userData.doorGlow = doorGlow;
+    room.userData.pillars = pillars;
+    room.userData.sideWalls = sideWalls;
+    room.userData.ceil = ceil;
+    room.userData.walls = [back];
     room.userData.sigil = sigil;
     room.userData.sigilInner = sigilInner;
     room.userData.gate = gate;
@@ -398,6 +410,32 @@
     fx.washScene.add(fx.wash);
     fx.washCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
+    // The Warden's flood. Translucent and lit, so the room reads through it.
+    fx.flood = new THREE.Mesh(
+      new THREE.PlaneGeometry(ROOM.halfW * 2 + 8, ROOM.len + 40),
+      new THREE.MeshStandardMaterial({ color: 0x0b3a4a, transparent: true, opacity: 0.7,
+                                       roughness: 0.15, metalness: 0.4 }));
+    fx.flood.rotation.x = -Math.PI / 2;
+    fx.flood.position.set(0, -99, -14);
+    fx.flood.visible = false;
+    scene.add(fx.flood);
+
+    // The Tyrant's tear: a slit of light with nothing behind it.
+    fx.tear = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, depthWrite: false }));
+    fx.tear.visible = false;
+    scene.add(fx.tear);
+    fx.tearGlow = glowSprite(0xffffff, 20, 0);
+    fx.tearGlow.visible = false;
+    scene.add(fx.tearGlow);
+
+    // The sky the roof comes off to reveal, in Varkaal's second phase.
+    fx.sky = new THREE.Mesh(new THREE.SphereGeometry(240, 20, 14),
+      new THREE.MeshBasicMaterial({ color: 0x3a1c2e, side: THREE.BackSide, depthWrite: false }));
+    fx.sky.visible = false;
+    scene.add(fx.sky);
+
     fx.party = buildParty();
   }
 
@@ -437,204 +475,430 @@
   // ---------------------------------------------------------------
   //  the party
   // ---------------------------------------------------------------
-  // Four little figures that walk in through the gate at the top of the
-  // cutscene and then stay put in the foreground. They are doing two jobs:
-  // they give the camera a reason to turn around, and they are the only thing
-  // in the room that tells you how big the thing at the far end actually is.
+  // The people who walked in. They are doing two jobs: they give the camera a
+  // reason to turn around at the top of the cutscene, and they are the only
+  // thing in the room that says how big the thing at the far end is.
+  //
+  // Blocky 3D figures, not billboards. A flat sprite of the 2D character art
+  // was tried and looks wrong the moment the camera is close or off-axis — it
+  // is a paper cutout standing in a lit stone room. These are built to the
+  // classic voxel proportions (8-wide head, 8x12 body, 4x12 limbs) and take
+  // their colours from the player's own appearance, so it is still recognisably
+  // you without pretending a 2D sprite is a model.
   const PARTY_MAX = 4;
-  const PARTY_COLS = [0x3b82f6, 0x22c55e, 0xf59e0b, 0xa855f7];
+  const U = 0.11;                       // one voxel unit, in world units
+
+  function boxPart(w, h, d, mat, pivotTop) {
+    const g = new THREE.BoxGeometry(w * U, h * U, d * U);
+    // Limbs rotate about the joint at their top, so the geometry hangs below
+    // the origin of whatever group is carrying it.
+    if (pivotTop) g.translate(0, -h * U / 2, 0);
+    return new THREE.Mesh(g, mat);
+  }
+
+  // A two-segment limb: an upper that swings from the joint above it, and a
+  // lower that swings from the joint between them. This is the whole reason
+  // the walk reads as a person rather than as a pair of scissors — a single
+  // rigid limb per side has no knee and no elbow, and no amount of tuning the
+  // swing angle will fake one.
+  function jointLimb(mats, upperMat, w, upLen, loLen, foot) {
+    const root = new THREE.Group();
+    const upper = boxPart(w, upLen, w, upperMat, true);
+    root.add(upper);
+    const joint = new THREE.Group();
+    joint.position.y = -upLen * U;
+    root.add(joint);
+    const lower = boxPart(w * 0.94, loLen, w * 0.94, upperMat, true);
+    joint.add(lower);
+    let end = null;
+    if (foot) {
+      end = new THREE.Group();
+      end.position.y = -loLen * U;
+      const shoe = boxPart(w, 1.6, w * 1.5, mats.shoe);
+      shoe.position.z = w * 0.28 * U;
+      end.add(shoe);
+      joint.add(end);
+    }
+    return { root, upper, joint, lower, end };
+  }
 
   function buildParty() {
     const list = [];
     for (let i = 0; i < PARTY_MAX; i++) {
       const g = new THREE.Group();
-      const skin = new THREE.MeshStandardMaterial({ color: 0xf0c9a0, roughness: 0.9 });
-      const cloth = new THREE.MeshStandardMaterial({ color: PARTY_COLS[i], roughness: 0.85 });
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.9, 0.42), cloth);
-      body.position.y = 1.05;
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.5, 0.5), skin);
-      head.position.y = 1.78;
-      const hair = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.16, 0.54), new THREE.MeshStandardMaterial({ color: 0x3b2417, roughness: 1 }));
-      hair.position.y = 2.02;
+      const mats = {
+        skin: new THREE.MeshStandardMaterial({ color: 0xf5d0a9, roughness: 0.95 }),
+        hair: new THREE.MeshStandardMaterial({ color: 0x3f2210, roughness: 1.0 }),
+        shirt: new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.9 }),
+        pants: new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.95 }),
+        shoe: new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 1.0 }),
+      };
+
+      // pelvis carries the whole body so it can bob and sway as one
+      const pelvis = new THREE.Group();
+      pelvis.position.y = 12 * U;
+      g.add(pelvis);
+
       const legs = [];
       for (const sx of [-1, 1]) {
-        const l = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.68, 0.24), new THREE.MeshStandardMaterial({ color: 0x2f3542, roughness: 0.95 }));
-        l.geometry.translate(0, -0.34, 0);
-        l.position.set(sx * 0.17, 0.62, 0);
-        g.add(l); legs.push(l);
+        const l = jointLimb(mats, mats.pants, 4, 6, 6, true);
+        l.root.position.set(sx * 2.1 * U, 0, 0);
+        l.sx = sx;
+        pelvis.add(l.root); legs.push(l);
       }
+
+      // torso is its own group so the shoulders can counter-rotate the hips
+      const torso = new THREE.Group();
+      pelvis.add(torso);
+      const body = boxPart(8, 12, 4, mats.shirt);
+      body.position.y = 6 * U;
+      torso.add(body);
+
+      const head = new THREE.Group();
+      head.position.y = 16 * U;
+      torso.add(head);
+      head.add(boxPart(8, 8, 8, mats.skin));
+      const hair = boxPart(8.4, 3.2, 8.4, mats.hair);
+      hair.position.y = 3 * U;
+      const fringe = boxPart(8.4, 3, 1.2, mats.hair);
+      fringe.position.set(0, 0.5 * U, -4.1 * U);
+      head.add(hair, fringe);
+
       const arms = [];
       for (const sx of [-1, 1]) {
-        const a = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.62, 0.2), cloth);
-        a.geometry.translate(0, -0.31, 0);
-        a.position.set(sx * 0.42, 1.42, 0);
-        g.add(a); arms.push(a);
+        const arm = jointLimb(mats, mats.shirt, 4, 6, 5, false);
+        arm.root.position.set(sx * 6 * U, 11 * U, 0);
+        arm.sx = sx;
+        // a short hand, so the whole arm ends around mid-thigh where an arm
+        // actually ends rather than down by the knee
+        const hand = boxPart(3.6, 2, 3.6, mats.skin, true);
+        hand.position.y = -5 * U;
+        arm.joint.add(hand);
+        torso.add(arm.root); arms.push(arm);
       }
-      g.add(body, head, hair);
+
       g.visible = false;
       scene.add(g);
-      list.push({ g, legs, arms });
+      list.push({ g, pelvis, torso, head, arms, legs, mats, appearance: undefined });
     }
     return list;
   }
 
-  // walk: 0 standing, 1 walking. `face` is the yaw they hold.
-  function poseParty(n, x0, z0, walk, phase, face) {
+  // Colours come off the player's own appearance so a party still reads as
+  // four different people rather than four identical dolls.
+  function dressMember(m, appearance) {
+    if (m.appearance === appearance) return;
+    m.appearance = appearance;
+    const a = appearance || {};
+    const set = (mat, hex, fallback) => {
+      try { mat.color.set(hex || fallback); } catch (e) { mat.color.set(fallback); }
+    };
+    set(m.mats.skin, a.skin, "#f5d0a9");
+    set(m.mats.hair, a.hairColor, "#3f2210");
+    set(m.mats.shirt, a.shirt, "#3b82f6");
+    set(m.mats.pants, a.pants, "#1e293b");
+  }
+
+  // `people` is [{ appearance }] from bosses.js — you first, then whoever else
+  // is on this floor of this run. `walk` is 0 standing, 1 walking; `face` is
+  // the yaw they hold. `phase` drives the stride.
+  function poseParty(people, x0, z0, walk, phase, face) {
+    const n = Math.max(0, Math.min(PARTY_MAX, (people && people.length) || 0));
     for (let i = 0; i < PARTY_MAX; i++) {
       const m = fx.party[i];
       if (i >= n) { m.g.visible = false; continue; }
       m.g.visible = true;
+      dressMember(m, people[i] && people[i].appearance);
+
       const lane = (i - (n - 1) / 2) * 1.9;
+      // The ROOM is built in plain three space (door at +z, boss at -z); only
+      // the beast rigs negate, so nothing is flipped here.
       m.g.position.set(x0 + lane, 0, z0 + (i % 2) * 1.1);
       m.g.rotation.y = face;
-      const sw = walk * Math.sin(phase + i * 0.7) * 0.75;
-      m.legs[0].rotation.x = sw; m.legs[1].rotation.x = -sw;
-      m.arms[0].rotation.x = -sw * 0.7; m.arms[1].rotation.x = sw * 0.7;
-      m.g.position.y = walk * Math.abs(Math.sin(phase * 2 + i * 0.7)) * 0.07;
+
+      // ---- the walk ----
+      // A human gait, not a two-frame swing. The pieces that do the work:
+      //   · the knee bends only while the leg is coming THROUGH, which is what
+      //     stops the foot skating and gives the step its lift
+      //   · the ankle rolls, so there is a heel strike and a toe-off
+      //   · the elbow stays slightly bent and bends more on the back swing
+      //   · the pelvis dips twice per stride, at each weight transfer
+      //   · shoulders counter-rotate against the hips
+      // Idle still moves: weight shifts, breathing, a little head drift.
+      const ph = phase + i * 0.7;
+      const w = walk;
+
+      for (const l of m.legs) {
+        const t2 = ph + (l.sx > 0 ? Math.PI : 0);
+        const thigh = w * 0.55 * Math.sin(t2);
+        // Two components, because a knee does two things in a stride: it folds
+        // hard just after toe-off to swing the foot through, and it gives a
+        // small absorbing bend as the weight comes onto it at heel strike.
+        const swing = 1.10 * Math.max(0, -Math.sin(t2 - 0.55));
+        const absorb = 0.20 * Math.max(0, Math.sin(t2 * 2 + 0.4));
+        const knee = w * (swing + absorb);
+        l.root.rotation.x = thigh;
+        l.joint.rotation.x = knee;
+        // heel strike then toe-off: the ankle rolls rather than staying flat
+        if (l.end) l.end.rotation.x = -knee * 0.40 - w * 0.26 * Math.sin(t2 + 0.9);
+      }
+      for (const arm of m.arms) {
+        const t2 = ph + (arm.sx > 0 ? 0 : Math.PI);
+        arm.root.rotation.x = -w * 0.46 * Math.sin(t2) - 0.05;
+        // never fully straight, and tighter as it comes back
+        arm.joint.rotation.x = -(0.16 + w * 0.38 * clamp01(Math.sin(t2 + 1.1)));
+        arm.root.rotation.z = arm.sx * (0.07 + w * 0.05 * Math.cos(t2 * 2));
+      }
+
+      // two dips per stride, at the weight transfers
+      const bob = -w * 0.05 * Math.cos(ph * 2 + 0.5);
+      const idle = (1 - w) * Math.sin(phase * 0.8 + i) * 0.012;
+      m.pelvis.position.y = 12 * U + bob + idle;
+      m.pelvis.rotation.y = w * 0.10 * Math.sin(ph);
+      m.pelvis.rotation.z = w * 0.05 * Math.sin(ph);
+      // shoulders swing the other way
+      m.torso.rotation.y = -w * 0.16 * Math.sin(ph);
+      m.torso.rotation.x = w * 0.07 + (1 - w) * 0.02 * Math.sin(phase * 0.8 + i);
+      // and the head holds still against all of it
+      m.head.rotation.y = -m.torso.rotation.y * 0.7 + (1 - w) * Math.sin(phase * 0.3 + i) * 0.14;
+      m.head.rotation.x = -m.torso.rotation.x * 0.6;
+      m.g.position.y = 0;
     }
   }
 
   // ---------------------------------------------------------------
-  //  the boss rig
+  //  the bosses
   // ---------------------------------------------------------------
-  // One rig, dressed four ways. They are all "an enormous thing at the far
-  // end of a room", so the silhouette is shared and the identity comes from
-  // proportion, the limbs, and what orbits it.
-  const LOOKS = {
-    warden: { torso: [7.5, 9, 5.5], shape: "hooded", limbs: "chains", partN: 4, spin: 0.25 },
-    smith:  { torso: [8.5, 7.5, 6], shape: "blocky", limbs: "hammers", partN: 5, spin: 0.4 },
-    tyrant: { torso: [6.5, 10, 6.5], shape: "angular", limbs: "none", partN: 6, spin: 0.8 },
-    dragon: { torso: [8, 8, 7], shape: "beast", limbs: "wings", partN: 6, spin: 0.3 },
-  };
-  function lookOf(id) { return LOOKS[id] || LOOKS.tyrant; }
+  // One builder each. They used to share a rig — a torso, a sphere head, two
+  // arms — and the result was three recolours of the same statue. Nothing is
+  // shared now except the materials and the convention that every builder
+  // returns { eyes, eyeY, ... } so the poses can find the parts they animate.
+
+  function eyePair(parent, accent, sx, y, z, r) {
+    const out = [];
+    for (const s2 of [-1, 1]) {
+      const e = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 12),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(accent), toneMapped: false }));
+      const glow = new THREE.Mesh(new THREE.SphereGeometry(r * 2.9, 12, 10), new THREE.MeshBasicMaterial({
+        color: new THREE.Color(accent), transparent: true, opacity: 0.22,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+      e.add(glow);
+      e.position.set(s2 * sx, y, z);
+      parent.add(e); out.push(e);
+    }
+    return out;
+  }
+
+  // ---- THE DROWNED WARDEN -------------------------------------------------
+  // No legs. It is a robe with something in it, and it comes up out of water,
+  // so everything below the waist is a widening cone that meets the flood.
+  function buildWarden(root, shell, body, trim, accent) {
+    const eyeY = 15.5;
+
+    const robe = new THREE.Mesh(new THREE.CylinderGeometry(4.4, 9.5, 15, 16, 3, true), body);
+    robe.position.y = 7.5; shell.add(robe);
+    // ragged hem, so it does not end in a clean circle
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * TAU;
+      const rag = new THREE.Mesh(new THREE.ConeGeometry(1.5, 3.5 + (i % 3), 4), body);
+      rag.position.set(Math.cos(a) * 9.2, 1.2, Math.sin(a) * 9.2);
+      rag.rotation.x = Math.PI;
+      shell.add(rag);
+    }
+    const shoulders = new THREE.Mesh(new THREE.CylinderGeometry(5.6, 4.6, 3.2, 16), body);
+    shoulders.position.y = 14.2; shell.add(shoulders);
+
+    // the hood — a cone with nothing under it but two lights
+    const hood = new THREE.Mesh(new THREE.ConeGeometry(4.4, 7.5, 14, 1, true), body);
+    hood.position.set(0, 18.4, -0.4); hood.rotation.x = 0.12;
+    shell.add(hood);
+    const voidGeo = new THREE.SphereGeometry(3.0, 14, 12);
+    const dark = new THREE.Mesh(voidGeo, new THREE.MeshBasicMaterial({ color: 0x03060a }));
+    dark.position.set(0, 16.6, 0.8); shell.add(dark);
+    const eyes = eyePair(root, accent, 1.25, eyeY + 1.4, 2.6, 0.55);
+
+    // chains, hanging from the shoulders and dragging into the water
+    const chains = [];
+    for (const sx of [-1, 1]) {
+      const c = new THREE.Group();
+      const links = [];
+      for (let i = 0; i < 14; i++) {
+        const l = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.17, 6, 10), trim);
+        l.rotation.x = (i % 2) ? 0 : Math.PI / 2;
+        l.position.y = -i * 0.92;
+        c.add(l); links.push(l);
+      }
+      const hook = new THREE.Mesh(new THREE.ConeGeometry(0.55, 2.0, 6), trim);
+      hook.position.y = -14.2; hook.rotation.x = Math.PI;
+      c.add(hook);
+      c.position.set(sx * 5.4, 14.0, 1.2);
+      shell.add(c);
+      chains.push({ g: c, sx, links });
+    }
+
+    // a drowned lantern it carries, the only warm thing about it
+    const lantern = new THREE.Group();
+    const cage = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.0, 1.5), trim);
+    const flame = glowSprite(accent, 5, 0.8);
+    lantern.add(cage, flame);
+    lantern.position.set(4.6, 9.0, 3.2);
+    shell.add(lantern);
+
+    return { eyes, eyeY, chains, hood, robe, lantern, limbs: [], parts: [] };
+  }
+
+  // ---- THE EMBER SMITH ----------------------------------------------------
+  // A workshop with arms. Squat, heavy, built around an anvil, and lit from a
+  // forge-heart in its chest that the cutscene lights first.
+  function buildSmith(root, shell, body, trim, accent) {
+    const eyeY = 11.8;
+
+    const anvil = new THREE.Mesh(new THREE.BoxGeometry(13, 3.0, 8), trim);
+    anvil.position.y = 1.6; shell.add(anvil);
+    const waist = new THREE.Mesh(new THREE.BoxGeometry(9, 4.5, 6.5), body);
+    waist.position.y = 5.2; shell.add(waist);
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(12.5, 7.5, 8), body);
+    torso.position.y = 10.0; shell.add(torso);
+
+    // the forge in its chest, behind a grate
+    const heart = new THREE.Mesh(new THREE.BoxGeometry(4.4, 4.4, 1.0),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(accent), toneMapped: false }));
+    heart.position.set(0, 10.0, 4.1); shell.add(heart);
+    const heartGlow = glowSprite(accent, 13, 0);
+    heartGlow.position.set(0, 10.0, 5.0); shell.add(heartGlow);
+    for (let i = -1; i <= 1; i++) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5.0, 0.5), trim);
+      bar.position.set(i * 1.5, 10.0, 4.5); shell.add(bar);
+    }
+
+    // head: a helmet with a visor slit rather than a face
+    const helm = new THREE.Mesh(new THREE.BoxGeometry(5.5, 4.2, 5.0), body);
+    helm.position.y = 16.0; shell.add(helm);
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.9, 0.4),
+      new THREE.MeshBasicMaterial({ color: 0x0a0503 }));
+    visor.position.set(0, 15.9, 2.6); shell.add(visor);
+    const eyes = eyePair(root, accent, 1.35, eyeY + 4.1, 2.7, 0.42);
+
+    // chimney stacks that throw sparks
+    const stacks = [];
+    for (const sx of [-1, 1]) {
+      const st = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.5, 7.5, 8), body);
+      st.position.set(sx * 4.2, 16.5, -3.2);
+      shell.add(st); stacks.push(st);
+    }
+
+    // hammer arms
+    const limbs = [];
+    for (const sx of [-1, 1]) {
+      const arm = new THREE.Group();
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(2.6, 8.0, 2.6), body);
+      upper.position.y = -4.0;
+      const hammerHead = new THREE.Mesh(new THREE.BoxGeometry(5.0, 4.2, 4.2), trim);
+      hammerHead.position.y = -9.6;
+      const haft = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 4, 6), body);
+      haft.position.y = -7.2;
+      arm.add(upper, haft, hammerHead);
+      arm.position.set(sx * 7.0, 13.2, 0);
+      arm.rotation.z = sx * -0.24;
+      shell.add(arm); limbs.push({ arm, sx, hammer: hammerHead });
+    }
+
+    // bellows on its back
+    const bellows = new THREE.Mesh(new THREE.BoxGeometry(7, 5, 3), body);
+    bellows.position.set(0, 10.5, -5.4); shell.add(bellows);
+
+    return { eyes, eyeY, limbs, heart, heartGlow, stacks, torso, anvil, parts: [] };
+  }
+
+  // ---- THE HOLLOW TYRANT --------------------------------------------------
+  // It does not stand on the floor and it does not have a body. It is a crown,
+  // a hollow where a king used to be, and a mantle hanging off nothing.
+  function buildTyrant(root, shell, body, trim, accent) {
+    const eyeY = 14.0;
+
+    // the mantle: a long ragged cone, wide at the bottom, open at the top
+    const mantle = new THREE.Mesh(new THREE.ConeGeometry(7.5, 16, 12, 1, true), body);
+    mantle.position.y = 9.0; shell.add(mantle);
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * TAU;
+      const rag = new THREE.Mesh(new THREE.ConeGeometry(1.4, 4.5 + (i % 4) * 1.2, 4), body);
+      rag.position.set(Math.cos(a) * 7.2, 1.5, Math.sin(a) * 7.2);
+      rag.rotation.x = Math.PI;
+      shell.add(rag);
+    }
+
+    // the hollow itself — a dark void where the head should be, ringed in light
+    const hollow = new THREE.Mesh(new THREE.SphereGeometry(3.4, 16, 12),
+      new THREE.MeshBasicMaterial({ color: 0x05020a }));
+    hollow.position.y = 17.0; shell.add(hollow);
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(4.6, 0.28, 8, 40),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(accent), toneMapped: false }));
+    halo.position.y = 17.0; halo.rotation.x = Math.PI / 2;
+    shell.add(halo);
+    const eyes = eyePair(root, accent, 1.4, eyeY + 3.2, 2.4, 0.5);
+
+    // a broken crown of floating shards above the hollow
+    const crown = [];
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * TAU;
+      const sp = new THREE.Mesh(new THREE.ConeGeometry(0.6, 3.4 + (i % 3) * 1.1, 4), trim);
+      sp.position.set(Math.cos(a) * 4.3, 21.0, Math.sin(a) * 4.3);
+      sp.userData.a = a;
+      shell.add(sp); crown.push(sp);
+    }
+
+    // the sigils it fights with, orbiting
+    const parts = [];
+    for (let i = 0; i < 6; i++) {
+      const g = new THREE.Group();
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.16, 6, 24), trim);
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.22, 0.22), trim);
+      g.add(ring, bar);
+      g.userData.a = (i / 6) * TAU;
+      shell.add(g); parts.push(g);
+    }
+
+    return { eyes, eyeY, mantle, hollow, halo, crown, parts, limbs: [] };
+  }
+
+  // ---------------------------------------------------------------
+  //  rig assembly
+  // ---------------------------------------------------------------
+  const BUILDERS = { warden: buildWarden, smith: buildSmith, tyrant: buildTyrant };
 
   function buildRig(id, color, accent) {
     if (rig) { scene.remove(rig.root); rig = null; }
-    const L = lookOf(id);
     const root = new THREE.Group();
     root.position.set(0, 0, ROOM.bossZ);
     scene.add(root);
-    // Every piece of the body lives in one group so it can be hidden as a
-    // unit during the dark beat. The eyes deliberately do NOT — they hang off
-    // the root, because two eyes opening in an empty black room IS that beat.
+    // Every piece of the body lives in one group so it can be hidden as a unit
+    // during the dark beat. The eyes deliberately do NOT — they hang off the
+    // root, because two eyes opening in an empty black room IS that beat.
     const shell = new THREE.Group();
     root.add(shell);
 
-    const body = new THREE.MeshStandardMaterial({ color: new THREE.Color(color), roughness: 0.72, metalness: 0.22, emissive: new THREE.Color(color), emissiveIntensity: 0.03 });
-    const trim = new THREE.MeshStandardMaterial({ color: new THREE.Color(accent), roughness: 0.4, metalness: 0.5, emissive: new THREE.Color(accent), emissiveIntensity: 0.5 });
+    const body = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(color), roughness: 0.72, metalness: 0.22,
+      emissive: new THREE.Color(color), emissiveIntensity: 0.03,
+    });
+    const trim = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(accent), roughness: 0.4, metalness: 0.5,
+      emissive: new THREE.Color(accent), emissiveIntensity: 0.5,
+    });
 
-    // Varkaal gets its own anatomy — see buildDragon.
-    if (L.shape === "beast") {
-      const d = buildDragon(root, shell, body, trim, accent);
-      rig = { root, shell, torso: d.chest, head: d.head, eyes: d.eyes, limbs: d.wings,
-              parts: [], L, id, body, trim, eyeY: d.eyeY, dragon: d,
-              accent: new THREE.Color(accent), color: new THREE.Color(color) };
-      currentId = id;
-      return rig;
-    }
+    const build = id === "dragon" ? buildDragon : (BUILDERS[id] || buildTyrant);
+    const d = build(root, shell, body, trim, accent);
 
-    // ---- torso ----
-    // Each boss is an enormous thing at the end of a room, so the mass is
-    // shared; the identity is in the proportion and what is bolted to it.
-    let torsoGeo;
-    if (L.shape === "hooded") { torsoGeo = new THREE.CylinderGeometry(L.torso[0] * 0.45, L.torso[0], L.torso[1], 12); }
-    else if (L.shape === "blocky") { torsoGeo = new THREE.BoxGeometry(L.torso[0], L.torso[1], L.torso[2]); }
-    else if (L.shape === "angular") { torsoGeo = new THREE.OctahedronGeometry(L.torso[0], 0); torsoGeo.scale(1, L.torso[1] / L.torso[0], 1); }
-    else { torsoGeo = new THREE.SphereGeometry(1, 20, 14); torsoGeo.scale(L.torso[0], L.torso[1] * 0.8, L.torso[2]); }
-    const torso = new THREE.Mesh(torsoGeo, body);
-    torso.position.y = L.torso[1] * 0.62 + 2;
-    shell.add(torso);
-
-    // Shoulders — the line that reads first at a distance.
-    for (const sx of [-1, 1]) {
-      const sh = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.8, 4.2), trim);
-      sh.position.set(sx * L.torso[0] * 0.82, L.torso[1] * 1.02 + 2, 0);
-      sh.rotation.z = sx * 0.18;
-      shell.add(sh);
-    }
-
-    if (L.shape === "hooded") {
-      // A robe that widens to the floor, so it looks planted rather than posed.
-      const robe = new THREE.Mesh(new THREE.CylinderGeometry(L.torso[0] * 0.98, L.torso[0] * 1.55, 6.5, 14), body);
-      robe.position.y = 3.2; shell.add(robe);
-      // and a hood that hangs over the eyes
-      const hood = new THREE.Mesh(new THREE.ConeGeometry(4.2, 5.4, 12, 1, true), body);
-      hood.position.y = L.torso[1] * 1.18 + 3.2; shell.add(hood);
-    } else if (L.shape === "blocky") {
-      // The anvil it is built around, and a chimney throwing sparks.
-      const anvil = new THREE.Mesh(new THREE.BoxGeometry(L.torso[0] * 1.5, 2.2, L.torso[2] * 1.4), trim);
-      anvil.position.y = 1.4; shell.add(anvil);
-      for (const sx of [-1, 1]) {
-        const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 1.0, 6, 8), body);
-        stack.position.set(sx * 3.2, L.torso[1] * 1.25 + 2, -2.4);
-        shell.add(stack);
-      }
-    } else if (L.shape === "angular") {
-      // An inverted second mass, so the silhouette is an hourglass rather
-      // than one diamond, plus a crown that says which way is up.
-      const lower = new THREE.Mesh(new THREE.OctahedronGeometry(L.torso[0] * 0.72, 0), body);
-      lower.scale.y = 0.8; lower.position.y = 2.4; shell.add(lower);
-      for (let i = 0; i < 7; i++) {
-        const a = (i / 7) * TAU;
-        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.55, 4.5, 5), trim);
-        spike.position.set(Math.cos(a) * 3.4, L.torso[1] * 1.24 + 3.4, Math.sin(a) * 3.4);
-        spike.rotation.set(Math.sin(a) * 0.42, 0, -Math.cos(a) * 0.42);
-        shell.add(spike);
-      }
-    }
-
-    // ---- head + eyes ----
-    const head = new THREE.Group();
-    head.position.y = L.torso[1] * 1.18 + 2.6;
-    const eyeY = head.position.y;
-    head.add(new THREE.Mesh(new THREE.SphereGeometry(2.7, 16, 12), body));
-    shell.add(head);
-
-    // The eyes hang off the ROOT, not the head: during the dark beat the body
-    // is hidden and two eyes opening in an empty black room is the whole shot.
-    const eyes = [];
-    for (const sx of [-1, 1]) {
-      const e = new THREE.Mesh(new THREE.SphereGeometry(0.85, 14, 12), new THREE.MeshBasicMaterial({ color: new THREE.Color(accent) }));
-      const glow = new THREE.Mesh(new THREE.SphereGeometry(2.3, 14, 12), new THREE.MeshBasicMaterial({
-        color: new THREE.Color(accent), transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false }));
-      e.add(glow);
-      e.position.set(sx * 1.55, eyeY + 0.5, 2.6);
-      e.visible = false;
-      root.add(e); eyes.push(e);
-    }
-
-    // ---- limbs ----
-    const limbs = [];
-    if (L.limbs === "hammers" || L.limbs === "chains") {
-      for (const sx of [-1, 1]) {
-        const arm = new THREE.Group();
-        const upper = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.4, 7, 8), body);
-        upper.position.y = -3.5;
-        const head2 = new THREE.Mesh(
-          L.limbs === "hammers" ? new THREE.BoxGeometry(3.4, 3.0, 3.0) : new THREE.SphereGeometry(1.7, 12, 10), trim);
-        head2.position.y = -7.6;
-        arm.add(upper, head2);
-        arm.position.set(sx * (L.torso[0] * 0.92), L.torso[1] * 1.0 + 2, 0);
-        arm.rotation.z = sx * -0.28;
-        shell.add(arm); limbs.push({ arm, sx });
-      }
-    }
-
-    // ---- the parts the fight actually targets, orbiting it ----
-    const parts = [];
-    for (let i = 0; i < L.partN; i++) {
-      const a = (i / L.partN) * TAU;
-      const p = new THREE.Mesh(new THREE.OctahedronGeometry(1.5, 0), trim);
-      p.userData.a = a;
-      shell.add(p); parts.push(p);
-    }
-
-    rig = { root, shell, torso, head, eyes, limbs, parts, L, id, body, trim, eyeY,
-            accent: new THREE.Color(accent), color: new THREE.Color(color) };
+    rig = Object.assign({
+      root, shell, id, body, trim,
+      accent: new THREE.Color(accent), color: new THREE.Color(color),
+      torso: d.torso || shell, head: d.head || shell,
+      limbs: d.limbs || [], parts: d.parts || [],
+    }, d);
+    if (id === "dragon") rig.dragon = d;
     currentId = id;
     return rig;
   }
-
 
   // ---------------------------------------------------------------
   //  Varkaal
@@ -845,7 +1109,34 @@
       shell.add(sp);
     }
 
-    return { chest, hips, legs, neck, necks, head, jaw, eyes, horns, wings, tail, eyeY };
+    // The crown. Hidden for the whole first phase — it only comes down on it
+    // once the transformation beat says so.
+    const crown = new THREE.Group();
+    const band = new THREE.Mesh(new THREE.TorusGeometry(2.5, 0.34, 8, 28),
+      new THREE.MeshStandardMaterial({ color: 0xf5d271, roughness: 0.22, metalness: 0.95,
+                                       emissive: 0xf5d271, emissiveIntensity: 0.35 }));
+    band.rotation.x = Math.PI / 2;
+    crown.add(band);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * TAU;
+      const tall = (i % 2) === 0;
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.42, tall ? 3.4 : 2.0, 5),
+        new THREE.MeshStandardMaterial({ color: 0xf5d271, roughness: 0.22, metalness: 0.95,
+                                         emissive: 0xf5d271, emissiveIntensity: 0.35 }));
+      spike.position.set(Math.cos(a) * 2.5, (tall ? 1.7 : 1.0), Math.sin(a) * 2.5);
+      crown.add(spike);
+      if (tall) {
+        const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.42, 0),
+          new THREE.MeshBasicMaterial({ color: 0xff5a2e, toneMapped: false }));
+        gem.position.set(Math.cos(a) * 2.5, 3.3, Math.sin(a) * 2.5);
+        crown.add(gem);
+      }
+    }
+    crown.visible = false;
+    crown.position.set(0, 2.1, -0.6);
+    head.add(crown);
+
+    return { chest, hips, legs, neck, necks, head, jaw, eyes, horns, wings, tail, eyeY, crown };
   }
 
   // ---------------------------------------------------------------
@@ -871,47 +1162,32 @@
   // ---------------------------------------------------------------
   //  ENTRANCE
   // ---------------------------------------------------------------
-  // arrive .00-.13 · seal .13-.22 · dark .22-.38 · stir .38-.50
-  // assemble .50-.80 · stand .80-1
-  const E = { arrive: 0.13, seal: 0.22, dark: 0.38, stir: 0.50, build: 0.80 };
+  // The first third is shared, because it is the same event every time: you
+  // walk in and the door shuts. After that each boss gets its own beats, its
+  // own camera and its own way of arriving — the old version played one
+  // assembly animation in three colours, which is why they blurred together.
+  //
+  //   arrive .00-.11   the party comes down the corridor
+  //   seal   .11-.19   the portcullis drops behind them
+  //   dark   .19-.32   the corridor light dies, the braziers come up
+  //   .32-1            whatever this particular thing does
+  const E = { arrive: 0.11, seal: 0.19, dark: 0.32 };
 
-  const ENTRANCE_CAM = [
-    // Low, inside the room, facing back at the doorway: they come down the
-    // corridor toward the camera as silhouettes against the light behind them.
-    [0.00, 1.5, 2.4, -1, 0, 3.2, ROOM.doorZ + 4, 55],
-    [E.arrive, 1.5, 2.4, -1, 0, 2.8, ROOM.doorZ - 2, 55],
-    // hold on the gate as it comes down behind them
-    [E.seal, 2.5, 5.2, -5, 0, 9.0, ROOM.doorZ, 58],
-    // and turn: the hall runs away into the dark
-    [E.dark, 0, 5.5, 8, 0, 8, ROOM.bossZ, 50],
-    // it stirs — push in on the eyes
-    [E.stir, 0, 7.0, 0, 0, 12, ROOM.bossZ, 42],
-    // crane up and off to one side while it assembles, far enough back that
-    // the room is in the shot: the scale of the thing is the whole point
-    [E.build, -11, 14.0, 8, 0, 11, ROOM.bossZ, 58],
-    // settle behind the party, looking past them at all of it
-    [1.00, 0, 9.0, 12, 0, 12, ROOM.bossZ, 60],
-  ];
-
-  function poseEntrance(p) {
+  function poseArrival(p) {
     const { k, t } = p;
     const R = room.userData;
     let shake = 0;
 
-    // --- they walk in ---
     const arrive = beat(k, 0, E.arrive);
     // Near-linear: an eased walk arrives in the first fifth of the beat and
     // then stands there, which reads as a glitch rather than as walking.
     const partyZ = lerp(ROOM.doorZ + 5, 1.5, arrive * (0.85 + 0.15 * arrive));
-    poseParty(p.party || 1, 0, partyZ, arrive < 1 ? 1 : 0, t / 130,
-              // walking in they face down the room; once they stop they are
-              // looking at whatever just sealed them in with it
+    poseParty(p.people, 0, partyZ, arrive < 1 ? 1 : 0, t / 130,
               arrive < 1 ? Math.PI : Math.PI * (1 - clamp01((k - E.seal) / 0.1)));
 
-    // --- the gate comes down behind them ---
     const seal = beat(k, E.arrive, E.seal);
-    // Falls faster than an ease-in: on a cubic it is still up near the top
-    // of the frame when the beat is nearly over.
+    // Falls faster than an ease-in: on a cubic it is still up near the top of
+    // the frame when the beat is nearly over.
     R.gate.position.y = lerp(13, 0, Math.pow(seal, 1.6));
     doorLight.intensity = 2.4 * (1 - easeIn(seal)) + 0.25 * (1 - seal);
     R.doorGlow.material.opacity = 0.75 * (1 - easeIn(seal));
@@ -919,11 +1195,18 @@
       spawnMote({ x: (Math.random() - 0.5) * 13, y: 0.3, z: ROOM.doorZ, vx: (Math.random() - 0.5) * 0.14,
                   vy: 0.05 + Math.random() * 0.1, vz: -Math.random() * 0.1, max: 120, r: 0.55, g: 0.5, b: 0.55, s: 0.05 });
     }
-    if (seal >= 1 && k < E.seal + 0.02) { shake = 0.7; }
+    if (seal >= 1 && k < E.seal + 0.02) shake = 0.7;
 
-    // --- braziers light in a run toward the far end ---
-    for (const b of R.braziers) {
-      const lit = beat(k, E.seal + b.order * 0.030, E.seal + 0.08 + b.order * 0.030);
+    ambient.intensity = lerp(0.46, 0.10, clamp01((k - E.arrive) / (E.dark - E.arrive)));
+    hemi.intensity = lerp(0.40, 0.12, clamp01((k - E.arrive) / (E.dark - E.arrive)));
+    return shake;
+  }
+
+  // Braziers coming up in a run down the room. Every boss uses it except the
+  // Warden, which puts them OUT instead.
+  function litBraziers(k, t, from, span) {
+    for (const b of room.userData.braziers) {
+      const lit = beat(k, from + b.order * 0.030, from + span + b.order * 0.030);
       const flick = 0.86 + 0.14 * Math.sin(t / 90 + b.order * 2.3);
       b.light.intensity = lit * 2.1 * flick;
       b.flame.material.opacity = lit * 0.95;
@@ -937,225 +1220,508 @@
                     max: 70, r: 1, g: 0.62, b: 0.24, s: 0.045, drag: 0.985 });
       }
     }
-
-    // --- the dark stirs: two eyes open, and light the room ---
-    const stir = beat(k, E.dark, E.stir);
-    for (const e of rig.eyes) { e.visible = stir > 0.02; e.scale.setScalar(0.3 + 0.7 * stir); }
-    eyeLight.color.copy(rig.accent);
-    eyeLight.intensity = stir * 1.3 * (0.85 + 0.15 * Math.sin(t / 130));
-    eyeLight.position.set(0, rig.eyeY, ROOM.bossZ + 3);
-
-    // --- ASSEMBLY: it comes together out of the dark ---
-    // Kept from the old cutscene because the idea was the good part — the
-    // thing is PUT TOGETHER rather than faded in. In 3D the shards actually
-    // come out of the dark and the lights catch them on the way in.
-    const build = beat(k, E.stir, E.build);
-    const seed = (window.ECON && ECON.mulberry32 && ECON.strToSeed)
-      ? ECON.mulberry32(ECON.strToSeed(p.id + "|assembly3d")) : Math.random;
-    const rnd = [];
-    for (let i = 0; i < SHARDS * 6; i++) rnd.push(seed());
-    let ri = 0;
-    const R6 = () => rnd[(ri++) % rnd.length];
-
-    const bodyOn = clamp01((build - 0.12) / 0.5);
-    rig.shell.visible = build > 0.06;
-    rig.root.scale.setScalar(lerp(0.82, 1, easeOut(bodyOn)));
-    rig.body.opacity = 1;
-    // Kept low on purpose: emissive is what turns a lit 3D boss back into a
-    // flat coloured silhouette, which is the thing this cutscene replaced.
-    rig.body.emissiveIntensity = 0.03 + 0.10 * build;
-
-    for (let i = 0; i < SHARDS; i++) {
-      const slot = i / SHARDS;
-      const fk = clamp01((build - slot * 0.55) / 0.34);
-      const m = fx.shards[i];
-      if (fk <= 0) { m.visible = false; continue; }
-      const ang = R6() * TAU, tilt = (R6() - 0.5) * 1.4, far = 30 + R6() * 40;
-      const size = 0.45 + R6() * 1.3;
-      const tx = (R6() - 0.5) * rig.L.torso[0] * 2.1;
-      const ty = 2 + R6() * rig.L.torso[1] * 1.4;
-      const tz = ROOM.bossZ + (R6() - 0.5) * rig.L.torso[2] * 1.8;
-      const e = easeOut(fk);
-      m.visible = true;
-      m.position.set(
-        lerp(tx + Math.cos(ang) * far, tx, e),
-        lerp(ty + Math.sin(tilt) * far * 0.6, ty, e),
-        lerp(tz + Math.sin(ang) * far, tz, e));
-      m.rotation.set(ang + (1 - e) * 9, tilt + (1 - e) * 7, 0);
-      m.scale.setScalar(size * (fk >= 1 ? 1 : 1 + (1 - fk) * 0.4));
-      m.material.color.copy(rig.color);
-      m.material.emissive.copy(rig.accent);
-      m.material.emissiveIntensity = fk >= 0.96 ? 1.4 * (1 - (fk - 0.96) / 0.04) : 0.06;
-      // the puff of it seating itself
-      if (fk > 0.93 && fk < 0.99 && Math.random() < 0.5) {
-        spawnMote({ x: tx, y: ty, z: tz, vx: (Math.random() - 0.5) * 0.25, vy: (Math.random() - 0.5) * 0.25,
-                    vz: (Math.random() - 0.5) * 0.25, max: 30, r: rig.accent.r, g: rig.accent.g, b: rig.accent.b, s: 0.07 });
-      }
-    }
-    if (build > 0 && build < 1) shake = Math.max(shake, 0.16 * build);
-
-    // limbs swing out as the body finishes
-    for (const l of rig.limbs) {
-      const on = clamp01((build - 0.45) / 0.5);
-      l.arm.visible = on > 0.02;
-      if (l.wing) {
-        l.arm.rotation.z = lerp(1.25, 0.12, easeOut(on)) * -l.sx;
-        l.arm.rotation.y = lerp(1.5, 0.28, easeOut(on)) * l.sx;
-      } else {
-        l.arm.rotation.z = l.sx * lerp(-1.5, -0.28, easeOut(on));
-      }
-    }
-
-    // parts settle into their orbit
-    for (let i = 0; i < rig.parts.length; i++) {
-      const pt = rig.parts[i];
-      const on = clamp01((build - 0.5 - i * 0.05) / 0.4);
-      pt.visible = on > 0.02;
-      const a = pt.userData.a + t / 1000 * rig.L.spin;
-      const rad = lerp(22, rig.L.torso[0] + 3.4, easeOut(on));
-      pt.position.set(Math.cos(a) * rad, 3 + rig.L.torso[1] * 0.8 + Math.sin(a * 2) * 1.6, Math.sin(a) * rad * 0.55);
-      pt.rotation.set(a * 1.7, a * 2.3, 0);
-      pt.scale.setScalar(on);
-    }
-
-    // sigil burns in under it
-    const sg = clamp01((build - 0.3) / 0.6);
+  }
+  function sigilGlow(k, on, spin, t) {
+    const R = room.userData;
     R.sigil.material.color.copy(rig.accent);
     R.sigilInner.material.color.copy(rig.accent);
-    R.sigil.material.opacity = sg * (0.35 + 0.2 * Math.sin(t / 220));
-    R.sigilInner.material.opacity = sg * 0.5;
-    R.sigilInner.rotation.y = t / 1400;
+    R.sigil.material.opacity = on * (0.35 + 0.2 * Math.sin(t / 220));
+    R.sigilInner.material.opacity = on * 0.5;
+    R.sigilInner.rotation.y = t / spin;
+  }
+  function shockwaves(cx, cz, prog, colorObj, maxR) {
+    for (let i = 0; i < fx.waves.length; i++) {
+      const w = fx.waves[i];
+      const wk = clamp01((prog - i * 0.1) / 0.55);
+      if (wk <= 0 || wk >= 1) { w.visible = false; continue; }
+      w.visible = true;
+      w.position.set(cx, 0.08 + i * 0.02, cz);
+      const r = 4 + easeOut(wk) * (maxR || 46);
+      w.scale.set(r, 1, r);
+      w.material.color.copy(colorObj);
+      w.material.opacity = 0.55 * (1 - wk);
+    }
+  }
+  function hideWaves() { for (const w of fx.waves) w.visible = false; }
 
-    // --- it stands, and the room takes it ---
-    const stand = beat(k, E.build, 1);
-    if (stand > 0) {
-      rig.root.position.y = Math.sin(stand * Math.PI) * 0.5;
-      rig.torso.rotation.z = Math.sin(t / 260) * 0.02;
-      shake = Math.max(shake, (1 - stand) * 0.9);
-      // shockwave off the floor
-      for (let i = 0; i < fx.waves.length; i++) {
-        const w = fx.waves[i];
-        const wk = clamp01((stand - i * 0.1) / 0.55);
-        if (wk <= 0 || wk >= 1) { w.visible = false; continue; }
-        w.visible = true;
-        w.position.set(0, 0.08 + i * 0.02, ROOM.bossZ);
-        const r = 4 + easeOut(wk) * 46;
-        w.scale.set(r, 1, r);
-        w.material.color.copy(rig.accent);
-        w.material.opacity = 0.55 * (1 - wk);
+  // ================= THE DROWNED WARDEN — the room floods =================
+  const CAM_WARDEN = [
+    [0.00, 1.5, 2.4, -1, 0, 3.2, ROOM.doorZ + 4, 55],
+    [E.arrive, 1.5, 2.4, -1, 0, 2.8, ROOM.doorZ - 2, 55],
+    [E.seal, 2.5, 5.2, -5, 0, 9.0, ROOM.doorZ, 58],
+    // down at floor level as the water comes across it
+    [E.dark, 0, 1.1, 6, 0, 1.0, ROOM.bossZ, 46],
+    // the chains break the surface
+    [0.52, -6, 2.6, 0, 0, 4.0, ROOM.bossZ, 50],
+    // and it rises
+    [0.80, -8, 9.0, 8, 0, 12, ROOM.bossZ, 58],
+    [1.00, 0, 8.0, 4.5, 0, 13, ROOM.bossZ, 60],
+  ];
+  function awakeWarden(p) {
+    const { k, t } = p;
+    let shake = 0;
+    // The braziers do not come up — the flood puts them out, nearest first.
+    for (const b of room.userData.braziers) {
+      const drown = beat(k, E.dark + b.order * 0.028, E.dark + 0.10 + b.order * 0.028);
+      const flick = 0.86 + 0.14 * Math.sin(t / 90 + b.order * 2.3);
+      const lit = (1 - drown) * (k < E.dark ? clamp01((k - E.seal) / 0.08) : 1);
+      b.light.intensity = lit * 2.1 * flick;
+      b.flame.material.opacity = lit * 0.95;
+      b.halo.material.opacity = lit * 0.5 * flick;
+      if (drown > 0 && drown < 1 && Math.random() < 0.5) {
+        const wp = b.g.position;
+        spawnMote({ x: wp.x, y: 4.2, z: wp.z, vx: (Math.random() - 0.5) * 0.1, vy: 0.12, vz: 0,
+                    max: 60, r: 0.8, g: 0.85, b: 0.9, s: 0.09, drag: 0.97 });
       }
-      if (Math.random() < 0.9) {
-        const a = Math.random() * TAU;
-        spawnMote({ x: Math.cos(a) * 9, y: 0.4, z: ROOM.bossZ + Math.sin(a) * 5,
-                    vx: Math.cos(a) * 0.3, vy: 0.14 + Math.random() * 0.2, vz: Math.sin(a) * 0.18,
-                    max: 80, r: 0.7, g: 0.66, b: 0.7, s: 0.07 });
-      }
-      // the flash on the reveal
-      const fl = clamp01(1 - Math.abs(stand - 0.12) / 0.12);
-      fx.wash.material.color.setRGB(1, 1, 1);
-      fx.wash.material.opacity = fl * 0.9;
-      // Deliberately restrained even on the reveal: the boss should be the
-      // brightest thing in the room, not evenly lit with it.
-      ambient.intensity = 0.24 + stand * 0.24;
-      hemi.intensity = 0.22 + stand * 0.20;
-    } else {
-      fx.wash.material.opacity = 0;
-      for (const w of fx.waves) w.visible = false;
-      ambient.intensity = lerp(0.46, 0.10, clamp01((k - E.arrive) / (E.dark - E.arrive)));
-      hemi.intensity = lerp(0.40, 0.12, clamp01((k - E.arrive) / (E.dark - E.arrive)));
     }
 
-    flyCamera(ENTRANCE_CAM, k, shake);
+    // A cold light off the water. Without it the braziers drown and the beat
+    // plays out in a completely black room.
+    const floodLit = beat(k, E.dark, 0.55);
+    coalLight.color.setRGB(0.35, 0.75, 0.95);
+    coalLight.position.set(0, 2.5, ROOM.bossZ + 8);
+    coalLight.distance = 60;
+    coalLight.intensity = floodLit * 1.5;
+
+    // the flood itself
+    const flood = beat(k, E.dark, 0.62);
+    fx.flood.visible = flood > 0.01;
+    fx.flood.position.y = lerp(-1.5, 3.6, easeOut(flood)) + Math.sin(t / 900) * 0.06;
+    fx.flood.material.opacity = 0.55 + 0.3 * flood;
+    if (flood > 0 && flood < 1 && Math.random() < 0.6) {
+      const a = Math.random() * TAU, r = Math.random() * 26;
+      spawnMote({ x: Math.cos(a) * r, y: fx.flood.position.y + 0.2, z: ROOM.bossZ + Math.sin(a) * r * 0.7,
+                  vx: 0, vy: 0.05 + Math.random() * 0.08, vz: 0, max: 70, r: 0.72, g: 0.9, b: 1, s: 0.06 });
+    }
+
+    // chains come up out of it, dragging
+    const chains = beat(k, 0.44, 0.66);
+    rig.shell.visible = chains > 0.02;
+    for (const c of rig.chains) {
+      c.g.rotation.z = Math.sin(t / 420 + c.sx) * 0.10 * chains;
+      c.g.position.y = lerp(2.0, 14.0, easeOut(chains));
+    }
+
+    // and then the thing wearing them
+    const rise = beat(k, 0.56, 0.86);
+    rig.root.position.y = lerp(-16, 0, easeOut(rise));
+    rig.root.rotation.y = Math.sin(t / 1600) * 0.06;
+    const look = beat(k, 0.80, 0.94);
+    for (const e of rig.eyes) {
+      e.visible = rise > 0.25;
+      e.scale.setScalar(0.2 + 0.8 * clamp01((rise - 0.25) / 0.5));
+      e.position.y = rig.root.position.y + rig.eyeY + 1.4;
+    }
+    rig.lantern.children[1].material.opacity = 0.35 + 0.5 * rise;
+    eyeLight.color.copy(rig.accent);
+    eyeLight.intensity = clamp01((rise - 0.3) / 0.5) * 1.6;
+    eyeLight.position.set(0, rig.eyeY, ROOM.bossZ + 3);
+    if (rise > 0 && rise < 1) shake = 0.2 * rise;
+    sigilGlow(k, clamp01((rise - 0.2) / 0.6), 1400, t);
+    if (look > 0) shockwaves(0, ROOM.bossZ, look, rig.accent, 40); else hideWaves();
+    fx.wash.material.opacity = clamp01(1 - Math.abs(beat(k, 0.86, 1) - 0.1) / 0.1) * 0.55;
+    ambient.intensity = 0.13 + 0.22 * Math.max(rise, floodLit * 0.5);
+    hemi.intensity = 0.15 + 0.24 * Math.max(rise, floodLit * 0.5);
+    return shake;
+  }
+
+  // ============ THE EMBER SMITH — it builds itself out of the floor ========
+  const CAM_SMITH = [
+    [0.00, 1.5, 2.4, -1, 0, 3.2, ROOM.doorZ + 4, 55],
+    [E.arrive, 1.5, 2.4, -1, 0, 2.8, ROOM.doorZ - 2, 55],
+    [E.seal, 2.5, 5.2, -5, 0, 9.0, ROOM.doorZ, 58],
+    // low, watching the floor come apart
+    [E.dark, 0, 2.2, 2, 0, 1.2, ROOM.bossZ, 48],
+    // craning up with the blocks as they climb
+    [0.60, -9, 11, 6, 0, 9, ROOM.bossZ, 56],
+    // the slam
+    [0.84, 0, 7.5, 8, 0, 10, ROOM.bossZ, 58],
+    [1.00, 0, 8.0, 4.5, 0, 12, ROOM.bossZ, 60],
+  ];
+  function awakeSmith(p) {
+    const { k, t } = p;
+    let shake = 0;
+    litBraziers(k, t, E.seal, 0.08);
+    hideWaves();
+    fx.flood.visible = false;
+
+    // The floor cracks and the pieces of it come UP. It was never in this
+    // room; the room is being taken apart to make it.
+    const rise = beat(k, E.dark, 0.62);      // out of the floor and hanging
+    const slam = beat(k, 0.66, 0.86);        // pulled together
+    const seed = (window.ECON && ECON.mulberry32 && ECON.strToSeed)
+      ? ECON.mulberry32(ECON.strToSeed("smith|forge")) : Math.random;
+    const rnd = []; for (let i = 0; i < SHARDS * 6; i++) rnd.push(seed());
+    let ri = 0; const R6 = () => rnd[(ri++) % rnd.length];
+
+    rig.shell.visible = slam > 0.55;
+    rig.root.position.y = 0;
+
+    for (let i = 0; i < SHARDS; i++) {
+      const m = fx.shards[i];
+      const slot = i / SHARDS;
+      const up = clamp01((rise - slot * 0.5) / 0.4);
+      if (up <= 0) { m.visible = false; continue; }
+      m.visible = slam < 0.9;
+      const ang = R6() * TAU, rad = 6 + R6() * 16;
+      const size = 0.9 + R6() * 1.9;
+      // where it comes out of the floor
+      const fx0 = Math.cos(ang) * rad, fz0 = ROOM.bossZ + Math.sin(ang) * rad * 0.8;
+      const hover = 2.5 + R6() * 12;
+      // where it ends up in the body
+      const tx = (R6() - 0.5) * 11, ty = 2 + R6() * 15, tz = ROOM.bossZ + (R6() - 0.5) * 7;
+      const e = easeOut(up);
+      const px = lerp(fx0, fx0, e), py = lerp(-2.5, hover, e), pz = lerp(fz0, fz0, e);
+      const sl = easeIn(slam);
+      m.position.set(lerp(px, tx, sl), lerp(py, ty, sl), lerp(pz, tz, sl));
+      m.rotation.set(ang + t / 1400 * (1 - sl) * 2, ang * 1.7 + t / 1100 * (1 - sl) * 2, 0);
+      m.scale.setScalar(size);
+      m.material.color.copy(rig.color);
+      m.material.emissive.copy(rig.accent);
+      // each one is still hot from wherever it came from
+      // Kept low: emissive is what turns lit geometry back into a flat
+      // silhouette, and forty glowing cubes will wash a whole room.
+      m.material.emissiveIntensity = 0.10 + 0.28 * (1 - up) + 0.8 * clamp01((sl - 0.85) / 0.15);
+      if (up < 1 && Math.random() < 0.4) {
+        spawnMote({ x: fx0, y: 0.2, z: fz0, vx: (Math.random() - 0.5) * 0.2, vy: 0.2 + Math.random() * 0.3,
+                    vz: (Math.random() - 0.5) * 0.2, max: 60, r: 1, g: 0.65, b: 0.2, s: 0.07 });
+      }
+    }
+    if (rise > 0 && rise < 1) shake = 0.25 * rise;
+
+    // the forge lights, the hammers come down, the anvil rings
+    const lit = beat(k, 0.84, 1);
+    rig.heart.material.color.copy(rig.accent);
+    rig.heartGlow.material.opacity = lit * 0.5 * (0.85 + 0.15 * Math.sin(t / 120));
+    rig.heartGlow.scale.setScalar(8);
+    rig.body.emissiveIntensity = 0.03 + 0.09 * lit;
+    for (const l of rig.limbs) {
+      l.arm.visible = rig.shell.visible;
+      l.arm.rotation.z = l.sx * lerp(-1.5, -0.24, easeOut(lit));
+      l.arm.rotation.x = -1.1 * Math.sin(clamp01(lit / 0.5) * Math.PI) * 0.6;
+    }
+    for (const e of rig.eyes) {
+      e.visible = lit > 0.05;
+      e.scale.setScalar(0.3 + 0.7 * lit);
+      e.position.y = rig.eyeY + 4.1;
+    }
+    eyeLight.color.copy(rig.accent);
+    eyeLight.intensity = lit * 1.4;
+    eyeLight.position.set(0, rig.eyeY, ROOM.bossZ + 3);
+    if (lit > 0) {
+      shake = Math.max(shake, (1 - lit) * 1.1);
+      shockwaves(0, ROOM.bossZ, lit, rig.accent, 50);
+      if (Math.random() < 0.9) {
+        const a = Math.random() * TAU;
+        spawnMote({ x: Math.cos(a) * 8, y: 0.4, z: ROOM.bossZ + Math.sin(a) * 5,
+                    vx: Math.cos(a) * 0.35, vy: 0.2 + Math.random() * 0.35, vz: Math.sin(a) * 0.2,
+                    max: 70, r: 1, g: 0.7, b: 0.25, s: 0.075 });
+      }
+      // sparks off the two chimney stacks
+      for (const st of rig.stacks) {
+        if (Math.random() < 0.5) {
+          spawnMote({ x: st.position.x, y: 20.5, z: ROOM.bossZ - 3.2, vx: (Math.random() - 0.5) * 0.15,
+                      vy: 0.25 + Math.random() * 0.3, vz: 0, max: 80, r: 1, g: 0.75, b: 0.3, s: 0.06 });
+        }
+      }
+    }
+    sigilGlow(k, clamp01((slam - 0.3) / 0.6), 1200, t);
+    fx.wash.material.opacity = clamp01(1 - Math.abs(lit - 0.08) / 0.08) * 0.9;
+    ambient.intensity = 0.10 + 0.20 * lit;
+    hemi.intensity = 0.12 + 0.18 * lit;
+    return shake;
+  }
+
+  // ========== THE HOLLOW TYRANT — it does not arrive, it is let in =========
+  const CAM_TYRANT = [
+    [0.00, 1.5, 2.4, -1, 0, 3.2, ROOM.doorZ + 4, 55],
+    [E.arrive, 1.5, 2.4, -1, 0, 2.8, ROOM.doorZ - 2, 55],
+    [E.seal, 2.5, 5.2, -5, 0, 9.0, ROOM.doorZ, 58],
+    // the sigils burning into the floor, seen from above
+    [E.dark, 0, 13, 2, 0, 0.5, ROOM.bossZ, 52],
+    // down to eye level as the tear opens
+    [0.56, 0, 6.5, 4, 0, 11, ROOM.bossZ, 40],
+    // and back for what came through it
+    [0.82, 7, 10, 8, 0, 12, ROOM.bossZ, 58],
+    [1.00, 0, 8.0, 4.5, 0, 12, ROOM.bossZ, 60],
+  ];
+  function awakeTyrant(p) {
+    const { k, t } = p;
+    let shake = 0;
+    fx.flood.visible = false;
+    for (const m of fx.shards) m.visible = false;   // it does not assemble
+
+    // Six sigils burn into the floor, one at a time, like something is being
+    // signed. The braziers gutter as each one lands.
+    const sig = beat(k, E.dark, 0.52);
+    for (const b of room.userData.braziers) {
+      const lit = beat(k, E.seal + b.order * 0.03, E.seal + 0.08 + b.order * 0.03);
+      const gutter = 1 - 0.75 * Math.pow(Math.max(0, Math.sin(sig * Math.PI * 6)), 8);
+      b.light.intensity = lit * 2.1 * gutter;
+      b.flame.material.opacity = lit * 0.95 * gutter;
+      b.halo.material.opacity = lit * 0.5 * gutter;
+    }
+    for (let i = 0; i < rig.parts.length; i++) {
+      const g = rig.parts[i];
+      const on = clamp01((sig - i / rig.parts.length * 0.8) / 0.2);
+      g.visible = on > 0.02;
+      const a = (i / rig.parts.length) * TAU;
+      // they start flat on the floor and only later lift into their orbit
+      const lift = beat(k, 0.62, 0.9);
+      g.position.set(Math.cos(a) * lerp(9, 8.5, lift), lerp(0.15, 15 + Math.sin(a * 2) * 2.5, easeOut(lift)), Math.sin(a) * lerp(9, 8.5, lift) * (1 - lift * 0.45));
+      g.rotation.set(lerp(Math.PI / 2, a * 1.4, lift), a + t / 900, 0);
+      g.scale.setScalar(on * lerp(2.2, 1, lift));
+    }
+
+    // the tear: a vertical slit of light that opens in the middle of the air
+    const tear = beat(k, 0.46, 0.74);
+    fx.tear.visible = tear > 0.01 && tear < 0.99;
+    fx.tear.position.set(0, 12, ROOM.bossZ + 2);
+    fx.tear.scale.set(0.4 + 5.4 * Math.sin(clamp01(tear / 0.8) * Math.PI), 14 + 10 * easeOut(tear), 1);
+    fx.tear.material.color.copy(rig.accent);
+    fx.tear.material.opacity = Math.sin(clamp01(tear) * Math.PI) * 0.95;
+    fx.tearGlow.visible = fx.tear.visible;
+    fx.tearGlow.position.copy(fx.tear.position);
+    fx.tearGlow.scale.setScalar(10 + 26 * Math.sin(clamp01(tear) * Math.PI));
+    fx.tearGlow.material.color.copy(rig.accent);
+    fx.tearGlow.material.opacity = Math.sin(clamp01(tear) * Math.PI) * 0.5;
+    if (tear > 0.1 && tear < 0.95 && Math.random() < 0.8) {
+      spawnMote({ x: (Math.random() - 0.5) * 3, y: 4 + Math.random() * 18, z: ROOM.bossZ + 2,
+                  vx: (Math.random() - 0.5) * 0.25, vy: (Math.random() - 0.5) * 0.25, vz: 0.1 + Math.random() * 0.2,
+                  max: 60, r: rig.accent.r, g: rig.accent.g, b: rig.accent.b, s: 0.07 });
+    }
+    if (tear > 0 && tear < 1) shake = 0.3 * Math.sin(clamp01(tear) * Math.PI);
+
+    // It steps out already whole. There is no assembly and no rising: the
+    // point of this one is that it was always finished, somewhere else.
+    const step = beat(k, 0.66, 0.86);
+    rig.shell.visible = step > 0.02;
+    rig.root.position.z = ROOM.bossZ + lerp(2.5, 0, easeOut(step));
+    rig.root.position.y = lerp(1.6, 0.6 + Math.sin(t / 1100) * 0.35, easeOut(step));
+    rig.root.rotation.y = Math.sin(t / 2000) * 0.08;
+    rig.mantle.rotation.y = t / 3000;
+    for (const e of rig.eyes) {
+      e.visible = step > 0.15;
+      e.scale.setScalar(0.25 + 0.75 * clamp01((step - 0.15) / 0.5));
+      e.position.y = rig.root.position.y + rig.eyeY + 3.2;
+      e.position.z = 2.4 + (rig.root.position.z - ROOM.bossZ);
+    }
+    // the crown spins up last
+    const crowned = beat(k, 0.84, 1);
+    for (let i = 0; i < rig.crown.length; i++) {
+      const sp = rig.crown[i];
+      const a = sp.userData.a + t / 1500;
+      sp.position.set(Math.cos(a) * 4.3, 21.0 + Math.sin(t / 700 + i) * 0.4, Math.sin(a) * 4.3);
+      sp.rotation.set(0, -a, 0);
+      sp.scale.setScalar(0.3 + 0.7 * crowned);
+    }
+    rig.halo.rotation.z = t / 1300;
+    rig.halo.material.color.copy(rig.accent);
+    rig.trim.emissiveIntensity = 0.5 + 1.4 * crowned;
+    eyeLight.color.copy(rig.accent);
+    eyeLight.intensity = step * 1.5;
+    eyeLight.position.set(0, rig.eyeY, ROOM.bossZ + 4);
+    sigilGlow(k, clamp01((step - 0.2) / 0.6), 900, t);
+    if (crowned > 0) shockwaves(0, ROOM.bossZ, crowned, rig.accent, 44); else hideWaves();
+    fx.wash.material.opacity = clamp01(1 - Math.abs(crowned - 0.1) / 0.1) * 0.85;
+    ambient.intensity = 0.10 + 0.18 * step;
+    hemi.intensity = 0.12 + 0.16 * step;
+    return shake;
+  }
+
+  // ============ VARKAAL — it does not walk in, it lands ====================
+  const CAM_DRAGON = [
+    [0.00, 1.5, 2.4, -1, 0, 3.2, ROOM.doorZ + 4, 55],
+    [E.arrive, 1.5, 2.4, -1, 0, 2.8, ROOM.doorZ - 2, 55],
+    [E.seal, 2.5, 5.2, -5, 0, 9.0, ROOM.doorZ, 58],
+    // looking UP, because the noise is coming from above
+    [E.dark, 0, 4.0, 4, 0, 20, ROOM.bossZ, 56],
+    // thrown by the impact
+    [0.52, -3, 3.0, 6, 0, 4, ROOM.bossZ, 64],
+    // and back off to take the whole animal
+    [0.80, 0, 11, 14, 0, 11, ROOM.bossZ, 68],
+    [1.00, 0, 8.5, 5.0, 0, 12, ROOM.bossZ, 62],
+  ];
+  function awakeDragon(p) {
+    const { k, t } = p;
+    let shake = 0;
+    fx.flood.visible = false;
+    for (const m of fx.shards) m.visible = false;
+    litBraziers(k, t, E.seal, 0.08);
+
+    // Something very large is moving on the roof.
+    const above = beat(k, E.dark, 0.48);
+    if (above > 0 && above < 1) {
+      shake = 0.25 + 0.5 * above;
+      for (let i = 0; i < 3; i++) {
+        spawnMote({ x: (Math.random() - 0.5) * 28, y: ROOM.wallH - 0.5, z: ROOM.bossZ + (Math.random() - 0.5) * 22,
+                    vx: 0, vy: -0.12 - Math.random() * 0.1, vz: 0, max: 120, r: 0.6, g: 0.56, b: 0.58, s: 0.06, drag: 1 });
+      }
+    }
+    // its shadow on the floor, growing
+    const R = room.userData;
+    R.sigil.material.color.setRGB(0.02, 0.01, 0.02);
+    R.sigil.material.opacity = above * 0.85;
+    R.sigil.scale.setScalar(lerp(2.6, 1.0, above));
+
+    // the landing
+    const drop = beat(k, 0.46, 0.56);
+    rig.shell.visible = drop > 0.02;
+    rig.root.position.y = lerp(46, 0, easeIn(drop));
+    if (drop > 0 && drop < 1) shake = 1.2 * drop;
+    const land = beat(k, 0.56, 1);
+    if (land > 0) {
+      shake = Math.max(shake, 1.9 * (1 - clamp01(land / 0.18)));
+      shockwaves(0, ROOM.bossZ, land, rig.accent, 56);
+      if (land < 0.3 && Math.random() < 0.95) {
+        const a = Math.random() * TAU, r = 4 + Math.random() * 16;
+        spawnMote({ x: Math.cos(a) * r, y: 0.4, z: ROOM.bossZ + Math.sin(a) * r * 0.7,
+                    vx: Math.cos(a) * 0.55, vy: 0.25 + Math.random() * 0.4, vz: Math.sin(a) * 0.35,
+                    max: 90, r: 0.72, g: 0.66, b: 0.64, s: 0.09 });
+      }
+    } else hideWaves();
+
+    // it picks itself up off the floor and opens
+    const open = easeOut(beat(k, 0.60, 0.88));
+    const D = rig.dragon;
+    for (const l of rig.limbs) {
+      l.arm.visible = rig.shell.visible;
+      l.arm.rotation.z = lerp(-1.2, 0.40 + 0.14 * Math.sin(t / 430), open) * l.sx;
+      l.arm.rotation.y = l.sx * lerp(1.5, 0.34, open);
+      l.arm.rotation.x = lerp(0.7, -0.10, open);
+    }
+    if (D) {
+      D.neck.rotation.x = lerp(0.9, -0.10, open);
+      D.head.rotation.x = lerp(0.55, -0.12, open);
+      D.jaw.rotation.x = 0.1 + 0.7 * Math.sin(clamp01(beat(k, 0.86, 1) / 0.7) * Math.PI);
+      D.tail.rotation.y = Math.sin(t / 900) * 0.14;
+      for (const lg of D.legs) lg.rotation.x = lerp(0.5, 0, open);
+    }
+    for (const e of rig.eyes) {
+      e.visible = drop > 0.5;
+      e.scale.setScalar(0.3 + 0.7 * open);
+    }
+    rig.body.emissiveIntensity = 0.03 + 0.14 * open;
+    eyeLight.color.copy(rig.accent);
+    eyeLight.intensity = open * 1.5;
+    eyeLight.position.set(0, 14, ROOM.bossZ + 6);
+    sigilGlow(k, clamp01((land - 0.1) / 0.5), 1400, t);
+    fx.wash.material.opacity = clamp01(1 - Math.abs(land - 0.06) / 0.06) * 0.9;
+    ambient.intensity = 0.10 + 0.15 * clamp01(land * 2);
+    hemi.intensity = 0.12 + 0.13 * clamp01(land * 2);
+    return shake;
+  }
+
+  const AWAKE = { warden: awakeWarden, smith: awakeSmith, tyrant: awakeTyrant, dragon: awakeDragon };
+  const AWAKE_CAM = { warden: CAM_WARDEN, smith: CAM_SMITH, tyrant: CAM_TYRANT, dragon: CAM_DRAGON };
+
+  function poseEntrance(p) {
+    const shake = poseArrival(p);
+    const awake = AWAKE[p.id] || AWAKE.tyrant;
+    const extra = awake(p) || 0;
+    flyCamera(AWAKE_CAM[p.id] || CAM_TYRANT, p.k, Math.max(shake, extra));
   }
 
   // ---------------------------------------------------------------
   //  ENTRANCE — minis
   // ---------------------------------------------------------------
-  // Three seconds, one idea: something lands in the room hard enough to
-  // crack it, and the fight is already on.
+  // Six seconds now rather than three, and with an actual shape to it: the
+  // shadow, the impact, the crater, it standing up out of it, and one look at
+  // you before it starts swinging.
   const MINI_CAM = [
-    [0.00, 0, 10, 8, 0, 14, ROOM.bossZ, 58],
-    [0.34, 0, 6, 2, 0, 6, ROOM.bossZ, 52],
-    [1.00, 0, 9, 10, 0, 10, ROOM.bossZ, 60],
+    [0.00, 0, 12, 10, 0, 16, ROOM.bossZ, 56],
+    [0.26, 0, 6, 3, 0, 6, ROOM.bossZ, 50],
+    [0.40, -5, 2.2, -2, 0, 3, ROOM.bossZ, 58],
+    [0.70, -7, 7, 6, 0, 8, ROOM.bossZ, 54],
+    [1.00, 0, 8.5, 5, 0, 10, ROOM.bossZ, 60],
   ];
   function poseMini(p) {
     const { k, t } = p;
-    const drop = beat(k, 0, 0.34);
+    const R = room.userData;
     let shake = 0;
-    for (const b of room.userData.braziers) { b.light.intensity = 1.5; b.flame.material.opacity = 0.9; b.halo.material.opacity = 0.5; }
-    ambient.intensity = 0.30; hemi.intensity = 0.26; doorLight.intensity = 0; room.userData.doorGlow.material.opacity = 0;
-    room.userData.gate.position.y = 13;
-    poseParty(p.party || 1, 0, 1.5, 0, 0, Math.PI);
+    R.gate.position.y = 13;
+    fx.flood.visible = false;
+    fx.tear.visible = fx.tearGlow.visible = false;
+    for (const m of fx.shards) m.visible = false;
+    litBraziers(k, t, 0, 0.10);
+    poseParty(p.people, 0, 1.5, 0, 0, Math.PI);
+    ambient.intensity = 0.26; hemi.intensity = 0.24;
+    doorLight.intensity = 0; R.doorGlow.material.opacity = 0;
+
     rig.root.visible = true;
     rig.shell.visible = true;
-    for (const e of rig.eyes) { e.visible = true; e.scale.setScalar(1); }
-    for (const l of rig.limbs) { l.arm.visible = true; l.arm.rotation.z = l.sx * -0.3; }
+    rig.root.scale.setScalar(0.62);
     for (const pt of rig.parts) pt.visible = false;
-    for (const m of fx.shards) m.visible = false;
-    eyeLight.color.copy(rig.accent); eyeLight.intensity = 2;
-    eyeLight.position.set(0, rig.eyeY * 0.62, ROOM.bossZ + 3);
 
-    if (drop < 1) {
-      rig.root.position.y = lerp(34, 0, easeIn(drop));
-      rig.root.scale.setScalar(0.62);
-      room.userData.sigil.material.color.copy(rig.accent);
-      room.userData.sigil.material.opacity = 0.2 + 0.5 * drop;
-      room.userData.sigil.scale.setScalar(lerp(2.2, 0.85, drop));
-    } else {
-      const land = beat(k, 0.34, 1);
-      rig.root.position.y = Math.sin(land * Math.PI) * 0.3;
-      rig.root.scale.setScalar(0.62);
-      shake = (1 - land) * 1.5;
-      room.userData.sigil.material.opacity = 0.5 * (1 - land);
-      for (let i = 0; i < fx.waves.length; i++) {
-        const w = fx.waves[i];
-        const wk = clamp01((land - i * 0.08) / 0.6);
-        if (wk <= 0 || wk >= 1) { w.visible = false; continue; }
-        w.visible = true;
-        w.position.set(0, 0.08, ROOM.bossZ);
-        const r = 3 + easeOut(wk) * 40;
-        w.scale.set(r, 1, r);
-        w.material.color.copy(rig.accent);
-        w.material.opacity = 0.6 * (1 - wk);
-      }
-      if (land < 0.5) {
-        for (let i = 0; i < 4; i++) {
-          const a = Math.random() * TAU;
-          spawnMote({ x: Math.cos(a) * 5, y: 0.4, z: ROOM.bossZ + Math.sin(a) * 3,
-                      vx: Math.cos(a) * 0.5, vy: 0.25 + Math.random() * 0.3, vz: Math.sin(a) * 0.3,
-                      max: 55, r: 0.75, g: 0.7, b: 0.72, s: 0.08 });
-        }
+    const fall = beat(k, 0, 0.30);          // the shadow grows
+    const land = beat(k, 0.30, 0.46);       // impact
+    const up = beat(k, 0.46, 0.74);         // it stands out of the crater
+    const look = beat(k, 0.74, 1);          // and looks at you
+
+    rig.root.position.y = fall < 1 ? lerp(40, 0, easeIn(fall)) : -1.4 * (1 - easeOut(up));
+    R.sigil.material.color.copy(rig.accent);
+    R.sigil.material.opacity = fall < 1 ? 0.25 + 0.55 * fall : 0.55 * (1 - land);
+    R.sigil.scale.setScalar(fall < 1 ? lerp(2.4, 0.9, fall) : 0.9);
+
+    if (land > 0 && land < 1) {
+      shake = 1.8 * (1 - land);
+      if (Math.random() < 0.95) {
+        const a = Math.random() * TAU, r = 2 + Math.random() * 9;
+        spawnMote({ x: Math.cos(a) * r, y: 0.4, z: ROOM.bossZ + Math.sin(a) * r * 0.7,
+                    vx: Math.cos(a) * 0.6, vy: 0.3 + Math.random() * 0.4, vz: Math.sin(a) * 0.4,
+                    max: 70, r: 0.75, g: 0.7, b: 0.72, s: 0.09 });
       }
     }
-    fx.wash.material.opacity = 0;
+    if (k > 0.30) shockwaves(0, ROOM.bossZ, beat(k, 0.30, 1), rig.accent, 38); else hideWaves();
+
+    for (const e of rig.eyes) {
+      e.visible = up > 0.1;
+      e.scale.setScalar((0.2 + 0.8 * up) * 0.62);
+      e.position.y = (rig.root.position.y + rig.eyeY + 2) * 0.62;
+    }
+    for (const l of rig.limbs) {
+      l.arm.visible = true;
+      l.arm.rotation.z = l.sx * lerp(-1.3, -0.3, easeOut(up));
+    }
+    rig.root.rotation.y = Math.sin(look * Math.PI) * 0.35;
+    eyeLight.color.copy(rig.accent);
+    eyeLight.intensity = up * 1.6;
+    eyeLight.position.set(0, rig.eyeY * 0.62, ROOM.bossZ + 3);
+    fx.wash.material.opacity = clamp01(1 - Math.abs(land - 0.1) / 0.1) * 0.55;
     flyCamera(MINI_CAM, k, shake);
   }
 
   // ---------------------------------------------------------------
-  //  VARKAAL, SECOND PHASE
+  //  VARKAAL, SECOND PHASE — the coronation
   // ---------------------------------------------------------------
-  // The one that has to feel like an event. It goes down, the room goes
-  // quiet and nearly black, one coal in all that ash refuses to go out, the
-  // fire runs back up through it, and it opens its wings lit from inside.
-  const P = { fall: 0.14, still: 0.30, spark: 0.44, ignite: 0.60, rise: 0.80, roar: 0.90 };
+  // The set piece. Its head goes down and it does not stay down: the ash it
+  // fell into catches, the fire runs back up through it, it takes the crown,
+  // and the roar brings the pillars down and opens the room onto the sky.
+  // Fifteen and a half seconds, nine beats, and nothing may be hit for any of
+  // it — guildBossTick holds `reviving` for exactly DRAGON_PHASE2.CINE_MS.
+  const P = { fall: 0.09, still: 0.20, spark: 0.30, ignite: 0.42,
+              rise: 0.56, crown: 0.66, roar: 0.76, collapse: 0.86 };
 
   // Every one of these is kept clear of the body. Varkaal is LONG — tail tip
   // around z -40, snout out at about z -14 — so any camera behind z ~ -6 is
   // inside the animal, which renders as a featureless red wall.
   const PHASE_CAM = [
-    // thrown back by the fall
     [0.00, 0, 11, 6, 0, 9, ROOM.bossZ, 60],
     [P.fall, -7, 6, 5, 0, 4, ROOM.bossZ + 4, 62],
     // down low and off to the side: the heap, in silhouette
     [P.still, -9, 3.2, 1, 0, 3, ROOM.bossZ + 6, 46],
-    // in on the one coal, lying in the ash right in front of its snout
+    // in on the one coal, lying in the ash in front of its snout
     [P.spark, 3.5, 1.6, -4, 2.5, 1.0, ROOM.bossZ + 17, 32],
     // the fire takes — pull back fast as the ring goes out
     [P.ignite, 0, 5, 2, 0, 5, ROOM.bossZ + 2, 54],
     // all the way back and up: this beat has to hold the whole wingspan
     [P.rise, 0, 10, 13, 0, 11, ROOM.bossZ, 70],
-    // it comes at the camera for the roar
-    [P.roar, 0, 12, 6, 0, 15, ROOM.bossZ, 66],
+    // tight on the head as the crown comes down onto it
+    [P.crown, 0, 15.5, -1, 0, 17.5, ROOM.bossZ + 8, 34],
+    // and out for the roar
+    [P.roar, 0, 12, 8, 0, 15, ROOM.bossZ, 66],
+    // the room comes apart; crane up to watch the roof go
+    [P.collapse, -4, 16, 18, 0, 22, ROOM.bossZ, 76],
     [1.00, 0, 10, 11, 0, 13, ROOM.bossZ, 62],
   ];
 
@@ -1167,51 +1733,43 @@
     // put the camera that is not inside the dragon.
     const coalY = 1.0, coalZ = ROOM.bossZ + 17;
 
-    // The room is lit by the fire and nothing else from the spark onward.
-    for (const b of R.braziers) {
-      // its own braziers blow out when it falls
-      const out = clamp01((k - P.fall) / 0.12);
-      b.light.intensity = (1 - out) * 1.8;
-      b.flame.material.opacity = (1 - out) * 0.9;
-      b.halo.material.opacity = (1 - out) * 0.5;
-    }
-
-    const fall = beat(k, 0, P.fall);
-    const still = beat(k, P.fall, P.spark);
-    const spark = beat(k, P.spark, P.ignite);
-    const ignite = beat(k, P.ignite, P.rise);
-    const rise = beat(k, P.rise, P.roar);
-    const roar = beat(k, P.roar, 1);
-
-    poseParty(p.party || 1, 0, 2.5, 0, 0, Math.PI);
     R.gate.position.y = 13;          // raised: this cutscene is not about the door
+    fx.flood.visible = false;
+    fx.tear.visible = fx.tearGlow.visible = false;
+    poseParty(p.people, 0, 2.5, 0, 0, Math.PI);
     rig.root.visible = true;
     rig.shell.visible = true;
     for (const m of fx.shards) m.visible = false;
     for (const pt of rig.parts) pt.visible = false;
 
-    // --- it comes down ---
-    // The torso sinks into the floor and the wings collapse over it, so the
-    // silhouette in the dark is a heap rather than a dragon.
-    const down = 1 - easeOut(Math.max(fall, 0)) * (k < P.ignite ? 1 : 1 - easeOut(rise));
-    const slump = k < P.ignite ? easeIn(fall) : easeIn(1) * (1 - easeOut(rise));
-    rig.root.position.y = -4.5 * slump;
-    rig.root.rotation.x = 0.22 * slump;
-    rig.torso.rotation.z = 0.12 * slump;
-    for (const e of rig.eyes) {
-      e.visible = true;
-      // the eyes go out with it, and come back as the fire reaches the head
-      const lit = Math.max(1 - fall, clamp01((ignite - 0.5) / 0.5), rise);
-      e.scale.setScalar(0.15 + 0.95 * lit);
-      e.position.y = rig.eyeY + 0.5;
-      e.material.color.setRGB(1, 0.55 + 0.4 * lit, 0.2 * lit);
+    const fall = beat(k, 0, P.fall);
+    const still = beat(k, P.fall, P.spark);
+    const spark = beat(k, P.spark, P.ignite);
+    const ignite = beat(k, P.ignite, P.rise);
+    const rise = beat(k, P.rise, P.crown);
+    const crown = beat(k, P.crown, P.roar);
+    const roar = beat(k, P.roar, P.collapse);
+    const fell = beat(k, P.collapse, 1);
+
+    // its own braziers blow out when it falls
+    for (const b of R.braziers) {
+      const out = clamp01((k - P.fall) / 0.10);
+      const gone = fell > 0.1 ? 0 : 1;
+      b.light.intensity = (1 - out) * 1.8 * gone;
+      b.flame.material.opacity = (1 - out) * 0.9 * gone;
+      b.halo.material.opacity = (1 - out) * 0.5 * gone;
     }
+
+    // --- it comes down ---
+    const slump = k < P.ignite ? easeIn(fall) : (1 - easeOut(rise));
+    rig.root.position.set(0, -4.5 * slump, ROOM.bossZ);
+    rig.root.rotation.set(0.22 * slump, 0, 0);
     if (fall > 0 && fall < 1) {
       shake = 1.6 * fall;
       for (let i = 0; i < 5; i++) {
-        const a = Math.random() * TAU, r = Math.random() * 14;
-        spawnMote({ x: Math.cos(a) * r, y: 0.3, z: ROOM.bossZ + Math.sin(a) * r * 0.6,
-                    vx: Math.cos(a) * 0.35, vy: 0.1 + Math.random() * 0.25, vz: Math.sin(a) * 0.2,
+        const a2 = Math.random() * TAU, r = Math.random() * 14;
+        spawnMote({ x: Math.cos(a2) * r, y: 0.3, z: ROOM.bossZ + Math.sin(a2) * r * 0.6,
+                    vx: Math.cos(a2) * 0.35, vy: 0.1 + Math.random() * 0.25, vz: Math.sin(a2) * 0.2,
                     max: 150, r: 0.5, g: 0.46, b: 0.46, s: 0.09, drag: 0.985 });
       }
     }
@@ -1225,11 +1783,11 @@
     }
 
     // --- one coal ---
-    const coalOn = Math.max(spark, ignite > 0 ? 1 : 0);
     coalLight.position.set(2.5, coalY, coalZ);
     coalLight.color.setRGB(1, 0.48, 0.13);
     const pulse = 0.55 + 0.45 * Math.sin(t / 105);
-    coalLight.intensity = coalOn * (2.4 + 5 * ignite) * (0.8 + 0.2 * pulse) + roar * 6;
+    coalLight.intensity = Math.max(spark, ignite > 0 ? 1 : 0) * (2.4 + 4 * ignite) * (0.8 + 0.2 * pulse)
+                        + roar * 4 + fell * 1.5;
     coalLight.distance = 26 + 90 * ignite;
     if (spark > 0 && k < P.rise && Math.random() < 0.7) {
       spawnMote({ x: 2.5 + (Math.random() - 0.5) * (2 + 26 * ignite), y: coalY, z: coalZ + (Math.random() - 0.5) * (2 + 16 * ignite),
@@ -1237,40 +1795,28 @@
                   max: 150, r: 1, g: 0.55 + Math.random() * 0.3, b: 0.15, s: 0.055, drag: 0.99 });
     }
 
-    // --- the ash catches: rings of fire race out from under it ---
-    for (let i = 0; i < fx.waves.length; i++) {
-      const w = fx.waves[i];
-      const wk = clamp01((ignite - i * 0.13) / 0.6);
-      if (wk <= 0 || wk >= 1) { w.visible = false; continue; }
-      w.visible = true;
-      w.position.set(0, 0.07 + i * 0.02, ROOM.bossZ);
-      const r = 3 + easeOut(wk) * 52;
-      w.scale.set(r, 1, r);
-      w.material.color.setRGB(1, 0.45 + 0.3 * (1 - wk), 0.12);
-      w.material.opacity = 0.75 * (1 - wk);
-    }
-    // seams open across the body as the fire runs up through it
+    // --- the ash catches ---
+    if (ignite > 0 && ignite < 1) {
+      shockwaves(0, ROOM.bossZ, ignite, new THREE.Color(1, 0.45, 0.12), 52);
+      shake = Math.max(shake, 0.5 * ignite);
+    } else if (roar <= 0 && fell <= 0) hideWaves();
+    if (ignite > 0) rig.root.position.y = lerp(-4.5, -2.6, easeOut(ignite));
+
     // Restrained: at 1.9 the whole animal clipped to flat yellow and lost
-    // every edge it has. The fire should look like it is INSIDE the thing,
-    // which means the lights do the work and the emissive only hints.
+    // every edge it has. The fire should look like it is INSIDE the thing.
     rig.body.emissiveIntensity = 0.05 + 0.42 * Math.max(ignite, rise);
     rig.body.emissive.setRGB(1, 0.22, 0.04);
-    rig.trim.emissiveIntensity = 0.35 + 1.1 * Math.max(ignite, rise);
+    rig.trim.emissiveIntensity = 0.30 + 0.7 * Math.max(ignite, rise) + 0.5 * crown;
     R.sigil.material.color.setRGB(1, 0.4, 0.1);
     R.sigilInner.material.color.setRGB(1, 0.55, 0.15);
-    R.sigil.material.opacity = Math.max(ignite, 1 - roar * 0.4) * 0.5 * (k > P.ignite ? 1 : 0);
-    R.sigilInner.material.opacity = (k > P.ignite ? 1 : 0) * 0.6;
+    R.sigil.material.opacity = (k > P.ignite ? 1 : 0) * 0.5 * (1 - fell);
+    R.sigilInner.material.opacity = (k > P.ignite ? 1 : 0) * 0.6 * (1 - fell);
     R.sigilInner.rotation.y = t / 900;
-    // It starts pushing itself up as the fire takes, not only on the rise —
-    // otherwise the ignite beat is a lit room with nothing standing in it.
-    if (ignite > 0) rig.root.position.y = lerp(-4.5, -2.6, easeOut(ignite));
-    if (ignite > 0 && ignite < 1) shake = Math.max(shake, 0.5 * ignite);
+    R.sigil.scale.setScalar(1);
 
     // --- it opens ---
-    // The wings are the whole point of the beat: they go from folded over a
-    // heap to filling the frame, and they are what lights the room.
     const D = rig.dragon;
-    const open = easeOut(Math.max(rise, roar));
+    const open = easeOut(Math.max(rise, crown, roar, fell));
     for (const l of rig.limbs) {
       l.arm.visible = true;
       // Folded over the body when it is down, thrown wide open on the rise.
@@ -1279,54 +1825,134 @@
       l.arm.rotation.y = l.sx * lerp(1.55, 0.30, open);
       l.arm.rotation.x = lerp(0.7, -0.12, open);
     }
-    if (D) {
-      // the neck lifts and the head comes up with it
-      D.neck.rotation.x = lerp(0.95, -0.12, open);
-      D.head.rotation.x = lerp(0.5, -0.15, open) - 0.55 * Math.sin(roar * Math.PI);
-      D.tail.rotation.y = Math.sin(t / 900) * 0.12 * (0.3 + open);
-      D.tail.rotation.x = lerp(0.28, 0.02, open);
-      for (let i = 0; i < D.legs.length; i++) {
-        D.legs[i].rotation.x = lerp(0.55, 0, open);
-      }
-      D.jaw.rotation.x = 0.12 + 0.85 * Math.sin(clamp01(roar / 0.75) * Math.PI) + 0.06 * Math.sin(t / 500);
-    }
     if (rise > 0) {
       rig.root.position.y = lerp(-4.5, 1.2, easeOut(rise));
       rig.root.rotation.x = lerp(0.22, -0.04, easeOut(rise));
       shake = Math.max(shake, 0.35 * rise);
       if (Math.random() < 0.9) {
-        const a = Math.random() * TAU, r = 6 + Math.random() * 26;
-        spawnMote({ x: Math.cos(a) * r, y: 0.4 + Math.random() * 2, z: ROOM.bossZ + Math.sin(a) * r * 0.6,
+        const a2 = Math.random() * TAU, r = 6 + Math.random() * 26;
+        spawnMote({ x: Math.cos(a2) * r, y: 0.4 + Math.random() * 2, z: ROOM.bossZ + Math.sin(a2) * r * 0.6,
                     vx: 0, vy: 0.18 + Math.random() * 0.35, vz: 0,
                     max: 140, r: 1, g: 0.5 + Math.random() * 0.4, b: 0.12, s: 0.06, drag: 0.995 });
       }
     }
 
-    // --- the roar ---
+    // --- THE CROWN ---
+    // It does not put it on. It comes down out of the dark and settles, and
+    // the head lifts into it.
+    if (D && D.crown) {
+      D.crown.visible = crown > 0.02 || roar > 0 || fell > 0;
+      const c = easeOut(clamp01(crown));
+      D.crown.position.set(0, lerp(16, 2.1, c), -0.6);
+      D.crown.rotation.y = lerp(2.4, 0, c) + t / 4000;
+      D.crown.scale.setScalar(lerp(2.2, 1, c));
+      if (crown > 0 && crown < 1) {
+        if (Math.random() < 0.8) {
+          spawnMote({ x: (Math.random() - 0.5) * 6, y: 20 + Math.random() * 8, z: ROOM.bossZ + 8,
+                      vx: 0, vy: -0.08 - Math.random() * 0.1, vz: 0,
+                      max: 110, r: 1, g: 0.85, b: 0.45, s: 0.05, drag: 1 });
+        }
+        shake = Math.max(shake, 0.12);
+      }
+      // the moment it seats
+      if (crown > 0.92 && crown < 1) {
+        fx.wash.material.color.setRGB(1, 0.92, 0.7);
+        fx.wash.material.opacity = Math.max(fx.wash.material.opacity, (crown - 0.92) / 0.08 * 0.5);
+      }
+    }
+
+    if (D) {
+      D.neck.rotation.x = lerp(0.95, -0.12, open) - 0.25 * crown;
+      D.head.rotation.x = lerp(0.5, -0.15, open) - 0.55 * Math.sin(roar * Math.PI) - 0.3 * crown;
+      D.tail.rotation.y = Math.sin(t / 900) * 0.12 * (0.3 + open);
+      D.tail.rotation.x = lerp(0.28, 0.02, open);
+      for (const lg of D.legs) lg.rotation.x = lerp(0.55, 0, open);
+      D.jaw.rotation.x = 0.12 + 0.85 * Math.sin(clamp01(roar / 0.75) * Math.PI) + 0.06 * Math.sin(t / 500);
+    }
+    for (const e of rig.eyes) {
+      e.visible = true;
+      const lit2 = Math.max(1 - fall, clamp01((ignite - 0.5) / 0.5), rise, crown, roar);
+      e.scale.setScalar(0.15 + 0.95 * lit2 + 0.5 * fell);
+      e.material.color.setRGB(1, 0.55 + 0.4 * lit2, 0.2 * lit2);
+    }
+
+    // --- THE ROAR, and the room it takes down with it ---
     if (roar > 0) {
-      shake = Math.max(shake, 1.5 * Math.sin(roar * Math.PI));
-      // a wash of fire over the lens, going white at the peak
+      shake = Math.max(shake, 1.7 * Math.sin(roar * Math.PI));
       const wk = Math.sin(clamp01(roar / 0.7) * Math.PI);
       fx.wash.material.color.setRGB(1, lerp(0.35, 1, clamp01((roar - 0.35) / 0.3)), lerp(0.08, 1, clamp01((roar - 0.4) / 0.3)));
-      fx.wash.material.opacity = wk * 0.92;
+      fx.wash.material.opacity = wk * 0.9;
+      shockwaves(0, ROOM.bossZ, roar, new THREE.Color(1, 0.6, 0.2), 70);
       for (let i = 0; i < 6; i++) {
         spawnMote({ x: (Math.random() - 0.5) * 30, y: 2 + Math.random() * 14, z: ROOM.bossZ + Math.random() * 20,
                     vx: (Math.random() - 0.5) * 0.4, vy: 0.25 + Math.random() * 0.5, vz: 0.7 + Math.random() * 0.9,
                     max: 90, r: 1, g: 0.6, b: 0.18, s: 0.09, drag: 0.99 });
       }
-    } else {
-      fx.wash.material.opacity = 0;
+    } else if (fell <= 0) {
+      fx.wash.material.opacity = Math.max(0, fx.wash.material.opacity);
     }
 
-    ambient.intensity = lerp(0.45, 0.05, still) + 0.5 * Math.max(ignite, rise);
-    hemi.intensity = lerp(0.45, 0.06, still) + 0.35 * Math.max(ignite, rise);
-    keyLight.intensity = lerp(0.5, 0.04, still);
+    // --- THE ROOM COMES DOWN ---
+    // The pillars go first, outward and away, then the ceiling lifts off and
+    // there is sky where the roof was. This is the beat combat.js opens the
+    // field on, so what you see here is what you fight in.
+    if (fell > 0) {
+      const f = easeIn(fell);
+      for (const pl of R.pillars) {
+        const d2 = (pl.i % 3) * 0.12;
+        const fk = clamp01((fell - d2) / 0.55);
+        pl.g.position.y = -ROOM.wallH * easeIn(fk) * 0.9;
+        pl.g.rotation.z = pl.sx * fk * 0.55;
+        pl.g.rotation.x = fk * 0.3;
+        if (fk > 0.02 && fk < 0.9 && Math.random() < 0.5) {
+          spawnMote({ x: pl.g.position.x, y: 2 + Math.random() * 16, z: pl.z,
+                      vx: (Math.random() - 0.5) * 0.3, vy: 0.1, vz: (Math.random() - 0.5) * 0.3,
+                      max: 110, r: 0.55, g: 0.5, b: 0.55, s: 0.11 });
+        }
+      }
+      // The roof lifts off fast — on an ease-IN it was still filling the frame
+      // when the beat was nearly over — and the walls go down with it, because
+      // "it opens onto the sky" has to mean there is nothing left to back into.
+      const lift = easeOut(fell);
+      R.ceil.position.y = ROOM.wallH + lift * 120;
+      if (R.backWall) R.backWall.position.y = ROOM.wallH / 2 - lift * 46;
+      for (const w of R.sideWalls) {
+        w.position.y = ROOM.wallH / 2 - lift * 40;
+        w.rotation.z = w.userData.sx * lift * 0.22;
+      }
+      fx.sky.visible = true;
+      fx.sky.material.color.setRGB(lerp(0.05, 0.42, f), lerp(0.02, 0.16, f), lerp(0.06, 0.20, f));
+      scene.fog.density = lerp(0.012, 0.004, f);
+      shake = Math.max(shake, 1.4 * (1 - fell) + 0.4);
+      shockwaves(0, ROOM.bossZ, fell, new THREE.Color(1, 0.7, 0.3), 90);
+      // debris raining through the hole it just made
+      if (Math.random() < 0.9) {
+        spawnMote({ x: (Math.random() - 0.5) * 40, y: 30 + Math.random() * 20, z: ROOM.bossZ + (Math.random() - 0.5) * 30,
+                    vx: 0, vy: -0.35 - Math.random() * 0.3, vz: 0, max: 130, r: 0.6, g: 0.55, b: 0.55, s: 0.1, drag: 1 });
+      }
+      fx.wash.material.color.setRGB(1, 0.85, 0.6);
+      fx.wash.material.opacity = Math.max(0, 0.55 * (1 - fell / 0.4));
+      // it grows into what it became
+      rig.root.scale.setScalar(lerp(1, 1.18, easeOut(fell)));
+      rig.root.position.y = 1.2 + Math.sin(t / 1300) * 0.25;
+    } else {
+      for (const pl of R.pillars) { pl.g.position.y = 0; pl.g.rotation.set(0, 0, 0); }
+      R.ceil.position.y = ROOM.wallH;
+      if (R.backWall) R.backWall.position.y = ROOM.wallH / 2;
+      for (const w of R.sideWalls) { w.position.y = ROOM.wallH / 2; w.rotation.z = 0; }
+      fx.sky.visible = false;
+      scene.fog.density = 0.012;
+      rig.root.scale.setScalar(1);
+    }
+
+    ambient.intensity = lerp(0.40, 0.05, still) + 0.32 * Math.max(ignite, rise) + 0.16 * fell;
+    hemi.intensity = lerp(0.40, 0.06, still) + 0.24 * Math.max(ignite, rise) + 0.16 * fell;
+    keyLight.intensity = lerp(0.5, 0.04, still) + 0.45 * fell;
     doorLight.intensity = 0; R.doorGlow.material.opacity = 0;
     eyeLight.color.setRGB(1, 0.5, 0.15);
-    eyeLight.intensity = Math.max(0, rise * 2.5 + roar * 3);
+    eyeLight.intensity = Math.max(0, rise * 2.5 + roar * 3 + fell * 2);
     eyeLight.position.set(0, rig.root.position.y + rig.eyeY, ROOM.bossZ + 4);
 
-    void down;
     flyCamera(PHASE_CAM, k, shake);
   }
 
@@ -1345,7 +1971,8 @@
     const modeKey = p.mode + "|" + p.id;
     if (modeKey !== lastMode) { lastMode = modeKey; clearMotes(); moteHead = 0; }
 
-    const q = { k: clamp01(p.k), t: (p.t - t0), id: p.id, party: Math.max(1, Math.min(PARTY_MAX, p.party || 1)) };
+    const people = (p.people && p.people.length) ? p.people.slice(0, PARTY_MAX) : [{ appearance: null }];
+    const q = { k: clamp01(p.k), t: (p.t - t0), id: p.id, people };
     // reset per-frame state the poses do not all touch
     rig.root.position.set(0, 0, ROOM.bossZ);
     rig.root.rotation.set(0, 0, 0);

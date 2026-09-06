@@ -1241,22 +1241,27 @@
   // camera and the room those beats happen in.
   const BEAT = { rise: 0.78 };
 
-  // How many of you walked in. The cutscene opens on the party coming through
-  // the gate, so it needs a count: you, plus everyone on this floor of this
-  // run. Falls back to one, which is what a solo quest run is.
-  function partySize() {
+  // Who walked in. The cutscene opens on the party coming through the gate and
+  // draws each of them with their own appearance, so it needs the real list:
+  // you first, then everyone else on this floor of this run. Falls back to a
+  // party of one, which is what a solo quest run is.
+  function partyPeople() {
     try {
-      // `state` is a top-level let in core.js, so it is reachable by name but
-      // is NOT on window — checking window.state pinned every party at one.
-      if (typeof state === "undefined" || !state) return 1;
+      // `state` is a top-level let in core.js — reachable by name, but NOT on
+      // window. Checking window.state pinned every party at one person.
+      if (typeof state === "undefined" || !state) return [{ appearance: null }];
+      const me = { appearance: state.appearance || null, name: state.user };
       const d = state.dungeon;
-      if (!d || !d.runId || !state.others) return 1;
-      let n = 1;
-      for (const o of Object.values(state.others)) {
-        if (o && o.area === "dungeon" && o.run === d.runId && (o.dfloor | 0) === (d.floor | 0)) n++;
+      if (!d || !d.runId || !state.others) return [me];
+      const out = [me];
+      for (const [name, o] of Object.entries(state.others)) {
+        if (!o || o.area !== "dungeon" || o.run !== d.runId) continue;
+        if ((o.dfloor | 0) !== (d.floor | 0)) continue;
+        out.push({ appearance: o.appearance || null, name });
+        if (out.length >= 4) break;
       }
-      return Math.max(1, Math.min(4, n));
-    } catch (e) { return 1; }
+      return out;
+    } catch (e) { return [{ appearance: null }]; }
   }
 
   function drawCinematic(ctx, cine, boss, t) {
@@ -1267,7 +1272,7 @@
     // canvas — a name card wants crisp pixels, not a textured quad.
     const gl = (window.DungeonGL && DungeonGL.available())
       ? DungeonGL.render({ mode: "entrance", id: cine.id, mini: !!cine.mini, k, t,
-                           party: partySize(), color: cine.color, accent: cine.accent })
+                           people: partyPeople(), color: cine.color, accent: cine.accent })
       : null;
     if (gl) ctx.drawImage(gl, 0, 0, W, H);
     else { ctx.fillStyle = "rgba(4,2,8,.9)"; ctx.fillRect(0, 0, W, H); }
@@ -1353,14 +1358,16 @@
       embers: [], dust: [], shake: 0, roared: false,
     };
   }
-  const PBEAT = { fall: 0.18, still: 0.34, spark: 0.50, ignite: 0.66, rise: 0.82, roar: 0.92 };
+  // Mirrors the beat table in js/dungeon3d.js, which owns the camera and the
+  // room these land in. Only the two the 2D layer needs are used here.
+  const PBEAT = { still: 0.20, ignite: 0.42, crown: 0.66, collapse: 0.86 };
 
   function drawPhaseCinematic(ctx, cine, boss, t) {
     const k = clamp01((t - cine.t0) / cine.dur);
 
     const gl = (window.DungeonGL && DungeonGL.available())
       ? DungeonGL.render({ mode: "phase2", id: "dragon", mini: false, k, t,
-                           party: partySize(), color: cine.color, accent: cine.accent })
+                           people: partyPeople(), color: cine.color, accent: cine.accent })
       : null;
     if (gl) ctx.drawImage(gl, 0, 0, W, H);
     else { ctx.fillStyle = "rgba(3,1,6,.9)"; ctx.fillRect(0, 0, W, H); }
@@ -1372,9 +1379,9 @@
       ctx.textAlign = "center";
       ctx.fillStyle = `rgba(251,146,60,${a * 0.75})`;
       ctx.font = "italic 17px Georgia, 'Times New Roman', serif";
-      ctx.fillText("it is not finished", W / 2, H * 0.30);
+      ctx.fillText("it is not finished", W / 2, H * 0.28);
     }
-    if (k >= PBEAT.roar) nameCard(ctx, cine, clamp01((k - PBEAT.roar - 0.01) / 0.22));
+    if (k >= PBEAT.collapse) nameCard(ctx, cine, clamp01((k - PBEAT.collapse - 0.01) / 0.10));
     letterbox(ctx, k < 0.05 ? k / 0.05 : k > 0.95 ? (1 - k) / 0.05 : 1);
   }
 

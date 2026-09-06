@@ -625,7 +625,20 @@ function updateDungeon() {
 // server-authoritative boss. The client draws it and resolves the telegraphed
 // attacks against its own position, but every point of damage DEALT goes
 // through the `guild_dungeon` op, so the fight can't be skipped from a console.
-const BOSS_ROOM = { x: 60, y: 52, w: DUNGEON_W - 120, h: DUNGEON_H - 140 };
+// The arena. Two shapes: the sealed stone room every fight starts in, and the
+// open field Varkaal's roar opens up when it takes the roof off. BOSS_ROOM is
+// MUTATED between them rather than reassigned, so the walls, the spawn clamps,
+// the attack placement and the renderer all follow it without knowing.
+const ARENA_ROOM = { x: 60, y: 52, w: DUNGEON_W - 120, h: DUNGEON_H - 140 };
+const ARENA_OPEN = { x: 0, y: 0, w: DUNGEON_W, h: DUNGEON_H };
+const BOSS_ROOM = Object.assign({}, ARENA_ROOM);
+// Open the field, or put the walls back. The only edge left when it is open is
+// the edge of the screen itself.
+function setArenaOpen(open) {
+  Object.assign(BOSS_ROOM, open ? ARENA_OPEN : ARENA_ROOM);
+  const d = state.dungeon;
+  if (d && d.bossRoom) { d.openField = !!open; d.walls = bossRoomWalls(); }
+}
 
 // In a guild run the server owns every enemy's HP, so a swing is a REQUEST:
 // the damage is applied locally straight away (so the game stays responsive)
@@ -759,6 +772,8 @@ function bossHeadScreenPos() { return ECON.guildBossHeadPos(DUNGEON_W, DUNGEON_H
 function enterArena(boss) {
   const d = state.dungeon;
   d.bossRoom = true;
+  d.openField = false;
+  Object.assign(BOSS_ROOM, ARENA_ROOM);
   d.isMini = !!(boss && boss.mini);
   d.walls = bossRoomWalls();
   d.maze = null; d.flow = null; d.flowCell = null;
@@ -892,6 +907,12 @@ if (window.NET) NET.on("guild_boss", (m) => {
     d.phaseCine = gameBosses.startPhaseCinematic(d.boss);
     d.bossAttacks = [];
     shakeDungeon(16);
+    // The roar takes the pillars out and the room opens onto the sky. Timed to
+    // land with the collapse beat in the cutscene, not with its end.
+    clearTimeout(_openFieldT);
+    _openFieldT = setTimeout(() => {
+      if (state.dungeon && state.dungeon.bossRoom) { setArenaOpen(true); shakeDungeon(22); }
+    }, Math.round(ECON.DRAGON_PHASE2.CINE_MS * 0.80));
   }
   else if (m.kind === "dead") onBossDead();
   else if (m.kind === "mini_fled" || m.kind === "mini_cleared") { d.boss = null; }
@@ -899,6 +920,7 @@ if (window.NET) NET.on("guild_boss", (m) => {
 });
 
 let _dungeonShake = 0;
+let _openFieldT = null;
 function shakeDungeon(n) { _dungeonShake = Math.max(_dungeonShake, n); }
 
 // A telegraphed attack: it lands `warnMs` after it arrives, and only hurts you
@@ -1158,8 +1180,8 @@ let _bossHitPending = false;
 async function bossAttackAt(mx, my) {
   const d = state.dungeon;
   const b = d && d.boss;
-  if (!b || b.status !== "alive" || _bossHitPending || d.cine) return;
-  if (b.status === "reviving") return;
+  if (!b || b.status !== "alive" || _bossHitPending) return;
+  if (d.cine || d.phaseCine || state.tomeCine) return;
   const reach = ECON.GUILD_BOSS.REACH[state.weapon === "pistol" ? "pistol" : "sword"];
   const PR = ECON.GUILD_BOSS.PART_HIT_R, HR = ECON.GUILD_BOSS.HEAD_HIT_R;
   // A weak point is a DISC, not a point, and both checks measure to the EDGE of
@@ -1289,7 +1311,10 @@ function doAttack() {
   // boss's HP — the local animation still plays either way.
   if (state.dungeon && state.dungeon.bossRoom) {
     const d = state.dungeon;
-    if (d.cine) return;                     // the entrance plays out first
+    // Every cutscene holds the room: the entrance, Varkaal's transformation,
+    // and a tome being read. None of them may be swung through.
+    if (d.cine || d.phaseCine || state.tomeCine) return;
+    if (d.boss && d.boss.status !== "alive") return;
     const dx = state.mouse.x - state.pos.x, dy = state.mouse.y - state.pos.y;
     const m = Math.hypot(dx, dy) || 1;
     if (state.weapon === "pistol") {
@@ -1392,6 +1417,72 @@ function drawPartyMembers(t) {
 
 // The arena. The boss itself, its attacks and its entrance cinematic are all
 // drawn by js/bosses.js so the guild bosses hold to the same standard as the
+
+// What is left when Varkaal takes the roof off: open grass to the edge of the
+// screen, the broken stumps of the pillars it brought down, and a sky lit by
+// whatever it is doing overhead. There is no wall to back into out here.
+function drawOpenField(t, accent) {
+  const W = DUNGEON_W, H = DUNGEON_H;
+  // sky at the top, ground under it
+  const sky = ctx.createLinearGradient(0, 0, 0, H * 0.42);
+  sky.addColorStop(0, "#2b1830");
+  sky.addColorStop(1, "#7a3a24");
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H * 0.42);
+  const g = ctx.createLinearGradient(0, H * 0.30, 0, H);
+  g.addColorStop(0, "#2f4a24");
+  g.addColorStop(0.45, "#3c5c2c");
+  g.addColorStop(1, "#2a3f1f");
+  ctx.fillStyle = g; ctx.fillRect(0, H * 0.30, W, H * 0.70);
+
+  // a far treeline where the wall used to be
+  ctx.fillStyle = "#1b2c16";
+  for (let x = -20; x < W + 20; x += 26) {
+    const th = 26 + ((x * 7) % 19);
+    ctx.beginPath();
+    ctx.moveTo(x, H * 0.34);
+    ctx.lineTo(x + 13, H * 0.34 - th);
+    ctx.lineTo(x + 26, H * 0.34);
+    ctx.closePath(); ctx.fill();
+  }
+
+  // grass tufts, seeded off position so they do not crawl
+  ctx.strokeStyle = "rgba(140,190,110,.30)"; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < 260; i++) {
+    const x = ((i * 977) % W), y = H * 0.34 + ((i * 613) % (H * 0.66));
+    const sway = Math.sin(t / 700 + i) * 2;
+    ctx.moveTo(x, y); ctx.lineTo(x + sway, y - 7);
+  }
+  ctx.stroke();
+
+  // the stumps of the pillars it brought down, in two rows
+  for (const px of [90, 250, W - 250, W - 90]) {
+    for (const py of [H * 0.42, H * 0.70]) {
+      ctx.fillStyle = "#3a3040";
+      ctx.beginPath(); ctx.ellipse(px, py + 10, 26, 10, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#4b3f52"; ctx.fillRect(px - 20, py - 22, 40, 32);
+      ctx.fillStyle = "#5d5066"; ctx.fillRect(px - 20, py - 24, 40, 5);
+      // rubble around the base
+      ctx.fillStyle = "#3a3040";
+      for (let r = 0; r < 5; r++) ctx.fillRect(px - 34 + r * 15, py + 12 + ((r * 7) % 5), 9, 6);
+    }
+  }
+
+  // the light it is throwing over all of it
+  const lp = ctx.createRadialGradient(W / 2, H * 0.34, 30, W / 2, H * 0.34, 460);
+  lp.addColorStop(0, "rgba(" + gameBosses.hexToRgb(accent) + ",.20)");
+  lp.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = lp; ctx.fillRect(0, 0, W, H);
+
+  // embers drifting up off the burnt ground
+  ctx.fillStyle = "rgba(251,146,60,.55)";
+  for (let i = 0; i < 40; i++) {
+    const x = ((i * 421 + t * 0.01 * (1 + i % 3)) % W);
+    const y = H - (((i * 311) + t * 0.05 * (1 + (i % 4))) % H);
+    ctx.fillRect(x, y, 2, 2);
+  }
+}
+
 // lake beasts; this function owns the room around them and the HUD on top.
 function drawBossRoom() {
   const d = state.dungeon, b = d.boss;
@@ -1404,7 +1495,9 @@ function drawBossRoom() {
   const sh = (_dungeonShake || 0) + (d.cine ? d.cine.shake || 0 : 0);
   ctx.translate(VIEW_OX + (Math.random() - 0.5) * sh, VIEW_OY + (Math.random() - 0.5) * sh);
 
-  // ---- the room ----
+  // ---- the room, or the field it became ----
+  if (d.openField) { drawOpenField(t, accent); }
+  else {
   ctx.fillStyle = "#140d18";
   ctx.fillRect(BOSS_ROOM.x, BOSS_ROOM.y, BOSS_ROOM.w, BOSS_ROOM.h);
   // flagstones, so the floor has a sense of scale
@@ -1446,6 +1539,7 @@ function drawBossRoom() {
   ctx.fillRect(DUNGEON_W / 2 - 46, BOSS_ROOM.y + BOSS_ROOM.h - 4, 92, 22);
   ctx.fillStyle = "#3f3f46";
   for (let q = 0; q < 5; q++) ctx.fillRect(DUNGEON_W / 2 - 40 + q * 18, BOSS_ROOM.y + BOSS_ROOM.h - 4, 6, 22);
+  }
 
   // ---- the way on, once a mini is down ----
   if (d.isMini && (!b || b.status === "dead")) {
@@ -1987,6 +2081,8 @@ function adoptServerFloor(msg) {
     enterBossRoom();
     return;
   }
+  clearTimeout(_openFieldT); _openFieldT = null;
+  d.openField = false; Object.assign(BOSS_ROOM, ARENA_ROOM);
   d.bossRoom = false; d.isMini = false; d.boss = null; d.cine = null;
   d.plan = withServerHp(msg.state);
   setupFloor();

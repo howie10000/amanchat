@@ -959,7 +959,12 @@
     // under could still be out of reach depending on which side of it you were
     // on. Reach is measured to the edge of the part's hit disc now (see
     // BOSS_PART_HIT_R), and the numbers below are the distance from that edge.
-    REACH: { sword: 190, pistol: 420 },
+    // Measured to the EDGE of the part's hit disc (see PART_HIT_R), so this
+    // is the gap between you and the thing you are hitting. An ordinary mob
+    // has to be inside 70px of your CENTRE to be swung at, so anything much
+    // over that made bosses feel like they had longer reach than a slime.
+    // 58 keeps the boss swing strictly shorter than the mob swing.
+    REACH: { sword: 58, pistol: 420 },
     // How big a weak point is to click, and how big the head is once the guard
     // is down. Generous on purpose: the fight is about reading the telegraphs,
     // not about pixel-hunting a bezier limb.
@@ -971,7 +976,7 @@
     DEAD_LINGER_MS: 75000,
     // Minis surface mid-run, fight briefly and drop back. No cutscene: they get
     // a short spawn flourish (see SPAWN_MS) and that's it.
-    MINI_RISE_MS: 2600,
+    MINI_RISE_MS: 6200,           // a real entrance, not a drop and a name flash
     // How long the room is frozen while somebody reads a tome. Nothing moves,
     // nothing swings, and the boss holds whatever it was winding up.
     TOME_CINE_MS: 4200,
@@ -1069,15 +1074,19 @@
       // the deck it comes back with is faster, wider and leaves less floor.
       // DRAGON_PHASE2 below owns the revival itself.
       phase2: {
-        name: "VARKAAL REKINDLED", color: "#dc2626", accent: "#fde047",
-        cry: "ASH IS NOT AN ENDING. IT IS A BED OF COALS.",
-        title: "THE FIRE THAT REFUSED TO GO OUT",
+        name: "VARKAAL, KING OF DRAGONS", color: "#dc2626", accent: "#fde047",
+        cry: "I HAVE BEEN KIND. THAT WAS THE FIRST HALF.",
+        title: "CROWNED IN ASH \u00b7 THE SKY IS MINE AGAIN",
+        // Bigger shapes, longer tells. The second phase should feel like the
+        // arena got smaller, not like the maths got meaner — the damage is
+        // barely up, the telegraphs just cover much more of the floor.
+        open: true,           // the roar takes the roof off; the fight moves outside
         attacks: [
-          { type: "orbit",    weight: 22, warnMs: 1500, len: 560, w: 74, dmg: 34, durMs: 2400, sweep: 5.6, tell: "CINDER ARC", dodge: "run the way the fire is going" },
-          { type: "breath",   weight: 20, warnMs: 1500, len: 700, w: 190, dmg: 40, durMs: 2400, sweep: 2.1, tell: "WHITE BREATH", dodge: "run around behind the cone" },
-          { type: "safezone", weight: 16, warnMs: 1900, r: 96, dmg: 46, durMs: 1800, tell: "THE PYRE", dodge: "get inside the marked circle" },
-          { type: "meteor",   weight: 16, warnMs: 1300, r: 54, dmg: 28, targets: 12, durMs: 1800, tell: "FIRESTORM", dodge: "never stop moving" },
-          { type: "charge",   weight: 14, warnMs: 1500, len: 680, w: 124, dmg: 42, durMs: 620, tell: "BURNING CHARGE", dodge: "step out of the lane" },
+          { type: "orbit",    weight: 20, warnMs: 1700, len: 780, w: 104, dmg: 36, durMs: 2800, sweep: 6.4, tell: "SOVEREIGN ARC", dodge: "run the way the fire is going" },
+          { type: "breath",   weight: 20, warnMs: 1700, len: 980, w: 280, dmg: 42, durMs: 2800, sweep: 2.6, tell: "KINGSFIRE", dodge: "run around behind the cone" },
+          { type: "safezone", weight: 16, warnMs: 2100, r: 112, dmg: 48, durMs: 2000, tell: "THE CORONATION PYRE", dodge: "get inside the marked circle" },
+          { type: "meteor",   weight: 16, warnMs: 1500, r: 62, dmg: 28, targets: 18, durMs: 2000, tell: "FALLING SKY", dodge: "never stop moving" },
+          { type: "charge",   weight: 14, warnMs: 1700, len: 940, w: 176, dmg: 44, durMs: 700, tell: "THE KING PASSES", dodge: "step out of the lane" },
           { type: "cross",    weight: 12, warnMs: 1500, arms: 5, len: 600, w: 60, dmg: 32, durMs: 1100, tell: "ASH SPOKES", dodge: "stand between the beams" },
         ],
       },
@@ -1112,7 +1121,11 @@
   // die: it collapses, the ash around it catches, and it rises lit. The client
   // plays the cinematic; the server owns the HP it comes back with.
   const DRAGON_PHASE2 = {
-    CINE_MS: 8200,          // how long the death-and-rekindle cutscene runs
+    // Long, because this is the set piece: it falls, the ash catches, it takes
+    // the crown, and the roar brings the ceiling down and opens the room onto
+    // the sky. Nothing may be hit for the whole of it — guildBossTick holds
+    // `reviving` for exactly this long.
+    CINE_MS: 15500,
     HP_FRAC: 0.62,          // the second phase's pool, as a fraction of the first
     ATTACK_EVERY_MS: 2000,  // it also throws faster than it did
   };
