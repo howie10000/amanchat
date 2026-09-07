@@ -1098,7 +1098,7 @@ window.loanRepay = async (mode) => {
 // ---------- QUEST BOARD ----------
 function openQuestBoard() {
   openMenu("QUEST BOARD", `
-    <p>Each quest is a randomly-generated labyrinth. Clear all enemies in the maze, grab the key that drops, find the exit door (bottom-right cell), and proceed to the next floor.</p>
+    <p>Each quest is one connected expedition. Explore winding passages and side rooms, follow your discovery minimap, and find the final guardian. Defeat it and claim the chest. Boss chambers have full visibility.</p>
     <p class="muted">Everything down there hunts you properly now — it routes around corners instead of grinding into walls, and it only wakes when it sees or hears you. A <b>?</b> over a head means it hasn't noticed you yet.</p>
     <h3 class="section">ENEMY TYPES</h3>
     <div class="enemyLegend">
@@ -1111,17 +1111,17 @@ function openQuestBoard() {
       <div><span class="dot" style="background:#14b8a6"></span><b>Shaman</b> — hangs back healing the others. Kill it first</div>
       <div><span class="dot" style="background:#7c3aed"></span><b>Stalker</b> — waits, motionless, until you come close</div>
       <div><span class="dot" style="background:#64748b"></span><b>Warden</b> — shielded and slow to fall</div>
-      <div><span class="dot" style="background:#7f1d1d"></span><b>Boss</b> — final floor, mixes everything</div>
+      <div><span class="dot" style="background:#7f1d1d"></span><b>Boss</b> — guards the final chamber</div>
     </div>
     <h3 class="section">CHOOSE A QUEST</h3>
-    <div class="shopItem"><div class="info"><b>Goblin Caves</b><br/><small>Easy • 3 floors • Reward $250</small></div>
+    <div class="shopItem"><div class="info"><b>Goblin Caves</b><br/><small>Easy • Connected dungeon • Reward $250</small></div>
       <button class="menuBtn green" onclick="gameCombat.startDungeon('easy')">START</button></div>
-    <div class="shopItem"><div class="info"><b>Bandit Hideout</b><br/><small>Medium • 4 floors • Reward $700 • Includes Ogres</small></div>
+    <div class="shopItem"><div class="info"><b>Bandit Hideout</b><br/><small>Medium • Connected dungeon • Reward $700 • Includes Ogres</small></div>
       <button class="menuBtn gold" onclick="gameCombat.startDungeon('medium')">START</button></div>
-    <div class="shopItem"><div class="info"><b>Demon Lair</b><br/><small>Hard • 5 floors + final boss • Reward $1800</small></div>
+    <div class="shopItem"><div class="info"><b>Demon Lair</b><br/><small>Hard • Connected dungeon + guardian • Reward $1800</small></div>
       <button class="menuBtn red" onclick="gameCombat.startDungeon('hard')">START</button></div>
     <h3 class="section">GUILD DUNGEONS</h3>
-    <p class="muted">Three harder runs are posted where the board can't reach — longer, denser, and each sealed at the end by a boss well past anything in the pond. They need a guild. Talk to the man leaning against the wall.</p>
+    <p class="muted">Four harder runs are posted where the board can't reach — longer, denser, and each sealed at the end by a boss well past anything in the pond. They need a guild. Talk to the man leaning against the wall.</p>
     <button class="menuBtn gold" onclick="gameGuild.openBroker()">TALK TO THE BROKER</button>
     <h3 class="section">WEAPONS</h3>
     <div class="weaponInfo">

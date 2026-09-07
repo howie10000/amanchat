@@ -1,6 +1,6 @@
 /* Part II presentation tuning; server combat timing remains in shared/economy.js. */
 window.DungeonScenes = Object.freeze({
-  visibilityRadius: 210,
+  visibilityRadius: 380,
   victoryMs: 6000,
   corridorSpeed: 1.5,
   corridorSegments: 9,

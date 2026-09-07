@@ -1,0 +1,42 @@
+<!doctype html><meta charset="utf-8"><title>Expedition playtest</title>
+<style>body{margin:0;background:#090c10;color:#e4d7b5;font:14px sans-serif}nav{padding:10px;display:flex;gap:12px;align-items:center}button{padding:8px}canvas{width:100%;max-width:1280px;display:block}#status{color:#a4d6b0}</style>
+<nav><b>Local expedition playtest</b><button id="start">Entrance</button><button id="bend">Corridor bend</button><button id="seal">Guardian seal</button><button id="sanctum">Final chamber</button><button id="transitions">Transition checks</button><span id="status">Loading</span></nav>
+<canvas id="game" width="1280" height="800"></canvas>
+<script>
+const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d'),VIEW_OX=128,VIEW_OY=80,WALK_SPEED=3.6;
+const keys={},cache={};
+let state={user:'playtest',area:'dungeon',pos:{x:0,y:0},mouse:{x:0,y:0},appearance:{},weapon:'sword',walking:0,facing:'right',attackCooldown:0,swingT:0,hp:9999,maxHp:9999,buffs:{},enemies:[],bullets:[],enemyBullets:[],particles:[],others:{},data:{money:0}};
+function toast(t){document.querySelector('#status').textContent=t;} function updateHUD(){} function closeMenu(){} function returnToTown(){}
+const mulberry32=a=>ECON.mulberry32(a);
+addEventListener('error',e=>{document.querySelector('#status').textContent='ERROR: '+e.message;});
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;});addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
+canvas.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect();state.mouse.x=(e.clientX-r.left)*canvas.width/r.width+state.dungeon.camera.x;state.mouse.y=(e.clientY-r.top)*canvas.height/r.height+state.dungeon.camera.y;});
+canvas.addEventListener('click',()=>doAttack());
+</script>
+<script src="../js/shared/economy.js"></script><script src="../js/shared/dungeon.js"></script><script src="../js/graphics.js"></script><script src="../js/mobs.js"></script><script src="../js/scene-config.js"></script><script src="../js/visibility.js"></script><script src="../js/bosses.js"></script><script src="../js/combat.js"></script><script src="../js/expedition.js"></script>
+<script>
+state.appearance={...DEFAULT_APPEARANCE};state.dungeon={cfg:QUEST_TIERS.hard,tier:'hard',seedBase:19,plan:null};setupFloor();
+function jump(x,y){state.pos.x=x;state.pos.y=y;state.hp=9999;toast('WASD / arrows to explore · click to attack');}
+document.querySelector('#start').onclick=()=>jump(256,1664);
+document.querySelector('#bend').onclick=()=>jump(768,1190);
+document.querySelector('#seal').onclick=()=>jump(2048,820);
+document.querySelector('#sanctum').onclick=()=>jump(3648,640);
+document.querySelector('#transitions').onclick=()=>{
+ const original=state.dungeon;
+ try {
+  const cfg=QUEST_TIERS.guild_crypt,plan=DUNGEON.buildExpedition(19,cfg);
+  state.dungeon={cfg,tier:cfg.tier,runId:'local-fixture'};gameExpedition.setup(plan);
+  const d=state.dungeon,enemy=state.enemies[0];if(enemy)enemy.hp=7;
+  gameExpedition.apply({runId:d.runId,encounter:'mini',boss:{id:cfg.mini,mini:true,status:'rising',elapsed:0,parts:[],head:{hp:1,maxHp:1}}});
+  if(!d.bossRoom||d.encounter!=='mini')throw new Error('chamber entry failed');
+  gameExpedition.apply({runId:d.runId,encounter:null,miniDone:true});
+  if(d.bossRoom||!d.miniDone||d.world!==plan||d.walls.includes(plan.gate))throw new Error('seal transition failed');
+  if(enemy&&!state.enemies.some(e=>e.id===enemy.id&&e.hp===7))throw new Error('enemy state lost');
+  if(state.pos.y>=plan.mini.y)throw new Error('wrong chamber exit');
+  toast('Client transition checks passed');
+ }catch(e){toast('ERROR: '+e.message);}
+ finally{state.dungeon=original;gameExpedition.setup(original.world,original.world.spawn);}
+};
+let frames=0;
+function draw(){updateDungeon();drawDungeon();if(++frames===2)toast('Rendered · WASD / arrows to explore');requestAnimationFrame(draw);}draw();
+</script>

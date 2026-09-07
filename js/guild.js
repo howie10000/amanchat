@@ -272,7 +272,7 @@ const LEADER_FAQ = [
   { q: "What's the treasury, and where does interest come from?", a: () =>
     `The treasury is the guild's shared pot, filled only by members' bank taxes. The Master sets an interest rate paid out of it periodically to every banked member — set it higher than the treasury can actually cover and everyone just gets a smaller share, so a generous rate needs a treasury to back it.` },
   { q: "How do guild dungeons work?", a: () =>
-    `A party walks a maze together, floor by floor — the server tracks it as ONE run, so an enemy any of you kills is dead for everyone. Explore within your torchlight. A mini-boss seals the far door on the middle floor of longer runs; defeat it and walk onward through the deeper floors to find the final boss. Claim its chest, then use the revealed exit. Clearing it pays the party and tithes a cut to the treasury.` },
+    `Explore one connected dungeon together, using your minimap to track discovered passages. Enemy deaths persist across the whole expedition. Explore within your torchlight. A mini-boss seals the far door of the central chamber; defeat it, pass through, and explore the deeper wing to find the final boss. Claim its chest, then use the revealed exit. Clearing it pays the party and tithes a cut to the treasury.` },
   { q: "How do skill points work?", a: () =>
     `Every ${ECON.GUILD_DUNGEONS_PER_POINT} guild dungeon clears earns the guild one skill point. Only the Master can spend it, on a mastery track that then trains faster for every member — not just whoever cleared the run.` },
   { q: "How do ranks work?", a: () =>
@@ -467,7 +467,7 @@ async function startParty() {
   // list has no reason to still be on screen once you've asked to go in.
   closeMenu();
   try {
-    const res = await netGuildDungeon({ action: "party_start" });
+    const res = await netGuildDungeon({ action: "party_start", layout: "continuous" });
     partyState = null;
     // The leader loads in from the reply; everyone else gets the `start` event.
     gameCombat.startDungeon(res.tier, [], { runId: res.runId, seed: res.seed, state: res.state });
@@ -513,8 +513,8 @@ async function openDungeons() {
     const mini = d.mini ? ECON.GUILD_BOSSES[d.mini] : null;
     const purse = d.reward + boss.reward + (mini ? mini.reward : 0);
     html += `<div class="shopItem"><div class="info"><b>${esc(d.name)}</b><br/>
-      <small>${d.floors} floors · boss: ${esc(boss.name)} · purse up to ${money(purse)}</small><br/>
-      ${mini ? `<small class="muted">${esc(mini.name)} blocks floor ${ECON.miniFloorOf(d) + 1} — its bounty is paid with the run.</small><br/>` : ""}
+      <small>Connected expedition · boss: ${esc(boss.name)} · purse up to ${money(purse)}</small><br/>
+      ${mini ? `<small class="muted">${esc(mini.name)} seals the central chamber. Defeat it to reach the deeper passages and final boss.</small><br/>` : ""}
       <small class="muted">${esc(d.blurb)}</small></div>
       <button class="menuBtn red" onclick="gameGuild.createParty('${id}')">CREATE PARTY</button></div>`;
   }
@@ -613,7 +613,7 @@ if (window.NET) {
       }
     } else if (m.kind === "enemies") {
       // A guildmate's kills, applied to our copy of the floor.
-      gameCombat.applyEnemyChanges(m.changed);
+      if (state.dungeon && state.dungeon.runId === m.runId) gameCombat.applyEnemyChanges(m.changed);
     } else if (m.kind === "floor") {
       // Whoever reported the stair moves the WHOLE party down it.
       gameCombat.adoptServerFloor(m);
@@ -623,6 +623,10 @@ if (window.NET) {
       // A party member who did not call `complete` still gets their own roll
       // of the loot table; it arrives on this event rather than a reply.
       if (window.gameGear) gameGear.announceLoot(m.loot, m.gear);
+      if (state.dungeon && state.dungeon.continuous && state.dungeon.runId === m.runId) {
+        state.dungeon.exitReady = true;
+        if (state.dungeon.chest) { state.dungeon.chest.claimed = true; state.dungeon.chest.state = 'open'; }
+      }
       updateHUD();
     }
   });

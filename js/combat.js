@@ -16,7 +16,7 @@ for (const id of ECON.GUILD_DUNGEON_ORDER) {
     tier: id,
     floors: g.floors, enemyMin: g.enemyMin, enemyMax: g.enemyMax,
     hpMult: g.hpMult, speedMult: g.speedMult, reward: g.reward,
-    name: g.name, guild: true, boss: g.boss, blurb: g.blurb,
+    name: g.name, guild: true, boss: g.boss, mini: g.mini, blurb: g.blurb,
   };
 }
 
@@ -69,7 +69,7 @@ async function startDungeon(tier, party, joining) {
     try {
       // Solo entry. A party goes through the lobby (gameGuild.startParty),
       // which calls party_start and arrives here as `joining`.
-      const res = await netGuildDungeon({ action: "start", tier });
+      const res = await netGuildDungeon({ action: "start", tier, layout: "continuous" });
       runId = res.runId;
       seedBase = "guildrun|" + res.seed;
       plan = withServerHp(res.state);
@@ -96,7 +96,7 @@ async function startDungeon(tier, party, joining) {
   state.swingT = 0;
   setupFloor();
   closeMenu();
-  toast(`Entered ${cfg.name} — Floor 1 of ${cfg.floors}`);
+  toast(`Entered ${cfg.name} — explore the passages to find its guardian.`);
   updateHUD();
 }
 
@@ -126,6 +126,18 @@ async function resumeGuildRunIfAny() {
   state.hp = state.maxHp;
   state.questReward = cfg.reward;
   state.swingT = 0;
+  if (run.continuous) {
+    state.dungeon.plan = withServerHp(res.state);
+    state.dungeon.miniDone = run.miniDone;
+    setupFloor();
+    if (res.boss && run.encounter) gameExpedition.apply({runId:run.id,encounter:run.encounter,boss:res.boss});
+    else if (run.miniDone && state.dungeon.world.mini && !state.dungeon.restoredPosition) {
+      const r=state.dungeon.world.mini;
+      gameExpedition.setup(state.dungeon.world,{x:r.x+512,y:r.y-96});
+    }
+    if (!res.boss && run.encounter==='mini') gameExpedition.leave();
+    toast('Expedition restored. Continue exploring.'); updateHUD(); return;
+  }
   if (res.boss) {
     // A boss (mini or final) is up server-side, so the run was mid-fight —
     // rejoin the arena directly rather than the maze it interrupted.
@@ -159,6 +171,10 @@ function withServerHp(st) {
 
 function setupFloor() {
   const d = state.dungeon;
+  if (!d.cfg.guild || (d.plan && d.plan.continuous)) {
+    gameExpedition.setup(d.plan && d.plan.continuous ? d.plan : DUNGEON.buildExpedition(d.seedBase, d.cfg));
+    return;
+  }
   // A guild floor is whatever the server said it is. A solo floor is built
   // locally from the same shared generator — identical code, no round-trip,
   // because there is nobody to agree with.
@@ -242,6 +258,7 @@ function computeFlowField(maze, goalR, goalC) {
 // Where an enemy standing at (x,y) should aim to walk next.
 function flowTarget(x, y) {
   const d = state.dungeon;
+  if (d && d.continuous && !d.bossRoom) return gameExpedition.flowTarget(x,y);
   if (!d || !d.flow) return null;
   const { r, c } = cellOf(x, y);
   const i = r * MAZE_COLS + c;
@@ -302,6 +319,10 @@ function collidesWalls(x, y, r) {
 }
 
 function moveWithWalls(obj, nx, ny, radius) {
+  if (obj.isBoss && state.dungeon.continuous) {
+    const r=state.dungeon.world.final;
+    nx=Math.max(r.x+50,Math.min(r.x+r.w-50,nx)); ny=Math.max(r.y+70,Math.min(r.y+r.h-70,ny));
+  }
   if (!collidesWalls(nx, ny, radius)) { obj.x = nx; obj.y = ny; return; }
   if (!collidesWalls(nx, obj.y, radius)) obj.x = nx;
   if (!collidesWalls(obj.x, ny, radius)) obj.y = ny;
@@ -340,7 +361,7 @@ function takePlayerDamage(amount) {
 // land here the same way your own do.
 function checkFloorCleared() {
   const d = state.dungeon;
-  if (!d || d.bossRoom) return;
+  if (!d || d.bossRoom || d.continuous) return;
   if (state.enemies.length > 0) { d.cleared = false; return; }
   if (!(d.spawnedCount > 0)) return;
   if (d.cleared) return;
@@ -408,7 +429,7 @@ function updateDungeon() {
     // Once a mini is down its floor has an exit again: walk to the far door.
     if (d.isMini && (!d.boss || d.boss.status === "dead")) {
       const ex = { x: DUNGEON_W / 2, y: BOSS_ROOM.y + 30 };
-      if (Math.hypot(state.pos.x - ex.x, state.pos.y - ex.y) < 34) advanceGuildFloor();
+      if (Math.hypot(state.pos.x - ex.x, state.pos.y - ex.y) < 34) { if (d.continuous) gameExpedition.leave(); else advanceGuildFloor(); }
     }
     if (d.tracers && d.tracers.length) {
       for (const tr of d.tracers) { tr.x += tr.vx; tr.y += tr.vy; tr.life--; }
@@ -593,6 +614,8 @@ function updateDungeon() {
   state.enemies = alive;
   if (died) checkFloorCleared();
 
+  if (state.dungeon.continuous) { gameExpedition.tick(); return; }
+
   // Pickup key
   if (state.dungeon.cleared && state.dungeon.key && !state.dungeon.keyPickedUp) {
     if (Math.hypot(state.pos.x - state.dungeon.key.x, state.pos.y - state.dungeon.key.y) < 22) {
@@ -736,7 +759,7 @@ function applyEnemyChanges(changed) {
   const d = state.dungeon;
   if (!d || !Array.isArray(changed)) return;
   for (const c of changed) {
-    const e = state.enemies.find(x => x.id === c.id);
+    const e = (d.continuous && d.bossRoom ? d.worldEnemies || [] : state.enemies).find(x => x.id === c.id);
     if (!e) continue;
     e.hp = c.hp;
     e.hitFlash = 6;
@@ -744,6 +767,7 @@ function applyEnemyChanges(changed) {
     if (c.dead) addParticles(e.x, e.y, e.color, 16);
   }
   state.enemies = state.enemies.filter(e => e.hp > 0);
+  if (d.continuous && d.bossRoom) d.worldEnemies = (d.worldEnemies || []).filter(e => e.hp > 0);
   checkFloorCleared();
 }
 
@@ -1412,7 +1436,7 @@ function drawPartyMembers(t) {
   for (const [name, o] of Object.entries(state.others)) {
     if (!o || o.area !== "dungeon" || o.run !== d.runId) continue;
     // Followers on another floor are somewhere else entirely.
-    if ((o.dfloor | 0) !== (d.floor | 0)) continue;
+    if ((o.dfloor | 0) !== (dungeonPresence().dfloor | 0)) continue;
     GFX.drawCharacter(ctx, o.dx == null ? o.x : o.dx, o.dy == null ? o.y : o.dy, o.appearance, {
       facing: o.facing, walking: o.walking, name,
     });
@@ -1554,6 +1578,13 @@ function drawBossRoom() {
   for (let q = 0; q < 5; q++) ctx.fillRect(DUNGEON_W / 2 - 40 + q * 18, BOSS_ROOM.y + BOSS_ROOM.h - 4, 6, 22);
   }
 
+  if (d.isMini && b && b.status !== 'dead') {
+    const x=DUNGEON_W/2,y=BOSS_ROOM.y+30;
+    ctx.fillStyle='#1a1510';ctx.fillRect(x-32,y-26,64,52);
+    ctx.strokeStyle='#a77c43';ctx.lineWidth=3;ctx.strokeRect(x-32,y-26,64,52);
+    ctx.fillStyle='#a77c43';for(let i=-24;i<=24;i+=12)ctx.fillRect(x+i,y-26,4,52);
+    ctx.font='10px Georgia';ctx.textAlign='center';ctx.fillText('FAR SEAL · GUARDIAN LIVES',x,y+42);
+  }
   // ---- the way on, once a mini is down ----
   if (d.isMini && (!b || b.status === "dead")) {
     const ex = DUNGEON_W / 2, ey = BOSS_ROOM.y + 30;
@@ -1717,7 +1748,8 @@ function drawTomeHud() {
 
 
 function drawDungeon() {
-  if (state.dungeon && state.dungeon.bossRoom) { drawBossRoom(); return; }
+  if (state.dungeon && state.dungeon.bossRoom) { drawBossRoom(); if(state.dungeon.continuous && !state.dungeon.cine && !state.dungeon.phaseCine && !state.dungeon.victoryCine) gameExpedition.minimap(); return; }
+  if (state.dungeon && state.dungeon.continuous) { gameExpedition.draw(); return; }
   const t = Date.now();
   // Floor (full-canvas background, unshifted)
   ctx.fillStyle = "#0d0b0a"; ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -2112,7 +2144,7 @@ function adoptServerFloor(msg) {
 // Which run and floor we are on, so presence can scope who is drawn beside us.
 function dungeonPresence() {
   const d = state.dungeon;
-  return d && d.runId ? { run: d.runId, dfloor: d.floor | 0 } : null;
+  return d && d.runId ? { run: d.runId, dfloor: d.continuous ? (d.bossRoom ? (d.encounter === "mini" ? 1 : 2) : 0) : d.floor | 0 } : null;
 }
 
 

@@ -1264,7 +1264,7 @@
       const out = [me];
       for (const [name, o] of Object.entries(state.others)) {
         if (!o || o.area !== "dungeon" || o.run !== d.runId) continue;
-        if ((o.dfloor | 0) !== (d.floor | 0)) continue;
+        if ((o.dfloor | 0) !== (dungeonPresence().dfloor | 0)) continue;
         out.push({ appearance: o.appearance || null, name });
         if (out.length >= 4) break;
       }

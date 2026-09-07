@@ -128,6 +128,7 @@ canvas.addEventListener("mousemove", e => {
   // functions) — bring the mouse back into that same local space so aiming
   // and furniture placement line up with what's rendered.
   if (state.area !== "neighborhood") { mx -= VIEW_OX; my -= VIEW_OY; }
+  if (state.area === 'dungeon' && state.dungeon && state.dungeon.continuous && !state.dungeon.bossRoom) { mx += VIEW_OX + state.dungeon.camera.x; my += VIEW_OY + state.dungeon.camera.y; }
   state.mouse.x = mx;
   state.mouse.y = my;
   if (state.buildMode && state.selectedFurn >= 0 && state.mouse.down) {
@@ -453,7 +454,7 @@ function updateHUD() {
     interior_quest: "Adventurers Guild", interior_job: "Jobs Center",
     interior_barber: "Trim & Style", interior_plaza: "Town Plaza",
     interior_mayor: "Town Hall",
-    dungeon: "Dungeon - Floor " + (state.dungeon ? state.dungeon.floor + 1 : 1),
+    dungeon: state.dungeon && state.dungeon.continuous ? "Dungeon expedition" : "Dungeon - Floor " + (state.dungeon ? state.dungeon.floor + 1 : 1),
     duel: "Duel Arena",
   };
   document.getElementById("hudArea").textContent = labels[state.area] || state.area;

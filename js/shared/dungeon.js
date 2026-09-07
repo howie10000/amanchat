@@ -202,10 +202,85 @@
     };
   }
 
+  // A single connected expedition. The central chamber is a cut in the graph:
+  // no side passage crosses from the approach to the deep wing around it.
+  function buildExpedition(seed, cfg) {
+    const tile = 64, cols = 68, rows = 32, width = cols * tile, height = rows * tile;
+    const rng = ECON.mulberry32(ECON.strToSeed(String(seed) + '|expedition|' + cfg.tier));
+    const cells = Array.from({ length: rows }, () => Array(cols).fill(0));
+    const rooms = [];
+    function carve(x, y, w, h, kind) {
+      for (let r = Math.max(1, Math.floor(y / tile)); r < Math.min(rows - 1, Math.ceil((y + h) / tile)); r++)
+        for (let c = Math.max(1, Math.floor(x / tile)); c < Math.min(cols - 1, Math.ceil((x + w) / tile)); c++) cells[r][c] = 1;
+      if (kind) rooms.push({ x, y, w, h, kind });
+    }
+    function corridor(points) {
+      for (let i = 1; i < points.length; i++) {
+        const [x, y] = points[i - 1], [xx, yy] = points[i];
+        carve(Math.min(x, xx) - 96, Math.min(y, yy) - 96, Math.abs(xx - x) + 192, Math.abs(yy - y) + 192);
+      }
+    }
+    const mini = { x: 1536, y: 768, w: 1024, h: 640, kind: cfg.mini ? 'mini' : 'camp' };
+    const final = { x: 3136, y: 128, w: 1024, h: 640, kind: 'final' };
+    const spawn = { x: 256, y: 1664 };
+    corridor([[256,1664],[768,1664],[768,1152],[1152,1152],[1152,1664],[2048,1664],[2048,1408]]);
+    carve(128,1536,384,320,'entry');
+    carve(576,960,384,448,'crypt');
+    corridor([[768,1152],[320,1152],[320,640],[832,640]]);
+    carve(128,448,448,384,'shrine');
+    carve(704,512,448,256,'store');
+    // An approach loop offers exploration without bypassing the central seal.
+    corridor([[832,640],[1216,640],[1216,1152]]);
+    carve(mini.x, mini.y, mini.w, mini.h, mini.kind);
+    corridor([[2048,768],[2048,384],[2752,384],[2752,1152],[3648,1152],[3648,768]]);
+    carve(2624,896,320,448,'barracks');
+    corridor([[2752,1152],[2752,1728],[3392,1728]]);
+    carve(3136,1536,512,320,'reliquary');
+    corridor([[3648,1152],[4032,1152],[4032,1600]]);
+    carve(3904,1472,256,384,'watch');
+    carve(final.x,final.y,final.w,final.h,'final');
+    const walls = [];
+    // Merge exposed tile edges into runs; no overlapping internal wall blocks.
+    for (let r = 0; r <= rows; r++) {
+      let start = -1;
+      for (let c = 0; c <= cols; c++) {
+        const edge = c < cols && !!(cells[r - 1] && cells[r - 1][c]) !== !!(cells[r] && cells[r][c]);
+        if (edge && start < 0) start = c;
+        if (!edge && start >= 0) { walls.push({ x: start * tile - 6, y: r * tile - 6, w: (c - start) * tile + 12, h: 12 }); start = -1; }
+      }
+    }
+    for (let c = 0; c <= cols; c++) {
+      let start = -1;
+      for (let r = 0; r <= rows; r++) {
+        const edge = r < rows && !!cells[r][c - 1] !== !!cells[r][c];
+        if (edge && start < 0) start = r;
+        if (!edge && start >= 0) { walls.push({ x: c * tile - 6, y: start * tile - 6, w: 12, h: (r - start) * tile + 12 }); start = -1; }
+      }
+    }
+    const gate = { x: 1920, y: 762, w: 256, h: 12 };
+    const inside = (p, room, pad = 0) => p.x >= room.x - pad && p.x <= room.x + room.w + pad && p.y >= room.y - pad && p.y <= room.y + room.h + pad;
+    const enemies = [], props = [], types = rosterFor(cfg);
+    for (let r = 2; r < rows - 2; r++) for (let c = 2; c < cols - 2; c++) {
+      if (!cells[r][c]) continue;
+      const p = { x: (c + .5) * tile, y: (r + .5) * tile };
+      // Actors and clutter occupy broad open tiles, never doors or narrow bends.
+      const spacious = cells[r-1][c] && cells[r+1][c] && cells[r][c-1] && cells[r][c+1];
+      if (inside(p, mini, 96) || inside(p, final, 128) || Math.hypot(p.x-spawn.x,p.y-spawn.y) < 320) continue;
+      if (spacious && rng() < .06 && enemies.every(e => Math.hypot(e.x-p.x,e.y-p.y)>160)) {
+        const type = types[Math.floor(rng()*types.length)], t = ENEMY_TYPES[type];
+        enemies.push({ id:'e'+enemies.length, type, x:p.x, y:p.y, hp:Math.round(t.hp*cfg.hpMult), maxHp:Math.round(t.hp*cfg.hpMult), speed:t.speed*cfg.speedMult });
+      }
+      if (spacious && rng() < .015) props.push({ kind:'puddle', x:p.x, y:p.y, r:14 });
+      if (!cells[r-1][c] && c % 5 === 0) props.push({kind:'torch', x:p.x, y:r*tile+18, ph:r+c});
+    }
+    if (!cfg.guild) { const t = ENEMY_TYPES.boss; enemies.push({ id:'final-boss', type:'boss', x:final.x+512, y:final.y+260, hp:Math.round(t.hp*cfg.hpMult), maxHp:Math.round(t.hp*cfg.hpMult), speed:t.speed*cfg.speedMult }); }
+    return { version:2, continuous:true, floor:0, width,height,tile,cols,rows,cells,walls,rooms,mini:cfg.mini?mini:null,final,gate,spawn,enemies,props,propSeed:0 };
+  }
+
   return {
     DUNGEON_W, DUNGEON_H, MAZE_COLS, MAZE_ROWS, CELL_W, CELL_H,
     MAZE_OFFSET_X, MAZE_OFFSET_Y, WALL_THICK,
     cellCenter, generateMaze, buildWallSegments,
-    ENEMY_TYPES, rosterFor, buildEnemies, buildFloorPlan,
+    ENEMY_TYPES, rosterFor, buildEnemies, buildFloorPlan, buildExpedition,
   };
 });

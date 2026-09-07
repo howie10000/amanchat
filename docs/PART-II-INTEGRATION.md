@@ -1,3 +1,5 @@
+> The connected-map revision supersedes the separate-floor scope below. See [CONNECTED-DUNGEONS.md](CONNECTED-DUNGEONS.md) for current behavior and verification.
+
 # Dungeons & Guilds — Part II integration
 
 Changes are integrated into index.html; no build step or database migration is required.

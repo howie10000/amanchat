@@ -2323,7 +2323,7 @@ function partyInvitesFor(user) {
 function floorPlan(run, floor) {
     if (!run.plans[floor]) {
         const cfg = ECON.GUILD_DUNGEONS[run.tier];
-        const plan = DUNGEON.buildFloorPlan(run.seed, Object.assign({ guild: true }, cfg), floor);
+        const plan = run.continuous ? DUNGEON.buildExpedition(run.seed, Object.assign({ guild: true }, cfg)) : DUNGEON.buildFloorPlan(run.seed, Object.assign({ guild: true }, cfg), floor);
         run.plans[floor] = plan;
         const hp = {};
         for (const e of plan.enemies) hp[e.id] = e.hp;
@@ -2346,7 +2346,7 @@ function floorStateView(run) {
 }
 
 // Creating the run itself, shared by `party_start` and the solo `start` path.
-function startGuildRun(leader, tier, members) {
+function startGuildRun(leader, tier, members, continuous = false) {
     const g = guildRequire(leader);
     const cfg = ECON.GUILD_DUNGEONS[tier];
     if (!cfg) throw new Error('No such guild dungeon.');
@@ -2360,7 +2360,7 @@ function startGuildRun(leader, tier, members) {
     }
     const now = Date.now();
     const run = {
-        id: pushId(), tier, gid: g.id, members: set, startedAt: now,
+        id: pushId(), tier, gid: g.id, members: set, startedAt: now, continuous, encounter: null,
         floor: 0, floorAt: now, miniDone: false, miniPurse: 0, boss: null, paid: false,
         seed: (Math.random() * 0x7fffffff) | 0,
         plans: {}, enemyHp: {}, hitLast: new Map(), leader,
@@ -2391,7 +2391,9 @@ function guildBossTick() {
         if (!b && now - run.startedAt > 30 * 60000) { endGuildRun(run, 'expired'); continue; }
         if (!b) continue;
         if (b.status !== 'dead' && now - b.spawnedAt > ECON.GUILD_BOSS.MAX_LIFE_MS) {
-            if (b.mini) {
+            if (b.mini && run.continuous) {
+                runBroadcast(run, 'timeout'); endGuildRun(run);
+            } else if (b.mini) {
                 // A mini that outlasts the party just withdraws — it costs them
                 // its bounty, not the whole run.
                 run.boss = null;
@@ -3528,7 +3530,7 @@ const ECONOMY_OPS = {
             id: run.id, tier: run.tier, members: [...run.members], startedAt: run.startedAt,
             floor: run.floor, floors: ECON.GUILD_DUNGEONS[run.tier].floors,
             miniFloor: ECON.miniFloorOf(ECON.GUILD_DUNGEONS[run.tier]),
-            miniDone: !!run.miniDone, seed: run.seed,
+            miniDone: !!run.miniDone, seed: run.seed, continuous: !!run.continuous, encounter: run.encounter,
         } : null;
 
         if (action === 'status') {
@@ -3637,7 +3639,7 @@ const ECONOMY_OPS = {
             if (party.leader !== user) throw new Error('Only the party leader can start the run.');
             const members = [...party.members].filter(u => byUser.has(u) && !guildRunOf.has(u));
             if (!members.includes(user)) throw new Error('You are not able to start right now.');
-            const out = startGuildRun(user, party.tier, members);
+            const out = startGuildRun(user, party.tier, members, msg.layout === 'continuous');
             disbandParty(party, 'started');
             return out;
         }
@@ -3725,7 +3727,7 @@ const ECONOMY_OPS = {
         // Entering alone. A party goes through party_create/party_start
         // instead, so nobody is pulled into a run without accepting it.
         if (action === 'start') {
-            return startGuildRun(user, String(msg.tier || ''), []);
+            return startGuildRun(user, String(msg.tier || ''), [], msg.layout === 'continuous');
         }
 
         // Reporting a floor done is the ONLY way to advance, and the server
@@ -3734,6 +3736,7 @@ const ECONOMY_OPS = {
         // means the stair is blocked.
         if (action === 'floor_clear') {
             const run = runFor(user);
+            if (run && run.continuous) throw new Error('This dungeon has no floors. Find the chamber entrance.');
             if (!run) throw new Error('You are not in a guild dungeon.');
             const cfg = ECON.GUILD_DUNGEONS[run.tier];
             if (run.floor >= cfg.floors - 1) throw new Error('You are already at the boss.');
@@ -3769,11 +3772,41 @@ const ECONOMY_OPS = {
             return { run: runView(run), floor: run.floor, mini: spawned, boss: guildBossView(run, now), state };
         }
 
+        // Continuous-map encounter transitions. Enemy rosters and the map persist.
+        if (action === 'encounter_enter' || action === 'encounter_leave') {
+            const run = runFor(user);
+            if (!run || !run.continuous) throw new Error('No expedition is active.');
+            const cfg = ECON.GUILD_DUNGEONS[run.tier], plan = floorPlan(run, 0);
+            if (action === 'encounter_leave') {
+                if (run.encounter !== 'mini' || !(run.miniDone || (run.boss && run.boss.mini && run.boss.status === 'dead'))) throw new Error('Defeat the mini-boss to unlock the far door.');
+                run.miniDone = true; run.boss = null; run.encounter = null;
+                const payload = { event:'guild_dungeon', kind:'expedition', runId:run.id, encounter:null, miniDone:true, state:floorStateView(run) };
+                for (const member of run.members) pushTo(member, payload);
+                return payload;
+            }
+            const which = msg.chamber === 'mini' ? 'mini' : 'final';
+            const chamber = which === 'mini' ? plan.mini : plan.final;
+            if (!chamber || (which === 'mini' && run.miniDone)) throw new Error('That chamber has already been cleared.');
+            if (which === 'final' && cfg.mini && !run.miniDone) throw new Error('The mini-boss seals the deeper dungeon.');
+            if (run.encounter) {
+                if (run.encounter !== which) throw new Error('The party is already fighting in another chamber.');
+                return { encounter:which, boss:guildBossView(run,now), miniDone:!!run.miniDone };
+            }
+            const presence = byUser.get(user)?.presence;
+            if (!presence || !Number.isFinite(presence.x) || !Number.isFinite(presence.y) || presence.area !== 'dungeon' || presence.run !== run.id || Math.hypot(presence.x - (chamber.x + 512), presence.y - (chamber.y + 640)) > 230) throw new Error('Walk to the chamber entrance first.');
+            run.encounter = which;
+            spawnGuildBoss(run, which === 'mini' ? cfg.mini : cfg.boss);
+            const payload = { event:'guild_dungeon', kind:'expedition', runId:run.id, encounter:which, miniDone:!!run.miniDone, boss:guildBossView(run,now) };
+            for (const member of run.members) pushTo(member, payload);
+            return payload;
+        }
+
         if (action === 'boss_spawn') {
             const run = runFor(user);
             if (!run) throw new Error('You are not in a guild dungeon.');
             const cfg = ECON.GUILD_DUNGEONS[run.tier];
             // The boss room is the last floor and nowhere else.
+            if (run.continuous) throw new Error('Walk to the boss chamber entrance.');
             if (run.floor !== cfg.floors - 1) throw new Error('The boss room is further down.');
             if (run.boss) return { boss: guildBossView(run, now), run: runView(run) };
             spawnGuildBoss(run, cfg.boss);
@@ -3841,7 +3874,7 @@ const ECONOMY_OPS = {
             if (!run) throw new Error('You are not in a guild dungeon.');
             const cfg = ECON.GUILD_DUNGEONS[run.tier];
             if (run.paid) throw new Error('This run has already paid out.');
-            if (run.floor !== cfg.floors - 1) throw new Error('You have not reached the boss room.');
+            if (run.continuous ? run.encounter !== 'final' : run.floor !== cfg.floors - 1) throw new Error('You have not reached the boss room.');
             if (!run.boss || run.boss.mini || run.boss.status !== 'dead') throw new Error('The boss still stands.');
             // Two independent floors on how fast a run can possibly be: the run
             // as a whole, and the boss fight inside it.
