@@ -1234,7 +1234,7 @@ h3.section { margin: 14px 0 8px; font-size: 14px; color: #fbbf24; letter-spacing
 .gearFilters .menuBtn { padding: 5px 10px; }
 /* Part II: engraved Roman capitals, with a local serif fallback. */
 .gdTitle .gdMain b { font-family: 'Palatino Linotype', 'Book Antiqua', Georgia, serif; font-weight: 400; letter-spacing: .09em; color: #dec58b; text-shadow: 0 2px 2px #000, 0 0 28px #b38c4840; }
-.gdPart { color: #dec58b; font: 12px Georgia, serif; letter-spacing: .45em; text-align: center; margin-bottom: 12px; }
+.gdPart { color: #dec58b; font: 12px Georgia, serif; letter-spacing: .45em; text-align: center; margin: 12px 0 6px; }
 #loginScreen { background: #08090d; }
 #loginScreen .loginStack { position: relative; z-index: 1; }
 #loginScreen .loginBox { background: rgba(10, 10, 16, .9); border-color: #a9874766; }

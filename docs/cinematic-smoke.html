@@ -15,5 +15,13 @@ for (const id of ['warden','smith','tyrant','dragon','ogrelord','tempest']) {
   }
  }
 }
-output.textContent += passed + '/60 frames rendered';
+for (const k of [0,.25,.5,.75,1]) {
+ const def=ECON.GUILD_BOSSES.dragon;
+ const frame=DungeonGL.render({id:'dragon',mode:'phase2',k,t:30000+k*15500,color:def.color,accent:def.accent});
+ if(frame)passed++;else output.textContent+='FAIL dragon phase2 '+k+'\n';
+}
+// Replaying the same boss after its roof collapse must restore the chamber.
+const def=ECON.GUILD_BOSSES.dragon;
+if(DungeonGL.render({id:'dragon',mode:'entrance',k:0,t:60000,color:def.color,accent:def.accent}))passed++;
+output.textContent += passed + '/66 frames rendered';
 </script>

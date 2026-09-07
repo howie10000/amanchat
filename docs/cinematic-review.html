@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>Cinematic review</title>
+<style>body{margin:0;background:#090b0f;color:#dbc791;font:14px Georgia}nav{padding:10px;display:flex;flex-wrap:wrap;gap:8px}button{background:#20232a;color:#dbc791;border:1px solid #5a513d;padding:8px}canvas{width:min(100%,1100px);display:block}#label{padding:10px}</style>
+<nav id="bosses"></nav><nav><button data-mode="entrance">Entrance</button><button data-mode="victory">Victory</button><button data-mode="phase2">Dragon phase two</button><button id="play">Play</button><button data-k="0.15">Arrival</button><button data-k="0.5">Midpoint</button><button data-k="0.82">Reveal</button><button data-k="1">Final frame</button></nav>
+<div id="label"></div><canvas width="1024" height="640"></canvas>
+<script src="../js/vendor/three.min.js"></script><script src="../js/shared/economy.js"></script><script src="../js/dungeon3d.js"></script>
+<script>
+const ctx=document.querySelector('canvas').getContext('2d');let id='dragon',mode='entrance',k=.82,playing=false,previous=0,sceneId=1;
+for(const name of ['warden','smith','tyrant','dragon','ogrelord','tempest']){const b=document.createElement('button');b.textContent=name;document.querySelector('#bosses').append(b);b.onclick=()=>{id=name;mode='entrance';k=.82;playing=false;sceneId++;};}
+document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{mode=b.dataset.mode;if(mode==='phase2')id='dragon';k=.5;playing=false;sceneId++;});
+document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{k=+b.dataset.k;playing=false;});document.querySelector('#play').onclick=()=>{k=0;playing=true;previous=0;sceneId++;};
+function frame(now){const def=ECON.GUILD_BOSSES[id];if(playing&&previous)k=Math.min(1,k+(now-previous)/(mode==='victory'?6000:mode==='phase2'?ECON.DRAGON_PHASE2.CINE_MS:def.tier==='mini'?ECON.GUILD_BOSS.MINI_RISE_MS:ECON.GUILD_BOSS.RISE_MS));previous=now;
+const image=DungeonGL.render({mode,id,k,t:now,sceneId,mini:def.tier==='mini',color:def.color,accent:def.accent});if(image){ctx.drawImage(image,0,0,1024,640);ctx.fillStyle='#000';ctx.fillRect(0,0,1024,40);ctx.fillRect(0,600,1024,40);}document.querySelector('#label').textContent=image?def.name+' · '+mode+' · '+Math.round(k*100)+'%':'RENDER FAILED';requestAnimationFrame(frame);}requestAnimationFrame(frame);
+</script>

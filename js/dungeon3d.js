@@ -11,10 +11,11 @@
    the light shafts, a shockwave across the floor, the walls picking up the
    colour of whatever just woke up.
 
-   Two cutscenes live here:
+   Three cinematic sequences live here:
 
      "entrance" — the door seals behind you, the dark stirs, the thing
                   ASSEMBLES itself out of the black, and stands up.
+     "victory"  — a boss-specific collapse, held silence, and the gate reopening.
      "phase2"   — Varkaal goes down, the ash it fell in catches, and it
                   comes back lit from the inside.
 
@@ -68,6 +69,7 @@
     renderer.setPixelRatio(1);
     renderer.setSize(RW, RH, false);
     renderer.setClearColor(0x05030a, 1);
+    renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.0;
     // Deliberately NOT sRGB output. three r148 ships with ColorManagement off,
     // so a hex colour is stored as-is and then encoded again on the way out —
     // every stone in the room comes back two stops brighter than it was
@@ -99,8 +101,14 @@
     // The one coal, in Varkaal's second phase.
     coalLight = new THREE.PointLight(0xff7b2e, 0, 70, 2); scene.add(coalLight);
 
+    renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+    keyLight.castShadow=true;keyLight.shadow.mapSize.set(1024,1024);
+    Object.assign(keyLight.shadow.camera,{left:-42,right:42,top:42,bottom:-42,near:1,far:130});
+    keyLight.shadow.bias=-.0005;keyLight.shadow.normalBias=.04;
+    keyLight.target.position.set(0,8,ROOM.bossZ);scene.add(keyLight.target);
     buildRoom();
-    buildFx();
+    room.traverse(o=>{if(o.isMesh){o.receiveShadow=true;o.castShadow=!o.material.transparent;}});
+    buildFx();buildCinemaFinish();
     return true;
   }
 
@@ -144,7 +152,7 @@
     }
     const t = new THREE.CanvasTexture(cv);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.magFilter = THREE.NearestFilter;           // keep the blocks crisp
+    t.magFilter = THREE.LinearFilter;            // soften distant stone grain
     t.minFilter = THREE.LinearMipmapLinearFilter;
     _texCache[key] = t;
     return t;
@@ -190,6 +198,7 @@
       const t = blockTexture(c, 4, 0.5);
       if (rep) { const t2 = t.clone(); t2.needsUpdate = true; t2.wrapS = t2.wrapT = THREE.RepeatWrapping; t2.repeat.set(rep[0], rep[1]); m.map = t2; }
       else m.map = t;
+      m.bumpMap=m.map;m.bumpScale=.12;
       return m;
     };
 
@@ -439,8 +448,52 @@
     fx.party = buildParty();
   }
 
+  let finish=null, rimLight=null;
+  function buildCinemaFinish(){
+    rimLight=new THREE.DirectionalLight(0x8eabd1,.65);rimLight.position.set(-12,22,ROOM.bossZ-10);rimLight.target.position.set(0,10,ROOM.bossZ);scene.add(rimLight,rimLight.target);
+    const target=new THREE.WebGLRenderTarget(RW,RH,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
+    target.depthTexture=new THREE.DepthTexture(RW,RH);target.depthTexture.type=THREE.UnsignedShortType;
+    const uniforms={frame:{value:target.texture},depth:{value:target.depthTexture},pixel:{value:new THREE.Vector2(1/RW,1/RH)},focus:{value:36},nearPlane:{value:.5},farPlane:{value:400},time:{value:0}};
+    const material=new THREE.ShaderMaterial({depthTest:false,depthWrite:false,uniforms,
+      vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}',
+      fragmentShader:`varying vec2 vUv;uniform sampler2D frame;uniform sampler2D depth;uniform vec2 pixel;uniform float focus,nearPlane,farPlane,time;
+      void main(){
+        float d=texture2D(depth,vUv).x;
+        float z=nearPlane*farPlane/(farPlane-d*(farPlane-nearPlane));
+        float blur=clamp(abs(z-focus)/max(12.,focus)*1.8,0.,1.5);
+        vec2 r=pixel*blur;vec3 c=texture2D(frame,vUv).rgb*.5;
+        c+=(texture2D(frame,vUv+vec2(r.x,0.)).rgb+texture2D(frame,vUv-vec2(r.x,0.)).rgb+texture2D(frame,vUv+vec2(0.,r.y)).rgb+texture2D(frame,vUv-vec2(0.,r.y)).rgb)*.125;
+        vec3 glow=vec3(0.);for(int i=0;i<4;i++){float a=float(i)*1.5707963;glow+=max(vec3(0.),texture2D(frame,vUv+vec2(cos(a),sin(a))*pixel*5.).rgb-.68);}
+        c+=glow*.075;
+        float vignette=1.-smoothstep(.2,.85,length((vUv-.5)*vec2(1.,.8)));c*=.76+.24*vignette;
+        float grain=fract(sin(dot(vUv+time*.0001,vec2(12.9898,78.233)))*43758.5453)-.5;
+        c+=grain*.008;c=mix(vec3(dot(c,vec3(.2126,.7152,.0722))),c,.93);
+        gl_FragColor=vec4(max(c,vec3(0.)),1.);
+      }`});
+    const postScene=new THREE.Scene(),postCamera=new THREE.Camera();postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),material));
+    const mist=[];
+    for(let i=0;i<3;i++){
+      const mat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,uniforms:{time:{value:0},opacity:{value:.035}},
+        vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+        fragmentShader:'varying vec2 vUv;uniform float time,opacity;void main(){float w=sin(vUv.x*29.+sin(vUv.y*17.+time*.18)*2.+time*.12)*.5+.5;float edge=sin(vUv.x*3.14159)*sin(vUv.y*3.14159);gl_FragColor=vec4(.48,.53,.6,opacity*w*edge);}' });
+      const m=new THREE.Mesh(new THREE.PlaneGeometry(34,58),mat);m.rotation.x=-Math.PI/2;m.position.set(0,.8+i*.65,-14);scene.add(m);mist.push(m);
+    }
+    finish={target,uniforms,scene:postScene,camera:postCamera,mist};
+  }
+  function resetStage(){
+    const R=room.userData;
+    R.ceil.position.y=ROOM.wallH;
+    if(rig){rig.body.emissive.copy(rig.color);if(rig.dragon&&rig.dragon.crown){rig.dragon.crown.visible=false;rig.dragon.crown.rotation.set(0,0,0);rig.dragon.crown.position.set(0,2.1,-.6);}}
+    if(R.backWall)R.backWall.position.y=ROOM.wallH/2;
+    for(const w of R.sideWalls){w.position.y=ROOM.wallH/2;w.rotation.z=0;}
+    for(const p of R.pillars){p.g.position.y=0;p.g.rotation.set(0,0,0);}
+    fx.sky.visible=false;fx.flood.visible=false;fx.tear.visible=fx.tearGlow.visible=false;
+    fx.shaft.material.opacity=0;fx.wash.material.opacity=0;coalLight.intensity=0;scene.fog.density=.012;
+  }
+
   let moteHead = 0;
   function spawnMote(o) {
+    if(frameStep<1 && Math.random()>frameStep)return;
     const m = fx.motes[moteHead];
     moteHead = (moteHead + 1) % MOTES;
     m.x = o.x; m.y = o.y; m.z = o.z;
@@ -450,15 +503,15 @@
     m.drag = o.drag == null ? 0.99 : o.drag;
     m.grav = o.grav == null ? 0 : o.grav;
   }
-  function stepMotes() {
+  function stepMotes(dt = 1) {
     const pos = fx.moteGeo.attributes.position, col = fx.moteGeo.attributes.aCol, siz = fx.moteGeo.attributes.aSize;
     for (let i = 0; i < MOTES; i++) {
       const m = fx.motes[i];
       if (m.life >= m.max) { siz.setX(i, 0); continue; }
-      m.life++;
-      m.vy += m.grav;
-      m.vx *= m.drag; m.vy *= m.drag; m.vz *= m.drag;
-      m.x += m.vx; m.y += m.vy; m.z += m.vz;
+      m.life += dt;
+      m.vy += m.grav * dt;
+      const drag=Math.pow(m.drag,dt);m.vx *= drag; m.vy *= drag; m.vz *= drag;
+      m.x += m.vx * dt; m.y += m.vy * dt; m.z += m.vz * dt;
       const a = 1 - m.life / m.max;
       pos.setXYZ(i, m.x, m.y, m.z);
       col.setXYZ(i, m.r * a, m.g * a, m.b * a);
@@ -489,7 +542,9 @@
   const U = 0.11;                       // one voxel unit, in world units
 
   function boxPart(w, h, d, mat, pivotTop) {
-    const g = new THREE.BoxGeometry(w * U, h * U, d * U);
+    const radius=Math.min(w,d,h)*U*.48;
+    const g = new THREE.CapsuleGeometry(radius,Math.max(.01,h*U-radius*2),4,12);
+    g.scale(w*U/(radius*2),1,d*U/(radius*2));
     // Limbs rotate about the joint at their top, so the geometry hangs below
     // the origin of whatever group is carrying it.
     if (pivotTop) g.translate(0, -h * U / 2, 0);
@@ -557,11 +612,13 @@
       const head = new THREE.Group();
       head.position.y = 16 * U;
       torso.add(head);
-      head.add(boxPart(8, 8, 8, mats.skin));
-      const hair = boxPart(8.4, 3.2, 8.4, mats.hair);
+      head.add(boxPart(6.5,8,6.5,mats.skin));
+      const nose=boxPart(1.4,2,1.8,mats.skin);nose.position.set(0,-.05,-3.5*U);head.add(nose);
+      for(const sx of [-1,1]){const eye=new THREE.Mesh(new THREE.SphereGeometry(.035,8,6),mats.shoe);eye.position.set(sx*.14,.04,-.345);head.add(eye);}
+      const hair = boxPart(7.1, 3.4, 7.1, mats.hair);
       hair.position.y = 3 * U;
-      const fringe = boxPart(8.4, 3, 1.2, mats.hair);
-      fringe.position.set(0, 0.5 * U, -4.1 * U);
+      const fringe = boxPart(6.8, 2.5, 1.2, mats.hair);
+      fringe.position.set(0, 0.8 * U, -3.4 * U);
       head.add(hair, fringe);
 
       const arms = [];
@@ -577,6 +634,11 @@
         torso.add(arm.root); arms.push(arm);
       }
 
+      const cloak=new THREE.Mesh(new THREE.CylinderGeometry(.34,.64,1.4,16,4,true,0,Math.PI),mats.shirt);
+      cloak.position.set(0,.45,.08);cloak.rotation.x=-.12;torso.add(cloak);
+      const belt=new THREE.Mesh(new THREE.BoxGeometry(.88,.09,.48),mats.shoe);belt.position.y=.22;torso.add(belt);
+      const blade=new THREE.Mesh(new THREE.BoxGeometry(.07,1.35,.035),new THREE.MeshStandardMaterial({color:0x979da5,metalness:.8,roughness:.3}));blade.position.set(-.38,.35,.38);blade.rotation.z=-.28;torso.add(blade);
+      g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});
       g.visible = false;
       scene.add(g);
       list.push({ g, pelvis, torso, head, arms, legs, mats, appearance: undefined });
@@ -864,13 +926,46 @@
   // ---------------------------------------------------------------
   //  rig assembly
   // ---------------------------------------------------------------
-  const BUILDERS = { warden: buildWarden, smith: buildSmith, tyrant: buildTyrant };
+  function buildOgre(root, shell, body, trim, accent) {
+    const bone = new THREE.MeshStandardMaterial({color:0xc5b998,roughness:.85});
+    function piece(g,geo,mat,x,y,z){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);g.add(m);return m;}
+    const torso=piece(shell,new THREE.SphereGeometry(1,20,16),body,0,9,0);torso.scale.set(5.7,6.4,3.8);
+    const head=piece(shell,new THREE.SphereGeometry(1,18,14),body,0,15,1.3);head.scale.set(3.1,3.3,2.8);
+    const jaw=piece(shell,new THREE.BoxGeometry(4.8,1.7,3.2),body,0,13,3);
+    for(const sx of [-1,1]){
+      piece(shell,new THREE.CylinderGeometry(1.4,1,6,12),body,sx*2.5,3,0);
+      piece(shell,new THREE.BoxGeometry(3.2,1.4,4),trim,sx*2.5,.8,1);
+      const tusk=piece(shell,new THREE.ConeGeometry(.5,3,10),bone,sx*1.8,14.4,4.4);tusk.rotation.z=-sx*.2;
+      const brow=piece(shell,new THREE.BoxGeometry(2.6,.65,1),trim,sx*1.2,16.4,3.4);brow.rotation.z=sx*.15;
+    }
+    const limbs=[];
+    for(const sx of [-1,1]){
+      const arm=new THREE.Group();arm.position.set(sx*5.2,12,0);shell.add(arm);
+      piece(arm,new THREE.CylinderGeometry(1.55,1,6.5,12),body,0,-3.2,0);
+      piece(arm,new THREE.SphereGeometry(1.5,12,10),body,0,-6.6,0);
+      if(sx===1){piece(arm,new THREE.CylinderGeometry(.35,.5,9,10),trim,0,-5,1.3);piece(arm,new THREE.BoxGeometry(4.4,3.8,3.8),body,0,-.6,1.3);}
+      limbs.push({arm,sx});
+    }
+    for(let i=0;i<6;i++){const plate=piece(shell,new THREE.BoxGeometry(1.4,1.2,.3),trim,(i-2.5)*1.35,6.5,3.7);plate.rotation.z=(i-2.5)*.04;}
+    return {torso,head,jaw,limbs,parts:[],eyeY:15.7,eyes:eyePair(root,accent,1.15,15.7,4.05,.4)};
+  }
+  function buildTempest(root,shell,body,trim,accent){
+    const core=new THREE.Mesh(new THREE.OctahedronGeometry(3.2,1),body);core.position.y=11;shell.add(core);
+    const mask=new THREE.Mesh(new THREE.SphereGeometry(1,18,14),trim);mask.position.set(0,15.4,1);mask.scale.set(2.6,3.1,1.35);shell.add(mask);
+    const stormRings=[];
+    for(let i=0;i<5;i++){
+      const ring=new THREE.Mesh(new THREE.TorusGeometry(4+i*.6,.12,8,64),trim);ring.position.y=7+i*2;ring.rotation.x=Math.PI/2+i*.22;shell.add(ring);stormRings.push(ring);
+      const shard=new THREE.Mesh(new THREE.ConeGeometry(.65,4.5,5),body);shard.position.set(Math.sin(i*2.4)*5,8+i*1.8,Math.cos(i*2.4)*5);shard.rotation.z=i*.6;shell.add(shard);
+    }
+    return {torso:core,stormRings,limbs:[],parts:[],eyeY:15.6,eyes:eyePair(root,accent,.9,15.6,2.2,.45)};
+  }
+  const BUILDERS = { warden: buildWarden, smith: buildSmith, tyrant: buildTyrant, ogrelord: buildOgre, tempest: buildTempest };
 
   function buildRig(id, color, accent) {
     if (rig) {
       const geometries = new Set(), materials = new Set();
       rig.root.traverse(o => { if (o.geometry) geometries.add(o.geometry); if (o.material) for (const m of (Array.isArray(o.material) ? o.material : [o.material])) materials.add(m); });
-      scene.remove(rig.root); geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); rig = null;
+      scene.remove(rig.root); geometries.forEach(g => g.dispose()); materials.forEach(m => { if(m.bumpMap)m.bumpMap.dispose();m.dispose(); }); rig = null;
     }
     const root = new THREE.Group();
     root.position.set(0, 0, ROOM.bossZ);
@@ -890,6 +985,12 @@
       emissive: new THREE.Color(accent), emissiveIntensity: 0.5,
     });
 
+    const skinCanvas=document.createElement('canvas');skinCanvas.width=skinCanvas.height=256;
+    const skinCtx=skinCanvas.getContext('2d');skinCtx.fillStyle='#888';skinCtx.fillRect(0,0,256,256);
+    skinCtx.strokeStyle='#5b5b5b';skinCtx.lineWidth=2;
+    for(let y=0;y<256;y+=16)for(let x=-16;x<272;x+=20){skinCtx.beginPath();skinCtx.arc(x+(y%32?10:0),y,9,0,Math.PI);skinCtx.stroke();}
+    body.bumpMap=new THREE.CanvasTexture(skinCanvas);body.bumpMap.wrapS=body.bumpMap.wrapT=THREE.RepeatWrapping;body.bumpScale=id==='dragon'?.18:.07;
+    if(id!=="dragon")body.color.lerp(new THREE.Color(0x464039),.3).multiplyScalar(.72);
     const build = id === "dragon" ? buildDragon : (BUILDERS[id] || buildTyrant);
     const d = build(root, shell, body, trim, accent);
 
@@ -909,6 +1010,8 @@
       limbs: d.limbs || [], parts: d.parts || [],
     }, d);
     if (id === "dragon") rig.dragon = d;
+    for (const e of rig.eyes) e.userData.restY=e.position.y;
+    rig.root.traverse(o=>{if(o.isMesh){o.castShadow=!o.material.transparent;o.receiveShadow=true;}});
     currentId = id;
     return rig;
   }
@@ -923,6 +1026,8 @@
   // so the generic rig does not have to grow a special case for every limb.
   function buildDragon(root, shell, body, trim, accent) {
     const eyeY = 15.5;
+    body.color.multiplyScalar(.48);body.roughness=.68;
+    const scaleArmor=body.clone();scaleArmor.color.setHex(0x302b2a);scaleArmor.emissiveIntensity=.015;scaleArmor.metalness=.32;
 
     // ---- barrel chest and haunches ----
     const chestGeo = new THREE.SphereGeometry(1, 18, 14);
@@ -930,6 +1035,12 @@
     const chest = new THREE.Mesh(chestGeo, body);
     chest.position.set(0, 7.4, -1);
     shell.add(chest);
+    const plateGeo=new THREE.SphereGeometry(1,10,8);
+    for(let row=0;row<6;row++)for(let col=-2;col<=2;col++){
+      const plate=new THREE.Mesh(plateGeo,scaleArmor);
+      plate.position.set(col*1.45+(row%2)*.3,4+row*1.15,4.5-Math.abs(col)*.5);
+      plate.scale.set(.87,.7,.3);plate.rotation.z=-col*.12;chest.parent.add(plate);
+    }
 
     const hipGeo = new THREE.SphereGeometry(1, 16, 12);
     hipGeo.scale(3.9, 3.6, 4.2);
@@ -993,16 +1104,19 @@
     head.add(new THREE.Mesh(skullGeo, body));
 
     // a squared-off snout, the way a dragon reads in silhouette
-    const snout = new THREE.Mesh(new THREE.BoxGeometry(2.3, 1.7, 3.4), body);
+    const snout = new THREE.Mesh(new THREE.SphereGeometry(1,18,12), body);
+    snout.scale.set(1.4,.95,2.25);
     snout.position.set(0, -0.35, 3.3);
     head.add(snout);
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.75, 1.5), body);
+    const brow = new THREE.Mesh(new THREE.SphereGeometry(1,14,10), scaleArmor);
+    brow.scale.set(1.7,.48,1.05);
     brow.position.set(0, 1.15, 1.5);
     head.add(brow);
 
     // hinged lower jaw, so it can actually open for the roar
     const jaw = new THREE.Group();
-    const jawBox = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.9, 3.5), body);
+    const jawBox = new THREE.Mesh(new THREE.SphereGeometry(1,14,10), body);
+    jawBox.scale.set(1.25,.5,2.1);
     jawBox.position.set(0, -0.45, 1.75);
     jaw.add(jawBox);
     const toothMat = new THREE.MeshStandardMaterial({ color: 0xf5f0e6, roughness: 0.5 });
@@ -1039,8 +1153,8 @@
     const eyes = [];
     for (const sx of [-1, 1]) {
       const e = new THREE.Mesh(new THREE.SphereGeometry(0.46, 12, 10), new THREE.MeshBasicMaterial({ color: new THREE.Color(accent) }));
-      const glow = new THREE.Mesh(new THREE.SphereGeometry(1.5, 12, 10), new THREE.MeshBasicMaterial({
-        color: new THREE.Color(accent), transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false }));
+      const glow = new THREE.Mesh(new THREE.SphereGeometry(.8, 12, 10), new THREE.MeshBasicMaterial({
+        color: new THREE.Color(accent), transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false }));
       e.add(glow);
       e.position.set(sx * 1.15, 0.55, 1.9);
       head.add(e); eyes.push(e);
@@ -1157,19 +1271,32 @@
   // ---------------------------------------------------------------
   // Keyframes as [k, x, y, z, lookX, lookY, lookZ, fov]. Between them the
   // camera eases, so the move reads as a crane rather than a cut.
-  function flyCamera(keys, k, shake) {
-    let i = 0;
-    while (i < keys.length - 2 && k > keys[i + 1][0]) i++;
-    const a = keys[i], b = keys[i + 1];
-    const u = clamp01((k - a[0]) / Math.max(1e-4, b[0] - a[0]));
-    const e = easeInOut(u);
-    const px = lerp(a[1], b[1], e), py = lerp(a[2], b[2], e), pz = lerp(a[3], b[3], e);
-    const lx = lerp(a[4], b[4], e), ly = lerp(a[5], b[5], e), lz = lerp(a[6], b[6], e);
-    camera.fov = lerp(a[7], b[7], e);
-    camera.updateProjectionMatrix();
-    const s = shake || 0;
-    camera.position.set(px + (Math.random() - 0.5) * s, py + (Math.random() - 0.5) * s, pz + (Math.random() - 0.5) * s * 0.5);
-    camera.lookAt(lx, ly, lz);
+  let cinematicTime=0, focusDistance=36, frameStep=1;
+  const reducedMotion=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):{matches:false};
+  // Monotone cubic interpolation preserves momentum between shots without
+  // overshooting into a wall or the dragon's body at direction reversals.
+  function cameraValue(keys,i,u,axis){
+    const a=keys[i],b=keys[i+1],h=b[0]-a[0],slope=(b[axis]-a[axis])/h;
+    const tangent=(left,right)=>left*right<=0?0:2*left*right/(left+right);
+    const before=i? (a[axis]-keys[i-1][axis])/(a[0]-keys[i-1][0]):slope;
+    const after=i+2<keys.length?(keys[i+2][axis]-b[axis])/(keys[i+2][0]-b[0]):slope;
+    const m0=tangent(before,slope)*h,m1=tangent(slope,after)*h;
+    return (2*u*u*u-3*u*u+1)*a[axis]+(u*u*u-2*u*u+u)*m0+(-2*u*u*u+3*u*u)*b[axis]+(u*u*u-u*u)*m1;
+  }
+  function flyCamera(keys,k,shake){
+    if(reducedMotion.matches)k=1;
+    let i=0;while(i<keys.length-2&&k>keys[i+1][0])i++;
+    const u=clamp01((k-keys[i][0])/Math.max(.0001,keys[i+1][0]-keys[i][0]));
+    const v=axis=>cameraValue(keys,i,u,axis);
+    const s=reducedMotion.matches?0:Math.min(.7,shake||0);
+    const t=cinematicTime/1000;
+    camera.position.set(v(1)+Math.sin(t*31)*s*.45,v(2)+Math.sin(t*37+.7)*s*.3,v(3));
+    camera.lookAt(v(4),v(5),v(6));
+    // Wide reverse shots may back through the entrance; its bars must not
+    // obscure the subject after the seal beat has already been established.
+    room.userData.gate.visible=!(v(6)<0 && camera.position.z>ROOM.doorZ-3);
+    focusDistance=camera.position.distanceTo(new THREE.Vector3(v(4),v(5),v(6)));
+    const fov=v(7);if(Math.abs(camera.fov-fov)>.001){camera.fov=fov;camera.updateProjectionMatrix();}
   }
 
   // ---------------------------------------------------------------
@@ -1552,8 +1679,8 @@
     // thrown by the impact
     [0.52, -3, 3.0, 6, 0, 4, ROOM.bossZ, 64],
     // and back off to take the whole animal
-    [0.80, 0, 11, 14, 0, 11, ROOM.bossZ, 68],
-    [1.00, 0, 8.5, 5.0, 0, 12, ROOM.bossZ, 62],
+    [0.80, 9, 7, 9, 0, 12, ROOM.bossZ + 4, 60],
+    [1.00, -6, 9, 5.0, 0, 14, ROOM.bossZ + 4, 56],
   ];
   function awakeDragon(p) {
     const { k, t } = p;
@@ -1645,8 +1772,8 @@
     [0.00, 0, 12, 10, 0, 16, ROOM.bossZ, 56],
     [0.26, 0, 6, 3, 0, 6, ROOM.bossZ, 50],
     [0.40, -5, 2.2, -2, 0, 3, ROOM.bossZ, 58],
-    [0.70, -7, 7, 6, 0, 8, ROOM.bossZ, 54],
-    [1.00, 0, 8.5, 5, 0, 10, ROOM.bossZ, 60],
+    [0.70, -7, 5, -9, 0, 7, ROOM.bossZ, 45],
+    [1.00, -4, 6, -8, 0, 7, ROOM.bossZ, 48],
   ];
   function poseMini(p) {
     const { k, t } = p;
@@ -1690,7 +1817,7 @@
     for (const e of rig.eyes) {
       e.visible = up > 0.1;
       e.scale.setScalar((0.2 + 0.8 * up) * 0.62);
-      e.position.y = (rig.root.position.y + rig.eyeY + 2) * 0.62;
+      e.position.y = e.userData.restY;
     }
     for (const l of rig.limbs) {
       l.arm.visible = true;
@@ -1973,18 +2100,42 @@
   //  entry point
   // ---------------------------------------------------------------
   function poseVictory(p) {
-    poseEntrance(Object.assign({}, p, { k: 1 }));
-    const collapse = easeInOut(beat(p.k, 0.05, 0.65));
-    rig.root.position.y = -18 * collapse;
-    rig.root.rotation.z = collapse * 0.35;
-    rig.root.scale.setScalar(1 - collapse * 0.65);
-    rig.body.emissiveIntensity = 0.5 * (1 - collapse);
-    room.userData.gate.position.y = 13 * easeOut(beat(p.k, 0.55, 1));
-    doorLight.intensity = 5 * beat(p.k, 0.5, 1);
-    room.userData.doorGlow.material.opacity = beat(p.k, 0.5, 1);
-    flyCamera([[0, -8, 7, 6, 0, 10, ROOM.bossZ, 58], [0.6, 0, 12, 16, 0, 3, ROOM.bossZ, 64], [1, 0, 8, -8, 0, 6, ROOM.doorZ, 58]], p.k, 0);
+    const mini=p.id==='ogrelord'||p.id==='tempest';
+    if(mini)poseMini(Object.assign({},p,{k:1}));else poseEntrance(Object.assign({},p,{k:1}));
+    const collapse=easeInOut(beat(p.k,.12,.62)),release=easeOut(beat(p.k,.62,.94));
+    const R=room.userData;
+    rig.root.rotation.z=0;rig.root.scale.setScalar(mini?.62:1);
+    // Each silhouette dies with its own weight. Corpses do not shrink away.
+    if(p.id==='warden'){
+      rig.root.position.y=-9*collapse;
+      if(rig.chains)for(const chain of rig.chains)chain.g.rotation.z=chain.sx*.4*collapse;
+      fx.flood.visible=true;fx.flood.position.y=.3;fx.flood.material.opacity=.68;
+    }else if(p.id==='dragon'){
+      rig.root.position.y=-4.2*collapse;rig.root.rotation.x=.23*collapse;
+      const D=rig.dragon;
+      D.neck.rotation.x=.8*collapse;D.head.rotation.x=.48*collapse;D.jaw.rotation.x=.1;
+      for(const l of rig.limbs){l.arm.rotation.z=-l.sx*collapse*.8;l.arm.rotation.y=l.sx*collapse*1.2;}
+      if(D.crown){D.crown.visible=true;D.crown.position.y=2.1-3.2*collapse;D.crown.rotation.z=.8*collapse;}
+      R.ceil.position.y=150;R.backWall.position.y=-40;for(const w of R.sideWalls)w.position.y=-40;fx.sky.visible=true;scene.fog.density=.008;
+    }else if(p.id==='tyrant'||p.id==='tempest'){
+      rig.root.position.y=-5*collapse;rig.root.rotation.z=.3*collapse;
+      if(Array.isArray(rig.crown))for(const c of rig.crown){c.position.y=21-18*collapse;c.rotation.z=collapse*2;}
+      if(rig.stormRings)for(let i=0;i<rig.stormRings.length;i++){const r=rig.stormRings[i];r.rotation.y=p.t/1000+i;r.position.y=7+i*2-collapse*(5+i*2);}
+    }else{
+      rig.root.position.y=-3.8*collapse;rig.root.rotation.x=.6*collapse;
+      for(const l of rig.limbs)l.arm.rotation.z=l.sx*lerp(-.2,-1,collapse);
+    }
+    rig.body.emissiveIntensity=.12*(1-collapse);rig.trim.emissiveIntensity=.3*(1-collapse);
+    for(const e of rig.eyes)e.visible=collapse<.65;
+    eyeLight.intensity=(1-collapse)*.6;coalLight.intensity*=1-collapse;
+    fx.wash.material.opacity=0;fx.shaft.material.opacity=.06*(1-collapse);
+    R.gate.position.y=13*release;doorLight.color.setHex(0xffe2a2);doorLight.intensity=4.5*release;R.doorGlow.material.opacity=.8*release;
+    litBraziers(1,p.t,0,.1);ambient.intensity=.2;hemi.intensity=.23;
+    poseParty(p.people,0,1.5+release*4,release>0&&release<1?1:0,p.t/150,0);
+    if(collapse>0&&collapse<1)for(let i=0;i<3;i++)spawnMote({x:(Math.random()-.5)*16,y:Math.random()*12,z:ROOM.bossZ+Math.random()*8,vx:0,vy:.035,vz:.025,max:100,r:.68,g:.61,b:.45,s:.055});
+    flyCamera([[0,-9,9,4,0,mini?8:13,ROOM.bossZ,43],[.32,-5,5,0,0,mini?5:8,ROOM.bossZ,46],[.62,8,6,5,0,3,ROOM.bossZ,54],[.82,11,7,0,0,5,ROOM.doorZ,58],[1,8,5,-6,0,5,ROOM.doorZ,50]],p.k,.28*Math.sin(collapse*Math.PI));
   }
-  let lastMode = null;
+  let lastMode = null, lastProgress=-1, lastTime=0;
   function render(p) {
     if (dead) return null;
     if (!renderer && !init()) return null;
@@ -1993,8 +2144,9 @@
     // Rebuild the rig when the boss changes; reset the motes when a new
     // cutscene starts so the last one's ash does not bleed into it.
     if (!rig || currentId !== p.id) buildRig(p.id, p.color, p.accent);
-    const modeKey = p.mode + "|" + p.id;
-    if (modeKey !== lastMode) { lastMode = modeKey; clearMotes(); moteHead = 0; }
+    const modeKey = p.mode + "|" + p.id + "|" + (p.sceneId || "");
+    if (modeKey !== lastMode || p.k < lastProgress) { lastMode = modeKey; t0=p.t;lastTime=p.t;clearMotes();moteHead=0;resetStage(); }
+    frameStep=Math.max(.1,Math.min(3,(p.t-lastTime)/(1000/60)||1));lastTime=p.t;lastProgress=p.k;cinematicTime=p.t-t0;
 
     const people = (p.people && p.people.length) ? p.people.slice(0, PARTY_MAX) : [{ appearance: null }];
     const q = { k: clamp01(p.k), t: (p.t - t0), id: p.id, people };
@@ -2011,16 +2163,27 @@
       else if (p.mode === "phase2") posePhase2(q);
       else if (p.mini) poseMini(q);
       else poseEntrance(q);
-      stepMotes();
+      if(rig.stormRings && p.mode!=='victory'){
+        rig.root.position.y=lerp(-10,2,easeOut(beat(q.k,.15,.8)))+Math.sin(q.t/750)*.25;
+        for(let i=0;i<rig.stormRings.length;i++){const r=rig.stormRings[i];r.rotation.y=q.t/1400+i;r.rotation.z=Math.sin(q.t/900+i)*.25;}
+      }
+      stepMotes(frameStep);
+      rimLight.color.copy(rig.accent);rimLight.intensity=.5+.3*beat(q.k,.3,.8);
+      for(const m of finish.mist)m.material.uniforms.time.value=q.t/1000;
+      renderer.setRenderTarget(finish.target);
       renderer.autoClear = true;
       renderer.render(scene, camera);
       // the full-screen wash rides over the top in its own pass
       if (fx.wash.material.opacity > 0.002) {
+        fx.wash.material.opacity=Math.min(reducedMotion.matches?.12:.38,fx.wash.material.opacity);
         renderer.autoClear = false;
         renderer.render(fx.washScene, fx.washCam);
         renderer.autoClear = true;
       }
-    } catch (e) { dead = true; return null; }
+      renderer.setRenderTarget(null);renderer.autoClear=true;
+      finish.uniforms.focus.value=focusDistance;finish.uniforms.time.value=reducedMotion.matches?0:q.t;
+      renderer.render(finish.scene,finish.camera);
+    } catch (e) { renderer.setRenderTarget(null);console.warn('Dungeon cinematic failed',e);dead = true; return null; }
     return glCanvas;
   }
 

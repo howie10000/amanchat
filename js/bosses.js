@@ -1279,7 +1279,7 @@
     // the top-down view for the duration. Only the type stays on the 2D
     // canvas — a name card wants crisp pixels, not a textured quad.
     const gl = (window.DungeonGL && DungeonGL.available())
-      ? DungeonGL.render({ mode: cine.mode || "entrance", id: cine.id, mini: !!cine.mini, k, t,
+      ? DungeonGL.render({ mode: cine.mode || "entrance", sceneId: cine.t0, id: cine.id, mini: !!cine.mini, k, t,
                            people: partyPeople(), color: cine.color, accent: cine.accent })
       : null;
     if (gl) ctx.drawImage(gl, 0, 0, W, H);
@@ -1374,7 +1374,7 @@
     const k = clamp01((t - cine.t0) / cine.dur);
 
     const gl = (window.DungeonGL && DungeonGL.available())
-      ? DungeonGL.render({ mode: "phase2", id: "dragon", mini: false, k, t,
+      ? DungeonGL.render({ mode: "phase2", sceneId: cine.t0, id: "dragon", mini: false, k, t,
                            people: partyPeople(), color: cine.color, accent: cine.accent })
       : null;
     if (gl) ctx.drawImage(gl, 0, 0, W, H);
