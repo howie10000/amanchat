@@ -30,3 +30,13 @@ Deploy `index.html`, `style.css`, `js/title.js`, new `js/title-path.js`, `js/dun
 - `docs/cinematic-review.html` provides developer controls to play/scrub the sequences; it is not linked from gameplay.
 
 Hardware performance and subjective cinematic quality should also be checked on target players' devices; the render tests are functional checks rather than an AAA-quality benchmark.
+
+## Outdoor dragon and physical Smith assembly
+
+Varkaal now uses a 460-unit outdoor plateau with tiled paving, a ceremonial ring, ruined columns, distant peaks, a moon and an exit arch. The cinematic model is 1.5 times larger. A wide tracking camera follows the wingbeat-driven approach from altitude into a descent, impact dust and shockwaves, and the wing-spread reveal. Outdoor staging persists through phase two and victory; the victory camera finishes toward the outdoor arch.
+
+The Ember Smith now assembles from its actual mesh components, including its anvil, torso, helmet, chimney stacks, chest grate, armor and hammer arms. Each component retains its final local position and orientation. Staggered movement based on height places those same meshes into the finished rig; there is no proxy shard cloud or completed-model visibility swap.
+
+Integration: publish the updated `js/dungeon3d.js` and reload the client. Existing encounter durations and server combat timing are unchanged.
+
+Validation: JavaScript syntax check passed; the browser smoke page rendered all 66 entrance, victory, phase-two and replay samples. Visual review covered the dragon in flight and landed, plus the Smith mid-assembly and fully assembled.

@@ -79,6 +79,7 @@
     glCanvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); dead = true; }, false);
 
     scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x08060d);
     // Fog is doing real work here: it is what makes the far end of the room
     // a place something can be hiding in.
     // Tuned against the distance that matters: the camera settles ~42 units
@@ -479,6 +480,34 @@
       const m=new THREE.Mesh(new THREE.PlaneGeometry(34,58),mat);m.rotation.x=-Math.PI/2;m.position.set(0,.8+i*.65,-14);scene.add(m);mist.push(m);
     }
     finish={target,uniforms,scene:postScene,camera:postCamera,mist};
+  }
+  let dragonCourt = null;
+  function buildDragonCourt(){
+    dragonCourt=new THREE.Group();scene.add(dragonCourt);
+    const stone=new THREE.MeshStandardMaterial({color:0x34313a,roughness:.95});
+    const ground=new THREE.Mesh(new THREE.CylinderGeometry(230,245,12,80),stone);
+    ground.position.set(0,-6,ROOM.bossZ);ground.receiveShadow=true;dragonCourt.add(ground);
+    const paving=blockTexture(0x302b35,4,.5);paving.wrapS=paving.wrapT=THREE.RepeatWrapping;paving.repeat.set(40,40);
+    const flagstones=new THREE.Mesh(new THREE.CircleGeometry(229,80),new THREE.MeshStandardMaterial({map:paving,bumpMap:paving,bumpScale:.2,roughness:.96}));
+    flagstones.rotation.x=-Math.PI/2;flagstones.position.set(0,.02,ROOM.bossZ);flagstones.receiveShadow=true;dragonCourt.add(flagstones);
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(54,.45,8,100),new THREE.MeshStandardMaterial({color:0x8d7954,metalness:.5,roughness:.6}));
+    ring.rotation.x=-Math.PI/2;ring.position.set(0,.06,ROOM.bossZ);dragonCourt.add(ring);
+    for(let i=0;i<28;i++){
+      const a=i/28*TAU,r=85+(i%3)*16,h=15+(i*13%29);
+      const tower=new THREE.Mesh(new THREE.CylinderGeometry(2.8,4.6,h,7),stone);
+      tower.position.set(Math.cos(a)*r,h/2,ROOM.bossZ+Math.sin(a)*r);tower.rotation.z=Math.sin(i)*.12;dragonCourt.add(tower);
+    }
+    for(let i=0;i<24;i++){
+      const a=i/24*TAU,h=35+(i*19%65);
+      const peak=new THREE.Mesh(new THREE.ConeGeometry(35,h,5),stone);
+      peak.position.set(Math.cos(a)*205,h/2-10,ROOM.bossZ+Math.sin(a)*205);dragonCourt.add(peak);
+    }
+    const moon=new THREE.Mesh(new THREE.SphereGeometry(12,24,16),new THREE.MeshBasicMaterial({color:0xe7c99a}));
+    moon.position.set(100,112,-195);dragonCourt.add(moon);
+    // A monumental exit arch remains visible after the final victory.
+    const archMat=new THREE.MeshStandardMaterial({color:0x776451,roughness:.85});
+    for(const x of [-11,11]){const m=new THREE.Mesh(new THREE.BoxGeometry(5,25,7),archMat);m.position.set(x,12.5,52);dragonCourt.add(m);}
+    const lintel=new THREE.Mesh(new THREE.BoxGeometry(27,5,7),archMat);lintel.position.set(0,25,52);dragonCourt.add(lintel);
   }
   function resetStage(){
     const R=room.userData;
@@ -1010,6 +1039,16 @@
       limbs: d.limbs || [], parts: d.parts || [],
     }, d);
     if (id === "dragon") rig.dragon = d;
+    if(id==='smith'){
+      root.updateMatrixWorld(true);rig.assembly=[];
+      shell.traverse(m=>{
+        if(!m.isMesh)return;
+        const i=rig.assembly.length,home=m.position.clone(),rotation=m.quaternion.clone();
+        const world=m.getWorldPosition(new THREE.Vector3()),a=i*2.399,r=11+(i%5)*2;
+        const start=m.parent.worldToLocal(new THREE.Vector3(Math.cos(a)*r,-1.5,ROOM.bossZ+Math.sin(a)*r));
+        rig.assembly.push({mesh:m,home,rotation,start,spin:new THREE.Quaternion().setFromEuler(new THREE.Euler(a,.8*a,.4*a)),begin:.32+Math.max(0,world.y)/120});
+      });
+    }
     for (const e of rig.eyes) e.userData.restY=e.position.y;
     rig.root.traverse(o=>{if(o.isMesh){o.castShadow=!o.material.transparent;o.receiveShadow=true;}});
     currentId = id;
@@ -1485,49 +1524,18 @@
     hideWaves();
     fx.flood.visible = false;
 
-    // The floor cracks and the pieces of it come UP. It was never in this
-    // room; the room is being taken apart to make it.
-    const rise = beat(k, E.dark, 0.62);      // out of the floor and hanging
-    const slam = beat(k, 0.66, 0.86);        // pulled together
-    const seed = (window.ECON && ECON.mulberry32 && ECON.strToSeed)
-      ? ECON.mulberry32(ECON.strToSeed("smith|forge")) : Math.random;
-    const rnd = []; for (let i = 0; i < SHARDS * 6; i++) rnd.push(seed());
-    let ri = 0; const R6 = () => rnd[(ri++) % rnd.length];
-
-    rig.shell.visible = slam > 0.55;
-    rig.root.position.y = 0;
-
-    for (let i = 0; i < SHARDS; i++) {
-      const m = fx.shards[i];
-      const slot = i / SHARDS;
-      const up = clamp01((rise - slot * 0.5) / 0.4);
-      if (up <= 0) { m.visible = false; continue; }
-      m.visible = slam < 0.9;
-      const ang = R6() * TAU, rad = 6 + R6() * 16;
-      const size = 0.9 + R6() * 1.9;
-      // where it comes out of the floor
-      const fx0 = Math.cos(ang) * rad, fz0 = ROOM.bossZ + Math.sin(ang) * rad * 0.8;
-      const hover = 2.5 + R6() * 12;
-      // where it ends up in the body
-      const tx = (R6() - 0.5) * 11, ty = 2 + R6() * 15, tz = ROOM.bossZ + (R6() - 0.5) * 7;
-      const e = easeOut(up);
-      const px = lerp(fx0, fx0, e), py = lerp(-2.5, hover, e), pz = lerp(fz0, fz0, e);
-      const sl = easeIn(slam);
-      m.position.set(lerp(px, tx, sl), lerp(py, ty, sl), lerp(pz, tz, sl));
-      m.rotation.set(ang + t / 1400 * (1 - sl) * 2, ang * 1.7 + t / 1100 * (1 - sl) * 2, 0);
-      m.scale.setScalar(size);
-      m.material.color.copy(rig.color);
-      m.material.emissive.copy(rig.accent);
-      // each one is still hot from wherever it came from
-      // Kept low: emissive is what turns lit geometry back into a flat
-      // silhouette, and forty glowing cubes will wash a whole room.
-      m.material.emissiveIntensity = 0.10 + 0.28 * (1 - up) + 0.8 * clamp01((sl - 0.85) / 0.15);
-      if (up < 1 && Math.random() < 0.4) {
-        spawnMote({ x: fx0, y: 0.2, z: fz0, vx: (Math.random() - 0.5) * 0.2, vy: 0.2 + Math.random() * 0.3,
-                    vz: (Math.random() - 0.5) * 0.2, max: 60, r: 1, g: 0.65, b: 0.2, s: 0.07 });
-      }
+    // Animate the actual meshes into their exact local transforms. There is
+    // no proxy rubble cloud and no hidden complete model to swap in.
+    const rise=beat(k,E.dark,.62),slam=beat(k,.66,.86);
+    rig.shell.visible=true;rig.root.position.y=0;
+    for(const shard of fx.shards)shard.visible=false;
+    for(const part of rig.assembly){
+      const u=beat(k,part.begin,part.begin+.32),e=u*u*(3-2*u);
+      part.mesh.position.lerpVectors(part.start,part.home,e);
+      part.mesh.position.y+=Math.sin(Math.PI*u)*7;
+      part.mesh.quaternion.copy(part.spin).slerp(part.rotation,e);
     }
-    if (rise > 0 && rise < 1) shake = 0.25 * rise;
+    if(rise>0&&rise<1)shake=.2*rise;
 
     // the forge lights, the hammers come down, the anvil rings
     const lit = beat(k, 0.84, 1);
@@ -1537,7 +1545,7 @@
     rig.body.emissiveIntensity = 0.03 + 0.09 * lit;
     for (const l of rig.limbs) {
       l.arm.visible = rig.shell.visible;
-      l.arm.rotation.z = l.sx * lerp(-1.5, -0.24, easeOut(lit));
+      l.arm.rotation.z = l.sx * (-0.24 - .5 * Math.sin(lit*Math.PI));
       l.arm.rotation.x = -1.1 * Math.sin(clamp01(lit / 0.5) * Math.PI) * 0.6;
     }
     for (const e of rig.eyes) {
@@ -1671,64 +1679,43 @@
 
   // ============ VARKAAL — it does not walk in, it lands ====================
   const CAM_DRAGON = [
-    [0.00, 1.5, 2.4, -1, 0, 3.2, ROOM.doorZ + 4, 55],
-    [E.arrive, 1.5, 2.4, -1, 0, 2.8, ROOM.doorZ - 2, 55],
-    [E.seal, 2.5, 5.2, -5, 0, 9.0, ROOM.doorZ, 58],
-    // looking UP, because the noise is coming from above
-    [E.dark, 0, 4.0, 4, 0, 20, ROOM.bossZ, 56],
-    // thrown by the impact
-    [0.52, -3, 3.0, 6, 0, 4, ROOM.bossZ, 64],
-    // and back off to take the whole animal
-    [0.80, 9, 7, 9, 0, 12, ROOM.bossZ + 4, 60],
-    [1.00, -6, 9, 5.0, 0, 14, ROOM.bossZ + 4, 56],
+    [0,80,24,95,-100,65,-190,58],
+    [.25,40,35,50,-60,65,-130,60],
+    [.48,-45,18,35,12,40,-75,62],
+    [.68,-35,7,25,0,10,ROOM.bossZ,66],
+    [.85,28,10,24,0,19,ROOM.bossZ,60],
+    [1,-9,10,16,0,21,ROOM.bossZ+4,58],
   ];
   function awakeDragon(p) {
-    const { k, t } = p;
-    let shake = 0;
-    fx.flood.visible = false;
-    for (const m of fx.shards) m.visible = false;
-    litBraziers(k, t, E.seal, 0.08);
-
-    // Something very large is moving on the roof.
-    const above = beat(k, E.dark, 0.48);
-    if (above > 0 && above < 1) {
-      shake = 0.25 + 0.5 * above;
-      for (let i = 0; i < 3; i++) {
-        spawnMote({ x: (Math.random() - 0.5) * 28, y: ROOM.wallH - 0.5, z: ROOM.bossZ + (Math.random() - 0.5) * 22,
-                    vx: 0, vy: -0.12 - Math.random() * 0.1, vz: 0, max: 120, r: 0.6, g: 0.56, b: 0.58, s: 0.06, drag: 1 });
+    const {k,t}=p;let shake=0;
+    fx.flood.visible=false;for(const m of fx.shards)m.visible=false;
+    const flight=clamp01(k/.68),drop=flight,land=beat(k,.68,1);
+    const u=flight;
+    rig.shell.visible=true;
+    rig.root.position.set(-100*(1-u)*(1-u)+90*(1-u)*u,70*(1-u*u),lerp(-190,ROOM.bossZ,u));
+    rig.root.rotation.y=.55*Math.sin(u*TAU)*(1-u);
+    rig.root.rotation.z=-.23*Math.sin(u*TAU)*(1-u);
+    if(land>0){
+      rig.root.position.set(0,-1.2*Math.sin(Math.min(1,land/.35)*Math.PI),ROOM.bossZ);
+      shake=.7*(1-clamp01(land/.25));
+      shockwaves(0,ROOM.bossZ,land,rig.accent,110);
+      if(land<.35)for(let i=0;i<5;i++){
+        const a=Math.random()*TAU,r=8+Math.random()*22;
+        spawnMote({x:Math.cos(a)*r,y:.6,z:ROOM.bossZ+Math.sin(a)*r,vx:Math.cos(a)*.7,vy:.3+Math.random()*.35,vz:Math.sin(a)*.7,max:110,r:.64,g:.57,b:.49,s:.14});
       }
-    }
-    // its shadow on the floor, growing
-    const R = room.userData;
-    R.sigil.material.color.setRGB(0.02, 0.01, 0.02);
-    R.sigil.material.opacity = above * 0.85;
-    R.sigil.scale.setScalar(lerp(2.6, 1.0, above));
-
-    // the landing
-    const drop = beat(k, 0.46, 0.56);
-    rig.shell.visible = drop > 0.02;
-    rig.root.position.y = lerp(46, 0, easeIn(drop));
-    if (drop > 0 && drop < 1) shake = 1.2 * drop;
-    const land = beat(k, 0.56, 1);
-    if (land > 0) {
-      shake = Math.max(shake, 1.9 * (1 - clamp01(land / 0.18)));
-      shockwaves(0, ROOM.bossZ, land, rig.accent, 56);
-      if (land < 0.3 && Math.random() < 0.95) {
-        const a = Math.random() * TAU, r = 4 + Math.random() * 16;
-        spawnMote({ x: Math.cos(a) * r, y: 0.4, z: ROOM.bossZ + Math.sin(a) * r * 0.7,
-                    vx: Math.cos(a) * 0.55, vy: 0.25 + Math.random() * 0.4, vz: Math.sin(a) * 0.35,
-                    max: 90, r: 0.72, g: 0.66, b: 0.64, s: 0.09 });
-      }
-    } else hideWaves();
+    }else hideWaves();
 
     // it picks itself up off the floor and opens
-    const open = easeOut(beat(k, 0.60, 0.88));
+    const open = easeOut(beat(k, 0.70, 0.90));
     const D = rig.dragon;
     for (const l of rig.limbs) {
       l.arm.visible = rig.shell.visible;
       l.arm.rotation.z = lerp(-1.2, 0.40 + 0.14 * Math.sin(t / 430), open) * l.sx;
       l.arm.rotation.y = l.sx * lerp(1.5, 0.34, open);
       l.arm.rotation.x = lerp(0.7, -0.10, open);
+    }
+    if(k<.68){
+      for(const l of rig.limbs){l.arm.rotation.z=l.sx*(.25+.55*Math.sin(k*TAU*5));l.arm.rotation.y=l.sx*.25;l.arm.rotation.x=-.15;}
     }
     if (D) {
       D.neck.rotation.x = lerp(0.9, -0.10, open);
@@ -2001,6 +1988,9 @@
       }
     }
 
+    if(k<.68){
+      for(const l of rig.limbs){l.arm.rotation.z=l.sx*(.25+.55*Math.sin(k*TAU*5));l.arm.rotation.y=l.sx*.25;l.arm.rotation.x=-.15;}
+    }
     if (D) {
       D.neck.rotation.x = lerp(0.95, -0.12, open) - 0.25 * crown;
       D.head.rotation.x = lerp(0.5, -0.15, open) - 0.55 * Math.sin(roar * Math.PI) - 0.3 * crown;
@@ -2134,6 +2124,7 @@
     poseParty(p.people,0,1.5+release*4,release>0&&release<1?1:0,p.t/150,0);
     if(collapse>0&&collapse<1)for(let i=0;i<3;i++)spawnMote({x:(Math.random()-.5)*16,y:Math.random()*12,z:ROOM.bossZ+Math.random()*8,vx:0,vy:.035,vz:.025,max:100,r:.68,g:.61,b:.45,s:.055});
     flyCamera([[0,-9,9,4,0,mini?8:13,ROOM.bossZ,43],[.32,-5,5,0,0,mini?5:8,ROOM.bossZ,46],[.62,8,6,5,0,3,ROOM.bossZ,54],[.82,11,7,0,0,5,ROOM.doorZ,58],[1,8,5,-6,0,5,ROOM.doorZ,50]],p.k,.28*Math.sin(collapse*Math.PI));
+    if(p.id==='dragon')flyCamera([[0,-25,12,28,0,19,ROOM.bossZ,58],[.5,30,10,22,0,8,ROOM.bossZ,62],[1,25,12,-8,0,12,52,55]],p.k,.2*Math.sin(collapse*Math.PI));
   }
   let lastMode = null, lastProgress=-1, lastTime=0;
   function render(p) {
@@ -2167,6 +2158,15 @@
         rig.root.position.y=lerp(-10,2,easeOut(beat(q.k,.15,.8)))+Math.sin(q.t/750)*.25;
         for(let i=0;i<rig.stormRings.length;i++){const r=rig.stormRings[i];r.rotation.y=q.t/1400+i;r.rotation.z=Math.sin(q.t/900+i)*.25;}
       }
+      if(!dragonCourt)buildDragonCourt();
+      const outside=p.id==='dragon';dragonCourt.visible=outside;room.visible=!outside;
+      scene.background.setHex(outside?0x171925:0x08060d);
+      if(outside){
+        rig.root.scale.multiplyScalar(1.5);
+        fx.sky.visible=false;scene.fog.density=.0025;
+        ambient.intensity=.5;hemi.intensity=.9;keyLight.intensity=1.7;
+        keyLight.position.set(40,95,35);
+      }else keyLight.position.set(8,26,6);
       stepMotes(frameStep);
       rimLight.color.copy(rig.accent);rimLight.intensity=.5+.3*beat(q.k,.3,.8);
       for(const m of finish.mist)m.material.uniforms.time.value=q.t/1000;
