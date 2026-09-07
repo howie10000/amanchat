@@ -1649,7 +1649,7 @@ function drawBossRoom() {
     ctx.fillStyle = "#fcd34d"; ctx.textAlign = "left"; ctx.font = "bold 12px sans-serif";
     ctx.fillText("Click a glowing weak point to strike it", 24, canvas.height - 42);
     ctx.fillStyle = "#9ca3af"; ctx.font = "11px sans-serif";
-    ctx.fillText("1 = sword (close, hits hard) · 2 = pistol (reach) · read the red, then move", 24, canvas.height - 24);
+    ctx.fillText("click or SPACE to attack · 1 = sword (close, hits hard) · 2 = pistol (reach) · read the red, then move", 24, canvas.height - 24);
     drawTomeHud();
   }
 }

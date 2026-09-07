@@ -167,6 +167,7 @@ function openHelp() {
   uiPanel("CONTROLS & GUIDE", `
     <h3 class="section">MOVEMENT</h3>
     <div>WASD or Arrow keys — walk around</div>
+    <div>Left click or SPACE — attack toward the cursor (1 sword, 2 pistol)</div>
     <div>E — interact / enter / use station</div>
     <div>M — town map &amp; directions (guides you to any place or person)</div>
     <div>ESC — close menu / clear route / leave building</div>
@@ -191,7 +192,7 @@ function openHelp() {
     <div>🎣 Fishing: cast, hook the bite, then click (or Space) to keep the hook between the gold lines until the white bar fills.
         Fish come in five rarities — Common, Rare, Epic, Legendary and Mythical (mythicals leap out of the water).</div>
     <div>🦑🐍 A landed fish can wake <b>the Kraken</b> or <b>the Sea Serpent</b>. It rains at the lake, tentacles rise and the whole town can come fight it:
-        click to attack (1 sword, 2 pistol), dodge the red rings, cut the tentacles then strike the head. Everyone who hits it gets Kraken Tentacles.</div>
+        click or press Space to attack (1 sword, 2 pistol), dodge the red rings, cut the tentacles then strike the head. Everyone who hits it gets Kraken Tentacles.</div>
     <div>🌱 FARM (the red barn) — buy seeds from a stall that rotates every 5 minutes, plant them in your beds, harvest and sell.</div>
     <div>🍲 Cooking Pot (on your farm and beside the pond) — put up to 4 fish / tentacles / crops in for a meal. Eat it for timed
         <b>luck</b>: rarer fish bite, and every VEGAS win pays a bonus.</div>
@@ -304,19 +305,32 @@ function handleKey(e) {
         state.hp = 0;
       }
     }
+  } else if (k === " ") {
+    // Space swings toward the cursor, the same as left click. It repeats while
+    // held, which is only ever as fast as clicking would be — doAttack and
+    // gameLake.attack both gate on their own cooldown.
+    e.preventDefault();
+    attackAtCursor();
   } else if (k === "1") state.weapon = "sword";
   else if (k === "2") state.weapon = "pistol";
 }
 
 // ---------- Click handlers ----------
-function onLeftClick() {
+// The swing itself, split out of onLeftClick so the Space bar can make exactly
+// the same one. Aim always comes from the cursor (doAttack and gameLake.attack
+// both read state.mouse), so Space attacks wherever you are pointing.
+function attackAtCursor() {
   if (state.area === "dungeon") gameCombat.doAttack();
   else if (state.area === "duel") gameCombat.doAttack();
   else if (state.area === "neighborhood") { if (window.gameLake && gameLake.fightActive()) gameLake.attack(); }
-  else if (state.area === "interior_home") {
+}
+function onLeftClick() {
+  if (state.area === "interior_home") {
     if (state.placeMode) placeFurnitureAtMouse();
     else if (state.buildMode) tryGrabFurniture();
+    return;
   }
+  attackAtCursor();
 }
 function onRightClick() {
   if (state.buildMode && state.area === "interior_home") {
@@ -1117,7 +1131,7 @@ function openQuestBoard() {
     <p class="muted">Combat mastery scales both. <a href="#" onclick="gameGuild.openMastery();return false;">See your mastery levels</a>.</p>
     <h3 class="section">GEAR</h3>
     <p class="muted">Anything you clear can drop a weapon, a helmet, a chestplate, leggings or a ring. The board's dungeons drop the bottom of the table; guild dungeons drop the rest of it. Equip and sell at <a href="#" onclick="gameGear.openArmory();return false;">the Armory</a> across the hall.</p>
-    <p class="muted" style="margin-top:10px;">Aim with mouse. Left-click to attack. ESC to abandon.</p>
+    <p class="muted" style="margin-top:10px;">Aim with mouse. Left-click or Space to attack. ESC to abandon.</p>
   `);
 }
 function openCoopInvite() {
