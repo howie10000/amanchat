@@ -223,22 +223,54 @@
     const mini = { x: 1536, y: 768, w: 1024, h: 640, kind: cfg.mini ? 'mini' : 'camp' };
     const final = { x: 3136, y: 128, w: 1024, h: 640, kind: 'final' };
     const spawn = { x: 256, y: 1664 };
-    corridor([[256,1664],[768,1664],[768,1152],[1152,1152],[1152,1664],[2048,1664],[2048,1408]]);
+    // Independently generated spanning trees give each wing a different route
+    // and dead ends. The only connection between wings is the sealed chamber.
+    function wing(xs, ys, start, kinds) {
+      const nodes = ys.flatMap(y => xs.map(x => [x, y]));
+      const seen = new Set([start]), stack = [start];
+      while (stack.length) {
+        const n = stack[stack.length - 1], c = n % 3, r = Math.floor(n / 3);
+        const options = [[r-1,c],[r+1,c],[r,c-1],[r,c+1]]
+          .filter(([rr,cc]) => rr>=0 && rr<3 && cc>=0 && cc<3)
+          .map(([rr,cc]) => rr*3+cc).filter(i => !seen.has(i));
+        if (!options.length) { stack.pop(); continue; }
+        const next = options[Math.floor(rng()*options.length)];
+        corridor([nodes[n], nodes[next]]); seen.add(next); stack.push(next);
+      }
+      nodes.forEach(([x,y], i) => {
+        const w = (4 + Math.floor(rng()*2))*tile, h = (3 + Math.floor(rng()*2))*tile;
+        carve(x-w/2,y-h/2,w,h,kinds[i % kinds.length]);
+      });
+    }
+    wing([320,768,1216], [384,960,1664], 6, ['shrine','crypt','store']);
+    corridor([[256,1664],[320,1664]]);
     carve(128,1536,384,320,'entry');
-    carve(576,960,384,448,'crypt');
-    corridor([[768,1152],[320,1152],[320,640],[832,640]]);
-    carve(128,448,448,384,'shrine');
-    carve(704,512,448,256,'store');
-    // An approach loop offers exploration without bypassing the central seal.
-    corridor([[832,640],[1216,640],[1216,1152]]);
+    corridor([[1216,1664],[2048,1664],[2048,1408]]);
     carve(mini.x, mini.y, mini.w, mini.h, mini.kind);
-    corridor([[2048,768],[2048,384],[2752,384],[2752,1152],[3648,1152],[3648,768]]);
-    carve(2624,896,320,448,'barracks');
-    corridor([[2752,1152],[2752,1728],[3392,1728]]);
-    carve(3136,1536,512,320,'reliquary');
-    corridor([[3648,1152],[4032,1152],[4032,1600]]);
-    carve(3904,1472,256,384,'watch');
+    corridor([[2048,768],[2048,384],[2816,384],[2816,960]]);
+    wing([2816,3328,3904], [960,1344,1728], 0, ['barracks','reliquary','watch']);
+    // The final chamber is reached through a randomly selected deep-wing column.
+    const finalEntry = rng()<.5 ? 3328 : 3904;
+    corridor([[finalEntry,960],[finalEntry,640]]);
     carve(final.x,final.y,final.w,final.h,'final');
+    mini.entry = { x:2048, y:1408 };
+    mini.exit = { x:2048, y:672 };
+    final.entry = { x:finalEntry, y:768 };
+    const gate = { x: 1920, y: 762, w: 256, h: 12 };
+    // Rotate the expedition by reflection, including all encounter coordinates.
+    const flipX = rng()<.5, flipY = rng()<.5;
+    if (flipY) cells.reverse();
+    if (flipX) cells.forEach(row => row.reverse());
+    for (const rect of [...rooms, mini, final, gate]) {
+      if (flipX) rect.x = width-rect.x-rect.w;
+      if (flipY) rect.y = height-rect.y-rect.h;
+    }
+    for (const point of [mini.entry, mini.exit, final.entry]) {
+      if (flipX) point.x = width-point.x;
+      if (flipY) point.y = height-point.y;
+    }
+    if (flipX) spawn.x = width-spawn.x;
+    if (flipY) spawn.y = height-spawn.y;
     const walls = [];
     // Merge exposed tile edges into runs; no overlapping internal wall blocks.
     for (let r = 0; r <= rows; r++) {
@@ -257,7 +289,6 @@
         if (!edge && start >= 0) { walls.push({ x: c * tile - 6, y: start * tile - 6, w: 12, h: (r - start) * tile + 12 }); start = -1; }
       }
     }
-    const gate = { x: 1920, y: 762, w: 256, h: 12 };
     const inside = (p, room, pad = 0) => p.x >= room.x - pad && p.x <= room.x + room.w + pad && p.y >= room.y - pad && p.y <= room.y + room.h + pad;
     const enemies = [], props = [], types = rosterFor(cfg);
     for (let r = 2; r < rows - 2; r++) for (let c = 2; c < cols - 2; c++) {

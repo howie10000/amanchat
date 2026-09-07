@@ -398,7 +398,7 @@
   // ---------------------------------------------------------------
   //  the kraken
   // ---------------------------------------------------------------
-  const KRAKEN_BASES = [[-9, 26], [7, 27], [-12, 19], [11, 20], [-5, 15], [5, 14]];
+  const KRAKEN_BASES = ECON.KRAKEN_CINEMA_BASES;
 
   function buildKraken() {
     const root = new THREE.Group();
@@ -533,7 +533,7 @@
     Z: 22 - 8 * u + 2 * Math.sin(u * TAU),
   });
 
-  const SERPENT_BASES = [[-9, 24], [8, 25], [-4, 17], [5, 16], [-11, 19]];
+  const SERPENT_BASES = ECON.SERPENT_CINEMA_BASES;
 
   function buildSerpent() {
     const root = new THREE.Group();

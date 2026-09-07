@@ -21,6 +21,8 @@
 (function () {
   "use strict";
   const LAKE = ECON.LAKE, K = ECON.KRAKEN, TAU = Math.PI * 2;
+  const SERPENT_BASES = ECON.SERPENT_CINEMA_BASES;
+  const KRAKEN_BASES = ECON.KRAKEN_CINEMA_BASES;
   const WATERLINE = LAKE.y + 34;                       // where the head "breaks" the surface
   const DOCK_TIP = { x: LAKE.x, y: LAKE.y + LAKE.ry - 6 - 120 + 18 };
   const BOBBER = { x: LAKE.x + 26, y: LAKE.y + 40 };

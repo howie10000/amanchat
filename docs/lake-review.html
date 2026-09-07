@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>Sea beast render review</title>
+<style>body{background:#172238;color:white}canvas{width:900px}button{padding:12px}</style>
+<button onclick="kind='kraken';draw()">Kraken</button><button onclick="kind='serpent';draw()">Serpent</button>
+<button onclick="ct=6000;draw()">Tentacles</button><button onclick="ct=10000;draw()">Reveal</button><button onclick="ct=12000;draw()">Lunge</button><p id="status"></p><canvas width="1024" height="640"></canvas>
+<script src="../js/vendor/three.min.js"></script><script src="../js/shared/economy.js"></script><script src="../js/lake3d.js"></script>
+<script>
+let kind='kraken',ct=10000,clock=100000;Date.now=()=>clock;
+const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');
+const state={area:'neighborhood',pos:{x:0,y:0},appearance:{},weapon:'sword'};
+const GFX={drawCharacter(){},roundFill(){},roundStroke(){}};
+</script><script src="../js/lake.js"></script><script>
+function draw(){try{clock=100000;gameLake.startKrakenCinematic(kind);clock+=ct;gameLake.drawScreen();document.querySelector('#status').textContent=kind+' '+ct+'ms integrated cutscene rendered';}catch(e){document.querySelector('#status').textContent='FAILED '+e.message;}}draw();
+</script>

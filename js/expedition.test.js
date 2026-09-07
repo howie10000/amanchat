@@ -15,15 +15,21 @@ function reachable(p, locked) {
  return visited;
 }
 let checks=0;
-for(const seed of [1,17,903])for(const cfg of Object.values(E.GUILD_DUNGEONS)) {
+const layouts=new Set();
+for(const seed of Array.from({length:100},(_,i)=>i+1))for(const cfg of Object.values(E.GUILD_DUNGEONS)) {
  const p=D.buildExpedition(seed,{...cfg,guild:true});
+ layouts.add(JSON.stringify(p.cells));
  assert.deepEqual(p,D.buildExpedition(seed,{...cfg,guild:true})); checks++;
  const all=reachable(p,false), finalIndex=Math.floor((p.final.y+320)/p.tile)*p.cols+Math.floor((p.final.x+512)/p.tile);
  assert(all.has(finalIndex),'final reachable after seal opens');checks++;
  assert.equal(all.size,p.cells.flat().filter(Boolean).length,'all passages are connected');checks++;
+ for(const point of [p.final.entry,p.mini?.entry,p.mini?.exit].filter(Boolean)) {
+  assert(all.has(Math.floor(point.y/p.tile)*p.cols+Math.floor(point.x/p.tile)), 'encounter doorway is walkable'); checks++;
+ }
  if(p.mini){const locked=reachable(p,true);assert(!locked.has(finalIndex),'mini gate cannot be bypassed');checks++;assert(locked.has(Math.floor((p.mini.y+320)/p.tile)*p.cols+Math.floor((p.mini.x+512)/p.tile)),'mini accessible while gate locked');checks++;}
  for(const e of p.enemies)for(const w of p.walls)assert(!(e.x+20>w.x&&e.x-20<w.x+w.w&&e.y+20>w.y&&e.y-20<w.y+w.h),'enemy never spawns in stone');
 }
+assert(layouts.size>=100,'seeds change corridor geometry, not only enemies');checks++;
 const points=S.polygon(0,0,[{x:-100,y:-40,w:15,h:80}],380);
 assert(points.every((p,i)=>p.angle>=0&&p.angle<Math.PI*2&&(!i||p.angle>=points[i-1].angle)),'angles normalized and sorted without winding twice');checks++;
 console.log(checks+' expedition/visibility checks passed');

@@ -682,6 +682,8 @@
   // ---------- sea beasts: the Kraken and the Sea Serpent ----------
   // Shared rules (HP, hit cadence, reach, loot odds) live in KRAKEN; per-kind
   // shape (how many weak points, their loot, their attack deck) in BEASTS.
+  const SERPENT_CINEMA_BASES = [[-9,24],[8,25],[-4,17],[5,16],[-11,19]];
+  const KRAKEN_CINEMA_BASES = [[-9,26],[7,27],[-12,19],[11,20],[-5,15],[5,14]];
   const KRAKEN = {
     RISE_MS: 11000,               // cinematic: the beast surfaces before it can be hit
     TENTACLES: 6,
@@ -1506,7 +1508,7 @@
     LUCK_MAX_LEVEL, luckEffects, luckDurationMs, activeLuck, luckAfterEating, luckQueueSort, LUCK_QUEUE_MAX,
     FARM_PLOTS, CROPS, CROP_BY_ID, cropYield, SEED_SHOP_PERIOD, seedShopBucket, seedShopStock, seedShopRestockIn,
     COOK_MAX_ING, MEAL_ADJ, ingredientInfo, luckLevelForPts, cookMeal, rollMealLuck,
-    KRAKEN, BEASTS, krakenHeadPos, krakenPartPos, beastPartPos, krakenMaxHp, pickAttack,
+    SERPENT_CINEMA_BASES, KRAKEN_CINEMA_BASES, KRAKEN, BEASTS, krakenHeadPos, krakenPartPos, beastPartPos, krakenMaxHp, pickAttack,
     MASTERY_SKILLS, MASTERY_INFO, MASTERY_MAX_LEVEL, MASTERY_XP,
     masteryXpForNext, masteryLevel, masteryT,
     masteryFishBonus, masteryCookBias, masteryFarmBonus, masteryCombatMult,

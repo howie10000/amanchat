@@ -4,7 +4,7 @@ New solo and guild runs use one 4352 × 2048 map. There are no floor changes, ra
 
 ## Exploration and placement
 
-The entrance, crypt, shrine and stores form the approach wing. A central guardian chamber connects to the deep wing, barracks, reliquary, watch room and final sanctum. The mini-boss chamber's north seal is the only connection between the two wings. Removing an accidental connection from the barracks prevents bypassing it.
+The entrance, crypt, shrine and stores form the approach wing. A central guardian chamber connects to the deep wing, barracks, reliquary, watch room and final sanctum. Each wing uses a seeded branching maze with varying room sizes and dead ends. Random reflections change the route orientation, and the final room's entrance varies. The mini-boss chamber's far seal remains the only connection between the wings. Solo entries generate a fresh run seed; guild members share the server's seed. Rejoining a guild run preserves its layout.
 
 Boss encounters retain the existing arena combat view and cinematics. Their footprints belong to the connected map; entering and leaving a chamber preserves the expedition and its enemies. Defeating the mini and walking to its far door returns the party to the deeper passage, rather than loading a new floor.
 
@@ -33,3 +33,11 @@ No database migration or new package is required.
 - All top-level client JavaScript and the Node server passed syntax checks.
 
 The developer playtest uses a local fixture, not a live account. The live-server test verifies the mini-to-final progression and reconnect, but does not complete the final boss reward cycle or emulate multiple browser players moving simultaneously.
+
+## Layout variety and sea-beast regression checks
+
+Run `node js/expedition.test.js` (3,202 checks over 100 seeds), `node js/lake.test.js` (14 full cutscene call paths), and `node server-node/expedition.test.js` (isolated live server: mini defeat, seal unlock, reconnect, final entry). All passed after this update.
+
+The lake cutscene referenced missing tentacle/coil position constants before it could call the 3D renderer. Both Kraken and Serpent now use the same shared position tables as their 3D models. `docs/lake-review.html` previews the actual cutscene composition at emergence, reveal and lunge; the player avatar is omitted in this development fixture. Kraken and Serpent reveals were visually checked in the browser.
+
+Deploy `js/shared/dungeon.js`, `js/shared/economy.js`, `js/combat.js`, `js/expedition.js`, `js/lake.js`, `js/lake3d.js` and `server-node/server.js` together. Restart the Node server, reload clients, and start a fresh dungeon to use the new layouts and doorway coordinates.

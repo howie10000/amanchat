@@ -39,9 +39,7 @@ function strToSeed(str) {
   return h >>> 0;
 }
 // Co-op partners must generate byte-identical mazes/enemies/keys per floor.
-// Seeding purely from (party pair, tier, floor) — not wall-clock time — means
-// both clients independently reconstruct the same layout for a given floor
-// whenever they call setupFloor(), regardless of when each of them gets there.
+// Party identity is a seed prefix; each new solo expedition adds a fresh run ID.
 function partyPairKey() {
   if (!state.party) return state.user;
   const other = state.party.leader === state.user ? state.party.partnerId : state.party.leader;
@@ -59,7 +57,7 @@ async function startDungeon(tier, party, joining) {
   // A guild run is opened on the server first: it owns the party list, the
   // boss and the payout, and it hands back the seed every member's maze is
   // built from so a party sees the same floors.
-  let runId = null, seedBase = partyPairKey() + "|" + tier, plan = null;
+  let runId = null, seedBase = partyPairKey() + "|" + tier + "|" + Array.from(crypto.getRandomValues(new Uint32Array(4))).join('-'), plan = null;
   if (cfg.guild && joining) {
     runId = joining.runId;
     seedBase = "guildrun|" + joining.seed;

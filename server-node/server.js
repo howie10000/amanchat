@@ -3793,7 +3793,8 @@ const ECONOMY_OPS = {
                 return { encounter:which, boss:guildBossView(run,now), miniDone:!!run.miniDone };
             }
             const presence = byUser.get(user)?.presence;
-            if (!presence || !Number.isFinite(presence.x) || !Number.isFinite(presence.y) || presence.area !== 'dungeon' || presence.run !== run.id || Math.hypot(presence.x - (chamber.x + 512), presence.y - (chamber.y + 640)) > 230) throw new Error('Walk to the chamber entrance first.');
+            const entry = chamber.entry || {x:chamber.x+512,y:chamber.y+640};
+            if (!presence || !Number.isFinite(presence.x) || !Number.isFinite(presence.y) || presence.area !== 'dungeon' || presence.run !== run.id || Math.hypot(presence.x - entry.x, presence.y - entry.y) > 230) throw new Error('Walk to the chamber entrance first.');
             run.encounter = which;
             spawnGuildBoss(run, which === 'mini' ? cfg.mini : cfg.boss);
             const payload = { event:'guild_dungeon', kind:'expedition', runId:run.id, encounter:which, miniDone:!!run.miniDone, boss:guildBossView(run,now) };

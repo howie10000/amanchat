@@ -27,7 +27,7 @@ async function client(){
  await assert.rejects(c.rpc('guild_dungeon',{action:'encounter_enter',chamber:'final'}),/mini-boss/);
  await assert.rejects(c.rpc('guild_dungeon',{action:'encounter_enter',chamber:'mini'}),/entrance/);
  console.log('PASS legacy skip, final skip and remote entry blocked');
- await c.rpc('presence',{data:{area:'dungeon',run:run.runId,x:p.mini.x+512,y:p.mini.y+640}});
+ await c.rpc('presence',{data:{area:'dungeon',run:run.runId,x:p.mini.entry.x,y:p.mini.entry.y}});
  const mini=await c.rpc('guild_dungeon',{action:'encounter_enter',chamber:'mini'});assert(mini.boss.mini);
  await assert.rejects(c.rpc('guild_dungeon',{action:'encounter_leave'}),/Defeat/);
  console.log('PASS mini chamber enters; far door remains locked');
@@ -48,7 +48,7 @@ async function client(){
  console.log('PASS far seal unlocks; same map persists; party transition broadcasts');
  const re=await client();await re.rpc('auth',{user:'expowner',pass:'test-pass-123'});
  const resumed=await re.rpc('guild_dungeon',{action:'status'});assert(resumed.run.miniDone&&resumed.run.continuous);assert.deepEqual(resumed.state.plan,p);
- await re.rpc('presence',{data:{area:'dungeon',run:run.runId,x:p.final.x+512,y:p.final.y+640}});
+ await re.rpc('presence',{data:{area:'dungeon',run:run.runId,x:p.final.entry.x,y:p.final.entry.y}});
  const final=await re.rpc('guild_dungeon',{action:'encounter_enter',chamber:'final'});assert.equal(final.boss.id,'warden');assert(!final.boss.mini);
  console.log('PASS reconnect preserves progression; final chamber unlocks after mini');
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>{for(const ws of clients)ws.close();server.kill();});

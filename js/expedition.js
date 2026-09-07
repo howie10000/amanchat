@@ -71,7 +71,7 @@
     } else if (msg.encounter === null) {
       if (!d.bossRoom && d.miniDone) return;
       d.miniDone=!!msg.miniDone; d.encounter=null; d.boss=null; d.cine=null; d.phaseCine=null;
-      const p=d.world; setup(p,{x:p.mini.x+512,y:p.mini.y-96});
+      const p=d.world; setup(p,p.mini.exit || {x:p.mini.x+512,y:p.mini.y-96});
       toast('The far seal is broken. Explore the deeper passages.');
     }
   }
@@ -85,7 +85,8 @@
     }
     if (d.cfg.guild) {
       const r=p.mini && !d.miniDone ? p.mini : p.final;
-      if (Math.abs(state.pos.x-(r.x+512))<120 && Math.abs(state.pos.y-(r.y+640))<90) enter(r===p.mini?'mini':'final');
+      const entry=r.entry || {x:r.x+512,y:r.y+640};
+      if (Math.abs(state.pos.x-entry.x)<120 && Math.abs(state.pos.y-entry.y)<90) enter(r===p.mini?'mini':'final');
     } else if (!d.chest && !state.enemies.some(e=>e.id==='final-boss')) {
       spawnChest(p.final.x+512,p.final.y+340,'quest');
       toast('The guardian falls. Claim its chest.');
