@@ -147,7 +147,7 @@
           toast(`🌊 <b>Something huge is rising from the Fishing Pond!</b> Grab a weapon (1 sword · 2 pistol) and get to the lake — everyone can fight it.`, 7000);
         }
       } else if (m.kind === "alive" && was !== "alive") {
-        toast(`${boss && boss.kind === "serpent" ? "🐍" : "🦑"} <b>${def.name} IS AWAKE.</b> Break its ${def.partName}s, then go for the head. Click to attack!`, 5000);
+        toast(`${boss && boss.kind === "serpent" ? "🐍" : "🦑"} <b>${def.name} IS AWAKE.</b> Break its ${def.partName}s, then go for the head. Click or press Space to attack!`, 5000);
       } else if (m.kind === "attack" && m.attack) {
         addAttack(m.attack);
       } else if (m.kind === "slam" && Array.isArray(m.slams)) {
@@ -206,7 +206,7 @@
     const c = cine; cine = null;
     state.pos.x = SHORE.x; state.pos.y = SHORE.y; state.facing = "down";
     if (c.kind === "catch" && c.onDone) c.onDone();
-    if (c.kind === "kraken" || c.kind === "serpent") toast("⚔️ <b>Fight!</b> Click to attack — 1 sword, 2 pistol. Every attack is telegraphed in red: get out of it.", 5000);
+    if (c.kind === "kraken" || c.kind === "serpent") toast("⚔️ <b>Fight!</b> Click or press Space to attack — 1 sword, 2 pistol. Every attack is telegraphed in red: get out of it.", 5000);
   }
   function cineT() { return cine ? now() - cine.t0 : -1; }
 
@@ -1230,7 +1230,7 @@
     GFX.roundFill(ctx, W / 2 - 250, H - 104, 500, 30, 8, "rgba(0,0,0,.8)");
     ctx.strokeStyle = boss.kind === "serpent" ? "#2dd4bf" : "#a855f7"; ctx.lineWidth = 1.5; GFX.roundStroke(ctx, W / 2 - 250, H - 104, 500, 30, 8);
     ctx.fillStyle = "#e9d5ff"; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
-    ctx.fillText(`⚔ ${state.weapon.toUpperCase()} — click to attack · 1 sword · 2 pistol · every red shape is an attack: get out of it`, W / 2, H - 84);
+    ctx.fillText(`⚔ ${state.weapon.toUpperCase()} — click or SPACE to attack · 1 sword · 2 pistol · every red shape is an attack: get out of it`, W / 2, H - 84);
   }
   function drawScreen() {
     if (state.area !== "neighborhood") return;
