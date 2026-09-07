@@ -205,7 +205,7 @@
   // A single connected expedition. The central chamber is a cut in the graph:
   // no side passage crosses from the approach to the deep wing around it.
   function buildExpedition(seed, cfg) {
-    const tile = 64, cols = 68, rows = 32, width = cols * tile, height = rows * tile;
+    const tile = 64, cols = 85, rows = 32, width = cols * tile, height = rows * tile;
     const rng = ECON.mulberry32(ECON.strToSeed(String(seed) + '|expedition|' + cfg.tier));
     const cells = Array.from({ length: rows }, () => Array(cols).fill(0));
     const rooms = [];
@@ -220,19 +220,20 @@
         carve(Math.min(x, xx) - 96, Math.min(y, yy) - 96, Math.abs(xx - x) + 192, Math.abs(yy - y) + 192);
       }
     }
-    const mini = { x: 1536, y: 768, w: 1024, h: 640, kind: cfg.mini ? 'mini' : 'camp' };
-    const final = { x: 3136, y: 128, w: 1024, h: 640, kind: 'final' };
+    const mini = { x: 2048, y: 768, w: 1024, h: 640, kind: cfg.mini ? 'mini' : 'camp' };
+    const final = { x: 3648, y: 128, w: 1024, h: 640, kind: 'final' };
     const spawn = { x: 256, y: 1664 };
     // Independently generated spanning trees give each wing a different route
     // and dead ends. The only connection between wings is the sealed chamber.
     function wing(xs, ys, start, kinds) {
+      const columns=xs.length, rowsInWing=ys.length;
       const nodes = ys.flatMap(y => xs.map(x => [x, y]));
       const seen = new Set([start]), stack = [start];
       while (stack.length) {
-        const n = stack[stack.length - 1], c = n % 3, r = Math.floor(n / 3);
+        const n = stack[stack.length - 1], c = n % columns, r = Math.floor(n / columns);
         const options = [[r-1,c],[r+1,c],[r,c-1],[r,c+1]]
-          .filter(([rr,cc]) => rr>=0 && rr<3 && cc>=0 && cc<3)
-          .map(([rr,cc]) => rr*3+cc).filter(i => !seen.has(i));
+          .filter(([rr,cc]) => rr>=0 && rr<rowsInWing && cc>=0 && cc<columns)
+          .map(([rr,cc]) => rr*columns+cc).filter(i => !seen.has(i));
         if (!options.length) { stack.pop(); continue; }
         const next = options[Math.floor(rng()*options.length)];
         corridor([nodes[n], nodes[next]]); seen.add(next); stack.push(next);
@@ -242,21 +243,21 @@
         carve(x-w/2,y-h/2,w,h,kinds[i % kinds.length]);
       });
     }
-    wing([320,768,1216], [384,960,1664], 6, ['shrine','crypt','store']);
+    wing([320,768,1216,1728], [384,960,1664], 8, ['shrine','crypt','store']);
     corridor([[256,1664],[320,1664]]);
     carve(128,1536,384,320,'entry');
-    corridor([[1216,1664],[2048,1664],[2048,1408]]);
+    corridor([[1728,1664],[2560,1664],[2560,1408]]);
     carve(mini.x, mini.y, mini.w, mini.h, mini.kind);
-    corridor([[2048,768],[2048,384],[2816,384],[2816,960]]);
-    wing([2816,3328,3904], [960,1344,1728], 0, ['barracks','reliquary','watch']);
+    corridor([[2560,768],[2560,384],[3328,384],[3328,960]]);
+    wing([3328,3840,4416,4992], [960,1344,1728], 0, ['barracks','reliquary','watch']);
     // The final chamber is reached through a randomly selected deep-wing column.
-    const finalEntry = rng()<.5 ? 3328 : 3904;
+    const finalEntry = rng()<.5 ? 3840 : 4416;
     corridor([[finalEntry,960],[finalEntry,640]]);
     carve(final.x,final.y,final.w,final.h,'final');
-    mini.entry = { x:2048, y:1408 };
-    mini.exit = { x:2048, y:672 };
+    mini.entry = { x:2560, y:1408 };
+    mini.exit = { x:2560, y:672 };
     final.entry = { x:finalEntry, y:768 };
-    const gate = { x: 1920, y: 762, w: 256, h: 12 };
+    const gate = { x: 2432, y: 762, w: 256, h: 12 };
     // Rotate the expedition by reflection, including all encounter coordinates.
     const flipX = rng()<.5, flipY = rng()<.5;
     if (flipY) cells.reverse();
@@ -297,7 +298,7 @@
       // Actors and clutter occupy broad open tiles, never doors or narrow bends.
       const spacious = cells[r-1][c] && cells[r+1][c] && cells[r][c-1] && cells[r][c+1];
       if (inside(p, mini, 96) || inside(p, final, 128) || Math.hypot(p.x-spawn.x,p.y-spawn.y) < 320) continue;
-      if (spacious && rng() < .06 && enemies.every(e => Math.hypot(e.x-p.x,e.y-p.y)>160)) {
+      if (spacious && rng() < .443 && enemies.every(e => Math.hypot(e.x-p.x,e.y-p.y)>128)) {
         const type = types[Math.floor(rng()*types.length)], t = ENEMY_TYPES[type];
         enemies.push({ id:'e'+enemies.length, type, x:p.x, y:p.y, hp:Math.round(t.hp*cfg.hpMult), maxHp:Math.round(t.hp*cfg.hpMult), speed:t.speed*cfg.speedMult });
       }

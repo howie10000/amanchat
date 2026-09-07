@@ -40,3 +40,17 @@ The Ember Smith now assembles from its actual mesh components, including its anv
 Integration: publish the updated `js/dungeon3d.js` and reload the client. Existing encounter durations and server combat timing are unchanged.
 
 Validation: JavaScript syntax check passed; the browser smoke page rendered all 66 entrance, victory, phase-two and replay samples. Visual review covered the dragon in flight and landed, plus the Smith mid-assembly and fully assembled.
+
+## Attached, animated dragon wings
+
+The wing hinges now overlap the chest volume at its shoulders instead of sitting above it. The real wing groups are connected to the animation limb list, fixing the previously inactive flap code. Flight uses synchronized mirrored power strokes and slower recovery strokes, feathering during recovery and transitioning into landing. The resurrection sequence retains its own wing movement.
+
+`node js/dragon-rig.test.js` verifies production wing geometry and animation wiring. Browser checks passed all 66 cinematic samples; flight and grounded shoulder contact were visually reviewed.
+
+## Varkaal combat art and fire roar
+
+Flight now includes stronger banking, body lift, responsive tail movement, tucked legs and a ground shadow that tightens on descent. The landing reveal ends with a mouth-aligned fire plume and warm light, framed by a wider side camera. Flame geometry is pooled.
+
+The 2D fight model now has overlapping throat/chest armor, facial scales, tapered horns, slit eyes, cheek spikes, wing ribs and a second-phase crown. Wing shoulders compensate for their per-part scaling to meet the torso. Damage and target anchors are unchanged. `docs/dragon-fight-review.html` previews the actual fight renderer.
+
+Validation: 3,202 dungeon checks, production wing-geometry test, and 68 cinematic render samples including fire-roar frames passed. Both 2D art and cinematic plume were visually reviewed. Restart local play and begin a fresh dungeon for the new population.

@@ -245,7 +245,8 @@
     // How far out along the wing this spar sits (0 = nearest the body).
     const rank = Math.abs(A.x - W / 2) / (W * 0.38);
     const reach = (60 + rank * 40) * em;
-    const shoulder = { x: W / 2 + side * 54, y: headPos().y + 70 };
+    const scale=PART_SCALE.dragon;
+    const shoulder = { x:A.x+(W/2+side*82-A.x)/scale, y:A.y+(headPos().y+140-A.y)/scale };
     const tip = { x: A.x + side * reach, y: A.y - (78 - rank * 18) * em + beat * 70 };
     ctx.globalAlpha = 1 - fade * 0.7;
     // membrane: from the shoulder, out along the spar, and back down to the body
@@ -255,6 +256,12 @@
     ctx.quadraticCurveTo(A.x, A.y - 40, tip.x, tip.y);
     ctx.quadraticCurveTo(A.x + side * 10, A.y + 46, shoulder.x, shoulder.y + 62);
     ctx.closePath(); ctx.fill();
+    // Fine structural ribs stay inside the membrane and converge on the joint.
+    ctx.strokeStyle=down?'#292524':'rgba(236,126,75,.42)';ctx.lineWidth=1.4;
+    for(let rib=1;rib<=4;rib++){
+      const u=rib/5;ctx.beginPath();ctx.moveTo(shoulder.x,shoulder.y);
+      ctx.quadraticCurveTo(lerp(shoulder.x,tip.x,u),lerp(shoulder.y,tip.y,u)-12,A.x+side*10*u,A.y+40*u);ctx.stroke();
+    }
     // the spar itself, running shoulder -> tip
     limb(ctx,
       shoulder,
@@ -470,9 +477,22 @@
     // Chest and shoulders, so the wings have something to hang off.
     ctx.fillStyle = f ? "#fed7aa" : dead ? "#332b25" : "#6b1717";
     ctx.beginPath(); ctx.ellipse(cx, cy + 118, 96 * em, 62 * em, 0, 0, TAU); ctx.fill();
+    // Overlapping ventral armor gives the breathing torso a solid silhouette.
+    for(let row=0;row<6;row++){
+      const y=cy+80+row*15,w=58-row*4;
+      const plate=ctx.createLinearGradient(cx-w,y,cx+w,y+14);
+      plate.addColorStop(0,dead?'#302b28':'#6b4936');plate.addColorStop(.5,f?'#fff5d8':'#c79660');plate.addColorStop(1,'#38251e');
+      ctx.fillStyle=plate;ctx.strokeStyle='#301614';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(cx-w,y);ctx.quadraticCurveTo(cx,y+18,cx+w,y);ctx.lineTo(cx+w-5,y+10);ctx.quadraticCurveTo(cx,y+29,cx-w+5,y+10);ctx.closePath();ctx.fill();ctx.stroke();
+    }
     // Neck, short and thick, rising out of the chest into the skull.
     limb(ctx, { x: cx, y: cy + 132 }, { x: cx - 16, y: cy + 96 }, { x: cx + 14, y: cy + 62 }, { x: cx, y: cy + 34 },
       { base: f ? "#fff7ed" : dead ? "#3b332d" : "#7f1d1d", hi: f ? "#fff" : "#b45309", w0: 62 * em, w1: 46 * em, segs: 10 });
+    for(let row=0;row<5;row++){
+      const y=cy+64+row*16,w=28+row*3;
+      ctx.fillStyle=f?'#fff0cc':dead?'#484039':row%2?'#98714c':'#bc905b';ctx.strokeStyle='#522b20';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(cx-w,y);ctx.quadraticCurveTo(cx,y+13,cx+w,y);ctx.lineTo(cx+w,y+10);ctx.quadraticCurveTo(cx,y+23,cx-w,y+10);ctx.closePath();ctx.fill();ctx.stroke();
+    }
     // Skull, front-on: a broad brow narrowing to a snout at the bottom.
     headShell(ctx, cx, cy, boss,
       f ? ["#fff7ed", "#fed7aa", "#fdba74"] : dead ? ["#4b3f36", "#332b25", "#1c1714"] : ["#991b1b", "#7f1d1d", "#3f0d0d"],
@@ -484,6 +504,17 @@
         c.lineTo(x - 30, y + 46);
         c.bezierCurveTo(x - 40, y + 20, x - 62, y + 6, x - 84, y - 34);
       });
+    // Layered obsidian scales and a raised nasal ridge catch the forge light.
+    for(let row=0;row<4;row++)for(let col=-2;col<=2;col++){
+      const x=cx+col*(22-row*2),y=cy-98+row*18;
+      ctx.fillStyle=f?'#ffe9c2':dead?'#38312c':((row+col)%2?'#5a1716':'#862b20');
+      ctx.strokeStyle=dead?'#292524':'#b65a37';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(x-10,y);ctx.lineTo(x,y-5);ctx.lineTo(x+10,y);ctx.lineTo(x,y+13);ctx.closePath();ctx.fill();ctx.stroke();
+    }
+    ctx.fillStyle=f?'#fff0d0':'#b55332';ctx.beginPath();ctx.moveTo(cx,cy-82);ctx.lineTo(cx+12,cy+16);ctx.lineTo(cx,cy+30);ctx.lineTo(cx-12,cy+16);ctx.closePath();ctx.fill();
+    for(const side of [-1,1])for(let n=0;n<3;n++){
+      ctx.fillStyle=dead?'#4b4038':'#d2ad77';ctx.beginPath();ctx.moveTo(cx+side*65,cy-24+n*17);ctx.lineTo(cx+side*(99-n*7),cy-28+n*13);ctx.lineTo(cx+side*67,cy-10+n*17);ctx.closePath();ctx.fill();
+    }
     // Brow ridges over the eyes.
     ctx.fillStyle = dead ? "#1c1714" : "#5c1414";
     for (const s of [-1, 1]) {
@@ -512,24 +543,26 @@
         ctx.beginPath(); ctx.moveTo(x - 3, cy + 56 + jaw); ctx.lineTo(x + 3, cy + 56 + jaw); ctx.lineTo(x, cy + 46 + jaw); ctx.closePath(); ctx.fill();
       }
     }
-    // Horns sweeping up and back off the top of the skull.
-    ctx.strokeStyle = dead ? "#332b25" : "#e7e5e4"; ctx.lineWidth = 14; ctx.lineCap = "round";
-    for (const s of [-1, 1]) {
-      ctx.beginPath();
-      ctx.moveTo(cx + s * 46, cy - 100);
-      ctx.quadraticCurveTo(cx + s * 104, cy - 132, cx + s * 128, cy - 76);
-      ctx.stroke();
+    // Tapered swept horns, with dark roots and warm ivory tips.
+    for(const side of [-1,1])for(let n=0;n<2;n++){
+      const x=cx+side*(44-n*21),y=cy-102-n*10;
+      const horn=ctx.createLinearGradient(x,y,x+side*55,y-68);horn.addColorStop(0,'#69503c');horn.addColorStop(1,dead?'#695c4e':'#f5deb0');
+      ctx.fillStyle=horn;ctx.strokeStyle='#302019';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(x-side*9,y+4);ctx.quadraticCurveTo(x+side*35,y-16,x+side*(76-n*18),y-76+n*19);ctx.quadraticCurveTo(x+side*35,y-52,x+side*11,y+7);ctx.closePath();ctx.fill();ctx.stroke();
     }
-    // A second, smaller pair, closer in.
-    ctx.lineWidth = 8;
-    for (const s of [-1, 1]) {
-      ctx.beginPath();
-      ctx.moveTo(cx + s * 22, cy - 112);
-      ctx.quadraticCurveTo(cx + s * 52, cy - 146, cx + s * 74, cy - 126);
-      ctx.stroke();
+    if(boss.phase>=2){
+      ctx.fillStyle='#e4b959';ctx.strokeStyle='#5a2e18';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(cx-42,cy-115);
+      for(let i=-2;i<=2;i++){ctx.lineTo(cx+i*18-8,cy-126);ctx.lineTo(cx+i*18,cy-153-(i===0?12:0));ctx.lineTo(cx+i*18+8,cy-126);}
+      ctx.lineTo(cx+42,cy-115);ctx.closePath();ctx.fill();ctx.stroke();
     }
     ctx.lineCap = "butt";
-    drawEyes(ctx, cx, cy - 52, 40, 15, 18, lookAt(cx, cy - 52), dead, vuln || boss.enraged, t, "251,146,60");
+    for(const side of [-1,1]){
+      const ex=cx+side*40,ey=cy-52;
+      ctx.fillStyle=dead?'#70685f':vuln?'#ff7660':'#ffcf66';ctx.strokeStyle='#2b1010';ctx.lineWidth=3;
+      ctx.beginPath();ctx.moveTo(ex-side*20,ey-7);ctx.quadraticCurveTo(ex,ey-14,ex+side*20,ey-3);ctx.quadraticCurveTo(ex,ey+12,ex-side*20,ey-7);ctx.fill();ctx.stroke();
+      ctx.fillStyle='#1b0807';ctx.beginPath();ctx.ellipse(ex,ey-1,2.5,8,0,0,TAU);ctx.fill();
+    }
     ctx.globalAlpha = 1;
     return { cx, cy, vuln };
   }
@@ -784,7 +817,7 @@
   // from what you can see.
   // Big enough to be the thing at the end of a six-floor run, small enough
   // that the floor you have to dodge on is still readable underneath it.
-  const HEAD_SCALE = { warden: 1.46, smith: 1.5, tyrant: 1.5, dragon: 1.52, ogrelord: 1.24, tempest: 1.3 };
+  const HEAD_SCALE = { warden: 1.46, smith: 1.5, tyrant: 1.5, dragon: 1.32, ogrelord: 1.24, tempest: 1.3 };
   const PART_SCALE = { warden: 1.4, smith: 1.42, tyrant: 1.36, dragon: 1.46, ogrelord: 1.14, tempest: 1.2 };
 
   function aroundAnchor(ctx, ax, ay, s, fn) {

@@ -1,3 +1,7 @@
+# One-click local testing
+
+On Windows, double-click **PLAY LOCALLY.cmd**. See [LOCAL PLAY.md](LOCAL%20PLAY.md) for local accounts, saved progress and stopping the server.
+
 # 🏘️ Neighborhood
 
 A multiplayer browser game built on the idea you sent your friend:

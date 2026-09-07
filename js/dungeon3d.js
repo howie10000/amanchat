@@ -481,7 +481,37 @@
     }
     finish={target,uniforms,scene:postScene,camera:postCamera,mist};
   }
-  let dragonCourt = null;
+  let dragonCourt = null, dragonFlame = null, dragonShadow = null;
+  function dragonAtmosphere(p,mode){
+    if(!dragonFlame){
+      dragonFlame=[];
+      for(let i=0;i<18;i++){
+        const mesh=new THREE.Mesh(new THREE.SphereGeometry(1,10,8),new THREE.MeshBasicMaterial({color:0xff7d25,transparent:true,opacity:.7,depthWrite:false,blending:THREE.AdditiveBlending}));
+        scene.add(mesh);dragonFlame.push(mesh);
+      }
+      dragonShadow=new THREE.Mesh(new THREE.CircleGeometry(1,40),new THREE.MeshBasicMaterial({color:0x060408,transparent:true,opacity:.3,depthWrite:false}));
+      dragonShadow.rotation.x=-Math.PI/2;scene.add(dragonShadow);
+    }
+    const isDragon=p.id==='dragon';
+    const breath=isDragon&&mode==='entrance'?Math.sin(Math.PI*beat(p.k,.88,1)):0;
+    dragonShadow.visible=isDragon&&mode==='entrance';
+    if(dragonShadow.visible){dragonShadow.position.set(rig.root.position.x,.07,rig.root.position.z);const size=22+rig.root.position.y*.22;dragonShadow.scale.set(size,size*.6,1);dragonShadow.material.opacity=.38-rig.root.position.y*.003;}
+    for(const mesh of dragonFlame)mesh.visible=breath>.01;
+    if(breath<=.01)return;
+    rig.root.updateMatrixWorld(true);
+    const mouth=rig.dragon.head.localToWorld(new THREE.Vector3(0,-.4,5.8));
+    const direction=new THREE.Vector3(0,.6,1).transformDirection(rig.dragon.head.matrixWorld);direction.y+=.85;direction.normalize();
+    for(let i=0;i<dragonFlame.length;i++){
+      const mesh=dragonFlame[i],u=i/(dragonFlame.length-1),flutter=Math.sin(p.t/65+i*1.9);
+      mesh.position.copy(mouth).addScaledVector(direction,u*42*breath);
+      mesh.position.x+=flutter*u*1.2;
+      const radius=(.9+u*3.6)*breath*(1+flutter*.13);
+      mesh.scale.set(radius,3.6*breath,radius);mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),direction);
+      mesh.material.color.setRGB(1,lerp(.92,.16,u),lerp(.48,.015,u));mesh.material.opacity=(1-u)*.75*breath;
+    }
+    coalLight.position.copy(mouth);coalLight.color.setHex(0xff8f35);coalLight.distance=85;coalLight.intensity=4*breath;
+  }
+
   function buildDragonCourt(){
     dragonCourt=new THREE.Group();scene.add(dragonCourt);
     const stone=new THREE.MeshStandardMaterial({color:0x34313a,roughness:.95});
@@ -1245,7 +1275,11 @@
       membrane.material.color.copy(body.color).multiplyScalar(0.75);
       w.add(membrane);
 
-      w.position.set(sx * 3.2, 12.6, -2.2);
+      // The hinge sits INSIDE the chest ellipsoid, so every wing angle
+      // retains an overlapping shoulder instead of floating above the back.
+      w.position.set(sx * 2.8, 9.3, -2.2);
+      const shoulderJoint=new THREE.Mesh(new THREE.SphereGeometry(1.25,14,10),body);
+      w.add(shoulderJoint);
       w.scale.x = sx;
       wings.push({ arm: w, sx, wing: true, membrane });
       shell.add(w);
@@ -1302,7 +1336,7 @@
     crown.position.set(0, 2.1, -0.6);
     head.add(crown);
 
-    return { chest, hips, legs, neck, necks, head, jaw, eyes, horns, wings, tail, eyeY, crown };
+    return { chest, hips, legs, neck, necks, head, jaw, eyes, horns, wings, limbs:wings, tail, eyeY, crown };
   }
 
   // ---------------------------------------------------------------
@@ -1684,7 +1718,8 @@
     [.48,-45,18,35,12,40,-75,62],
     [.68,-35,7,25,0,10,ROOM.bossZ,66],
     [.85,28,10,24,0,19,ROOM.bossZ,60],
-    [1,-9,10,16,0,21,ROOM.bossZ+4,58],
+    [.94,55,22,42,0,34,-10,70],
+    [1,46,16,36,0,24,ROOM.bossZ+4,62],
   ];
   function awakeDragon(p) {
     const {k,t}=p;let shake=0;
@@ -1693,7 +1728,9 @@
     const u=flight;
     rig.shell.visible=true;
     rig.root.position.set(-100*(1-u)*(1-u)+90*(1-u)*u,70*(1-u*u),lerp(-190,ROOM.bossZ,u));
-    rig.root.rotation.y=.55*Math.sin(u*TAU)*(1-u);
+    rig.root.position.y+=Math.sin(k*TAU*6)*1.3*(1-u);
+    rig.root.rotation.x=-.10*Math.sin(u*Math.PI);
+    rig.root.rotation.y=.75*Math.sin(u*TAU)*(1-u);
     rig.root.rotation.z=-.23*Math.sin(u*TAU)*(1-u);
     if(land>0){
       rig.root.position.set(0,-1.2*Math.sin(Math.min(1,land/.35)*Math.PI),ROOM.bossZ);
@@ -1715,14 +1752,27 @@
       l.arm.rotation.x = lerp(0.7, -0.10, open);
     }
     if(k<.68){
-      for(const l of rig.limbs){l.arm.rotation.z=l.sx*(.25+.55*Math.sin(k*TAU*5));l.arm.rotation.y=l.sx*.25;l.arm.rotation.x=-.15;}
+      // A quick power stroke, followed by a slower recovery. Both mirrored
+      // shoulders drive the same beat; sweep and pitch feather the recovery.
+      const phase=((k/.68)*4.5)%1;
+      const down=phase<.4;
+      const stroke=down?phase/.4:(phase-.4)/.6;
+      const eased=.5-.5*Math.cos(stroke*Math.PI);
+      const lift=down?lerp(.95,-.55,eased):lerp(-.55,.95,eased);
+      const brake=beat(k,.56,.68);
+      for(const l of rig.limbs){
+        l.arm.rotation.z=l.sx*lerp(lift,-1.2,brake);
+        l.arm.rotation.y=l.sx*lerp(.10+.3*Math.sin(phase*TAU),1.5,brake);
+        l.arm.rotation.x=lerp(-.12+(down?0:.22*Math.sin(stroke*Math.PI)),.7,brake);
+      }
     }
     if (D) {
       D.neck.rotation.x = lerp(0.9, -0.10, open);
       D.head.rotation.x = lerp(0.55, -0.12, open);
       D.jaw.rotation.x = 0.1 + 0.7 * Math.sin(clamp01(beat(k, 0.86, 1) / 0.7) * Math.PI);
-      D.tail.rotation.y = Math.sin(t / 900) * 0.14;
-      for (const lg of D.legs) lg.rotation.x = lerp(0.5, 0, open);
+      D.tail.rotation.y = Math.sin(t / 900) * 0.14 + .28*Math.sin(u*TAU)*(1-u);
+      D.tail.rotation.x = -.14*Math.sin(u*Math.PI);
+      for (const lg of D.legs) lg.rotation.x = k<.68?lerp(.85,.5,beat(k,.5,.68)):lerp(.5,0,open);
     }
     for (const e of rig.eyes) {
       e.visible = drop > 0.5;
@@ -1988,9 +2038,7 @@
       }
     }
 
-    if(k<.68){
-      for(const l of rig.limbs){l.arm.rotation.z=l.sx*(.25+.55*Math.sin(k*TAU*5));l.arm.rotation.y=l.sx*.25;l.arm.rotation.x=-.15;}
-    }
+
     if (D) {
       D.neck.rotation.x = lerp(0.95, -0.12, open) - 0.25 * crown;
       D.head.rotation.x = lerp(0.5, -0.15, open) - 0.55 * Math.sin(roar * Math.PI) - 0.3 * crown;
@@ -2167,6 +2215,7 @@
         ambient.intensity=.5;hemi.intensity=.9;keyLight.intensity=1.7;
         keyLight.position.set(40,95,35);
       }else keyLight.position.set(8,26,6);
+      dragonAtmosphere(q,p.mode);
       stepMotes(frameStep);
       rimLight.color.copy(rig.accent);rimLight.intensity=.5+.3*beat(q.k,.3,.8);
       for(const m of finish.mist)m.material.uniforms.time.value=q.t/1000;

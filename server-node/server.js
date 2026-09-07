@@ -50,6 +50,10 @@ const HOUSE_COUNT = 60;
 const app = express();
 app.use(cors({ origin: '*' }));
 app.get('/healthz', (req, res) => res.type('text/plain').send('ok'));
+// Local launcher identity; never enabled by a normal VM startup.
+if (process.env.LOCAL_DEV_ID && process.env.HOST === '127.0.0.1') {
+    app.get('/__local/health', (req, res) => res.json({ id: process.env.LOCAL_DEV_ID }));
+}
 app.use(express.static(STATIC_DIR));
 
 const server = http.createServer(app);
@@ -4035,6 +4039,6 @@ function shutdown() {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-server.listen(PORT, () => {
+server.listen(PORT, process.env.HOST || undefined, () => {
     console.log(`neighborhood server listening on :${PORT} (static=${STATIC_DIR}, db=${DB_PATH})`);
 });

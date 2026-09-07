@@ -1,6 +1,6 @@
 # Connected dungeon update
 
-New solo and guild runs use one 4352 × 2048 map. There are no floor changes, random key drops, or clear-every-enemy requirements. The quest board and guild UI now describe exploration and chambers.
+New solo and guild runs use one 5440 × 2048 map. There are no floor changes, random key drops, or clear-every-enemy requirements. The quest board and guild UI now describe exploration and chambers.
 
 ## Exploration and placement
 
@@ -41,3 +41,15 @@ Run `node js/expedition.test.js` (3,202 checks over 100 seeds), `node js/lake.te
 The lake cutscene referenced missing tentacle/coil position constants before it could call the 3D renderer. Both Kraken and Serpent now use the same shared position tables as their 3D models. `docs/lake-review.html` previews the actual cutscene composition at emergence, reveal and lunge; the player avatar is omitted in this development fixture. Kraken and Serpent reveals were visually checked in the browser.
 
 Deploy `js/shared/dungeon.js`, `js/shared/economy.js`, `js/combat.js`, `js/expedition.js`, `js/lake.js`, `js/lake3d.js` and `server-node/server.js` together. Restart the Node server, reload clients, and start a fresh dungeon to use the new layouts and doorway coordinates.
+
+## Larger expeditions and encounter density
+
+The map footprint is 25% larger (85 instead of 68 columns, with the same 64-unit tiles). Each wing gains a fourth column of rooms: 27 rooms overall instead of 21. Across the same 100 test seeds, walkable tiles averaged 1,274.84 instead of 1,066.2, and enemies averaged 26.6 instead of 17.17. Spawn probability on eligible open tiles rose from 6% to 8%; doorway, wall, boss-room and spawn-point exclusions remain. The mini chamber and deep wing move together so the seal remains unavoidable.
+
+All 3,202 connectivity/visibility checks and the live server progression test passed. Restart the local launcher and begin a fresh dungeon for these changes.
+
+## Enemy population retuning
+
+The latest eligible-tile spawn probability is 28.7%, calibrated to average about 54 roaming enemies per expedition (54.072 over 500 seeds). The existing 160-unit enemy spacing and all safe-placement exclusions remain. Counts still vary by generated layout. All 3,202 expedition checks passed with this setting.
+
+Latest population tuning: 44.3% eligible-tile probability and 128-unit spacing produce **81.002 roaming enemies on average over 500 seeds**. Door, wall, spawn and chamber exclusions remain. All 3,202 dungeon checks pass.

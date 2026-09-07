@@ -29,3 +29,6 @@ node_modules/
 # local dev server db / launcher
 server-node/dev-fishing.db
 
+
+# Persistent local play saves
+.local-test/

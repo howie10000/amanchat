@@ -23,5 +23,6 @@ for (const k of [0,.25,.5,.75,1]) {
 // Replaying the same boss after its roof collapse must restore the chamber.
 const def=ECON.GUILD_BOSSES.dragon;
 if(DungeonGL.render({id:'dragon',mode:'entrance',k:0,t:60000,color:def.color,accent:def.accent}))passed++;
-output.textContent += passed + '/66 frames rendered';
+for(const k of [.9,.95]){if(DungeonGL.render({id:'dragon',mode:'entrance',k,t:70000+k*9000,color:def.color,accent:def.accent}))passed++;else output.textContent+='FAIL fire roar '+k;}
+output.textContent += passed + '/68 frames rendered';
 </script>
