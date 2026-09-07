@@ -819,6 +819,12 @@
     if (behind) drawParts();
     const hd = aroundAnchor(ctx, hp.x, hp.y, hs, () => R.head(ctx, boss, t));
     if (!behind) drawParts();
+    // Broken guard plates leave visible fractures at the actual hit anchors.
+    ctx.save(); ctx.strokeStyle = '#ffe4ae'; ctx.lineWidth = 2;
+    boss.parts.forEach((part, i) => {
+      if (part.hp <= 0 || part.hp > part.maxHp * 0.5) return;
+      const a = partPos(i, n); ctx.beginPath(); ctx.moveTo(a.x - 12, a.y - 16); ctx.lineTo(a.x + 3, a.y - 3); ctx.lineTo(a.x - 4, a.y + 5); ctx.lineTo(a.x + 10, a.y + 18); ctx.stroke();
+    }); ctx.restore();
     // "STRIKE THE HEAD" only once the guard is actually gone. Anchored to the
     // unscaled head position so it never drifts with the art.
     if (hd && hd.vuln) {
@@ -1201,7 +1207,9 @@
     }
   }
   function dangerCircle(ctx, x, y, r, k) {
-    r = Math.max(0, r);
+    r = Math.max(0, r); k = clamp01(k);
+    ctx.save(); ctx.strokeStyle = '#fff1c2'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(x, y, r + 5, (r + 5) * 0.6, 0, -Math.PI / 2, -Math.PI / 2 + TAU * k); ctx.stroke(); ctx.restore();
     ctx.fillStyle = `rgba(239,68,68,${0.1 + 0.16 * k})`;
     ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.6, 0, 0, TAU); ctx.fill();
     ctx.fillStyle = "rgba(239,68,68,.34)";
@@ -1271,11 +1279,11 @@
     // the top-down view for the duration. Only the type stays on the 2D
     // canvas — a name card wants crisp pixels, not a textured quad.
     const gl = (window.DungeonGL && DungeonGL.available())
-      ? DungeonGL.render({ mode: "entrance", id: cine.id, mini: !!cine.mini, k, t,
+      ? DungeonGL.render({ mode: cine.mode || "entrance", id: cine.id, mini: !!cine.mini, k, t,
                            people: partyPeople(), color: cine.color, accent: cine.accent })
       : null;
     if (gl) ctx.drawImage(gl, 0, 0, W, H);
-    else { ctx.fillStyle = "rgba(4,2,8,.9)"; ctx.fillRect(0, 0, W, H); }
+    else { ctx.fillStyle = "#040208"; ctx.fillRect(0, 0, W, H); }
 
     // The camera does the shaking now; the room underneath must not, or the
     // composited frame slides around inside its own borders.
@@ -1370,7 +1378,7 @@
                            people: partyPeople(), color: cine.color, accent: cine.accent })
       : null;
     if (gl) ctx.drawImage(gl, 0, 0, W, H);
-    else { ctx.fillStyle = "rgba(3,1,6,.9)"; ctx.fillRect(0, 0, W, H); }
+    else { ctx.fillStyle = "#030106"; ctx.fillRect(0, 0, W, H); }
     cine.shake = 0;
 
     // One line, held through the quiet, so the silence has something in it.

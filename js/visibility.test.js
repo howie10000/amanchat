@@ -1,0 +1,10 @@
+const assert = require('node:assert/strict');
+const sight = require('./visibility.js');
+const wall = [{x: 10, y: -5, w: 2, h: 10}];
+assert.equal(sight.distance(0, 0, 1, 0, 30, wall), 10, 'wall blocks forward sight');
+assert.equal(sight.distance(0, 0, -1, 0, 30, wall), 30, 'wall behind does not block');
+assert.equal(sight.distance(0, 10, 1, 0, 30, wall), 30, 'parallel ray outside wall');
+assert.equal(sight.distance(0, 0, 1, 0, 8, wall), 8, 'visibility radius is a hard cap');
+assert.equal(sight.distance(11, 0, 1, 0, 30, wall), 0, 'inside stone stays dark');
+assert.equal(sight.distance(0, 0, 1, 0, 30, [...wall, {x: 4, y: -2, w: 1, h: 4}]), 4, 'nearest wall wins');
+console.log('6 visibility checks passed');

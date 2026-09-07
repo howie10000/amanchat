@@ -867,7 +867,11 @@
   const BUILDERS = { warden: buildWarden, smith: buildSmith, tyrant: buildTyrant };
 
   function buildRig(id, color, accent) {
-    if (rig) { scene.remove(rig.root); rig = null; }
+    if (rig) {
+      const geometries = new Set(), materials = new Set();
+      rig.root.traverse(o => { if (o.geometry) geometries.add(o.geometry); if (o.material) for (const m of (Array.isArray(o.material) ? o.material : [o.material])) materials.add(m); });
+      scene.remove(rig.root); geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); rig = null;
+    }
     const root = new THREE.Group();
     root.position.set(0, 0, ROOM.bossZ);
     scene.add(root);
@@ -889,6 +893,15 @@
     const build = id === "dragon" ? buildDragon : (BUILDERS[id] || buildTyrant);
     const d = build(root, shell, body, trim, accent);
 
+    if (id !== 'dragon') {
+      for (const side of [-1, 1]) for (let i = 0; i < 3; i++) {
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.5, 2.8), body);
+        plate.position.set(side * (3.2 + i * 0.65), 11 - i * 0.9, 0);
+        plate.rotation.z = side * (0.18 + i * 0.12); shell.add(plate);
+        const rivet = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), trim);
+        rivet.position.copy(plate.position); rivet.position.z += 1.5; shell.add(rivet);
+      }
+    }
     rig = Object.assign({
       root, shell, id, body, trim,
       accent: new THREE.Color(accent), color: new THREE.Color(color),
@@ -1959,6 +1972,18 @@
   // ---------------------------------------------------------------
   //  entry point
   // ---------------------------------------------------------------
+  function poseVictory(p) {
+    poseEntrance(Object.assign({}, p, { k: 1 }));
+    const collapse = easeInOut(beat(p.k, 0.05, 0.65));
+    rig.root.position.y = -18 * collapse;
+    rig.root.rotation.z = collapse * 0.35;
+    rig.root.scale.setScalar(1 - collapse * 0.65);
+    rig.body.emissiveIntensity = 0.5 * (1 - collapse);
+    room.userData.gate.position.y = 13 * easeOut(beat(p.k, 0.55, 1));
+    doorLight.intensity = 5 * beat(p.k, 0.5, 1);
+    room.userData.doorGlow.material.opacity = beat(p.k, 0.5, 1);
+    flyCamera([[0, -8, 7, 6, 0, 10, ROOM.bossZ, 58], [0.6, 0, 12, 16, 0, 3, ROOM.bossZ, 64], [1, 0, 8, -8, 0, 6, ROOM.doorZ, 58]], p.k, 0);
+  }
   let lastMode = null;
   function render(p) {
     if (dead) return null;
@@ -1982,7 +2007,8 @@
     keyLight.intensity = 0.5;
 
     try {
-      if (p.mode === "phase2") posePhase2(q);
+      if (p.mode === "victory") poseVictory(q);
+      else if (p.mode === "phase2") posePhase2(q);
       else if (p.mini) poseMini(q);
       else poseEntrance(q);
       stepMotes();

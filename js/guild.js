@@ -272,7 +272,7 @@ const LEADER_FAQ = [
   { q: "What's the treasury, and where does interest come from?", a: () =>
     `The treasury is the guild's shared pot, filled only by members' bank taxes. The Master sets an interest rate paid out of it periodically to every banked member — set it higher than the treasury can actually cover and everyone just gets a smaller share, so a generous rate needs a treasury to back it.` },
   { q: "How do guild dungeons work?", a: () =>
-    `A party walks a maze together, floor by floor — the server tracks it as ONE run, so an enemy any of you kills is dead for everyone. A mini-boss blocks the middle floor of longer runs, and a full boss waits behind the sealed door on the last one. Clearing it pays the party and tithes a cut to the treasury.` },
+    `A party walks a maze together, floor by floor — the server tracks it as ONE run, so an enemy any of you kills is dead for everyone. Explore within your torchlight. A mini-boss seals the far door on the middle floor of longer runs; defeat it and walk onward through the deeper floors to find the final boss. Claim its chest, then use the revealed exit. Clearing it pays the party and tithes a cut to the treasury.` },
   { q: "How do skill points work?", a: () =>
     `Every ${ECON.GUILD_DUNGEONS_PER_POINT} guild dungeon clears earns the guild one skill point. Only the Master can spend it, on a mastery track that then trains faster for every member — not just whoever cleared the run.` },
   { q: "How do ranks work?", a: () =>

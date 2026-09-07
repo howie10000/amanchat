@@ -311,14 +311,9 @@ function moveWithWalls(obj, nx, ny, radius) {
 // enemy and for gating ranged attacks, so nothing shoots you through stone.
 function hasLineOfSight(x0, y0, x1, y1) {
   if (!state.dungeon || !state.dungeon.walls) return true;
-  const dx = x1 - x0, dy = y1 - y0;
-  const dist = Math.hypot(dx, dy);
-  const steps = Math.ceil(dist / 14);
-  for (let i = 1; i < steps; i++) {
-    const t = i / steps;
-    if (collidesWalls(x0 + dx * t, y0 + dy * t, 2)) return false;
-  }
-  return true;
+  const dx = x1 - x0, dy = y1 - y0, length = Math.hypot(dx, dy);
+  return !length || DungeonSight.distance(x0, y0, dx / length, dy / length, length, state.dungeon.walls) >= length;
+
 }
 
 // One funnel for everything that hurts the player, so armour/immunity frames
@@ -362,6 +357,15 @@ function updateDungeon() {
     state.particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.life--; });
     return;
   }
+  const active = state.dungeon;
+  if (active) for (const key of ['cine', 'phaseCine']) {
+    if (active[key] && Date.now() - active[key].t0 >= active[key].dur) active[key] = null;
+  }
+  if (active && (active.cine || active.phaseCine)) return;
+  if (active && active.victoryCine) {
+    if (Date.now() - active.victoryCine.t0 < active.victoryCine.dur) return;
+    active.victoryCine = null;
+  }
   tickBuffs();
   // movement
   let dx = 0, dy = 0;
@@ -400,6 +404,7 @@ function updateDungeon() {
     if (!held) updateBossAttacks();
     if (state.hp <= 0) return;
     updateChest();
+    if (d.exitReady && keys['e'] && Math.hypot(state.pos.x - DUNGEON_W / 2, state.pos.y - (BOSS_ROOM.y + 30)) < 44) { endDungeon(true, true); return; }
     // Once a mini is down its floor has an exit again: walk to the far door.
     if (d.isMini && (!d.boss || d.boss.status === "dead")) {
       const ex = { x: DUNGEON_W / 2, y: BOSS_ROOM.y + 30 };
@@ -1181,7 +1186,7 @@ async function bossAttackAt(mx, my) {
   const d = state.dungeon;
   const b = d && d.boss;
   if (!b || b.status !== "alive" || _bossHitPending) return;
-  if (d.cine || d.phaseCine || state.tomeCine) return;
+  if (d.cine || d.phaseCine || d.victoryCine || state.tomeCine) return;
   const reach = ECON.GUILD_BOSS.REACH[state.weapon === "pistol" ? "pistol" : "sword"];
   const PR = ECON.GUILD_BOSS.PART_HIT_R, HR = ECON.GUILD_BOSS.HEAD_HIT_R;
   // A weak point is a DISC, not a point, and both checks measure to the EDGE of
@@ -1240,19 +1245,21 @@ async function onBossDead() {
     toast("It goes down. The way is open.", 3000);
     return;
   }
-  if (_bossPaying) return;
+  if (_bossPaying || d.victoryCine || d.chest) return;
   _bossPaying = true;
   toast("IT FALLS.", 2500);
   // What it was guarding is left behind, where it stood. `complete` is claimed
   // from the chest (see claimChest) rather than from the kill, so the money and
   // the loot both arrive when the lid comes off.
   const hd = bossHeadScreenPos();
+  d.victoryCine = Object.assign(gameBosses.startCinematic(d.boss), { mode: 'victory', dur: DungeonScenes.victoryMs, name: 'DUNGEON CONQUERED', cry: 'The way home is open.' });
   setTimeout(() => {
-    if (state.area !== "dungeon" || !state.dungeon) return;
+    if (state.area !== "dungeon" || state.dungeon !== d) return;
+    d.exitRevealed = true;
     spawnChest(DUNGEON_W / 2, hd.y + 200, "guild");
     shakeDungeon(6);
     toast("Something heavy settles where it stood. Stand by it and press E.", 7000);
-  }, 2400);
+  }, DungeonScenes.victoryMs);
   _bossPaying = false;
 }
 
@@ -1313,7 +1320,7 @@ function doAttack() {
     const d = state.dungeon;
     // Every cutscene holds the room: the entrance, Varkaal's transformation,
     // and a tome being read. None of them may be swung through.
-    if (d.cine || d.phaseCine || state.tomeCine) return;
+    if (d.cine || d.phaseCine || d.victoryCine || state.tomeCine) return;
     if (d.boss && d.boss.status !== "alive") return;
     const dx = state.mouse.x - state.pos.x, dy = state.mouse.y - state.pos.y;
     const m = Math.hypot(dx, dy) || 1;
@@ -1495,6 +1502,12 @@ function drawBossRoom() {
   const sh = (_dungeonShake || 0) + (d.cine ? d.cine.shake || 0 : 0);
   ctx.translate(VIEW_OX + (Math.random() - 0.5) * sh, VIEW_OY + (Math.random() - 0.5) * sh);
 
+  if (d.cine || d.phaseCine || d.victoryCine) {
+    if (d.victoryCine) gameBosses.drawCinematic(ctx, d.victoryCine, b, t);
+    else if (d.phaseCine) gameBosses.drawPhaseCinematic(ctx, d.phaseCine, b, t);
+    else gameBosses.drawCinematic(ctx, d.cine, b, t);
+    ctx.restore(); return;
+  }
   // ---- the room, or the field it became ----
   if (d.openField) { drawOpenField(t, accent); }
   else {
@@ -1553,6 +1566,12 @@ function drawBossRoom() {
     ctx.fillText("ONWARD", ex, ey - 34);
   }
 
+  if (d.exitRevealed) {
+    const x = DUNGEON_W / 2, y = BOSS_ROOM.y + 30;
+    ctx.strokeStyle = '#dec58b'; ctx.lineWidth = 3; ctx.strokeRect(x - 24, y - 24, 48, 48);
+    ctx.fillStyle = '#dec58b'; ctx.font = '12px Georgia'; ctx.textAlign = 'center';
+    ctx.fillText(d.exitReady ? 'E · RETURN HOME' : 'CLAIM THE CHEST TO LEAVE', x, y + 44);
+  }
   // ---- the boss, its attacks, and the player ----
   if (b) gameBosses.drawBoss(ctx, b, t);
   if (d.chest) gameBosses.drawChest(ctx, d.chest, t);
@@ -1826,6 +1845,7 @@ function drawDungeon() {
   if (state.dungeon && state.dungeon.chest) gameBosses.drawChest(ctx, state.dungeon.chest, t);
   if (state.tomeCine) gameBosses.drawTomeCinematic(ctx, state.tomeCine, t);
 
+  DungeonSight.draw(ctx, state.pos.x, state.pos.y, state.dungeon.walls, DUNGEON_W, DUNGEON_H);
   ctx.restore(); // end VIEW_OX/VIEW_OY translate — maze content is done
 
   // HUD overlay (screen-anchored: left side bottom-anchored via canvas.height,
@@ -2159,7 +2179,7 @@ async function claimChest(c) {
       toast(`Guild dungeon cleared! +$${res.gained.toLocaleString()} (guild tithe $${res.tithe.toLocaleString()})${bonus}`, 7000);
       if (window.gameGear) gameGear.announceLoot(res.loot, res.gear);
       if (window.gameGuild) gameGuild.refresh();
-      setTimeout(() => { if (state.area === "dungeon") endDungeon(true, true); }, 3400);
+      if (state.dungeon && state.dungeon.chest === c) state.dungeon.exitReady = true;
     } else {
       const tier = (state.dungeon && state.dungeon.tier) || "easy";
       const data = await netEarn({ source: `quest_${tier}`, amount: state.questReward });
@@ -2171,8 +2191,7 @@ async function claimChest(c) {
     }
   } catch (e) {
     toast(e.message, 5000);
-    // A failed claim must not strand the party in a cleared room.
-    setTimeout(() => { if (state.area === "dungeon") endDungeon(true, true); }, 3000);
+    c.claimed = false; c.state = "closed"; // Allow a failed reward request to be retried.
   }
   _claiming = false;
 }
@@ -2207,7 +2226,7 @@ function tomeStatus() {
   if (!it) return { ok: false, why: "no tome equipped" };
   const def = ECON.tomeDef(it.tome);
   if (d.tomeUsed) return { ok: false, why: "already read this run", def };
-  if (d.cine || state.tomeCine) return { ok: false, why: "not now", def };
+  if (d.cine || d.phaseCine || d.victoryCine || state.tomeCine) return { ok: false, why: "not now", def };
   return { ok: true, def };
 }
 let _tomePending = false;

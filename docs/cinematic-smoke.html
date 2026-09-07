@@ -1,0 +1,19 @@
+<!doctype html><meta charset="utf-8"><title>Part II cinematic smoke test</title>
+<style>body{background:#08090d;color:#dec58b;font:16px Georgia}canvas{width:640px;max-width:100%}</style>
+<h1>Cinematic smoke test</h1><pre id="results"></pre><canvas id="preview" width="1024" height="640"></canvas>
+<script src="../js/vendor/three.min.js"></script><script src="../js/shared/economy.js"></script><script src="../js/dungeon3d.js"></script>
+<script>
+const output = document.querySelector('#results'), ctx = document.querySelector('#preview').getContext('2d');
+let passed = 0;
+for (const id of ['warden','smith','tyrant','dragon','ogrelord','tempest']) {
+ for (const mode of ['entrance','victory']) {
+  for (const k of [0,.25,.5,.75,1]) {
+   const def = ECON.GUILD_BOSSES[id];
+   const frame = DungeonGL.available() && DungeonGL.render({id, mode, k, t:10000+k*6000, color:def.color, accent:def.accent, mini: mode === 'entrance' && ['ogrelord','tempest'].includes(id)});
+   if (!frame) output.textContent += 'FAIL '+id+' '+mode+' '+k+'\n';
+   else { passed++; ctx.drawImage(frame,0,0,1024,640); }
+  }
+ }
+}
+output.textContent += passed + '/60 frames rendered';
+</script>
