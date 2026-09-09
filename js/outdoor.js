@@ -381,6 +381,7 @@ const _fishDecor = (function () {
   return d;
 })();
 function drawFishScene(c, t, dt) {
+  if(window.Activity3D)return Activity3D.draw(c.canvas,'fishing',{state:_fishState,t,caption:_fishState.toUpperCase()});
   const W = FISH_W, H = FISH_H;
   c.clearRect(0, 0, W, H);
   // ================= left: the pond (top-down, like the town) =================
@@ -527,6 +528,7 @@ let _bball = null;
 let _bballTimer = null;
 let _bballTab = "practice"; // "practice" | "team" | "match"
 let _matchMeter = null, _matchMeterTimer = null;
+let _matchVisual = {};
 const MATCH_SHOTS_PER_TEAM = 5;
 
 function clearBball() { clearInterval(_bballTimer); _bballTimer = null; }
@@ -565,6 +567,7 @@ function renderPracticeTab() {
         <div style="position:absolute;left:46%;width:8%;top:0;bottom:0;background:rgba(250,204,21,0.35);"></div>
         <div id="bballMarker" style="position:absolute;left:0;top:0;bottom:0;width:6px;background:#f97316;"></div>
       </div>
+      <canvas id="basket3d" width="520" height="280" class="miniCanvas"></canvas>
       <div id="bballStatus" style="min-height:22px;font-weight:700;color:#38bdf8;">Shot 1 of 5</div>
       <button class="menuBtn gold" id="bballBtn" style="font-size:16px;padding:12px 26px;">SHOOT</button>
       <div id="bballResult" style="margin-top:12px;font-weight:700;min-height:24px;"></div>
@@ -575,6 +578,7 @@ function renderPracticeTab() {
   _bballTimer = setInterval(bballTick, 16);
 }
 function bballTick() {
+  if(window.Activity3D)Activity3D.draw('basket3d','basketball',_bball||{});
   if (!menuOpen() || _bballTab !== "practice" || !_bball || !_bball.live) { clearBball(); return; }
   const marker = document.getElementById("bballMarker");
   if (!marker) { clearBball(); return; }
@@ -591,6 +595,7 @@ function bballShoot() {
   else if (dist <= 10){ pts = 25; label = "Basket! ✅"; }
   else if (dist <= 18){ pts = 10; label = "In! 👍"; }
   else                { pts = 0;  label = "Missed. 🧱"; }
+  _bball.shotAt=performance.now();_bball.madeShot=pts>0;
   _bball.shots++;
   if (pts > 0) { _bball.made++; _bball.earned += pts; }
   const status = document.getElementById("bballStatus");
@@ -728,6 +733,7 @@ function renderMatchLive(m, mine) {
     <h3 class="section">${escapeHtml(m.teamA)} vs ${escapeHtml(m.teamB)}</h3>
     <p class="muted">Stake: $${m.stakePerPlayer} per shooting player</p>
     <div class="center">
+      <canvas id="match3d" width="520" height="280" class="miniCanvas"></canvas>
       <div class="bigNum">${m.scores[m.teamA] || 0} — ${m.scores[m.teamB] || 0}</div>
       <p class="muted">Shots: ${m.shotsTaken[m.teamA] || 0}/${MATCH_SHOTS_PER_TEAM} (${escapeHtml(m.teamA)}) · ${m.shotsTaken[m.teamB] || 0}/${MATCH_SHOTS_PER_TEAM} (${escapeHtml(m.teamB)})</p>
       ${myTurn
@@ -760,6 +766,7 @@ async function matchShoot(m, mine) {
   if (dist <= 4)       { pts = 3; label = "SWISH! 🔥 +3"; }
   else if (dist <= 10) { pts = 2; label = "Basket! ✅ +2"; }
   else if (dist <= 18) { pts = 1; label = "In! 👍 +1"; }
+  _matchVisual={shotAt:performance.now(),madeShot:pts>0};
   const id = matchId(m.teamA, m.teamB);
   const scores = Object.assign({}, m.scores, { [myTeamName]: (m.scores[myTeamName] || 0) + pts });
   const shotsTaken = Object.assign({}, m.shotsTaken, { [myTeamName]: (m.shotsTaken[myTeamName] || 0) + 1 });

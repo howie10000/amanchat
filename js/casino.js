@@ -291,6 +291,7 @@ function slotSymAt(reel, idx) {
 }
 
 function drawSlotFrame() {
+  if(window.Activity3D)return Activity3D.draw('slotCanvas','slots',{slot:_slot});
   const g = ctxOf("slotCanvas"); if (!g || !_slot) return;
   const { cv, c } = g;
   c.clearRect(0, 0, cv.width, cv.height);
@@ -541,6 +542,7 @@ function openCoinFlip() {
   drawCoin(0, "heads");
 }
 function drawCoin(spin, face) {
+  if(window.Activity3D)return Activity3D.draw('coinCanvas','coin',{spin,caption:face.toUpperCase()});
   const g = ctxOf("coinCanvas"); if (!g) return;
   const { cv, c } = g;
   c.clearRect(0, 0, cv.width, cv.height);
@@ -744,6 +746,7 @@ function openRoulette() {
 }
 
 function drawWheel() {
+  if(window.Activity3D)return Activity3D.draw('roulCanvas','roulette',{angle:_roul?.wheelAng,ball:_roul?.ballAng,caption:_roul?.winNum==null?'ROULETTE':String(_roul.winNum)});
   const g = ctxOf("roulCanvas"); if (!g || !_roul) return;
   const { cv, c } = g;
   const cx = cv.width / 2, cy = cv.height / 2;
@@ -999,6 +1002,7 @@ function drawDie(c, d) {
   c.restore();
 }
 function drawDiceTable(dice) {
+  if(window.Activity3D)return Activity3D.draw('diceCanvas','dice',{dice});
   const g = ctxOf("diceCanvas"); if (!g) return;
   const { cv, c } = g;
   c.clearRect(0, 0, cv.width, cv.height);
@@ -1119,6 +1123,7 @@ function crashPoint(mult, maxMult) {
   return { x: 40 + k * (CRASH_W - 90), y: CRASH_H - 46 - Math.pow(k, 1.25) * (CRASH_H - 110) };
 }
 function drawCrash(mult, exploded, boomT) {
+  if(window.Activity3D)return Activity3D.draw('crashCanvas','crash',{mult,exploded});
   const g = ctxOf("crashCanvas"); if (!g) return;
   const { cv, c } = g;
   const maxM = Math.max(2.2, mult * 1.15);
@@ -1515,6 +1520,7 @@ function settlePlinkoBall(ball, silent) {
   }
 }
 function drawPlinko() {
+  if(window.Activity3D)return Activity3D.draw('plinkoCanvas','plinko',{balls:_plinko?.balls});
   const g = ctxOf("plinkoCanvas"); if (!g || !_plinko) return;
   const { cv, c } = g;
   const bg = c.createLinearGradient(0, 0, 0, cv.height);
@@ -2099,6 +2105,7 @@ function openWheel() {
   drawFortune();
 }
 function drawFortune() {
+  if(window.Activity3D)return Activity3D.draw('fortuneCanvas','fortune',{angle:_fortune?.angle||_fortune?.ang});
   const g = ctxOf("fortuneCanvas"); if (!g || !_fortune) return;
   const { cv, c } = g;
   const cx = cv.width / 2, cy = cv.height / 2, R = cv.width / 2 - 14;
@@ -2209,6 +2216,7 @@ function openHorses() {
   drawRace(HORSES.map(() => 0));
 }
 function drawRace(progress, winner, pick) {
+  if(window.Activity3D)return Activity3D.draw('raceCanvas','race',{progress,caption:winner==null?'RACING':'Winner: '+(winner+1)});
   const g = ctxOf("raceCanvas"); if (!g) return;
   const { cv, c } = g;
   c.clearRect(0, 0, cv.width, cv.height);
