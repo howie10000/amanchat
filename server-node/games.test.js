@@ -68,7 +68,7 @@ console.log('paytables');
     const tens = [{ r: '10', s: '♥' }, { r: '10', s: '♠' }, { r: '3', s: '♥' }, { r: '8', s: '♦' }, { r: '5', s: '♣' }];
     ok(G.vpScore(tens) === null, 'video poker: pair of tens pays nothing');
     near(G.HORSES.reduce((s, _, i) => s + G.horseWinChance(i), 0), 1, 1e-9, 'horses: win chances sum to 1');
-    near(G.horseWinChance(0), 0.385, 0.01, 'horses: favourite wins ~38%');
+    near(G.horseWinChance(0), 0.405, 0.01, 'horses: revised favourite probability');
     ok(G.wheelSpin(100, () => 11.5 / 12).payout === 400, 'wheel: last wedge pays 4x');
     ok(G.crashPointRoll(() => 0.01) === 1 && Math.abs(G.crashPointRoll(() => 0.5) - 1.94) < 0.001, 'crash: 3% instant bust, 0.97/(1-u) curve');
     near(G.crashMultAt(0, 1000), Math.exp(0.42), 1e-9, 'crash: multiplier is e^(0.42 s)');
@@ -164,7 +164,8 @@ rtp('keno (8 picks)', 20000, one('keno', 'draw', { bet: 10, picks: [3, 9, 12, 20
 rtp('baccarat (banker)', 40000, one('baccarat', 'deal', { bet: 100, side: 'banker' }, 100), 0.93, 1.01);
 rtp('baccarat (player)', 40000, one('baccarat', 'deal', { bet: 100, side: 'player' }, 100), 0.93, 1.01);
 rtp('horses (favourite)', 20000, one('horses', 'race', { bet: 10, horse: 0 }, 10), 0.85, 0.99);
-rtp('horses (longshot)', 40000, one('horses', 'race', { bet: 10, horse: 5 }, 10), 0.80, 1.05);
+rtp('horses (longshot)', 40000, one('horses', 'race', { bet: 10, horse: 5 }, 10), 0.35, 0.52);
+near(G.horseWinChance(5), (1/25)/[2.5,4,6,9,14,25].reduce((n,o)=>n+1/o,0)-.02, 1e-10, 'longshot loses exactly two percentage points');
 rtp('plinko low',    20000, one('plinko', 'drop', { bet: 100, risk: 'low', balls: 1 }, 100), 0.85, 1.02);
 rtp('plinko medium', 20000, one('plinko', 'drop', { bet: 100, risk: 'medium', balls: 1 }, 100), 0.82, 1.05);
 rtp('plinko high',   30000, one('plinko', 'drop', { bet: 100, risk: 'high', balls: 1 }, 100), 0.80, 1.10);

@@ -19,7 +19,8 @@ const http = require('http');
 const path = require('path');
 const cors = require('cors');
 const { WebSocketServer } = require('ws');
-const Database = require('better-sqlite3');
+const Database = process.env.LOCAL_DEV_ID && require('better-sqlite3/package.json').version === '0.0.0-local-shim'
+    ? require('./sqlite-local.js') : require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 
 const PORT = process.env.PORT || 8080;
@@ -51,9 +52,15 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.get('/healthz', (req, res) => res.type('text/plain').send('ok'));
 // Local launcher identity; never enabled by a normal VM startup.
-if (process.env.LOCAL_DEV_ID && process.env.HOST === '127.0.0.1') {
-    app.get('/__local/health', (req, res) => res.json({ id: process.env.LOCAL_DEV_ID }));
+if (process.env.LOCAL_DEV_ID) {
+    app.get('/__local/invite',(req,res)=>{let url;try{const share=JSON.parse(require('fs').readFileSync(path.join(STATIC_DIR,'.local-test','share-link.json'),'utf8'));if(String(share.port)===String(PORT)&&/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(share.url)){process.kill(share.pid,0);url=share.url;}}catch{}if(!url){const ip=Object.values(require('os').networkInterfaces()).flat().find(a=>a.family==='IPv4'&&!a.internal)?.address;url='http://'+(ip||'127.0.0.1')+':'+PORT;}res.json({url});});
+    app.get('/__local/health', (req, res) => res.json({ id: process.env.LOCAL_DEV_ID, host: process.env.HOST, crewVersion: 1 }));
 }
+app.use((req,res,next)=>{
+    let asset;try{asset=path.posix.normalize(decodeURIComponent(req.path).replace(/\\/g,'/'));}catch{return res.sendStatus(400);}
+    if(!['/','/index.html','/style.css','/lake.js'].includes(asset)&&!/^\/(js|docs)\//.test(asset))return res.sendStatus(404);
+    next();
+});
 app.use(express.static(STATIC_DIR));
 
 const server = http.createServer(app);
@@ -626,7 +633,7 @@ function setUser(c, user) {
 
 function removeClient(c) {
     clients.delete(c);
-    if (c.user && byUser.get(c.user) === c) byUser.delete(c.user);
+    if (c.user && byUser.get(c.user) === c) { seaService.disconnect(c.user); byUser.delete(c.user); }
 }
 
 function pushTo(user, msg) {
@@ -795,7 +802,7 @@ setInterval(syncRoster, 2000);
 // Fields of users/<me> a player may never write directly: every change to
 // them goes through an op below (bank/buy/earn/fish/casino/furniture_set) or
 // a server-side settlement. Staff editing OTHER players keep their powers.
-const PROTECTED_FIELDS = new Set(['money', 'inventory', 'cosmetics', 'vegasFloor', 'dailyStreak', 'lastDaily',
+const PROTECTED_FIELDS = new Set(['sea', 'money', 'inventory', 'cosmetics', 'vegasFloor', 'dailyStreak', 'lastDaily',
     'lastInterest', 'fishInventory', 'houseStyle', 'furniture', 'houseIndex', 'createdAt',
     'bankBalance', 'bankLast', 'creditScore', 'creditGainLast', 'loan', 'notes',
     'farm', 'meals', 'luck', 'gear', 'equipped']);
@@ -1228,6 +1235,7 @@ wss.on('connection', (ws, req) => {
     const fwd = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
     const ip = fwd || req.headers['x-real-ip'] || (req.socket && req.socket.remoteAddress) || '';
     const c = new Client(ws, ip);
+    c.localOwnerSetup = ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket?.remoteAddress) && !req.headers['cf-connecting-ip'] && !req.headers['x-forwarded-for'] && !req.headers['x-real-ip'];
     clients.add(c);
 
     const pingInterval = setInterval(() => {
@@ -1279,6 +1287,7 @@ function handleMessage(c, msg) {
             (async () => {
               try {
                 try {
+                    if (register && process.env.LOCAL_DEV_ID && roleOf(user) === 'owner' && !c.localOwnerSetup) throw Error('This owner name can only be registered on the hosting computer. Choose your own player name.');
                     if (register) await authRegister(user, pass);
                     else await authLogin(user, pass);
                 } catch (e) {
@@ -1526,8 +1535,8 @@ function handleMessage(c, msg) {
         }
 
         // ----- server-authoritative economy ops (docs/SERVER-AUTHORITY.md) -----
-        case 'bank': case 'buy': case 'furniture_set': case 'earn': case 'fish': case 'casino': case 'home': case 'treasury':
-        case 'farm': case 'cook': case 'kraken': case 'guild': case 'mastery': case 'guild_dungeon': case 'gear': {
+        case 'bank': case 'buy': case 'furniture_set': case 'earn': case 'fish': case 'casino': case 'home': case 'treasury': case 'staff_finance':
+        case 'sea': case 'farm': case 'cook': case 'kraken': case 'guild': case 'mastery': case 'guild_dungeon': case 'gear': {
             if (!c.user) return replyErr('not authed');
             let out;
             try { out = ECONOMY_OPS[op](c.user, msg); }
@@ -1567,7 +1576,7 @@ function luckOf(user, u, now) {
 }
 // Single-roll games luck's extra win chance can apply to (multi-step games keep
 // state across calls, so they only get the payout bonus).
-const LUCK_WIN_GAMES = new Set(['slots', 'jackpot', 'coinflip', 'scratch', 'roulette', 'dice', 'keno', 'baccarat', 'plinko', 'horses', 'wheel']);
+const LUCK_WIN_GAMES = new Set(['slots', 'jackpot', 'coinflip', 'scratch', 'roulette', 'dice', 'keno', 'baccarat', 'plinko', 'wheel']);
 // Minimum ms between round STARTS per game (roughly what the client animation
 // takes), so a console script can't spin a machine hundreds of times a minute.
 const casinoLast = new Map();   // user:game -> last accepted ts
@@ -2450,7 +2459,43 @@ function guildBossTick() {
 }
 setInterval(guildBossTick, 250);
 
+const SEA_RULES = require(path.join(JS_DIR, 'shared', 'sea.js'));
+const seaRequestLimit = require('./sea-request').createLimiter();
+const seaService = require('./crew-sea.js')({rules:SEA_RULES,getUser:userRec,isStaff,canChat:user=>!activeMute(user),audit:event=>console.log('[sea] '+JSON.stringify(event)),invite:(to,event)=>pushTo(to,event),
+    save:(user,value)=>store.put('users/'+user+'/sea',value),
+    pay:(user,amount)=>{const u=userRec(user);return setMoney(user,u,moneyOf(u)-amount);}});
+const seaTimer=setInterval(()=>seaService.tick(),50);seaTimer.unref();
 const ECONOMY_OPS = {
+    staff_finance(user, msg) {
+        if (!isStaff(user)) throw Error('Staff only.');
+        const action = msg.action || 'status';
+        if (action === 'status') return {
+            players: Object.entries(store.get('users') || {}).map(([id, u]) => ({id, balance: Math.max(0, Math.floor(+u.bankBalance || 0))})),
+            guilds: Object.entries(store.get('guilds') || {}).map(([id, g]) => ({id, name: g.name, tag: g.tag, balance: Math.max(0, Math.floor(+g.treasury || 0))})),
+        };
+        if (action !== 'set') throw Error('Unknown finance action.');
+        const amount = msg.amount, id = msg.target;
+        if (!Number.isSafeInteger(amount) || amount < 0 || amount > 1000000000000) throw Error('Enter a whole dollar balance from 0 to 1,000,000,000,000.');
+        if (typeof id !== 'string' || !id || id.includes('/') || ['__proto__','prototype','constructor'].includes(id)) throw Error('Choose a valid account.');
+        let before;
+        if (msg.kind === 'bank') {
+            const u = Object.prototype.hasOwnProperty.call(store.get('users') || {}, id) ? store.get('users/' + id) : null;
+            if (!u) throw Error('Player no longer exists.');
+            before = Math.max(0, Math.floor(+u.bankBalance || 0));
+            store.put('users/' + id + '/bankBalance', amount);
+            store.put('users/' + id + '/bankLast', Date.now());
+        } else if (msg.kind === 'guild') {
+            const g = Object.prototype.hasOwnProperty.call(store.get('guilds') || {}, id) ? guildRec(id) : null;
+            if (!g) throw Error('Guild no longer exists.');
+            before = g.treasury;
+            g.treasury = amount;
+            saveGuild(g);
+            guildBroadcast(g, {kind: 'treasury', treasury: amount});
+        } else throw Error('Choose player bank or guild treasury.');
+        console.log('[staff-finance] ' + JSON.stringify({staff:user, kind:msg.kind, target:id, before, balance:amount, at:Date.now()}));
+        return {kind:msg.kind, target:id, before, balance:amount};
+    },
+    sea(user,msg) { seaRequestLimit(user); if(msg.action==='invite'){const to=String(msg.to||'');if(!userRec(user).friends?.[to])throw Error('Choose someone on your friends list.');if(!byUser.has(to))throw Error('That friend is offline.');return seaService.handle(user,msg);}if(msg.action==='staff_gems'){if(!isStaff(user))throw Error('Staff only.');const amount=Number(msg.amount);if(!Number.isSafeInteger(amount)||amount<1||amount>1000000)throw Error('Choose 1 to 1,000,000 gems.');seaService.handle(user,{action:'status'});const p=userRec(user).sea;p.gems=Math.min(1000000000,p.gems+amount);store.put('users/'+user+'/sea',p);console.log('[sea] STAFF '+user+' granted themselves '+amount+' gems');}return {...seaService.handle(user,msg.action==='staff_gems'?{action:'status'}:msg),canGrantSeaGems:isStaff(user)}; },
     bank(user, msg) {
         const u = userRec(user), now = Date.now();
         const sync = bankSync(user, u, now);
@@ -3090,7 +3135,7 @@ const ECONOMY_OPS = {
                 if (r2.delta > 0) { r = r2; luckWin = true; break; }
             }
         }
-        if (eff && r.delta > 0) luckBonus = Math.floor(Math.max(0, r.delta - stake) * eff.casinoBonus);
+        if (eff && game !== 'horses' && r.delta > 0) luckBonus = Math.floor(Math.max(0, r.delta - stake) * eff.casinoBonus);
         // A win is earnings (skimmed while a loan is overdue); a loss is a loss.
         if (r.delta > 0) creditEarnings(user, u, r.delta + luckBonus, 'casino');
         else if (r.delta < 0) setMoney(user, u, moneyOf(u) + r.delta);

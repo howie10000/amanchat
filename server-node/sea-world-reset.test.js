@@ -1,0 +1,12 @@
+'use strict';
+const assert=require('node:assert/strict'),S=require('../js/shared/sea');let time=1000;
+const users={a:{money:100000},b:{money:100000},c:{money:100000}},sea=require('./crew-sea')({rules:{...S,sector:(seed,x,y)=>x===0&&y===0?[{id:'isle',kind:'island',name:String(seed),x:2000,y:0,r:100,guards:[],chests:[]}]:[]},getUser:u=>users[u],save:(u,p)=>users[u].sea=p,pay:(u,n)=>users[u].money-=n,now:()=>time,seed:()=>42});
+const call=(u,action,extra={})=>sea.handle(u,{action,...extra});for(const u of Object.keys(users))call(u,'buy',{ship:'sailboat'});
+const start=call('a','sail'),deadline=start.worldResetsAt;call('b','sail');call('c','join',{code:start.voyage.room});
+assert.equal(call('b','status').worldResetsAt,deadline);assert.equal(sea.raw('a').sectors.get('0:0')[0],sea.raw('b').sectors.get('0:0')[0],'Separate crews share mutable island instances');
+const oldName=start.voyage.entities[0].name;time+=46*60000;for(const u of Object.keys(users))call(u,'input',{input:{}});sea.tick();assert.equal(sea.sessionCount(),2,'No former 45-minute limit');
+sea.raw('a').cargo.push({coins:100,gems:3,rep:2,rarity:'Weathered'});const money=users.a.money;
+time=deadline;const expired=call('a','return');assert(expired.ended);assert.match(expired.reason,/reset/);assert.equal(users.a.money,money);assert.equal(sea.sessionCount(),0);assert.equal(sea.diagnostics('a').worldSectors,0);
+for(const u of ['b','c'])assert(call(u,'status').ended);const fresh=call('a','sail');assert.notEqual(fresh.voyage.entities[0].name,oldName);assert.equal(fresh.worldResetsAt,deadline+7200000);assert.equal(users.a.sea.ship,'sailboat');
+time=fresh.worldResetsAt;sea.tick();assert(call('a','status').ended,'Tick resets even without a request');
+console.log('PASS shared mutable world, common two-hour deadline, longer voyages, pre-request and tick resets, fresh generation, cargo loss and retained banked ship');

@@ -221,7 +221,7 @@ function slotPaytableHtml(symbols, extraPays) {
   return symbols.filter(s => s.mult > 0).map(s => {
     const face = s.draw
       ? `<span class="paySyms">${chip(s.key, 40)}${chip(s.key, 40)}${chip(s.key, 40)}</span>`
-      : `<span style="color:${s.color};font-size:18px">${s.sym}${s.sym}${s.sym}</span>`;
+      : `<span style="color:${s.color};font-size:18px">${ActivityModels.html(s.sym)}${ActivityModels.html(s.sym)}${ActivityModels.html(s.sym)}</span>`;
     return `<div class="payRow">${face}<b>${s.mult}&times;</b></div>`;
   }).join("") +
     (extraPays || []).map(p =>
@@ -329,7 +329,7 @@ function drawSlotFrame() {
         c.font = "52px sans-serif";
         c.textAlign = "center"; c.textBaseline = "middle";
         c.fillStyle = sym.color;
-        c.fillText(sym.sym, x + SLOT_CELL / 2, cy + 2);
+        ActivityModels.draw(c,sym.sym,x+SLOT_CELL/2,cy,64);
       }
     }
     c.restore();
@@ -473,7 +473,7 @@ async function spinSlotGrid(cfg) {
   }
   const symFace = (s) => s.draw
     ? `<canvas class="paySym" data-sk="${s.key}" width="22" height="22"></canvas>`.repeat(3)
-    : `${s.sym}${s.sym}${s.sym}`;
+    : `${ActivityModels.html(s.sym)}${ActivityModels.html(s.sym)}${ActivityModels.html(s.sym)}`;
   const payout = Math.floor(data.payout || 0);
   if (payout > 0) {
     const detail = (wins.map(w => `<span class="winLine" style="color:${w.line.color}">${symFace(w.sym)} ${w.line.label} ${w.mult}&times;</span>`).join(" &nbsp;·&nbsp; ")
@@ -566,7 +566,7 @@ function drawCoin(spin, face) {
     c.fillStyle = "#7c2d12";
     c.font = "bold 34px sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
     c.save(); c.translate(cx, cy); c.scale(sx, 1);
-    c.fillText(showing === "heads" ? "👑" : "★", 0, 2);
+    ActivityModels.draw(c,showing === "heads" ? "crown" : "star",0,0,50);
     c.restore();
   }
 }
@@ -623,7 +623,7 @@ function openScratch() {
       ${betBar("scBet", 50)}
       <button class="menuBtn gold bigBtn" id="scBtn" onclick="buyScratch()">BUY CARD</button>
       <div class="payTable">
-        ${SCRATCH_PRIZES.filter(p => p.mult > 0).map(p => `<div class="payRow"><span style="font-size:18px">${p.sym}${p.sym}${p.sym}</span><b>${p.mult}×</b></div>`).join("")}
+        ${SCRATCH_PRIZES.filter(p => p.mult > 0).map(p => `<div class="payRow"><span style="font-size:18px">${ActivityModels.html(p.sym)}${ActivityModels.html(p.sym)}${ActivityModels.html(p.sym)}</span><b>${p.mult}×</b></div>`).join("")}
       </div>
     </div>`);
   renderScratch();
@@ -636,7 +636,7 @@ function renderScratch() {
   }
   el.innerHTML = _scratch.cells.map((cell, i) =>
     `<div class="scratchCell ${cell.revealed ? "open" : ""} ${cell.winner ? "hit" : ""}"
-      onclick="scratchCell(${i})">${cell.revealed ? cell.sym.sym : "✦"}</div>`).join("");
+      onclick="scratchCell(${i})">${cell.revealed ? ActivityModels.html(cell.sym.sym,54) : "✦"}</div>`).join("");
 }
 window.buyScratch = async () => {
   const bet = readBet("scBet");
@@ -676,7 +676,7 @@ async function finishScratch() {
   if (best && payout > 0) {
     for (const c of _scratch.cells) if (c.sym.sym === best.sym) c.winner = true;
     if (best.mult >= 12) celebrate();
-    setEl("scratchResult", win(`Three ${best.sym} — +$${payout}!`));
+    setEl("scratchResult", win(`Three matching prizes — +$${payout}!`));
   } else if (payout > 0) {
     setEl("scratchResult", win(`+$${payout}!`));
   } else {
@@ -2175,37 +2175,36 @@ window.spinWheel = async () => {
 // =====================================================================
 // HORSE RACING
 // =====================================================================
-// Six runners. The winner is drawn up-front from the implied probabilities so
-// the field actually matches the board: 1/odds sums to ~1.039, i.e. a ~3.8%
-// book, so the favourite comes home about 38% of the time instead of always.
+// Six runners with explicit win chances shown beside their payouts.
+// The longshot loses two percentage points to the favourite; meal luck is excluded.
 const HORSES = [
-  { name: "Thunderhoof", emoji: "🐎", color: "#ef4444", odds: 2.5 },
-  { name: "Blue Streak", emoji: "🐴", color: "#3b82f6", odds: 4 },
-  { name: "Golden Girl", emoji: "🦄", color: "#fbbf24", odds: 6 },
-  { name: "Old Dobbin", emoji: "🫏", color: "#a855f7", odds: 9 },
-  { name: "Midnight", emoji: "🐎", color: "#22d3ee", odds: 14 },
-  { name: "Lucky Penny", emoji: "🐴", color: "#f472b6", odds: 25 },
+  { name: "Thunderhoof", emoji: "🐎", color: "#ef4444", odds: 2.3 },
+  { name: "Blue Streak", emoji: "🐴", color: "#3b82f6", odds: 3.8 },
+  { name: "Golden Girl", emoji: "🦄", color: "#fbbf24", odds: 5.7 },
+  { name: "Old Dobbin", emoji: "🫏", color: "#a855f7", odds: 8.5 },
+  { name: "Midnight", emoji: "🐎", color: "#22d3ee", odds: 13.2 },
+  { name: "Lucky Penny", emoji: "🐴", color: "#f472b6", odds: 23 },
 ];
 const RACE_W = 620, RACE_H = 260;
 let _race = null;
 
 function horseWinChance(i) {
-  const book = HORSES.reduce((s, h) => s + 1 / h.odds, 0);
-  return (1 / HORSES[i].odds) / book;
+  const original=[2.5,4,6,9,14,25],book=original.reduce((sum,n)=>sum+1/n,0);
+  return (1/original[i])/book+(i===5?-.02:i===0?.02:0);
 }
 function openHorses() {
   _race = { running: false };
   const rows = HORSES.map((h, i) => `
     <div class="shopItem raceRow">
-      <div class="info"><b style="color:${h.color}">${h.emoji} ${h.name}</b><br/>
-        <small>pays ${h.odds}× · wins ${(horseWinChance(i) * 100).toFixed(0)}% of the time</small></div>
+      <div class="info"><b style="color:${h.color}">${ActivityModels.html("crown",24)} ${h.name}</b><br/>
+        <small>pays ${h.odds}× · wins ${(horseWinChance(i) * 100).toFixed(1)}% of the time</small></div>
       <button class="menuBtn gold" onclick="startRace(${i})">BET</button>
     </div>`).join("");
   openMenu("🐎 HORSE RACING", `
     <canvas id="raceCanvas" width="${RACE_W}" height="${RACE_H}"></canvas>
     <div id="raceResult" class="gameResult"></div>
     ${betBar("raceBet", 100)}
-    <p class="muted">Six runners. Longer odds really are longer shots — the board shows each horse's true chance.</p>
+    <p class="muted">Six runners. Longer odds really are longer shots — the board shows each horse's true chance. Meal luck does not change racing odds or payouts.</p>
     ${rows}`, true);
   drawRace(HORSES.map(() => 0));
 }
@@ -2251,13 +2250,13 @@ function drawRace(progress, winner, pick) {
       c.fillRect(0, y, cv.width, laneH);
     }
     c.font = "26px sans-serif"; c.textAlign = "left"; c.textBaseline = "alphabetic";
-    c.fillText(HORSES[i].emoji, x, y + laneH * 0.86 + bob);
+    ActivityModels.horse(c,x,y+laneH*.58+bob,52,HORSES[i].color,performance.now()/1000);
   }
   if (winner != null) {
     c.fillStyle = "rgba(0,0,0,.7)"; c.fillRect(0, 0, cv.width, cv.height);
     c.fillStyle = "#fbbf24";
     c.font = "bold 26px sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
-    c.fillText(`🏆 ${HORSES[winner].name} wins!`, cv.width / 2, cv.height / 2);
+    c.fillText(`${HORSES[winner].name} wins!`, cv.width / 2, cv.height / 2);
   }
 }
 window.startRace = async (pick) => {

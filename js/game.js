@@ -231,6 +231,7 @@ window.doEmote = (id) => {
 
 // ---------- Key handling ----------
 function handleKey(e) {
+  if(state.area === "sea") { gameSea.key(e); return; }
   const k = e.key.toLowerCase();
   // Chat input focused?
   if (document.activeElement === document.getElementById("chatBox")) {
@@ -325,6 +326,7 @@ function attackAtCursor() {
   else if (state.area === "neighborhood") { if (window.gameLake && gameLake.fightActive()) gameLake.attack(); }
 }
 function onLeftClick() {
+  if(state.area === "sea") { gameSea.act("fire"); return; }
   if (state.area === "interior_home") {
     if (state.placeMode) placeFurnitureAtMouse();
     else if (state.buildMode) tryGrabFurniture();
@@ -333,6 +335,7 @@ function onLeftClick() {
   attackAtCursor();
 }
 function onRightClick() {
+  if(state.area === "sea") return;
   if (state.buildMode && state.area === "interior_home") {
     // Pick up furniture into inventory
     const idx = furnitureUnderMouse();
@@ -468,7 +471,7 @@ function placeFurnitureAtMouse() {
 function tryInteract() {
   if (state.area === "neighborhood") {
     const b = gameWorld.buildingAtPlayer();
-    if (b) return gameInteriors.enterBuilding(b);
+    if (b) return b.type === "shipwright" ? gameSea.harbor() : gameInteriors.enterBuilding(b);
     const u = gameWorld.houseAtPlayer();
     if (u) {
       if (u === state.user) gameInteriors.enterOwnHome(false);
@@ -488,7 +491,8 @@ function tryInteract() {
 
 // ---------- Outdoor activity dispatch (fishing / basketball / notice board) ----------
 function triggerActivity(type) {
-  if (type === "fishing")     gameOutdoor.openFishing();
+  if (type === "shipwright") gameSea.harbor();
+  else if (type === "fishing")     gameOutdoor.openFishing();
   else if (type === "basketball") gameOutdoor.openBasketball();
   else if (type === "leaderboard") gameOutdoor.openLeaderboard();
   else if (type === "cooking") gameFarm.openCooking("lake");
@@ -1385,11 +1389,12 @@ async function openStaffPanel() {
         style="flex:1;padding:8px;background:#0a0e15;color:white;border:1px solid #2a3344;border-radius:6px;" />
       <button class="menuBtn gold" onclick="mayorAnnounce()">Post</button>
     </div>` : ""}
-    <h3 class="section">👻 INVISIBILITY</h3>
+    <h3 class="section">SEA GEMS</h3><div class="flexRow"><input id="staffSeaGems" type="number" min="1" max="1000000" value="10000"><button class="menuBtn gold" onclick="staffSeaGems()">Grant gems to myself</button></div><h3 class="section">👻 INVISIBILITY</h3>
     <p class="muted">Vanish from every other player's screen. On your own screen you stay faintly visible. Hotkey: <b>V</b>.</p>
     <button class="menuBtn" onclick="toggleInvisible();closeMenu();">${state.invisible ? "TURN VISIBLE" : "GO INVISIBLE"}</button>
     <h3 class="section">🏛️ MAYOR'S TREASURY</h3>
     <div id="treasuryBox"><p class="muted">Loading…</p></div>
+    <h3 class="section">BANKS & GUILD TREASURIES</h3><div id="staffFinance"><p class="muted">Loading balances...</p></div>
     <h3 class="section">PLAYERS</h3>
     <p class="muted">${isOwner
       ? "You can promote players to admin, and ban / mute anyone below you, and add to or set any player's balance. Owners are set in the server save file."
@@ -1416,6 +1421,7 @@ async function openStaffPanel() {
   }
   renderStaffBugs();
   renderTreasury();
+  renderStaffFinance();
   // keep the "Staff" button state right if our role changed
   setRole(state.role);
 }
@@ -1942,6 +1948,7 @@ async function renderMyBugReports() {
 function update() {
   if (state.attackCooldown > 0) state.attackCooldown--;
 
+  if (state.area === "sea") { gameSea.update(); return; }
   if (state.area === "dungeon") { gameCombat.updateDungeon(); return; }
   if (state.area === "duel") { gameCombat.updateDuel(); return; }
 
@@ -2020,6 +2027,7 @@ function update() {
 
 // ---------- DRAW ----------
 function draw() {
+  if (state.area === 'sea') { gameSea.draw(); return; }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (state.area === "neighborhood") gameWorld.drawNeighborhood();
   else if (state.area.startsWith("interior_")) gameInteriors.drawInterior();
@@ -2033,3 +2041,39 @@ function draw() {
 // Update place-mode preview etc accordingly.
 
 window.gameMain = { update, draw };
+
+window.staffSeaGems=async()=>{try{const amount=Number(document.getElementById("staffSeaGems").value);const r=await netSea({action:"staff_gems",amount});toast("Sea gems: "+r.profile.gems.toLocaleString());}catch(e){toast(e.message);}};
+
+// Explicit staff RPCs keep bank and guild money protected from raw database writes.
+async function renderStaffFinance() {
+  const box = document.getElementById('staffFinance');
+  if (!box) return;
+  try {
+    const data = await netStaffFinance({action:'status'});
+    if (!box.isConnected) return;
+    box.innerHTML = `<p class="muted">View recorded bank balances and guild treasuries, including offline accounts. Set replaces the balance. Bank interest restarts from the edit time. Wallets and guild members' personal deposits are separate.</p><select id="staffFinanceKind"><option value="bank">Player bank</option><option value="guild">Guild treasury</option></select><select id="staffFinanceTarget" aria-label="Account"></select><p id="staffFinanceBalance"></p><input id="staffFinanceAmount" type="number" min="0" max="1000000000000" step="1" aria-label="New balance"><button class="menuBtn gold" id="staffFinanceSet">Set balance</button><button class="menuBtn" id="staffFinanceRefresh">Refresh balances</button>`;
+    const kind = box.querySelector('#staffFinanceKind'), target = box.querySelector('#staffFinanceTarget'), amount = box.querySelector('#staffFinanceAmount'), save = box.querySelector('#staffFinanceSet');
+    let accounts = [];
+    function selected() {
+      const a = accounts.find(a=>a.id===target.value);
+      box.querySelector('#staffFinanceBalance').textContent = a ? 'Current recorded balance: $'+a.balance.toLocaleString() : 'No accounts found.';
+      amount.value = a?.balance ?? 0;
+      save.disabled = !a;
+    }
+    function list() {
+      accounts = (kind.value==='bank'?data.players:data.guilds).slice().sort((a,b)=>(a.name||a.id).localeCompare(b.name||b.id));
+      target.innerHTML = accounts.map(a=>`<option value="${escapeHtml(a.id)}">${escapeHtml(a.name ? a.name+' ['+a.tag+']' : a.id)}</option>`).join('');
+      selected();
+    }
+    kind.onchange=list; target.onchange=selected; list();
+    box.querySelector('#staffFinanceRefresh').onclick=renderStaffFinance;
+    save.onclick=async()=>{
+      const a=accounts.find(a=>a.id===target.value), value=Number(amount.value);
+      if (!a || !amount.value.trim() || !Number.isSafeInteger(value) || value<0 || value>1000000000000) {toast('Enter a valid whole dollar balance.');return;}
+      if (!confirm(`Set ${kind.value==='bank'?'player bank':'guild treasury'} for ${a.name||a.id} to $${value.toLocaleString()}?`)) return;
+      save.disabled=true;
+      try {const result=await netStaffFinance({action:'set',kind:kind.value,target:a.id,amount:value});a.balance=result.balance;selected();toast('Balance updated.');}
+      catch(e){toast(e.message);}finally{save.disabled=false;}
+    };
+  } catch(e) {box.textContent=e.message;}
+}

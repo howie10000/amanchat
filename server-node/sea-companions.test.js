@@ -1,0 +1,10 @@
+'use strict';
+const assert=require('node:assert/strict'),S=require('../js/shared/sea'),C=require('./sea-companions')(S);
+const r={code:'TEST',helpers:[],mission:'pirate',links:[{id:'pirate',until:1e9}]},v={x:0,y:0,a:0,roster:['fighter_1','fighter_4','looter_4'],cargo:[],stats:{cargo:20}},enemy={id:'pirate',kind:'pirate',x:180,y:0,a:0,hp:700,boarders:[{id:'guard',x:-15,y:0,place:'deck',hp:180}],cargo:[{coins:5},{coins:7},{coins:11}]};let time=10000;
+C.sync(r,v);assert.equal(r.helpers.filter(h=>h.kind==='fighter').length,2);assert(r.helpers.find(h=>h.recruitId==='fighter_4').maxHp>r.helpers.find(h=>h.recruitId==='fighter_1').maxHp);
+let carriedTwo=false,wasAboard=false;for(let i=0;i<1500;i++){time+=100;C.tick(r,v,[enemy],time,.1);carriedTwo ||= r.helpers.some(h=>h.load.length===2);wasAboard ||= r.helpers.some(h=>h.boarded==='pirate');}
+assert(wasAboard);assert.equal(enemy.boarders[0].hp,0);assert(carriedTwo,'legendary looter carries two physical chests');assert.equal(v.cargo.length,3);assert.equal(v.cargo.reduce((s,c)=>s+c.coins,0),23);assert.equal(enemy.cargo.length,0);
+const fighter=r.helpers.find(h=>h.kind==='fighter');C.hurt(fighter,999,time);assert.equal(fighter.state,'recovering');assert.equal(fighter.place,'hold');assert.equal(fighter.boarded,null);assert.equal(fighter.hp,0);C.tick(r,v,[enemy],time+100,.1);assert(fighter.hp>0&&fighter.hp<fighter.maxHp);for(let i=0;i<360;i++)C.tick(r,v,[enemy],time+=100,.1);assert.equal(fighter.hp,fighter.maxHp);assert.equal(fighter.state,'sleeping');
+v.roster.push('fighter_2','fighter_3');C.sync(r,v);assert.equal(r.helpers.filter(h=>h.kind==='fighter').length,2);assert(!r.helpers.some(h=>h.recruitId==='fighter_1'));
+const island={id:'island',kind:'island',x:150,y:0,r:100,tier:1,guards:[],looted:false};r.mission=island.id;r.links=[{id:island.id,until:1e9}];for(let i=0;i<1500;i++)C.tick(r,v,[island],time+=100,.1);assert(island.looted);assert.equal(v.cargo.length,4,'cleared island chest physically returns to hold exactly once');
+console.log('PASS two fighter limit, rarity scaling, combat, legendary two-chest haul, physical stow, island loot and visible timed bed recovery');

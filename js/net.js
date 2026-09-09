@@ -9,7 +9,7 @@
   // (location.host) only works when the backend itself serves the client,
   // e.g. local dev via `node server.js` with STATIC_DIR pointing at the game.
   const BACKEND_HOST = "northpvp.net";
-  const isLocal = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+  const isLocal = !location.hostname.endsWith("github.io");
   const WS_URL = isLocal
     ? (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws"
     : "wss://" + BACKEND_HOST + "/ws";
@@ -152,7 +152,10 @@
   window.netFish = (data) => rpc("fish", data);
   window.netFurnitureSet = (data) => rpc("furniture_set", data);
   window.netHome = (data) => rpc("home", data);          // server-checked house entry
+  window.netStaffFinance = (data) => rpc("staff_finance", data);
   window.netTreasury = (data) => rpc("treasury", data);  // Mayor's Treasury (staff)
+  let seaWire;
+  window.netSea = (data) => {if(!window.SeaWire)return rpc('sea',data);seaWire??=window.SeaWire.createClient();const request=seaWire.prepare(data);return rpc('sea',request.data).then(request.decode);};
   window.netFarm = (data) => rpc("farm", data);          // personal farm + rotating seed stall
   window.netCook = (data) => rpc("cook", data);          // cooking pot: meals -> luck
   window.netKraken = (data) => rpc("kraken", data);      // sea-beast boss fight (status / hit)

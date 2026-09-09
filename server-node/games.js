@@ -663,19 +663,19 @@ function videopoker(user, action, args, balance, rand) {
 }
 
 // =====================================================================
-// HORSES — winner drawn from the implied probabilities (~3.8% book)
+// HORSES — fixed win chances; longshot reduced by two percentage points.
 // =====================================================================
 const HORSES = [
-    { name: 'Thunderhoof', odds: 2.5 },
-    { name: 'Blue Streak', odds: 4 },
-    { name: 'Golden Girl', odds: 6 },
-    { name: 'Old Dobbin', odds: 9 },
-    { name: 'Midnight', odds: 14 },
-    { name: 'Lucky Penny', odds: 25 },
+    { name: 'Thunderhoof', odds: 2.3 },
+    { name: 'Blue Streak', odds: 3.8 },
+    { name: 'Golden Girl', odds: 5.7 },
+    { name: 'Old Dobbin', odds: 8.5 },
+    { name: 'Midnight', odds: 13.2 },
+    { name: 'Lucky Penny', odds: 23 },
 ];
 function horseWinChance(i) {
-    const book = HORSES.reduce((s, h) => s + 1 / h.odds, 0);
-    return (1 / HORSES[i].odds) / book;
+  const original=[2.5,4,6,9,14,25],book=original.reduce((sum,n)=>sum+1/n,0);
+  return (1/original[i])/book+(i===5?-.02:i===0?.02:0);
 }
 function horseRace(bet, horse, rand) {
     horse = intArg(horse);

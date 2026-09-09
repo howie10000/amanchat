@@ -1,0 +1,31 @@
+/* Original shaded activity models, shared by menus and canvas scenes. */
+(function(){'use strict';
+const aliases={'7':'seven','★':'star','♥':'heart','♦':'diamond','♣':'club','❌':'blank','💰':'bag','💍':'ring','🔑':'key','🍬':'candy','🧦':'sock','🪨':'rock','👑':'crown'};
+function draw(c,name,x,y,size){name=aliases[name]||name;c.save();c.translate(x,y);c.scale(size/100,size/100);c.lineJoin='round';c.lineCap='round';c.lineWidth=5;c.strokeStyle='#48351e';
+ const gold=c.createLinearGradient(-25,-40,30,40);gold.addColorStop(0,'#fff0a0');gold.addColorStop(.4,'#e9ac36');gold.addColorStop(1,'#9a561e');c.fillStyle=gold;c.shadowColor='#0008';c.shadowBlur=4;c.shadowOffsetY=4;
+ const shape=(points,fill=gold)=>{c.beginPath();points.forEach((p,i)=>i?c.lineTo(...p):c.moveTo(...p));c.closePath();c.fillStyle=fill;c.fill();c.stroke();};
+ const oval=(x,y,rx,ry,fill=gold)=>{c.beginPath();c.ellipse(x,y,rx,ry,0,0,Math.PI*2);c.fillStyle=fill;c.fill();c.stroke();};
+ const line=(points,col=gold,w=9)=>{c.beginPath();points.forEach((p,i)=>i?c.lineTo(...p):c.moveTo(...p));c.strokeStyle=col;c.lineWidth=w;c.stroke();c.strokeStyle='#48351e';c.lineWidth=5;};
+ if(name==='eye'){shape([[-40,-4],[-22,-20],[2,-23],[25,-14],[40,-4],[20,10],[-6,15],[-26,9]],'#e7e3c8');oval(0,-3,12,15,'#3a9da7');oval(1,-3,5,9,'#111f38');line([[-39,-22],[-16,-32],[13,-31],[35,-22]]);line([[3,15],[0,37],[-12,29]]);line([[21,12],[30,22],[19,34],[10,34]],'#d69d36',6);}
+ else if(name==='ankh'){oval(0,-23,17,21);oval(0,-24,7,11,'#13333e');shape([[-6,-3],[-6,7],[-29,7],[-29,18],[-6,18],[-8,43],[8,43],[6,18],[29,18],[29,7],[6,7],[6,-3]]);}
+ else if(name==='scarab'){for(const side of [-1,1]){shape([[side*8,-8],[side*43,-27],[side*37,7],[side*15,26]],'#209f9c');for(let i=0;i<3;i++)line([[side*16,i*13-7],[side*32,i*13+1]],'#ecb951',3);}oval(0,3,18,27,'#237d97');oval(0,-25,12,10);line([[0,-14],[0,30]],'#f1c45b',4);}
+ else if(name==='lotus'){line([[-25,31],[0,38],[25,31]],'#369d81',7);for(const side of [-1,1])shape([[0,24],[side*34,13],[side*38,-13],[side*15,-3]],'#c16694');shape([[0,27],[-19,0],[0,-38],[19,0]],'#f0aac1');shape([[0,23],[-8,1],[0,-23],[8,1]],'#ffe3a6');}
+ else if(name==='star'){const points=[];for(let i=0;i<10;i++){const a=i*Math.PI/5-Math.PI/2,r=i%2?17:40;points.push([Math.cos(a)*r,Math.sin(a)*r]);}shape(points);}
+ else if(name==='diamond'||name==='ring'){if(name==='ring'){oval(0,13,24,26);oval(0,13,14,17,'#172d40');}shape([[-28,-22],[-14,-36],[14,-36],[28,-22],[0,name==='ring'?0:36]],'#63cadf');line([[-28,-22],[28,-22]],'#c7faff',3);line([[-14,-36],[0,name==='ring'?0:36],[14,-36]],'#2286b4',3);}
+ else if(name==='heart'){c.beginPath();c.moveTo(0,35);c.bezierCurveTo(-62,-5,-27,-51,0,-19);c.bezierCurveTo(27,-51,62,-5,0,35);c.fillStyle='#ed6288';c.fill();c.stroke();}
+ else if(name==='club'){oval(0,-22,17,17,'#53b879');oval(-19,1,17,17,'#53b879');oval(19,1,17,17,'#53b879');shape([[-5,7],[-16,35],[16,35],[5,7]],'#53b879');}
+ else if(name==='seven')shape([[-30,-35],[32,-35],[32,-20],[0,37],[-22,37],[12,-17],[-30,-17]],'#e95445');
+ else if(name==='crown')shape([[-34,-22],[-17,-5],[0,-34],[17,-5],[34,-22],[27,27],[-27,27]]);
+ else if(name==='key'){oval(-17,-16,18,18);oval(-17,-16,7,7,'#183442');line([[-4,-2],[27,32],[34,25],[25,17]],gold,11);}
+ else if(name==='bag'){shape([[-16,-36],[16,-36],[9,-18],[-9,-18]]);oval(0,8,29,30);line([[-13,-15],[13,-15]],'#74543a',6);oval(0,9,12,13,'#fce6a0');}
+ else if(name==='candy'){shape([[-15,-12],[-38,-22],[-38,22],[-15,12]],'#d79ccc');shape([[15,-12],[38,-22],[38,22],[15,12]],'#d79ccc');oval(0,0,22,18,'#d16b9e');line([[-7,-13],[7,13]],'#ffe4f3',6);}
+ else if(name==='sock')shape([[-17,-36],[12,-36],[12,7],[32,10],[36,26],[20,35],[-17,29]],'#77aabd');
+ else if(name==='rock')shape([[-36,16],[-24,-22],[3,-35],[30,-14],[37,20],[6,34]],'#788b94');
+ else {line([[-22,-22],[22,22]],'#7e909c',12);line([[22,-22],[-22,22]],'#7e909c',12);}
+ c.restore();}
+function html(name,size=36){const cv=document.createElement('canvas');cv.width=cv.height=128;draw(cv.getContext('2d'),name,64,64,110);return `<img alt="${aliases[name]||name}" width="${size}" height="${size}" style="vertical-align:middle;object-fit:contain" src="${cv.toDataURL()}">`;}
+function horse(c,x,y,size,color,t=0){c.save();c.translate(x,y);c.scale(size/100,size/100);c.lineCap='round';c.strokeStyle='#382b27';c.lineWidth=7;for(let i=0;i<4;i++){const px=i<2?-20:22,k=Math.sin(t*11+i*2)*13;c.beginPath();c.moveTo(px,3);c.lineTo(px+k,22);c.lineTo(px-k,39);c.stroke();}c.fillStyle='#704737';c.beginPath();c.ellipse(0,0,34,17,0,0,Math.PI*2);c.fill();c.beginPath();c.moveTo(18,-8);c.lineTo(26,-39);c.lineTo(43,-43);c.lineTo(55,-28);c.lineTo(39,-21);c.lineTo(32,5);c.fill();c.fillStyle='#2b2728';c.fillRect(27,-41,7,28);c.beginPath();c.moveTo(-30,-6);c.quadraticCurveTo(-57,-12,-45,20);c.lineTo(-38,9);c.fill();c.fillStyle=color;c.fillRect(-14,-14,30,15);c.fillStyle='#f1dbc0';c.beginPath();c.arc(3,-35,7,0,Math.PI*2);c.fill();c.fillStyle=color;c.fillRect(-4,-29,15,17);c.beginPath();c.arc(3,-39,9,Math.PI,Math.PI*2);c.fill();c.fillStyle='#fff';c.fillRect(44,-35,3,3);c.restore();}
+function fishHtml(f,size=64){const palette={common:'#70aaa5',rare:'#5bbada',epic:'#b280d4',legendary:'#e8bc4d',mythical:'#e878bd'},color=palette[f.rarity]||palette.common,seed=[...f.name].reduce((a,c)=>a+c.charCodeAt(0),0),body=f.loot?'<path d="M25 48 Q80 0 91 30 T62 54 Q38 74 42 42" fill="none" stroke="currentColor" stroke-width="16"/><g fill="#efdbb0"><circle cx="39" cy="32" r="3"/><circle cx="52" cy="23" r="3"/><circle cx="70" cy="20" r="3"/><circle cx="81" cy="37" r="3"/></g>':`<path d="M37 39 L8 19 L12 58 Z" fill="currentColor"/><path d="M48 25 L65 8 L79 29 M50 50 L69 65 L74 45" fill="currentColor"/><ellipse cx="67" cy="39" rx="${seed%3===0?33:29}" ry="${seed%3===1?15:21}" fill="currentColor"/><path d="M39 42 Q65 60 95 42" fill="#eff0c9" opacity=".65"/><path d="M74 25 Q63 37 74 50" fill="none" stroke="#173646" stroke-width="2"/><circle cx="85" cy="32" r="5" fill="#fff7d5"/><circle cx="87" cy="32" r="2.5" fill="#14272e"/><path d="M48 35 L60 40 L47 47" fill="#244657" opacity=".55"/>`;
+return `<svg role="img" aria-label="Fish model" width="${size}" height="${Math.round(size*.65)}" viewBox="0 0 112 72" style="vertical-align:middle;color:${color};filter:drop-shadow(0 3px 2px #0005)">${body}</svg>`;}
+window.ActivityModels={draw,html,horse,fishHtml};
+})();

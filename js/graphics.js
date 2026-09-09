@@ -3310,6 +3310,7 @@ const PIXEL_SYMBOLS = {
   ] },
 };
 function drawPixelSymbol(c, name, cx, cy, size) {
+  if(window.ActivityModels){ActivityModels.draw(c,name,cx,cy,size);return;}
   const spec = PIXEL_SYMBOLS[name];
   if (!spec) return;
   const rows = spec.rows, R = rows.length, COLS = rows[0].length;

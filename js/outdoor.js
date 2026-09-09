@@ -91,7 +91,7 @@ function staffPickHtml() {
     <option value="kraken" ${_fishPick === "kraken" ? "selected" : ""}>🦑 THE KRAKEN (sea beast)</option>
     <option value="serpent" ${_fishPick === "serpent" ? "selected" : ""}>🐍 THE SEA SERPENT (sea beast)</option>`;
   for (const r of ECON.FISH_RARITIES) {
-    opts += `<optgroup label="${ECON.RARITY_INFO[r].label}">` + FISH_TABLE.filter(f => f.rarity === r).map(f => `<option value="${f.name}" ${_fishPick === f.name ? "selected" : ""}>${f.emoji} ${f.name}</option>`).join("") + `</optgroup>`;
+    opts += `<optgroup label="${ECON.RARITY_INFO[r].label}">` + FISH_TABLE.filter(f => f.rarity === r).map(f => `<option value="${f.name}" ${_fishPick === f.name ? "selected" : ""}>${f.name}</option>`).join("") + `</optgroup>`;
   }
   return `<div class="staffPick">🛡️ <b>Staff:</b> next catch <select id="fishPick" onchange="gameOutdoor.setFishPick(this.value)">${opts}</select><span class="muted">(server-checked — players never see this)</span></div>`;
 }
@@ -157,7 +157,7 @@ function sellTabHtml() {
       const price = fishPriceNow(fish);
       const qty = inv[name];
       html += `<div class="shopItem">
-        <div class="info"><b>${fish.emoji} ${fish.name}</b> x${qty} ${rarityTag(fish.rarity)}${fish.loot ? ' <span class="tier" style="background:#4c1d95;color:#e9d5ff">KRAKEN LOOT</span>' : ""}</div>
+        <div class="info"><b>${ActivityModels.fishHtml(fish,54)} ${fish.name}</b> x${qty} ${rarityTag(fish.rarity)}${fish.loot ? ' <span class="tier" style="background:#4c1d95;color:#e9d5ff">KRAKEN LOOT</span>' : ""}</div>
         <div class="pr">$${price.toLocaleString()} ea</div>
         <div style="display:flex;gap:6px;margin-top:6px;">
           <button class="menuBtn" onclick="sellFish('${name.replace(/'/g, "\\'")}',1)">Sell 1</button>
@@ -333,7 +333,7 @@ async function finishReel(landed) {
     // The server says the Kraken took the bait. lake.js runs the show from here.
     closeMenu();
     if (window.gameLake) gameLake.startKrakenCinematic(d.beast || "kraken");
-    toast(`${fish.emoji} You landed a <b>${fish.name}</b>… but something else is on the line.`, 4000);
+    toast(`You landed a <b>${fish.name}</b>… but something else is on the line.`, 4000);
     return;
   }
   if (fish.rarity === "mythical" && window.gameLake && state.area === "neighborhood") {
@@ -350,7 +350,7 @@ function showCatch(fish, cast) {
   setFishBtn("CAST AGAIN", "green");
   const res = document.getElementById("fishResult");
   if (res) res.innerHTML = `<div class="fishBanner ${fish.rarity}" style="border-color:${info.color};color:${fish.rarity === "mythical" ? "#fff" : info.color};">
-    <div style="font-size:30px;line-height:1.1">${fish.emoji}</div>
+    <div style="font-size:30px;line-height:1.1">${ActivityModels.fishHtml(fish,150)}</div>
     ${fish.rarity === "mythical" ? "✦ MYTHICAL ✦ " : fish.rarity === "legendary" ? "★ LEGENDARY ★ " : ""}<b>${fish.name}</b>
     <div class="muted" style="font-size:11px;">worth about $${fishPriceNow(fish).toLocaleString()} right now · 🍀 ${ECON.fishLuckPts(fish)} luck pts in the pot</div>
   </div>`;

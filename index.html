@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <title>Neighborhood</title>
-<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="style.css?v=sea-controls-9" />
 </head>
 <body>
   <!-- LOGIN SCREEN -->
@@ -12,12 +12,12 @@
     <div class="loginStack">
       <div class="gdTitle">
         <div class="gdRule"><span></span><i>&#9760;</i><span></span></div>
-        <div class="gdMain"><b class="gd1">GUILDS</b><b class="gdAmp">&amp;</b><b class="gd2">DUNGEONS</b></div>
-        <div class="gdPart">PART II</div>
+        <div class="gdMain darkSeaTitle"><b>THE DARK SEA</b></div>
+        <div class="gdPart">THE SHATTERED ISLES · EXPEDITION UPDATE</div>
       </div>
     <div class="loginBox">
       <h1>NEIGHBORHOOD</h1>
-      <p class="tagline">Form your guild, conquer dungeons,<br/>defeat powerful bosses, earn epic rewards.</p>
+      <p class="tagline">Beyond the storm, a lost world awaits.<br/>Scale wild islands. Explore hidden caverns. Bring your crew home.</p>
       <input id="loginUser" placeholder="Username" maxlength="16" autocomplete="username" />
       <input id="loginPass" type="password" placeholder="Password" maxlength="32" autocomplete="current-password" />
       <div class="loginBtns">
@@ -144,19 +144,22 @@
 
   <!-- three.js must come before the WebGL cutscene layers (lake3d, dungeon3d) -->
   <script src="js/vendor/three.min.js"></script>
-  <script src="js/net.js"></script>
+  <script src="js/net.js?v=sea-controls-9"></script>
   <script src="js/furniture.js"></script>
   <script src="js/shared/economy.js"></script>
   <script src="js/shared/dungeon.js"></script>
+  <script src="js/shared/sea-wire.js?v=sea-controls-9"></script>
+  <script src="js/shared/sea.js?v=sea-controls-9"></script>
+  <script src="js/activity-models.js"></script>
   <script src="js/graphics.js"></script>
-  <script src="js/core.js"></script>
+  <script src="js/core.js?v=sea-controls-9"></script>
   <script src="js/scene-config.js"></script>
   <script src="js/title-path.js"></script>
-  <script src="js/title.js"></script>
-  <script src="js/world.js"></script>
+  <script src="js/sea-title.js?v=sea-controls-9"></script>
+  <script src="js/world.js?v=sea-controls-9"></script>
   <script src="js/scenery.js"></script>
   <script src="js/interiors.js"></script>
-  <script src="js/casino.js"></script>
+  <script src="js/casino.js?v=sea-controls-9"></script>
   <script src="js/jobs.js"></script>
   <script src="js/mobs.js"></script>
   <script src="js/dungeon3d.js"></script>
@@ -171,6 +174,9 @@
   <script src="js/lake3d.js"></script>
   <script src="js/lake.js"></script>
   <script src="js/farm.js"></script>
-  <script src="js/game.js"></script>
+  <script src="js/sea-motion.js?v=sea-controls-9"></script>
+  <script src="js/sea3d.js?v=sea-controls-9"></script>
+  <script src="js/sea.js?v=sea-controls-9"></script>
+  <script src="js/game.js?v=sea-controls-9"></script>
 </body>
 </html>

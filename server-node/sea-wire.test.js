@@ -1,0 +1,11 @@
+'use strict';
+const assert=require('node:assert/strict'),S=require('../js/shared/sea'),W=require('../js/shared/sea-wire');
+const islands=Array.from({length:3},(_,i)=>S.expeditionIsland({id:'island-'+i,kind:'island',x:i*6400,y:100,r:1800,tier:3,phase:1,lobes:4,guards:[],recruits:[{id:'musketeer_3',x:i*6400,y:110}],biome:'ruins'},S.random('wire'+i)));
+const result={profile:{roster:['looter_4']},voyage:{multiplayer:true,room:'R',entities:islands}},client=W.createClient(),request=client.prepare({action:'input'}),full=W.pack(result,request.data);request.decode(JSON.parse(JSON.stringify(full)));assert.equal(client.size(),3);
+islands[0].chests[0].taken=true;islands[0].guards[0].hp=0;islands[0].recruits[0].recruited=true;
+const next=client.prepare({action:'input'}),compact=W.pack(result,next.data),decoded=next.decode(JSON.parse(JSON.stringify(compact)));assert(decoded.voyage.entities[0].chests[0].taken);assert.equal(decoded.voyage.entities[0].guards[0].hp,0);assert(decoded.voyage.entities[0].recruits[0].recruited);assert.deepEqual(decoded.voyage.entities[0].caves,islands[0].caves);
+const rawBytes=Buffer.byteLength(JSON.stringify(result)),wireBytes=Buffer.byteLength(JSON.stringify(compact));assert(wireBytes<rawBytes*.45,'Static island geometry must not repeat');
+const start=performance.now();for(let i=0;i<1000;i++)JSON.stringify(W.pack(result,next.data));const ms=performance.now()-start;
+const inFlight=client.prepare({}),evict=client.prepare({});evict.decode({voyage:{multiplayer:true,room:'R',entities:[]}});assert.equal(client.size(),0);assert.equal(inFlight.decode(JSON.parse(JSON.stringify(compact))).voyage.entities.length,3,'An in-flight response retains its acknowledged static data');
+const changed=W.pack({...result,voyage:{...result.voyage,room:'NEW'}},next.data);assert(changed.voyage.entities.every(e=>e.islandFull),'Room changes resend static state');
+console.log(`PASS compact snapshot hydration, mutable loot/guards/recruits, cache eviction, in-flight replies and room reset. Fixture: ${rawBytes} -> ${wireBytes} bytes; 20Hz -> 10Hz gives ${Math.round((1-wireBytes/(rawBytes*2))*100)}% less island traffic; 1000 packs ${Math.round(ms)}ms.`);

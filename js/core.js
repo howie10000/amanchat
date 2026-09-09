@@ -230,6 +230,7 @@ async function enterGame(user, data, role, mute) {
   if (window.gameCombat) gameCombat.resumeGuildRunIfAny();
   setInterval(refreshUserCache, 4000);
   if (state.mute) toast(muteText(state.mute), 5000);
+  window.gameSea?.offerInvite?.();
   if (typeof dailyBonusReady === "function" && dailyBonusReady()) {
     setTimeout(() => toast("🎁 Your <b>daily bonus</b> is ready at FIRST BANK!", 4000), 2500);
   }

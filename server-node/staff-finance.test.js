@@ -1,0 +1,47 @@
+'use strict';
+const assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs'),os=require('node:os');
+const {spawn}=require('node:child_process'),WebSocket=require('ws');
+const E=require('../js/shared/economy.js');
+const sleep=ms=>new Promise(r=>setTimeout(r,ms)),port=18438;
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'staff-finance-test-'));
+const server=spawn(process.execPath,[path.join(__dirname,'server.js')],{env:{...process.env,PORT:String(port),DB_PATH:path.join(dir,'test.db'),OWNERS:'expowner',LOCAL_DEV_ID:'crew-integration',HOST:'127.0.0.1'},stdio:['ignore','pipe','pipe']});
+let logs='';server.stdout.on('data',d=>logs+=d);server.stderr.on('data',d=>logs+=d);
+const clients=[];
+async function client(headers={}){
+ const ws=new WebSocket('ws://127.0.0.1:'+port+'/ws',{headers}),pending=new Map(),events=[];let id=0;
+ clients.push(ws);ws.on('message',d=>{const m=JSON.parse(d);const p=pending.get(m.id);if(p){clearTimeout(p.timer);pending.delete(m.id);m.ok===false?p.reject(new Error(m.err)):p.resolve(m.data);}else events.push(m);});
+ await new Promise((r,j)=>{ws.on('open',r);ws.on('error',j);});
+ return {events,ws,rpc:(op,args={})=>new Promise((resolve,reject)=>{const n=++id;const timer=setTimeout(()=>{pending.delete(n);reject(new Error('RPC timeout '+op));},10000);pending.set(n,{resolve,reject,timer});ws.send(JSON.stringify({...args,id:n,op}));})};
+}
+(async()=>{
+ for(let i=0;i<100&&!logs.includes('listening on');i++)await sleep(100);
+ assert(logs.includes('listening on'),logs);
+ const owner=await client(), player=await client(), admin=await client();
+ await owner.rpc('auth',{user:'expowner',pass:'test-pass-123',register:true});
+ await player.rpc('auth',{user:'vaultplayer',pass:'test-pass-123',register:true});
+ await admin.rpc('auth',{user:'vaultadmin',pass:'test-pass-123',register:true});
+ await owner.rpc('put',{path:'roles/admins/vaultadmin',value:true});
+ await owner.rpc('put',{path:'users/vaultplayer/money',value:300000});
+ const made=await player.rpc('guild',{action:'create',name:'Vault Test Guild',tag:'VLT'}), gid=made.guild.id;
+ await player.rpc('guild',{action:'bank_deposit',amount:1000});
+ const guildBefore=await owner.rpc('get',{path:'guilds/'+gid});
+ await assert.rejects(player.rpc('staff_finance'),/Staff only/);
+ await assert.rejects(player.rpc('staff_finance',{action:'set',kind:'bank',target:'vaultplayer',amount:999}),/Staff only/);
+ assert((await admin.rpc('staff_finance')).players.some(p=>p.id==='vaultplayer'));
+ await admin.rpc('staff_finance',{action:'set',kind:'bank',target:'vaultplayer',amount:12345});
+ assert.equal((await player.rpc('bank',{action:'status'})).bankBalance,12345);
+ await owner.rpc('staff_finance',{action:'set',kind:'guild',target:gid,amount:67890});
+ const guildAfter=await owner.rpc('get',{path:'guilds/'+gid});
+ assert.equal(guildAfter.treasury,67890);assert.deepEqual(guildAfter.bank,guildBefore.bank);
+ for(const amount of [-1,1.5,1000000000001,'100',null])await assert.rejects(admin.rpc('staff_finance',{action:'set',kind:'bank',target:'vaultplayer',amount}),/whole dollar/);
+ await assert.rejects(admin.rpc('staff_finance',{action:'set',kind:'guild',target:'missing',amount:0}),/no longer exists/);
+ await assert.rejects(admin.rpc('staff_finance',{action:'set',kind:'bank',target:'vaultplayer/money',amount:0}),/valid account/);
+ await assert.rejects(player.rpc('put',{path:'users/vaultplayer/bankBalance',value:999999}));
+ await assert.rejects(admin.rpc('put',{path:'guilds/'+gid+'/treasury',value:999999}));
+ player.ws.close();await sleep(100);
+ await admin.rpc('staff_finance',{action:'set',kind:'bank',target:'vaultplayer',amount:0});
+ const balances=await owner.rpc('staff_finance');assert.equal(balances.players.find(p=>p.id==='vaultplayer').balance,0);assert.equal(balances.guilds.find(g=>g.id===gid).balance,67890);
+ await owner.rpc('del',{path:'roles/admins/vaultadmin'});
+ await assert.rejects(admin.rpc('staff_finance'),/Staff only/);
+ console.log('PASS staff bank/guild view and edit, offline accounts, zero balance, strict validation, member deposit preservation, raw-write protection and role revocation');
+})().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>{for(const ws of clients)ws.close();server.kill();});
