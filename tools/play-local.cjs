@@ -4,6 +4,9 @@ const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),
 const {createHash}=require('node:crypto'),{spawn}=require('node:child_process');
 const root=path.resolve(__dirname,'..'),backend=path.join(root,'server-node');
 const localId=createHash('sha256').update(root.toLowerCase()).digest('hex').slice(0,24);
+const {createShare}=require('./share-local.cjs');
+const os=require('node:os');
+function lanLinks(port){return [...new Set(Object.values(os.networkInterfaces()).flat().filter(a=>a&&a.family==='IPv4'&&!a.internal).map(a=>'http://'+a.address+':'+port))];}
 const noBrowser=process.argv.includes('--no-browser');
 const firstPort=Number(process.env.LOCAL_PORT||8787);
 function probe(port){return new Promise(resolve=>{
@@ -12,7 +15,7 @@ function probe(port){return new Promise(resolve=>{
   res.on('end',()=>{try{resolve(JSON.parse(data).id===localId);}catch{resolve(false);}});
  });req.on('timeout',()=>req.destroy());req.on('error',()=>resolve(false));
 });}
-function free(port){return new Promise(resolve=>{const s=net.createServer();s.once('error',()=>resolve(false));s.listen(port,'127.0.0.1',()=>s.close(()=>resolve(true)));});}
+function free(port){return new Promise(resolve=>{const s=net.createServer();s.once('error',()=>resolve(false));s.listen(port,'0.0.0.0',()=>s.close(()=>resolve(true)));});}
 function openBrowser(url){
  if(noBrowser)return;
  const child=process.platform==='win32'
@@ -27,7 +30,7 @@ async function main(){
  const ports=Array.from({length:10},(_,i)=>firstPort+i);
  const running=await Promise.all(ports.map(probe));
  const existing=ports[running.indexOf(true)];
- if(existing){const url='http://127.0.0.1:'+existing;console.log('Local game already running: '+url);openBrowser(url);return;}
+ if(existing){const url='http://127.0.0.1:'+existing;console.log('Local game already running: '+url);console.log('Use the original launcher window: S then Enter creates an internet friend link.');for(const link of lanLinks(existing))console.log('Same Wi-Fi friend link: '+link);openBrowser(url);return;}
  // Validate the native SQLite binding too, not just node_modules.
  function dependencies(){
   for(const name of ['express','cors','ws','bcryptjs'])require(require.resolve(name,{paths:[backend]}));
@@ -46,13 +49,15 @@ async function main(){
  let port;for(const candidate of ports)if(await free(candidate)){port=candidate;break;}
  if(!port)throw new Error('Local ports '+firstPort+' through '+(firstPort+9)+' are busy. Close the other local servers and try again.');
  const dataDir=path.join(root,'.local-test');fs.mkdirSync(dataDir,{recursive:true});
- Object.assign(process.env,{PORT:String(port),HOST:'127.0.0.1',STATIC_DIR:root,GAME_JS:path.join(root,'js'),DB_PATH:path.join(dataDir,'game.db'),OWNERS:'aman,localtester',LOCAL_DEV_ID:localId});
+ Object.assign(process.env,{PORT:String(port),HOST:'0.0.0.0',STATIC_DIR:root,GAME_JS:path.join(root,'js'),DB_PATH:path.join(dataDir,'game.db'),OWNERS:'aman,localtester',LOCAL_DEV_ID:localId});
  const url='http://127.0.0.1:'+port;
  console.log('\nNEIGHBORHOOD - LOCAL PLAY\n');
  console.log('Game: '+url+'\nSave: '+path.join(dataDir,'game.db'));
  console.log('Aman and localtester always have owner tools on this local server.');
  console.log('This save and account are separate from your VM.');
- console.log('Keep this window open. Press Q then Enter to save and stop.\n');
+ for(const link of lanLinks(port))console.log('Same Wi-Fi friend link: '+link);
+ console.log('For a friend elsewhere: press S then Enter for an internet join link.');
+ console.log('Keep this window open. Q then Enter saves and stops; X stops internet sharing.\n');
  // The server runs in THIS process; there is no hidden child server to orphan.
  require(path.join(backend,'server.js'));
  let ready=false;
@@ -60,6 +65,11 @@ async function main(){
  if(!ready){process.emit('SIGINT');throw new Error('Local server did not become ready.');}
  console.log('Ready! Refresh the browser after client edits; stop and relaunch after server edits.');
  openBrowser(url);
- process.stdin.setEncoding('utf8');process.stdin.on('data',text=>{if(text.trim().toLowerCase()==='q')process.emit('SIGINT');});
+ const share=createShare({root,url});
+ process.once('exit',()=>share.stop());
+ process.once('SIGINT',()=>share.stop());
+ process.once('SIGTERM',()=>share.stop());
+ process.stdin.setEncoding('utf8');process.stdin.on('data',text=>{const key=text.trim().toLowerCase();if(key==='q'){share.stop();process.emit('SIGINT');}else if(key==='s')share.start();else if(key==='x')share.stop();});
+ if(process.argv.includes('--share'))share.start();
 }
 main().catch(e=>{console.error('\nCould not start local play: '+e.message);process.exitCode=1;});

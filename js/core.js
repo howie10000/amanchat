@@ -141,7 +141,7 @@ canvas.addEventListener("mousemove", e => {
   }
 });
 canvas.addEventListener("mousedown", e => {
-  if (e.button === 2) { state.mouse.rdown = true; onRightClick(); return; }
+  if (e.button === 2) { state.mouse.rdown = true; if(!window.FirstPerson || !FirstPerson.active() || e.shiftKey) onRightClick(); return; }
   state.mouse.down = true;
   onLeftClick();
 });
@@ -154,8 +154,8 @@ canvas.addEventListener("mouseup", e => {
 });
 canvas.addEventListener("contextmenu", e => e.preventDefault());
 
-function worldMouseX() { return state.mouse.x + state.cam.x; }
-function worldMouseY() { return state.mouse.y + state.cam.y; }
+function worldMouseX() { if(window.FirstPerson && FirstPerson.active()) return FirstPerson.aim().x; return state.mouse.x + state.cam.x; }
+function worldMouseY() { if(window.FirstPerson && FirstPerson.active()) return FirstPerson.aim().y; return state.mouse.y + state.cam.y; }
 
 // LOGIN
 document.getElementById("btnLogin").onclick = () => doAuth(false);
@@ -402,7 +402,7 @@ function isMuted() {
 
 // TUTORIAL
 const TUT = [
-  "Welcome to NEIGHBORHOOD! This is your house. Use WASD or arrow keys to walk around.",
+  "Welcome to NEIGHBORHOOD! This is your house. Use WASD; hold right mouse or use arrows to look to walk around.",
   "Press <b>I</b> for inventory — buy furniture from the store, then place it here.",
   "Press <b>Build Mode</b> (top-right) to drag furniture around. Right-click to pick up.",
   "Press <b>ESC</b> to leave your house. Walk around town and press <b>E</b> at any building, doorway or glowing pad to enter or use it.",

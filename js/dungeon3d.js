@@ -2236,5 +2236,15 @@
     return glCanvas;
   }
 
-  window.DungeonGL = { render, available: () => !dead };
+  // Gameplay owns this independent model; no cutscene camera or renderer is
+  // initialized, and disposal cannot invalidate an active cinematic rig.
+  function createModel(id,color,accent) {
+    const root=new THREE.Group(),shell=new THREE.Group();root.add(shell);
+    const body=new THREE.MeshStandardMaterial({color:color||'#65596b',roughness:.8});
+    const trim=new THREE.MeshStandardMaterial({color:accent||'#ffc976',emissive:accent||'#ffc976',emissiveIntensity:.25});
+    const builder=id==='dragon'?buildDragon:(BUILDERS[id]||buildTyrant);
+    builder(root,shell,body,trim,accent||'#ffc976');
+    root.userData.ownedMaterials=[body,trim];return root;
+  }
+  window.DungeonGL = { render, createModel, available: () => !dead };
 })();

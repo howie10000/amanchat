@@ -166,8 +166,8 @@ new MutationObserver(() => {
 function openHelp() {
   uiPanel("CONTROLS & GUIDE", `
     <h3 class="section">MOVEMENT</h3>
-    <div>WASD or Arrow keys — walk around</div>
-    <div>Left click or SPACE — attack toward the cursor (1 sword, 2 pistol)</div>
+    <div>WASD — move relative to your view. Hold right mouse or use arrows to look.</div>
+    <div>Left click or SPACE — attack toward the crosshair (1 sword, 2 pistol)</div>
     <div>E — interact / enter / use station</div>
     <div>M — town map &amp; directions (guides you to any place or person)</div>
     <div>ESC — close menu / clear route / leave building</div>
@@ -231,6 +231,7 @@ window.doEmote = (id) => {
 
 // ---------- Key handling ----------
 function handleKey(e) {
+  if(state.area === "sea") { gameSea.key(e); return; }
   const k = e.key.toLowerCase();
   // Chat input focused?
   if (document.activeElement === document.getElementById("chatBox")) {
@@ -325,6 +326,7 @@ function attackAtCursor() {
   else if (state.area === "neighborhood") { if (window.gameLake && gameLake.fightActive()) gameLake.attack(); }
 }
 function onLeftClick() {
+  if(state.area === "sea") { gameSea.act("fire"); return; }
   if (state.area === "interior_home") {
     if (state.placeMode) placeFurnitureAtMouse();
     else if (state.buildMode) tryGrabFurniture();
@@ -333,6 +335,7 @@ function onLeftClick() {
   attackAtCursor();
 }
 function onRightClick() {
+  if(state.area === "sea") return;
   if (state.buildMode && state.area === "interior_home") {
     // Pick up furniture into inventory
     const idx = furnitureUnderMouse();
@@ -468,7 +471,7 @@ function placeFurnitureAtMouse() {
 function tryInteract() {
   if (state.area === "neighborhood") {
     const b = gameWorld.buildingAtPlayer();
-    if (b) return gameInteriors.enterBuilding(b);
+    if (b) return b.type === "shipwright" ? gameSea.harbor() : gameInteriors.enterBuilding(b);
     const u = gameWorld.houseAtPlayer();
     if (u) {
       if (u === state.user) gameInteriors.enterOwnHome(false);
@@ -488,7 +491,8 @@ function tryInteract() {
 
 // ---------- Outdoor activity dispatch (fishing / basketball / notice board) ----------
 function triggerActivity(type) {
-  if (type === "fishing")     gameOutdoor.openFishing();
+  if (type === "shipwright") gameSea.harbor();
+  else if (type === "fishing")     gameOutdoor.openFishing();
   else if (type === "basketball") gameOutdoor.openBasketball();
   else if (type === "leaderboard") gameOutdoor.openLeaderboard();
   else if (type === "cooking") gameFarm.openCooking("lake");
@@ -669,6 +673,7 @@ function drawCatalogPreviews() {
     const c = cv.getContext("2d");
     c.clearRect(0, 0, cv.width, cv.height);
     const def = FURNITURE_CATALOG[cv.dataset.id]; if (!def) return;
+    if(window.Activity3D)return Activity3D.draw(cv,"furniture",{id:def.id});
     const scale = Math.min((cv.width - 12) / def.w, (cv.height - 12) / def.h, 1.2);
     c.save();
     c.translate(cv.width/2, cv.height/2);
@@ -1235,6 +1240,7 @@ function openBarber() {
   function refresh() {
     const cv = document.getElementById("barberPreview");
     const c = cv.getContext("2d");
+    if(window.Activity3D)Activity3D.draw(cv,"avatar",{appearance:a});else {
     c.fillStyle = "#1f2735"; c.fillRect(0, 0, cv.width, cv.height);
     c.save(); c.translate(100, 130); c.scale(3.5, 3.5);
     GFX.drawCharacter(c, 0, 0, a, { facing: "down" });
@@ -1242,6 +1248,7 @@ function openBarber() {
     c.save(); c.translate(100, 30); c.scale(1.6, 1.6);
     GFX.drawNameAndBubble(c, 0, 26, state.user, null, true, a, state.role);
     c.restore();
+    }
     // Sync selected highlights
     document.querySelectorAll(".swatch").forEach(el => {
       el.classList.toggle("selected", a[el.dataset.key] === el.dataset.val);
@@ -1259,6 +1266,7 @@ function openBarber() {
     const key = cv.dataset.cos, id = cv.dataset.id;
     const c = cv.getContext("2d");
     const dummy = Object.assign({}, GFX.DEFAULT_APPEARANCE, { hair: "short", [key]: id, hatColor: a.hatColor });
+    if(window.Activity3D)return Activity3D.draw(cv,"avatar",{appearance:dummy});
     c.save(); c.translate(48, 30); c.scale(1.5, 1.5);
     GFX.drawCharacter(c, 0, 0, dummy, { facing: "down" });
     c.restore();
@@ -1940,8 +1948,10 @@ async function renderMyBugReports() {
 
 // ---------- MAIN UPDATE ----------
 function update() {
+  if(window.FirstPerson) FirstPerson.updateAim();
   if (state.attackCooldown > 0) state.attackCooldown--;
 
+  if (state.area === "sea") { gameSea.update(); return; }
   if (state.area === "dungeon") { gameCombat.updateDungeon(); return; }
   if (state.area === "duel") { gameCombat.updateDuel(); return; }
 
@@ -1960,10 +1970,11 @@ function update() {
 
   if (!inputBlocked) {
     let dx = 0, dy = 0;
-    if (keys["w"] || keys["arrowup"]) dy -= 1;
-    if (keys["s"] || keys["arrowdown"]) dy += 1;
-    if (keys["a"] || keys["arrowleft"]) dx -= 1;
-    if (keys["d"] || keys["arrowright"]) dx += 1;
+    if (keys["w"]) dy -= 1;
+    if (keys["s"]) dy += 1;
+    if (keys["a"]) dx -= 1;
+    if (keys["d"]) dx += 1;
+    if(window.FirstPerson) ({dx,dy}=FirstPerson.movement(dx,dy));
     const m = Math.hypot(dx, dy) || 1;
     const speed = WALK_SPEED; // shared walking speed (core.js), per 60Hz tick
     if (m > 0.001 && (dx || dy)) {
@@ -2020,8 +2031,10 @@ function update() {
 
 // ---------- DRAW ----------
 function draw() {
+  if(window.FirstPerson && FirstPerson.draw()) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  if (state.area === "neighborhood") gameWorld.drawNeighborhood();
+  if (state.area === "sea") gameSea.draw();
+  else if (state.area === "neighborhood") gameWorld.drawNeighborhood();
   else if (state.area.startsWith("interior_")) gameInteriors.drawInterior();
   else if (state.area === "dungeon") gameCombat.drawDungeon();
   else if (state.area === "duel") gameCombat.drawDuel();

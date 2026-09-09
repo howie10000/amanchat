@@ -14,6 +14,8 @@ const WORLD_W = 4400, WORLD_H = 3400;
 // Mayor's Avenue (a clear path from main street up to Town Hall)
 const MAYOR_AVE = { x: 2100, w: 200, top: 80, bottom: 520 };
 
+const HARBOR = { x: 4050, y: 660, w: 350, h: 650 };
+const SEA_DOCK = { x: 4230, y: 1120, r: 65 };
 const BUILDINGS = [
   // Town Hall — top center, with grand staircase
   { x: 2080, y: 60, w: 240, h: 200, type: "mayor", label: "TOWN HALL",
@@ -40,6 +42,7 @@ const BUILDINGS = [
   // The FARM barn — in the activity band between the pond and the stage. Its
   // interior is your own personal farm (seed stall, 12 beds, a cooking pot).
   { x: 1180, y: 1450, w: 250, h: 180, type: "farm", label: "FARM", color: "#b91c1c", roofColor: "#3f2210", signColor: "#fde68a" },
+  { x: 3760, y: 860, w: 240, h: 180, type: "shipwright", label: "SHIPWRIGHT", color: "#245568", roofColor: "#283c48", signColor: "#f2d390" },
 ];
 
 function mulberry32(a){return function(){var t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296;}}
@@ -81,6 +84,7 @@ const BALL_SPOT = { x: COURT.x + COURT.w/2, y: COURT.y + COURT.h/2, r: 90 };
 const NOTICE = { x: 2262, y: 1318, w: 100, h: 82 };
 const NOTICE_SPOT = { x: NOTICE.x + NOTICE.w/2, y: NOTICE.y + NOTICE.h + 30, r: 74 };
 const ACTIVITY_SPOTS = [
+  { spot: SEA_DOCK, type: "shipwright", label: "SHIPWRIGHT / SET SAIL" },
   { spot: FISH_SPOT,   type: "fishing",     label: "GO FISHING" },
   { spot: COOK_SPOT,   type: "cooking",     label: "USE THE COOKING POT" },
   { spot: BALL_SPOT,   type: "basketball",  label: "SHOOT HOOPS" },
@@ -169,6 +173,7 @@ const SIGNPOSTS = [
   // East end of Main Street, past Town Plaza.
   { x: 3720, y: 495, arms: [
       { text: "← GUILD · JOBS · PLAZA", dir: 0 },
+      { text: "SHIPWRIGHT & DOCK ↓", dir: 0 },
       { text: "PARK & HOMES ↓", dir: 0 } ] },
   // Where the park meets the activity band.
   // Offset west of the notice board (x 2262-2362) so they don't stack.
@@ -290,6 +295,7 @@ function inAnyHouseLot(x, y) {
   return false;
 }
 function inGreenSpace(x, y) {
+  if (x > 3690 && y > 600 && y < 1350) return false;
   if (inBuilding(x, y) || onRoad(x, y) || inPark(x, y) || inMayorAvenue(x, y) || inAnyHouseLot(x, y)) return false;
   // activity band clearances (widened so trees don't crowd the walkable rim)
   if (inEllipse(x, y, POND.x, POND.y, POND.rx + 56, POND.ry + 56)) return false;
@@ -331,6 +337,7 @@ function onRoad(x, y) {
 
 // Main collision
 function collidesNeighborhood(nx, ny) {
+  if (nx > HARBOR.x - 10 && ny > HARBOR.y - 10 && ny < HARBOR.y + HARBOR.h + 10 && !(nx < 4290 && ny > 1086 && ny < 1154)) return true;
   const mayor = BUILDINGS[0];
   if (nx > mayor.x && nx < mayor.x + mayor.w && ny > mayor.y + 24 && ny < mayor.y + mayor.h - 4) {
     const dxL = mayor.x + mayor.w/2 - 60, dxR = mayor.x + mayor.w/2 + 60;
@@ -547,6 +554,30 @@ const DECOR = (function () {
 // =====================================================================
 //  MAIN DRAW
 // =====================================================================
+function drawSeaHarbor() {
+  const beach=ctx.createLinearGradient(3700,0,4050,0);beach.addColorStop(0,'#8e9773');beach.addColorStop(.7,'#c5b991');beach.addColorStop(1,'#e4d4a7');ctx.fillStyle=beach;ctx.fillRect(3700,620,350,700);
+  ctx.fillStyle='#aaa49a';ctx.fillRect(3700,580,60,570);ctx.fillRect(3730,1080,330,80);ctx.fillRect(3840,1040,80,80);
+  const ocean=ctx.createLinearGradient(4050,0,4400,0);ocean.addColorStop(0,'#398e9b');ocean.addColorStop(.3,'#24687c');ocean.addColorStop(1,'#122f4c');ctx.fillStyle=ocean;ctx.fillRect(HARBOR.x,HARBOR.y,HARBOR.w,HARBOR.h);ctx.fillStyle='rgba(230,241,215,.4)';ctx.fillRect(4050,660,8,650);
+  ctx.strokeStyle='rgba(164,225,235,.25)';ctx.lineWidth=2;
+  const t=Date.now()/800;for(let y=690;y<1310;y+=34)for(let x=4070;x<4400;x+=70){ctx.beginPath();ctx.moveTo(x,y);ctx.quadraticCurveTo(x+20,y+Math.sin(t+x)*6,x+40,y);ctx.stroke();}
+  ctx.fillStyle='#987047';ctx.fillRect(3990,1070,310,100);
+  ctx.strokeStyle='#5c422d';for(let x=3990;x<4300;x+=18){ctx.beginPath();ctx.moveTo(x,1070);ctx.lineTo(x,1170);ctx.stroke();}
+  for(let x=4000;x<=4290;x+=72)for(const y of [1074,1166]){ctx.fillStyle='#473828';ctx.fillRect(x-5,y-7,10,14);}
+  ctx.save();ctx.translate(4200,1220);ctx.fillStyle='rgba(3,20,31,.4)';ctx.beginPath();ctx.ellipse(3,10,91,30,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#543d2e';ctx.beginPath();ctx.moveTo(-80,-23);ctx.lineTo(45,-26);ctx.quadraticCurveTo(78,-18,90,0);ctx.quadraticCurveTo(78,18,45,26);ctx.lineTo(-80,23);ctx.closePath();ctx.fill();ctx.strokeStyle='#d1ac6b';ctx.lineWidth=4;ctx.stroke();ctx.strokeStyle='#9e7c51';ctx.lineWidth=1;for(let y=-15;y<=15;y+=6){ctx.beginPath();ctx.moveTo(-74,y);ctx.lineTo(59,y);ctx.stroke();}ctx.fillStyle='#583c29';ctx.fillRect(-20,-88,5,104);ctx.strokeStyle='#cbb98a';for(const x of [-74,65]){ctx.beginPath();ctx.moveTo(-17,-86);ctx.lineTo(x,0);ctx.stroke();}const sail=ctx.createLinearGradient(-16,0,40,0);sail.addColorStop(0,'#c2b18b');sail.addColorStop(.5,'#fff0c8');sail.addColorStop(1,'#d6c29a');ctx.fillStyle=sail;ctx.beginPath();ctx.moveTo(-13,-82);ctx.quadraticCurveTo(35,-54,48,-9);ctx.quadraticCurveTo(8,-19,-13,-9);ctx.closePath();ctx.fill();ctx.fillStyle='#bca05d';ctx.fillRect(-17,-92,31,10);ctx.restore();
+ for(const [x,y] of [[4010,1000],[4010,1280],[3778,760]]){ctx.fillStyle='#614b33';ctx.fillRect(x-13,y-22,26,26);ctx.strokeStyle='#c3a271';ctx.lineWidth=2;ctx.strokeRect(x-13,y-22,26,26);ctx.beginPath();ctx.moveTo(x-12,y-21);ctx.lineTo(x+12,y+3);ctx.stroke();}
+ for(const [x,y] of [[4000,1080],[4290,1080],[4290,1160]]){const glow=ctx.createRadialGradient(x,y-26,0,x,y-26,45);glow.addColorStop(0,'rgba(255,213,113,.35)');glow.addColorStop(1,'rgba(255,213,113,0)');ctx.fillStyle=glow;ctx.fillRect(x-45,y-71,90,90);ctx.fillStyle='#273640';ctx.fillRect(x-3,y-30,6,36);ctx.fillRect(x-8,y-44,16,18);ctx.fillStyle='#ffe0a0';ctx.fillRect(x-5,y-41,10,12);}
+
+  ctx.fillStyle='#f4ddb0';ctx.font='bold 22px Georgia';ctx.textAlign='center';ctx.fillText('THE DARK SEA',4220,735);
+  ctx.fillStyle='#243845';ctx.font='bold 15px Georgia';ctx.fillText('HARBOR ↓',3830,650);
+}
+
+function drawShipwrightDetail(b){
+ ctx.save();ctx.fillStyle='rgba(14,29,27,.23)';ctx.beginPath();ctx.ellipse(b.x+b.w/2,b.y+b.h,b.w*.6,16,0,0,Math.PI*2);ctx.fill();const wall=ctx.createLinearGradient(b.x,0,b.x+b.w,0);wall.addColorStop(0,'#224758');wall.addColorStop(.5,'#326174');wall.addColorStop(1,'#1c3b4e');ctx.fillStyle=wall;ctx.fillRect(b.x,b.y+22,b.w,b.h-22);ctx.fillStyle='#bfbbae';ctx.fillRect(b.x+b.w/2-38,b.y+b.h,76,18);ctx.fillStyle='#592f21';ctx.fillRect(b.x+b.w/2-23,b.y+b.h-47,46,47);ctx.fillStyle='#d4b878';ctx.fillRect(b.x+b.w/2+13,b.y+b.h-24,3,4);const roof=ctx.createLinearGradient(0,b.y-18,0,b.y+30);roof.addColorStop(0,'#183e50');roof.addColorStop(1,'#4f7680');ctx.fillStyle=roof;ctx.beginPath();ctx.moveTo(b.x-12,b.y+25);ctx.lineTo(b.x+b.w/2,b.y-28);ctx.lineTo(b.x+b.w+12,b.y+25);ctx.closePath();ctx.fill();ctx.strokeStyle='#8aabad';ctx.lineWidth=1;for(let y=0;y<22;y+=7){ctx.beginPath();ctx.moveTo(b.x+12,b.y+y);ctx.lineTo(b.x+b.w-12,b.y+y);ctx.stroke();}
+ ctx.strokeStyle='rgba(10,29,37,.35)';for(let y=b.y+42;y<b.y+b.h-8;y+=12){ctx.beginPath();ctx.moveTo(b.x+4,y);ctx.lineTo(b.x+b.w-4,y);ctx.stroke();}
+ for(const x of [b.x+7,b.x+b.w-15]){ctx.fillStyle='#a48a60';ctx.fillRect(x,b.y+28,8,b.h-28);}ctx.fillStyle='#102b39';ctx.fillRect(b.x+35,b.y+65,b.w-70,34);ctx.strokeStyle='#d5b477';ctx.strokeRect(b.x+35,b.y+65,b.w-70,34);ctx.fillStyle='#f7dfac';ctx.font='bold 17px Georgia';ctx.textAlign='center';ctx.fillText('SHIPWRIGHT',b.x+b.w/2,b.y+87);
+ ctx.fillStyle='#cab78f';ctx.font='11px Georgia';ctx.fillText('VESSELS · CREWS · REFITS',b.x+b.w/2,b.y+119);for(const x of [b.x+21,b.x+b.w-53]){ctx.fillStyle='#152c35';ctx.fillRect(x,b.y+39,34,34);ctx.fillStyle='#eddca4';ctx.fillRect(x+3,b.y+42,28,28);ctx.strokeStyle='#856d48';ctx.beginPath();ctx.moveTo(x+17,b.y+42);ctx.lineTo(x+17,b.y+70);ctx.moveTo(x+3,b.y+56);ctx.lineTo(x+31,b.y+56);ctx.stroke();}ctx.restore();
+}
+
 function drawNeighborhood() {
   _syncCam();
   ctx.fillStyle = "#3f6212"; ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -578,6 +609,7 @@ function drawNeighborhood() {
   drawCourt();
   drawAmphitheater();
   drawNoticeBoard();
+  drawSeaHarbor();
   drawActivityRings();
 
   // ---- props ----
@@ -588,7 +620,7 @@ function drawNeighborhood() {
   for (const l of DECOR.lamps) if (onScreen(l.x, l.y, 80)) drawLamp(l.x, l.y);
   drawMayorArch();
 
-  for (const b of BUILDINGS) GFX.drawBuildingBox(ctx, b);
+  for (const b of BUILDINGS) {if(b.type==='shipwright')drawShipwrightDetail(b);else GFX.drawBuildingBox(ctx, b);}
 
   const users = onlineHouseUsers();
   for (const [u, info] of Object.entries(users)) {
@@ -742,6 +774,11 @@ function drawMinimap() {
   ctx.fillRect(ox + COURT.x * sx, oy + COURT.y * sy, COURT.w * sx, COURT.h * sy);
   ctx.fillStyle = "#a8a29e";
   ctx.beginPath(); ctx.arc(ox + STAGE.x * sx, oy + STAGE.y * sy, 2.5, 0, Math.PI*2); ctx.fill();
+
+  ctx.fillStyle = "#247c9b";
+  ctx.fillRect(ox + HARBOR.x*sx, oy + HARBOR.y*sy, HARBOR.w*sx, HARBOR.h*sy);
+  ctx.fillStyle = "#d4b478";
+  ctx.fillRect(ox + 3990*sx, oy + 1070*sy, 310*sx, 100*sy);
 
   // buildings — Vegas gets a bigger, brighter dot
   for (const b of BUILDINGS) {

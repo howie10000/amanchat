@@ -1,3 +1,7 @@
+# The Dark Sea
+
+Sailing, island loot, pirate ships, Great Krakens and Shipwright progression are now available. See [the update guide](docs/DARK-SEA.md).
+
 # One-click local testing
 
 On Windows, double-click **PLAY LOCALLY.cmd**. See [LOCAL PLAY.md](LOCAL%20PLAY.md) for local accounts, saved progress and stopping the server.

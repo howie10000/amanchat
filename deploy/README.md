@@ -1,3 +1,5 @@
+> **The Dark Sea requires the Node backend.** The Go deployment guide below is historical and does not support the new sea RPC. Use `server-node/README.md` and `docs/DARK-SEA.md` for this update.
+
 # Deploying northpvp.net (backend only)
 
 **Architecture**

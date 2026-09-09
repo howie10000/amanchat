@@ -51,7 +51,7 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.get('/healthz', (req, res) => res.type('text/plain').send('ok'));
 // Local launcher identity; never enabled by a normal VM startup.
-if (process.env.LOCAL_DEV_ID && process.env.HOST === '127.0.0.1') {
+if (process.env.LOCAL_DEV_ID) {
     app.get('/__local/health', (req, res) => res.json({ id: process.env.LOCAL_DEV_ID }));
 }
 app.use(express.static(STATIC_DIR));
@@ -626,7 +626,7 @@ function setUser(c, user) {
 
 function removeClient(c) {
     clients.delete(c);
-    if (c.user && byUser.get(c.user) === c) byUser.delete(c.user);
+    if (c.user && byUser.get(c.user) === c) { seaService.disconnect(c.user); byUser.delete(c.user); }
 }
 
 function pushTo(user, msg) {
@@ -795,7 +795,7 @@ setInterval(syncRoster, 2000);
 // Fields of users/<me> a player may never write directly: every change to
 // them goes through an op below (bank/buy/earn/fish/casino/furniture_set) or
 // a server-side settlement. Staff editing OTHER players keep their powers.
-const PROTECTED_FIELDS = new Set(['money', 'inventory', 'cosmetics', 'vegasFloor', 'dailyStreak', 'lastDaily',
+const PROTECTED_FIELDS = new Set(['sea', 'money', 'inventory', 'cosmetics', 'vegasFloor', 'dailyStreak', 'lastDaily',
     'lastInterest', 'fishInventory', 'houseStyle', 'furniture', 'houseIndex', 'createdAt',
     'bankBalance', 'bankLast', 'creditScore', 'creditGainLast', 'loan', 'notes',
     'farm', 'meals', 'luck', 'gear', 'equipped']);
@@ -1228,6 +1228,12 @@ wss.on('connection', (ws, req) => {
     const fwd = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
     const ip = fwd || req.headers['x-real-ip'] || (req.socket && req.socket.remoteAddress) || '';
     const c = new Client(ws, ip);
+    // A shared local server must not let a visitor claim an unregistered
+    // reserved owner name. Existing owner accounts can still log in normally.
+    const socketIp = (req.socket && req.socket.remoteAddress) || '';
+    c.localHost = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(socketIp) &&
+        !req.headers['x-forwarded-for'] && !req.headers['x-real-ip'] &&
+        /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host || '');
     clients.add(c);
 
     const pingInterval = setInterval(() => {
@@ -1264,6 +1270,9 @@ function handleMessage(c, msg) {
             let user = (msg.user || '').trim().toLowerCase();
             const pass = msg.pass || '';
             const register = !!msg.register;
+            if (register && process.env.LOCAL_DEV_ID && isStaff(user) && !c.localHost) {
+                return replyErr('Create owner accounts on the hosting computer using localhost.');
+            }
             if (user.length < 2 || user.length > 16 || pass.length < 3) {
                 return replyErr('invalid credentials');
             }
@@ -1527,7 +1536,7 @@ function handleMessage(c, msg) {
 
         // ----- server-authoritative economy ops (docs/SERVER-AUTHORITY.md) -----
         case 'bank': case 'buy': case 'furniture_set': case 'earn': case 'fish': case 'casino': case 'home': case 'treasury':
-        case 'farm': case 'cook': case 'kraken': case 'guild': case 'mastery': case 'guild_dungeon': case 'gear': {
+        case 'sea': case 'farm': case 'cook': case 'kraken': case 'guild': case 'mastery': case 'guild_dungeon': case 'gear': {
             if (!c.user) return replyErr('not authed');
             let out;
             try { out = ECONOMY_OPS[op](c.user, msg); }
@@ -2450,7 +2459,13 @@ function guildBossTick() {
 }
 setInterval(guildBossTick, 250);
 
+const SEA_RULES = require(path.join(JS_DIR, 'shared', 'sea.js'));
+const seaService = require('./sea.js')({rules:SEA_RULES,getUser:userRec,
+    save:(user,value)=>store.put('users/'+user+'/sea',value),
+    pay:(user,amount)=>{const u=userRec(user);return setMoney(user,u,moneyOf(u)-amount);}});
+const seaTimer=setInterval(()=>seaService.tick(),100);seaTimer.unref();
 const ECONOMY_OPS = {
+    sea(user,msg) { return seaService.handle(user,msg); },
     bank(user, msg) {
         const u = userRec(user), now = Date.now();
         const sync = bankSync(user, u, now);

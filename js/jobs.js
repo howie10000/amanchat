@@ -84,6 +84,7 @@ function runPizzaGame() {
         dead = true; finish(); return;
       }
     }
+    if(window.Activity3D)Activity3D.draw(cv,'pizza',{py,cars});else {
     // draw
     c.fillStyle = "#1f2937"; c.fillRect(0, 0, 540, 280);
     // road lines
@@ -100,6 +101,7 @@ function runPizzaGame() {
     c.fillStyle = "#fcd34d"; c.fillRect(48, py - 6, 24, 12);
     c.fillStyle = "#0a0a0a"; c.beginPath(); c.arc(54, py + 8, 5, 0, Math.PI*2); c.arc(72, py + 8, 5, 0, Math.PI*2); c.fill();
     c.fillStyle = "#dc2626"; c.fillRect(40, py - 16, 32, 12); // pizza box
+    }
     raf = requestAnimationFrame(step);
   }
   function finish() {
@@ -202,8 +204,9 @@ function runWhack() {
   let raf;
   cv.onclick = e => {
     const r = cv.getBoundingClientRect();
-    const mx = (e.clientX - r.left) * (cv.width / r.width);
-    const my = (e.clientY - r.top) * (cv.height / r.height);
+    const pick=cv._pick3d?cv._pick3d(e):-1;
+    const mx = cv._pick3d?(holes[pick]?.x??-1000):(e.clientX - r.left) * (cv.width / r.width);
+    const my = cv._pick3d?(holes[pick]?.y??-1000):(e.clientY - r.top) * (cv.height / r.height);
     for (const h of holes) {
       if (h.mole > 0 && Math.hypot(mx - h.x, my - h.y) < 28) {
         h.mole = 0;
@@ -228,6 +231,7 @@ function runWhack() {
       if (empty.length) empty[Math.floor(Math.random()*empty.length)].mole = 60 + Math.random() * 30;
     }
     holes.forEach(h => { if (h.mole > 0) h.mole -= fu; });
+    if(window.Activity3D)Activity3D.draw(cv,'whack',{holes});else {
     // draw
     c.fillStyle = "#15803d"; c.fillRect(0, 0, 540, 320);
     for (const h of holes) {
@@ -242,6 +246,7 @@ function runWhack() {
         c.fillStyle = "#fda4af";
         c.beginPath(); c.arc(h.x, h.y - 5, 3, 0, Math.PI*2); c.fill();
       }
+    }
     }
     raf = requestAnimationFrame(step);
   }

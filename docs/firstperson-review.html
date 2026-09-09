@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>First-person review</title><style>body{margin:0;background:#111827;color:#fff;font:14px sans-serif}header{padding:10px}button{padding:8px;margin:3px}iframe{width:100%;height:850px;border:0}</style><header><b>First-person review · isolated presentation, no account or saves</b><div id="controls"></div><span id="result">Loading</span></header><iframe id="gameFrame" src="../index.html"></iframe><script>
+const frame=document.getElementById('gameFrame');
+frame.onload=()=>{const w=frame.contentWindow;
+w.eval(`document.getElementById('loginScreen').classList.add('hidden');document.getElementById('gameScreen').classList.remove('hidden');state.data={inventory:{},furniture:[]};state._userCache={preview:{houseIndex:0}};state.appearance={};state.others={visitor:{area:'neighborhood',x:2200,y:650,appearance:{hat:'wizard',accessory:'scarf',aura:'fire',pet:'dragon'}}};`);
+for(const mode of ['neighborhood','interior_home','interior_casino','dungeon','boss','cosmetics','fishing','basketball','cards','dice','roulette','fortune','coin','plinko','crash','race','avatar','furniture','pizza','whack']){const b=document.createElement('button');b.textContent=mode;b.onclick=()=>show(mode);document.getElementById('controls').append(b);}
+function show(mode){try{w.eval(`state.enemies=[];state.dungeon=null;state.area=${JSON.stringify(mode)};state.pos={x:512,y:500};state.interiorFurniture=[];
+if(state.area==='neighborhood')state.pos={x:2200,y:800};
+if(state.area==='interior_home')state.interiorFurniture=FURNITURE_LIST.slice(0,5).map((f,i)=>({id:f.id,x:200+i*130,y:250}));
+if(state.area==='dungeon'){const plan=DUNGEON.buildExpedition(123,{tier:1,hpMult:1,speedMult:1});state.dungeon={continuous:true,world:plan,walls:plan.walls};state.pos={...plan.spawn};state.enemies=plan.enemies;}
+if(state.area==='boss'){state.area='dungeon';state.dungeon={bossRoom:true,boss:{id:'dragon',status:'alive'},walls:[],bossAttacks:[]};state.pos={x:512,y:580};}
+if(state.area==='cosmetics'){state.area='interior_home';state.others={visitor:{area:'inside:null',interiorOf:null,x:512,y:390,appearance:{hat:'wizard',accessory:'scarf',aura:'fire',pet:'dragon'}}};}
+if(['fishing','basketball','cards','dice','roulette','fortune','coin','plinko','crash','race','avatar','furniture','pizza','whack'].includes(${JSON.stringify(mode)}))Activity3D.draw(canvas,${JSON.stringify(mode)},{cards:['A ♠','K ♥','7 ♦','HOLD'],state:'bite',t:1,dice:[{face:6},{face:4}],progress:[.3,.6,.2,.9],mult:2.5,holes:[{x:260,y:150,mole:40}],py:140,cars:[{x:300,y:100,w:60,h:28}],id:FURNITURE_LIST.find(f=>f.kind==='piano').id,appearance:{hat:'crown',accessory:'chain',aura:'gold',pet:'cat'}});else FirstPerson.draw();`);document.getElementById('result').textContent=mode+' rendered';}catch(e){document.getElementById('result').textContent='FAIL: '+e.message;console.error(e);}}
+show('neighborhood');};
+</script>

@@ -388,11 +388,12 @@ function updateDungeon() {
   tickBuffs();
   // movement
   let dx = 0, dy = 0;
-  if (keys["w"] || keys["arrowup"])    dy -= 1;
-  if (keys["s"] || keys["arrowdown"])  dy += 1;
-  if (keys["a"] || keys["arrowleft"])  dx -= 1;
-  if (keys["d"] || keys["arrowright"]) dx += 1;
-  const m = Math.hypot(dx, dy) || 1;
+  if (keys["w"])    dy -= 1;
+  if (keys["s"])  dy += 1;
+  if (keys["a"])  dx -= 1;
+  if (keys["d"]) dx += 1;
+  if(window.FirstPerson) ({dx,dy}=FirstPerson.movement(dx,dy));
+    const m = Math.hypot(dx, dy) || 1;
   if (dx || dy) {
     const speed = WALK_SPEED * buffSpeedMult(); // Rage is what makes this fast
     const nx = state.pos.x + (dx/m) * speed;
@@ -1951,11 +1952,12 @@ if (window.NET) NET.on("duel", (m) => {
 
 function updateDuel() {
   let dx = 0, dy = 0;
-  if (keys["w"] || keys["arrowup"]) dy -= 1;
-  if (keys["s"] || keys["arrowdown"]) dy += 1;
-  if (keys["a"] || keys["arrowleft"]) dx -= 1;
-  if (keys["d"] || keys["arrowright"]) dx += 1;
-  const m = Math.hypot(dx, dy) || 1;
+  if (keys["w"]) dy -= 1;
+  if (keys["s"]) dy += 1;
+  if (keys["a"]) dx -= 1;
+  if (keys["d"]) dx += 1;
+  if(window.FirstPerson) ({dx,dy}=FirstPerson.movement(dx,dy));
+    const m = Math.hypot(dx, dy) || 1;
   if (m > 0 && (dx || dy)) {
     const speed = WALK_SPEED; // same walking speed as the overworld (core.js)
     state.pos.x += (dx/m) * speed; state.pos.y += (dy/m) * speed;

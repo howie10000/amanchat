@@ -1273,6 +1273,7 @@
 
   window.gameLake = {
     update, drawLake, drawLakeFx, drawScreen, drawMinimapMarker,
+    view3d: () => ({boss,attacks,bullets,cine,inkDark}),
     zoom: () => camZoom, shake: camShake, blocksInput, fightActive, attack, sync,
     playCatchCinematic, startKrakenCinematic,
     boss: () => boss, bossUp, inCinematic: () => !!cine, cutsceneActive: () => !!cine && cine.kind !== "catch",
