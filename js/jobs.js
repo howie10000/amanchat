@@ -29,6 +29,13 @@ function openPizzaJob() {
   `);
   runPizzaGame();
 }
+// The visible pizza box starts at x=40 and the front wheel ends at x=77.
+// Sweep traffic across its previous position so a long frame cannot skip a hit.
+function pizzaTrafficHit(py, car) {
+  return 40 < Math.max(car.x, car.previousX ?? car.x) + car.w &&
+    77 > Math.min(car.x, car.previousX ?? car.x) &&
+    py - 16 < car.y + car.h && py + 13 > car.y;
+}
 function runPizzaGame() {
   const cv = document.getElementById("pizzaCanvas"); if (!cv) return;
   const c = cv.getContext("2d");
@@ -74,13 +81,12 @@ function runPizzaGame() {
       left > 0 ? `Drop-off in ${left}s` : "Drop-off reached!";
     if (elapsed >= DELIVER_AT) { won = true; finish(); return; }
 
-    cars.forEach(c => c.x -= c.speed * fu);
+    cars.forEach(c => { c.previousX = c.x; c.x -= c.speed * fu; });
     cars = cars.filter(c => c.x > -80);
 
     // collisions
     for (const car of cars) {
-      if (60 < car.x + car.w && 60 + 32 > car.x &&
-          py - 16 < car.y + car.h && py + 16 > car.y) {
+      if (pizzaTrafficHit(py, car)) {
         dead = true; finish(); return;
       }
     }

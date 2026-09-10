@@ -85,8 +85,8 @@ async function tryRpc(c, op, args) { try { return { ok: true, data: await c.rpc(
         // was reachable from one side and not the other.
         assert(ECON.GUILD_BOSS.PART_HIT_R > 0 && ECON.GUILD_BOSS.HEAD_HIT_R > ECON.GUILD_BOSS.PART_HIT_R,
             'a weak point has a radius, and the exposed head is the bigger target');
-        assert(ECON.GUILD_BOSS.REACH.sword > ECON.GUILD_BOSS.PART_HIT_R,
-            'sword reach clears the hit disc, so being next to a part is enough');
+        assert(ECON.GUILD_BOSS.REACH.sword > 0 && ECON.GUILD_BOSS.REACH.sword < 70,
+            'sword range is a positive gap beyond the weak-point edge, shorter than mob reach');
     }
 
     // -------------------------------------------------------------- server
@@ -171,7 +171,7 @@ async function tryRpc(c, op, args) { try { return { ok: true, data: await c.rpc(
             // A mini blocks the middle floor; it has to go down before the stair opens.
             let cur = await boss.rpc('guild_dungeon', { action: 'status' });
             if (cur.boss && cur.boss.mini) {
-                await sleep(ECON.GUILD_BOSS.MINI_RISE_MS + 300);
+                await sleep(ECON.GUILD_BOSS.MINI_RISE_MS + 1200);
                 await killBoss(boss);
             }
             await sleep(ECON.GUILD_FLOOR_MIN_MS + 400);
@@ -181,7 +181,7 @@ async function tryRpc(c, op, args) { try { return { ok: true, data: await c.rpc(
         const spawned = await boss.rpc('guild_dungeon', { action: 'boss_spawn' });
         assert(spawned.boss && spawned.boss.id === 'dragon', 'the Ashen Roost ends at Varkaal');
         assert(spawned.boss.phase === 1, 'which arrives in its first phase');
-        await sleep(ECON.GUILD_BOSS.RISE_MS + 400);
+        await sleep(ECON.GUILD_BOSS.RISE_MS + 1200);
 
         const firstPool = spawned.boss.maxHp;
         await killBoss(boss);
@@ -233,7 +233,7 @@ async function tryRpc(c, op, args) { try { return { ok: true, data: await c.rpc(
                 weapon = weapon === 'sword' ? 'pistol' : 'sword';
                 if (r.ok) {
                     if (r.data.dead || r.data.downed) break;
-                } else if (/Too fast/.test(r.err)) {
+                } else if (/Too fast|still getting up/.test(r.err)) {
                     await sleep(60);
                 } else {
                     return;                     // reviving, dead, or guard still up

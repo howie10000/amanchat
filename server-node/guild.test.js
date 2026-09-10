@@ -332,7 +332,7 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
     r = await tryRpc(master, 'guild_dungeon', { action: 'boss_hit', part: 0, weapon: 'sword' });
     assert(!r.ok, 'the boss cannot be hit while it is still rising');
 
-    await sleep(ECON.GUILD_BOSS.RISE_MS + 400);
+    await sleep(ECON.GUILD_BOSS.RISE_MS + 1200);
     r = await tryRpc(master, 'guild_dungeon', { action: 'boss_hit', part: 'head', weapon: 'sword' });
     assert(!r.ok, 'the head is guarded until every weak point is down');
     r = await tryRpc(master, 'guild_dungeon', { action: 'boss_hit', part: 0, weapon: 'sword' });

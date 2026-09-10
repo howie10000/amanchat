@@ -8,7 +8,7 @@ function pack(result,msg){
  if(msg?.stream!==1||!result.voyage?.multiplayer)return result;
  const v=result.voyage,known=new Set(msg.islandRoom===v.room&&Array.isArray(msg.knownIslands)?msg.knownIslands.slice(0,16):[]);
  return{...result,voyage:{...v,entities:v.entities.map(e=>{
-  if(e.kind!=='island')return pick(e,['id','kind','name','ship','x','y','a','hp','maxHp','tier','attack','warning','target','deathAt','hitAt','siege','mortarTier','turnVelocity','playerShip']);
+  if(e.kind!=='island')return pick(e,['id','kind','name','ship','x','y','a','hp','maxHp','tier','attack','warning','target','deathAt','hitAt','siege','mortarTier','turnVelocity','playerShip','great','cinematic','arms','wreck','wreckUntil']);
   const chests=e.chests||[{id:e.id+':legacy',x:e.x,y:e.y,tier:e.tier||0,taken:e.looted,cave:null}];
   const state={looted:!!e.looted,taken:chests.map(c=>!!c.taken),recruited:(e.recruits||[e.recruit].filter(Boolean)).map(c=>!!c.recruited),guards:(e.guards||[]).map(g=>[round(g.x),round(g.y),g.hp,round(g.a||0),g.moving?1:0,g.attack||null,g.hitAt||0])};
   const out={id:e.id,kind:'island',islandState:state};

@@ -75,25 +75,25 @@ const SLOT_LINES = [
 ];
 const SLOT_LINE_SINGLE = [{ label: 'center line', cells: [[0, 0], [0, 1], [0, 2]] }];
 const SLOT_SYMBOLS = [
-    { sym: '7', weight: 1,  mult: 280 },
-    { sym: '★', weight: 3,  mult: 120 },
-    { sym: '♥', weight: 6,  mult: 60 },
-    { sym: '♦', weight: 8,  mult: 38 },
-    { sym: '♣', weight: 10, mult: 22 },
+    { sym: '7', weight: 1,  mult: 275 },
+    { sym: '★', weight: 3,  mult: 118 },
+    { sym: '♥', weight: 6,  mult: 59 },
+    { sym: '♦', weight: 8,  mult: 37 },
+    { sym: '♣', weight: 10, mult: 21.5 },
     // Blank — a clear "no win" tile. (Was a clover, which read as a prize when
     // three landed even though it never paid.)
-    { sym: '❌', weight: 14, mult: 0 },
+    { sym: '❌', weight: 14.25, mult: 0 },
 ];
 // MEGA JACKPOT — Egyptian symbols (Eye 0.25 / Ankh 0.75 / Scarab 1.25 /
 // Lotus 1.75, each x2 per line). Every symbol pays, winning lines ADD (not
 // multiply), so wins are
-// frequent but small — a full 3x3 board is the only true jackpot. Weights are
-// tuned a little tighter than that game so the house keeps an edge (~82% RTP).
+// frequent but small — a full 3x3 board is the only true jackpot. Weights
+// favor the 0.5x Eye more often; lines and the full-board bonus still add.
 // Stable ascii ids (the client renders these as pixel art, keyed by id).
 const JACKPOT_SYMBOLS = [
-    { sym: 'eye_h', weight: 44, mult: 0.5 },
-    { sym: 'ankh',  weight: 28, mult: 1.5 },
-    { sym: 'scarb', weight: 16, mult: 2.5 },
+    { sym: 'eye_h', weight: 48, mult: 0.5 },
+    { sym: 'ankh',  weight: 26, mult: 1.5 },
+    { sym: 'scarb', weight: 14, mult: 2.5 },
     { sym: 'lotus', weight: 8,  mult: 3.5 },
 ];
 const JACKPOT_FULLBOARD_MULT = 25; // flat bonus when all 9 cells match

@@ -20,7 +20,7 @@ module.exports = function(S) {
  }
  function tick(body,targets,time,onHit,emit){
   body.mortarShots=(body.mortarShots||[]).filter(p=>{if(time<p.impact)return true;
-   for(const target of targets){if(target.hp>0){const d=Math.hypot(target.x-p.tx,target.y-p.ty),r=target.kind==='kraken'?115:target.ship?S.hullRadius(target.ship)*.55:8;if(d<p.radius+r){target.hp=Math.max(0,target.hp-p.damage*Math.max(.3,1-d/(p.radius+r)));target.hitAt=time;target.aggroUntil=time+20000;onHit(target);}}}
+   for(const target of targets){if(target.hp>0&&time>=(target.protectedUntil||0)){const d=Math.hypot(target.x-p.tx,target.y-p.ty),r=target.kind==='kraken'?115:target.ship?S.hullRadius(target.ship)*.55:8;if(d<p.radius+r){const damage=Math.min(target.hp,p.damage*Math.max(.3,1-d/(p.radius+r)));target.hp=Math.max(0,target.hp-damage);target.hitAt=time;target.aggroUntil=time+20000;onHit(target,damage);}}}
    emit({kind:'mortarImpact',x:p.tx,y:p.ty,radius:p.radius,born:time,until:time+2200});return false;
   });
  }

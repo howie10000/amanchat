@@ -1,0 +1,16 @@
+'use strict';
+const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path'),furniture=require('./furniture');
+const source=fs.readFileSync(path.join(__dirname,'interiors.js'),'utf8'),env={...furniture,state:{area:'interior_home',pos:{x:500,y:300},interiorFurniture:[],buildMode:false},toast(){},console};
+vm.createContext(env);vm.runInContext(source.slice(source.indexOf('function collidesInterior'),source.indexOf('// The set of stations active')),env);
+const sofa=furniture.FURNITURE_LIST.find(d=>d.kind==='sofa'),tub=furniture.FURNITURE_LIST.find(d=>d.kind==='hottub'),f={id:sofa.id,x:500,y:300,rot:Math.PI/2};env.state.interiorFurniture=[f];
+assert(env.collidesInterior(500,300+sofa.w/2-1));assert(!env.collidesInterior(500+sofa.h/2+2,300));
+f.rot=Math.PI/4;const q={x:500+Math.cos(f.rot)*(sofa.w/2-1),y:300+Math.sin(f.rot)*(sofa.w/2-1)};assert(env.collidesInterior(q.x,q.y));
+env.state.pos={x:500,y:340};f.rot=0;assert(env.useHomeFurniture());assert.equal(env.state.homeUse.kind,'sit');assert.equal(env.state.pos.x,500);assert(env.leaveHomeFurniture());assert.equal(env.state.pos.y,340);
+const bath={id:tub.id,x:500,y:300,rot:Math.PI/2};env.state.interiorFurniture=[bath];env.state.pos={x:500,y:355};assert(env.useHomeFurniture());assert.equal(env.state.homeUse.kind,'swim');assert(!env.collidesInterior(500,300));
+env.state.pos={x:1000,y:1000};env.constrainHomeSwim();assert(Math.hypot(env.state.pos.x-500,env.state.pos.y-300)<=24.001);assert(env.leaveHomeFurniture());assert(!env.collidesInterior(env.state.pos.x,env.state.pos.y));
+assert(env.collidesInterior(500,300));assert(!env.collidesInterior(538,338),'Round tub corners are walkable');
+const jobs=fs.readFileSync(path.join(__dirname,'jobs.js'),'utf8');vm.runInContext(jobs.slice(jobs.indexOf('function pizzaTrafficHit'),jobs.indexOf('function runPizzaGame')),env);
+assert(!env.pizzaTrafficHit(140,{x:79,y:124,w:60,h:28}),'Traffic ahead of visible wheel is safe');assert(env.pizzaTrafficHit(140,{x:76,y:124,w:60,h:28}));assert(env.pizzaTrafficHit(140,{x:10,previousX:90,y:124,w:10,h:28}),'Swept hit cannot tunnel');assert(!env.pizzaTrafficHit(140,{x:60,y:160,w:60,h:28}));
+const expedition=fs.readFileSync(path.join(__dirname,'expedition.js'),'utf8');env.canvas={width:1000,height:700};env.state.dungeon={world:{width:5000,height:5000},camera:{}};env.state.mouse={};env.state.pointerCanvas={x:750,y:280};env.state.pos={x:2000,y:2000};
+vm.runInContext(expedition.slice(expedition.indexOf('  function camera()'),expedition.indexOf('  function discover()')),env);env.camera();const old=env.state.mouse.x;env.state.pos.x+=100;env.camera();assert.equal(env.state.mouse.x,old+100,'Stationary cursor follows scrolling dungeon');
+console.log('PASS rotated hitboxes, couch sitting/standing, tub swimming/exit, scooter visible and swept bounds, stationary cursor camera tracking');

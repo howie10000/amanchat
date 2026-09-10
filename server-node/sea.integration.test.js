@@ -35,7 +35,7 @@ async function client(headers={}){
  console.log('PASS authoritative movement; no refitting at sea');
  c.ws.close();await sleep(250);
  const reconnect=await client();await reconnect.rpc('auth',{user:'seasailor',pass:'test-pass-123'});
- const status=await reconnect.rpc('sea',{action:'status'});assert.equal(status.voyage,null);assert.equal(status.profile.ship,'sailboat');assert.equal(status.money,5000);
+ const status=await reconnect.rpc('sea',{action:'status'});assert(status.voyage,'A brief disconnected socket preserves the crew voyage');assert.equal(status.profile.ship,'sailboat');assert.equal(status.money,5000);
  await reconnect.rpc('sea',{action:'sail'});const back=await reconnect.rpc('sea',{action:'return'});assert(back.ended);assert.equal(back.money,5000);
  console.log('PASS disconnect deletes ocean; owned ship persists; harbor return is single-use');
  const outsider=await client();await assert.rejects(outsider.rpc('sea',{action:'status',user:'seasailor'}),/not authed/);outsider.ws.close();

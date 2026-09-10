@@ -171,8 +171,13 @@ function drawCharacter(ctx, x, y, appearance, opts = {}) {
   // Legs
   const legSwing = Math.sin(walking * 0.3) * 3;
   ctx.fillStyle = a.pants;
-  ctx.fillRect(x - 7, y + 6, 6, 10 + legSwing);
-  ctx.fillRect(x + 1, y + 6, 6, 10 - legSwing);
+  ctx.fillRect(x - 7, y + 6, 6, opts.seated ? 5 : 10 + legSwing);
+  ctx.fillRect(x + 1, y + 6, 6, opts.seated ? 5 : 10 - legSwing);
+  if (opts.seated) {
+    ctx.fillStyle=shadeColor(a.pants,-20);
+    roundFill(ctx,x-9,y+10,8,4,2,ctx.fillStyle);
+    roundFill(ctx,x+1,y+10,8,4,2,ctx.fillStyle);
+  }
 
   // Body (shirt)
   ctx.fillStyle = a.shirt;
@@ -2553,6 +2558,8 @@ function drawFurniture(ctx, f, def, opts = {}) {
   // Build-mode rotation: spin the whole piece about its centre. Stored on the
   // placed piece as f.rot (radians) and persisted by the server.
   if (f.rot) { ctx.translate(x, y); ctx.rotate(f.rot); ctx.translate(-x, -y); }
+  ctx.shadowColor = 'rgba(25,17,15,.28)';
+  ctx.shadowBlur = 5; ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 3;
   switch (def.kind) {
     case "sofa":
     case "armchair": {
@@ -3155,6 +3162,8 @@ function drawFurniture(ctx, f, def, opts = {}) {
       ctx.strokeRect(x - w/2, y - h/2, w, h);
     }
   }
+  ctx.shadowColor = 'transparent';ctx.shadowBlur = 0;ctx.shadowOffsetX = 0;ctx.shadowOffsetY = 0;
+  furnitureFinish(ctx,x,y,w,h,def);
   // selection highlight (build mode)
   if (opts.selected) {
     ctx.strokeStyle = "#fbbf24";
@@ -3162,6 +3171,64 @@ function drawFurniture(ctx, f, def, opts = {}) {
     ctx.setLineDash([4, 3]);
     ctx.strokeRect(x - w/2 - 3, y - h/2 - 3, w + 6, h + 6);
     ctx.setLineDash([]);
+  }
+  ctx.restore();
+}
+
+// Material-sized details stay attached to the piece when it is rotated.
+function furnitureFinish(ctx,x,y,w,h,d) {
+  const k=d.kind,wood=/table|desk|shelf|bookcase|wardrobe|cabinet|counter|piano|clock|console/.test(k);
+  const fabric=/sofa|armchair|chair|bed|rug|curtain/.test(k);
+  ctx.save();
+  if(wood || fabric || /stove|fridge|safe|arcade|vending|jukebox|microwave/.test(k)) {
+    if(k==='roundtable'){ctx.beginPath();ctx.ellipse(x,y,w/2-1,h/2-1,0,0,Math.PI*2);}else roundRect(ctx,x-w/2+1,y-h/2+1,w-2,h-2,Math.min(5,w/5,h/5),false,false);ctx.clip();
+    const light=ctx.createLinearGradient(x-w/2,y-h/2,x+w/2,y+h/2);
+    light.addColorStop(0,'rgba(255,244,211,.20)');light.addColorStop(.4,'rgba(255,255,255,.02)');light.addColorStop(1,'rgba(23,13,19,.23)');
+    ctx.fillStyle=light;ctx.fillRect(x-w/2,y-h/2,w,h);
+    ctx.lineWidth=.6;ctx.strokeStyle=wood?'rgba(50,26,13,.17)':'rgba(250,240,227,.12)';
+    for(let i=4;i<h;i+=wood?7:4) {
+      ctx.beginPath();ctx.moveTo(x-w/2+3,y-h/2+i);
+      ctx.bezierCurveTo(x-w*.15,y-h/2+i+(wood?2:0),x+w*.18,y-h/2+i-(wood?1:0),x+w/2-3,y-h/2+i);ctx.stroke();
+    }
+    ctx.lineWidth=1;ctx.strokeStyle='rgba(255,245,219,.42)';
+    ctx.beginPath();ctx.moveTo(x-w/2+5,y-h/2+2);ctx.lineTo(x+w/2-5,y-h/2+2);ctx.stroke();
+  }
+  ctx.restore();
+  ctx.save();
+  if(/sofa|armchair/.test(k)) {
+    const n=k==='armchair'?1:w>90?3:2;
+    for(let i=0;i<n;i++) {
+      const cx=x-w/2+9+(i+.5)*(w-18)/n;
+      ctx.strokeStyle='rgba(255,235,222,.4)';ctx.lineWidth=.8;
+      roundStroke(ctx,cx-(w-18)/n/2+2,y-2,(w-18)/n-4,h*.43,3);
+      ctx.fillStyle=shadeColor(d.color,-35);ctx.beginPath();ctx.arc(cx,y-h*.27,1.5,0,Math.PI*2);ctx.fill();
+    }
+    // Piped throw pillow and a folded blanket across one arm.
+    roundFill(ctx,x+w*.22,y-h*.2,w*.18,h*.35,3,d.accent||'#d4b98c');
+    ctx.strokeStyle='rgba(255,245,220,.55)';ctx.lineWidth=1;
+    roundStroke(ctx,x+w*.22+2,y-h*.2+2,w*.18-4,h*.35-4,2);
+  } else if(/rug/.test(k)) {
+    ctx.strokeStyle=d.accent||shadeColor(d.color,25);ctx.lineWidth=1.5;
+    roundStroke(ctx,x-w/2+5,y-h/2+5,w-10,h-10,2);
+    for(let i=3;i<w;i+=5){ctx.beginPath();ctx.moveTo(x-w/2+i,y-h/2);ctx.lineTo(x-w/2+i,y-h/2-3);ctx.moveTo(x-w/2+i,y+h/2);ctx.lineTo(x-w/2+i,y+h/2+3);ctx.stroke();}
+  } else if(k==='bed'||k==='canopybed') {
+    ctx.strokeStyle='rgba(255,245,223,.35)';ctx.lineWidth=1;
+    for(let i=12;i<w-6;i+=12){ctx.beginPath();ctx.moveTo(x-w/2+i,y+5);ctx.lineTo(x-w/2+i,y+h/2-3);ctx.stroke();}
+  } else if(k==='hottub') {
+    ctx.strokeStyle='rgba(234,220,193,.65)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.ellipse(x,y,w/2-3,h/2-3,0,0,Math.PI*2);ctx.stroke();
+    for(let i=0;i<16;i++){const t=i*Math.PI/8;ctx.strokeStyle='rgba(58,37,24,.4)';ctx.beginPath();ctx.moveTo(x+Math.cos(t)*(w/2-6),y+Math.sin(t)*(h/2-6));ctx.lineTo(x+Math.cos(t)*w/2,y+Math.sin(t)*h/2);ctx.stroke();}
+    const water=ctx.createRadialGradient(x-w*.15,y-h*.15,2,x,y,w*.43);water.addColorStop(0,'rgba(180,242,246,.35)');water.addColorStop(1,'rgba(15,83,103,.28)');
+    ctx.fillStyle=water;ctx.beginPath();ctx.ellipse(x,y,w/2-7,h/2-7,0,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(224,255,255,.4)';ctx.lineWidth=.8;
+    for(let i=0;i<3;i++){const r=8+((Date.now()/90+i*9)%Math.max(9,w/2-17));ctx.beginPath();ctx.ellipse(x,y,r,r*.72,0,.2,Math.PI*1.6);ctx.stroke();}
+  } else if(/mirror|tv|computer|glass|fishtank/.test(k)) {
+    ctx.strokeStyle='rgba(220,246,255,.55)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(x-w*.28,y-h*.3);ctx.lineTo(x-w*.05,y-h*.08);ctx.moveTo(x-w*.15,y-h*.31);ctx.lineTo(x+w*.04,y-h*.12);ctx.stroke();
+  } else if(/plant|tree|flower/.test(k)) {
+    ctx.strokeStyle='rgba(178,213,125,.5)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,y+2);ctx.quadraticCurveTo(x-w*.16,y-h*.23,x+w*.14,y-h*.36);ctx.stroke();
+  } else if(/vase|trophy|globe|statue|candle/.test(k)) {
+    ctx.strokeStyle='rgba(255,246,206,.55)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x-w*.16,y-h*.23);ctx.quadraticCurveTo(x-w*.28,y-h*.1,x-w*.12,y+h*.1);ctx.stroke();
   }
   ctx.restore();
 }

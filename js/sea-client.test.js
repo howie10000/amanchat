@@ -14,7 +14,7 @@ async function test(){
  const elements=new Map(),el=id=>{if(!elements.has(id))elements.set(id,{tagName:'DIV',innerHTML:'',classList:{add(){}},appendChild(){},querySelectorAll(){return[];}});return elements.get(id);};
  let stamp=1000,calls=[],resets=0;const profile={ship:'sailboat',owned:['sailboat'],gems:0,reputation:0,crew:0,upgrades:{}};
  const voyage={x:120,y:120,ship:'sailboat',hp:700,magic:60,stats:S.stats(profile),cargo:[],remaining:60000,entities:[],fx:[]};
- const events={};const client={window:{NET:{on:(name,fn)=>events[name]=fn},SeaGL:{reset(){resets++;}}},DARK_SEA:S,state:world.state,gameWorld:W,keys:{},Date:{now:()=>stamp},performance:{now:()=>stamp},console,document:{activeElement:{tagName:'BODY'},getElementById:el,createElement:()=>el('hud'),querySelectorAll:()=>[]},openMenu(title,html){client.menuHtml=html;},closeMenu(){},toast(){},updateHUD(){},netSea:async payload=>{calls.push(payload);return{profile,money:0,...(payload.action==='status'?{}:payload.action==='return'?{ended:true}:{voyage})};}};
+ const events={};const client={window:{NET:{on:(name,fn)=>events[name]=fn},SeaGL:{reset(){resets++;}}},DARK_SEA:S,state:world.state,gameWorld:W,keys:{},Date:{now:()=>stamp},performance:{now:()=>stamp},console,document:{addEventListener(){},activeElement:{tagName:'BODY'},getElementById:el,createElement:()=>el('hud'),querySelectorAll:()=>[]},openMenu(title,html){client.menuHtml=html;},closeMenu(){},toast(){},updateHUD(){},netSea:async payload=>{calls.push(payload);return{profile,money:0,...(payload.action==='status'?{}:payload.action==='return'?{ended:true}:{voyage})};}};
  vm.createContext(client);vm.runInContext(read('sea.js'),client);const sea=client.window.gameSea;
  client.state.pos={x:0,y:0};await sea.harbor();assert.equal(calls.length,0,'Shipwright must be reached physically');
  client.state.pos={x:4230,y:1120};world.state=client.state;await sea.harbor();assert(!client.menuHtml.includes('id="seaStaffGems"'),'Ordinary players receive no staff gem button markup');await el('seaSail').onclick();assert.equal(client.state.area,'sea');
@@ -35,6 +35,15 @@ async function test(){
  await sea.act('return');events.sea_invite({by:'Friend',code:'FED123'});assert(inviteMenu.includes('Join crew'));assert(!inviteMenu.includes('href='));await el('joinSeaPopup').onclick();assert.equal(calls.at(-1).action,'join');assert.equal(calls.at(-1).code,'FED123');
  const beforeDismiss=calls.length;profile.roster=['gunner_1'];await sea.act('crew_dismiss',{crew:'gunner_1'});assert.equal(calls.length,beforeDismiss);assert(inviteMenu.includes('Are you sure'));await el('cancelCrewDismiss').onclick();assert.equal(calls.length,beforeDismiss);await sea.act('crew_dismiss',{crew:'gunner_1'});await el('confirmCrewDismiss').onclick();assert.equal(calls.at(-1).action,'crew_dismiss');assert.equal(calls.at(-1).crew,'gunner_1');
  voyage.me={role:'captain'};const quiet=calls.length;await sea.act('fire');sea.key({key:' ',preventDefault(){}});assert.equal(calls.length,quiet,'Steering ignores attack input without a warning RPC');voyage.me.role='crew';sea.key({key:'2',preventDefault(){}});await new Promise(r=>setImmediate(r));assert.equal(calls.at(-1).action,'weapon');assert.equal(calls.at(-1).weapon,'gun');sea.key({key:'1',preventDefault(){}});await new Promise(r=>setImmediate(r));assert.equal(calls.at(-1).weapon,'sword');
+
+ voyage.multiplayer=true;voyage.me={role:'crew',place:'deck'};await sea.act('input');client.window.SeaGL.getYaw=()=>.4;stamp+=500;
+ const taps=()=>calls.filter(c=>c.action==='dash');const count=taps().length;
+ sea.key({key:'w',preventDefault(){}});stamp+=100;sea.key({key:'w',repeat:true,preventDefault(){}});assert.equal(taps().length,count,'Holding W must not dash');
+ stamp+=100;sea.key({key:'w',preventDefault(){}});await new Promise(r=>setImmediate(r));assert.equal(taps().length,count+1);assert.equal(taps().at(-1).angle,.4+Math.PI,'Dash follows the camera');
+ stamp+=500;sea.key({key:'w',preventDefault(){}});stamp+=300;sea.key({key:'w',preventDefault(){}});assert.equal(taps().length,count+1,'Slow taps stay ordinary walking');
+ client.document.activeElement=el('chatBox');stamp+=100;sea.key({key:'w',preventDefault(){}});assert.equal(taps().length,count+1,'Typing never dashes');client.document.activeElement={tagName:'BODY'};
+ voyage.me.role='captain';await sea.act('input');stamp+=20;sea.key({key:'w',preventDefault(){}});stamp+=100;sea.key({key:'w',preventDefault(){}});assert.equal(taps().length,count+1,'Steering never triggers a foot dash');
+ console.log('PASS intentional double-tap W, repeat/chat/helm exclusion and camera-relative dash');
  console.log('PASS in-game popup Join button, invite-link acceptance and invalid-code rejection');
  console.log('PASS harbor approach, doorway, dock, water collision, physical access, arrows do not steer, WASD controls and return location');
 }

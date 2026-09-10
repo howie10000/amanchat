@@ -124,6 +124,7 @@ canvas.addEventListener("mousemove", e => {
   const r = canvas.getBoundingClientRect();
   let mx = (e.clientX - r.left) * (canvas.width / r.width);
   let my = (e.clientY - r.top) * (canvas.height / r.height);
+  state.pointerCanvas = { x: mx, y: my };
   // Interiors/dungeon/duel are drawn translated by VIEW_OX/VIEW_OY (see draw
   // functions) — bring the mouse back into that same local space so aiming
   // and furniture placement line up with what's rendered.

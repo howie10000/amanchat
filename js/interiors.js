@@ -181,6 +181,7 @@ async function enterBuilding(b) {
 }
 
 function leaveInterior() {
+  state.homeUse = null;
   const wasArea = state.area;
   // spawn outside whichever building/house we just left
   if (wasArea === "interior_home" && state.interiorOf) {
@@ -221,11 +222,74 @@ function collidesInterior(nx, ny) {
       const def = FURNITURE_CATALOG[f.id]; if (!def) continue;
       // walkable categories: rugs, curtains, paintings, mirrors
       if (["rug","persianrug","curtain","painting","mirror"].includes(def.kind)) continue;
-      if (nx > f.x - def.w/2 && nx < f.x + def.w/2 &&
-          ny > f.y - def.h/2 && ny < f.y + def.h/2) return true;
+      if (state.homeUse?.f === f && state.homeUse.kind === 'swim') continue;
+      const p = furnitureLocal(f, nx, ny);
+      if (def.kind === 'hottub') {
+        if ((p.x/(def.w/2))**2 + (p.y/(def.h/2))**2 < 1) return true;
+      } else if (Math.abs(p.x) < def.w/2 && Math.abs(p.y) < def.h/2) return true;
     }
   }
   return false;
+}
+
+function furnitureLocal(f, x, y) {
+  const a = f.rot || 0, dx = x-f.x, dy = y-f.y;
+  return {x:dx*Math.cos(a)+dy*Math.sin(a), y:-dx*Math.sin(a)+dy*Math.cos(a)};
+}
+function homeFurnitureAtPlayer() {
+  if (state.area !== 'interior_home' || state.buildMode) return null;
+  let nearest = null, distance = 30;
+  for (const f of state.interiorFurniture || []) {
+    const d = FURNITURE_CATALOG[f.id];
+    if (!d || !['sofa','armchair','hottub'].includes(d.kind)) continue;
+    const p = furnitureLocal(f,state.pos.x,state.pos.y);
+    const gap = Math.hypot(Math.max(0,Math.abs(p.x)-d.w/2),Math.max(0,Math.abs(p.y)-d.h/2));
+    if (gap < distance) {nearest = f; distance = gap;}
+  }
+  return nearest;
+}
+function leaveHomeFurniture() {
+  const use = state.homeUse;
+  if (!use) return true;
+  state.homeUse = null;
+  const d = FURNITURE_CATALOG[use.f.id], a = use.f.rot || 0;
+  const candidates = [use.exit];
+  for (let ring=0;ring<4;ring++) for(let i=0;i<16;i++) {
+    const t=i*Math.PI/8, x=Math.cos(t)*(d.w/2+22+ring*16), y=Math.sin(t)*(d.h/2+22+ring*16);
+    candidates.push({x:use.f.x+x*Math.cos(a)-y*Math.sin(a),y:use.f.y+x*Math.sin(a)+y*Math.cos(a)});
+  }
+  const exit=candidates.find(p=>p&&!collidesInterior(p.x,p.y));
+  if (!exit) {state.homeUse=use;return false;}
+  Object.assign(state.pos,exit);return true;
+}
+function useHomeFurniture() {
+  if (state.area !== 'interior_home' || state.buildMode) return false;
+  if (state.homeUse) {if(!leaveHomeFurniture())toast('Move nearby furniture to make room to get out.');return true;}
+  const f=homeFurnitureAtPlayer();if(!f)return false;
+  state.homeUse={f,kind:FURNITURE_CATALOG[f.id].kind==='hottub'?'swim':'sit',exit:{...state.pos}};
+  state.pos.x=f.x;state.pos.y=f.y;
+  state.facing='down';state.walking=0;
+  toast(state.homeUse.kind==='swim'?'WASD to swim · E to climb out':'Relaxing on the couch · E or move to stand');
+  return true;
+}
+function constrainHomeSwim() {
+  const use=state.homeUse;
+  if(!use)return;
+  if(state.area!=='interior_home'||state.buildMode||!state.interiorFurniture.includes(use.f)){leaveHomeFurniture();return;}
+  if(use.kind!=='swim')return;
+  const d=FURNITURE_CATALOG[use.f.id],p=furnitureLocal(use.f,state.pos.x,state.pos.y);
+  const rx=Math.max(2,d.w/2-16),ry=Math.max(2,d.h/2-16),n=Math.hypot(p.x/rx,p.y/ry);
+  if(n>1){p.x/=n;p.y/=n;const a=use.f.rot||0;state.pos.x=use.f.x+p.x*Math.cos(a)-p.y*Math.sin(a);state.pos.y=use.f.y+p.x*Math.sin(a)+p.y*Math.cos(a);}
+}
+function drawHomeCharacter(x,y,appearance,opts) {
+  const use=state.area==='interior_home' ? state.homeUse : null;
+  if(use?.kind==='swim') {
+    const bob=Math.sin(Date.now()/240)*1.5;
+    ctx.save();ctx.beginPath();ctx.rect(x-30,y-60,60,62);ctx.clip();
+    GFX.drawCharacter(ctx,x,y+9+bob,appearance,opts);ctx.restore();
+    ctx.strokeStyle='rgba(225,250,255,.8)';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.ellipse(x,y+3,16+Math.sin(Date.now()/270)*2,5,0,0,Math.PI*2);ctx.stroke();
+  } else GFX.drawCharacter(ctx,x,y,appearance,{...opts,seated:use?.kind==='sit'});
 }
 
 function interiorRoom() {
@@ -369,7 +433,7 @@ function drawInterior() {
   }
   // You
   if (state.invisible) ctx.globalAlpha = 0.35;   // staff invisibility — ghosted on your own screen
-  GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance,
+  drawHomeCharacter(state.pos.x, state.pos.y, state.appearance,
                     { facing: state.facing, walking: state.walking, emote: state.emote });
   GFX.drawNameAndBubble(ctx, state.pos.x, state.pos.y, state.user, state.msgs, true, state.appearance, state.role);
   ctx.globalAlpha = 1;
@@ -394,7 +458,8 @@ function drawInterior() {
   ctx.restore(); // end VIEW_OX/VIEW_OY translate — room content is done
 
   // Hotspot prompt (screen-anchored, not part of the room content above)
-  const hs = hotspotAtPlayer();
+  const furnishing = homeFurnitureAtPlayer();
+  const hs = state.homeUse ? {label:state.homeUse.kind==='swim'?'CLIMB OUT':'STAND UP'} : furnishing ? {label:FURNITURE_CATALOG[furnishing.id].kind==='hottub'?'SWIM IN HOT TUB':'SIT DOWN'} : hotspotAtPlayer();
   if (hs) {
     ctx.fillStyle = "rgba(0,0,0,.85)";
     GFX.roundFill(ctx, canvas.width/2 - 180, canvas.height - 50, 360, 32, 8, "rgba(0,0,0,.85)");
@@ -1975,7 +2040,7 @@ const bankRoom = {
     ctx.strokeStyle = "rgba(30,58,138,0.45)"; ctx.lineWidth = 6; ctx.strokeRect(room.x + 40, room.y + WALL_H + 30, room.w - 80, room.h - WALL_H - 60);
   },
   decor(room, t) {
-    drawTickerBoard(room.x + 250, room.y + 14, room.w - 500, t, "FIRST BANK  ▸  VAULT SAVINGS EARN 0.1% EVERY 5 MIN, AUTOMATICALLY  ▸  DEPOSITS INSURED  ▸  LOANS &  CREDIT AT TELLER 2  ▸  ", "#4ade80");
+    drawTickerBoard(room.x + 250, room.y + 14, room.w - 500, t, "FIRST BANK  ▸  VAULT SAVINGS EARN 0.01% EVERY 5 MIN, AUTOMATICALLY  ▸  DEPOSITS INSURED  ▸  LOANS &  CREDIT AT TELLER 2  ▸  ", "#4ade80");
     drawVaultDoor(300, 218, t);
     drawTellerCounter(700, 236, t);
     drawDepositBoxes(room.x + 400, room.y + 40, 6, 5);
@@ -2925,4 +2990,5 @@ function drawWhackSign(x,y) {
 window.gameInteriors = {
   INTERIORS, enterOwnHome, enterOtherHome, enterBuilding, leaveInterior,
   collidesInterior, interiorRoom, hotspotAtPlayer, currentHotspots, drawInterior,
+  furnitureLocal, homeFurnitureAtPlayer, useHomeFurniture, leaveHomeFurniture, constrainHomeSwim,
 };

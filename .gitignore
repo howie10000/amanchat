@@ -32,3 +32,10 @@ server-node/dev-fishing.db
 
 # Persistent local play saves
 .local-test/
+
+# Blender rebuild intermediates
+/tools/blender/source-models.json
+/tools/blender/geometry-key.txt
+*.blend1
+
+/tools/blender/animation-rigs.json

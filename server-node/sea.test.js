@@ -14,7 +14,7 @@ clock+=2500;call('fire',{side:1});clock+=250;service.tick();assert.equal(call('s
 const result=call('return');assert(result.ended);assert(users.aman.sea.gems>=3);assert(users.aman.money>75000);assert.equal(service.sessionCount(),0);assert.throws(()=>call('return'),/No active/);
 users.aman.sea.gems=1000;users.aman.sea.reputation=1000;assert.throws(()=>call('crew_equip',{crew:'gunner_4'}),/not owned/);call('upgrade',{slot:'hull'});assert.equal(S.stats(users.aman.sea).durability,950);
 call('sail');assert.throws(()=>call('buy',{ship:'caravel'}),/Shipwright/);const banked=users.aman.sea.gems;service.disconnect('aman');assert.equal(service.sessionCount(),0);assert.equal(users.aman.sea.gems,banked);
-call('sail');clock+=90001;service.tick();assert.equal(service.sessionCount(),0,'idle session cleaned');
+call('sail');clock+=600001;service.tick();assert.equal(service.sessionCount(),0,'idle session cleaned');
 // Real generator determinism and bounded sectors during a long trip.
 const actual=create({rules:S,getUser:u=>users[u],save:(u,p)=>users[u].sea=p,pay:(u,n)=>users[u].money-=n,now:()=>clock,seed:()=>17});
 actual.handle('aman',{action:'sail'});actual.raw('aman').hp=1000000; // Isolate cache bounds from encounter lethality.

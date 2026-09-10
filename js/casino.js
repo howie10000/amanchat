@@ -183,17 +183,17 @@ const SLOT_LINE_SINGLE = [
 
 // RTP note: with independent cells, a line pays with probability sum(p^3) and
 // the expected return is lines * sum(p_s^3 * mult_s). Lucky 7s runs one line,
-// so its triples pay big; with the loose-seven bonus pays it lands ~93%. The
-// jackpot table runs 8 lines and lands ~92%.
+// Classic slots return about 90.3% before integer payout rounding.
+// Keep these symbols aligned with the authoritative games.js paytable.
 const SLOT_SYMBOLS = [
-  { sym: "7", color: "#ef4444", weight: 1,  mult: 280 },
-  { sym: "★", color: "#fbbf24", weight: 3,  mult: 120 },
-  { sym: "♥", color: "#f472b6", weight: 6,  mult: 60 },
-  { sym: "♦", color: "#38bdf8", weight: 8,  mult: 38 },
-  { sym: "♣", color: "#4ade80", weight: 10, mult: 22 },
+  { sym: "7", color: "#ef4444", weight: 1,  mult: 275 },
+  { sym: "★", color: "#fbbf24", weight: 3,  mult: 118 },
+  { sym: "♥", color: "#f472b6", weight: 6,  mult: 59 },
+  { sym: "♦", color: "#38bdf8", weight: 8,  mult: 37 },
+  { sym: "♣", color: "#4ade80", weight: 10, mult: 21.5 },
   // Blank — a clear "no win" tile (used to be a clover, which looked like a
   // prize when three landed even though it never paid).
-  { sym: "❌", color: "#64748b", weight: 14, mult: 0 },
+  { sym: "❌", color: "#64748b", weight: 14.25, mult: 0 },
 ];
 // MEGA JACKPOT — Egyptian symbols (Eye .25 / Ankh .75 / Scarab 1.25 /
 // Lotus 1.75, each ×2 per line). Every symbol pays; winning lines ADD, so
@@ -203,9 +203,9 @@ const SLOT_SYMBOLS = [
 // the server also uses; `key` selects the pixel art.
 const jpDraw = (key) => (c, x, y, s) => GFX.drawPixelSymbol(c, key, x, y, s);
 const JACKPOT_SYMBOLS = [
-  { sym: "eye_h", key: "eye",    color: "#93c5fd", weight: 44, mult: 0.5, draw: jpDraw("eye") },
-  { sym: "ankh",  key: "ankh",   color: "#fcd34d", weight: 28, mult: 1.5, draw: jpDraw("ankh") },
-  { sym: "scarb", key: "scarab", color: "#4ade80", weight: 16, mult: 2.5, draw: jpDraw("scarab") },
+  { sym: "eye_h", key: "eye",    color: "#93c5fd", weight: 48, mult: 0.5, draw: jpDraw("eye") },
+  { sym: "ankh",  key: "ankh",   color: "#fcd34d", weight: 26, mult: 1.5, draw: jpDraw("ankh") },
+  { sym: "scarb", key: "scarab", color: "#4ade80", weight: 14, mult: 2.5, draw: jpDraw("scarab") },
   { sym: "lotus", key: "lotus",  color: "#f472b6", weight: 8,  mult: 3.5, draw: jpDraw("lotus") },
 ];
 const JACKPOT_MIN_BET = 250;
@@ -511,7 +511,7 @@ function openSlots() {
       if (n === 1) return { label: "one 7", mult: 2 };
       return null;
     },
-    blurb: "Three 7s across the line pays 280× your stake — and even loose 7s pay.",
+    blurb: "Three 7s across the line pays 275× your stake — and even loose 7s pay.",
   });
 }
 function openJackpot() {
@@ -1377,12 +1377,12 @@ const PLINKO_RISKS = {
   medium: { label: "MEDIUM", slots: [15, 3, 1, 0.6, 0.35, 0.25, 0.35, 0.6, 1, 3, 15] },
   high:   { label: "HIGH",   slots: [30, 2, 0.7, 0.3, 0.2, 0.1, 0.2, 0.3, 0.7, 2, 30] },
 };
-let _plinko = null; // { balls, risk, hitTimers, pending }
-// pending = payout of chips still in the air. The server has already paid
-// them, so the HUD shows money minus pending and credits each chip as it lands.
+let _plinko = null;
+// The wallet always shows the server balance. Landing animations never credit
+// money again (another in-flight reply may already include those winnings).
 
 function openPlinko() {
-  _plinko = { balls: [], risk: "medium", hitTimers: {}, pending: 0 };
+  const table = _plinko = { balls: [], risk: "medium", hitTimers: {}, reserved: 0, nextDrop: 0 };
   openMenu("🔻 PLINKO", `
     <div class="center">
       <p class="muted">Drop chips through ${PLINKO_ROWS} rows of pegs — as many at once as you like. Crank the risk for bigger edges (and a meaner middle).</p>
@@ -1392,6 +1392,9 @@ function openPlinko() {
       <div id="plinkoResult" class="gameResult"></div>
       ${betBar("plinkoBet", 50)}
       <button class="menuBtn gold bigBtn" id="plinkoBtn" onclick="dropPlinko()">DROP CHIP</button>
+      <button class="menuBtn" onclick="dropPlinko(5)">DROP 5</button>
+      <button class="menuBtn" onclick="dropPlinko(25)">DROP 25</button>
+      <p class="muted">Bet is per chip. Balance settles immediately; keep dropping while chips fall.</p>
     </div>`);
   renderPlinkoRisks();
   renderPlinkoSlots();
@@ -1399,17 +1402,17 @@ function openPlinko() {
   // still in the air when the player walks away settles instantly and pays.
   let last = null;
   casinoRaf(ts => {
-    if (!_plinko) return false;
+    if (_plinko !== table) return false;
     if (!document.getElementById("plinkoCanvas")) {
       for (const b of _plinko.balls.splice(0)) settlePlinkoBall(b, true);
       return false;
     }
     if (last == null) last = ts;
     const dt = Math.min(0.04, (ts - last) / 1000); last = ts;
-    stepPlinko(dt);
+    stepPlinko(dt * 1.8);
     drawPlinko();
     return true;
-  }, () => { if (_plinko) for (const b of _plinko.balls.splice(0)) settlePlinkoBall(b, true); });
+  }, () => { if (_plinko === table) table.balls.length = 0; });
 }
 function renderPlinkoRisks() {
   const el = document.getElementById("plinkoRisks"); if (!el || !_plinko) return;
@@ -1449,9 +1452,11 @@ function plinkoFunnelHalf(y) {
 }
 
 function stepPlinko(dt) {
-  const GRAV = 900, REST = 0.4, SUB = 3;
+  const GRAV = 900, REST = 0.4, SUB = Math.max(3, Math.ceil(dt/.008));
   const h = dt / SUB;
   for (const ball of _plinko.balls.slice()) {
+    ball.age = (ball.age || 0) + dt;
+    if (ball.age > 9) { settlePlinkoBall(ball); continue; }
     for (let s = 0; s < SUB; s++) {
       ball.vy += GRAV * h;
       if (ball.vy > 480) ball.vy = 480; // terminal velocity, or it tunnels rows
@@ -1506,9 +1511,7 @@ function settlePlinkoBall(ball, silent) {
   const slot = Math.max(0, Math.min(ball.slots.length - 1, ball.target | 0));
   const mult = ball.mult != null ? ball.mult : ball.slots[slot];
   const p = ball.payout != null ? ball.payout : Math.floor(ball.bet * mult);
-  // credit the chip's (already server-settled) payout to the displayed balance
-  _plinko.pending = Math.max(0, _plinko.pending - p);
-  state.data.money = (state.data.money || 0) + p; updateHUD();
+  // Visual result only: the server already settled this chip at drop time.
   if (silent) return;
   if (mult >= 7) celebrate();
   setEl("plinkoResult", p >= ball.bet ? win(`${mult}× — +$${p}`) : lose(`${mult}× — $${p} back of $${ball.bet}`));
@@ -1555,24 +1558,25 @@ function drawPlinko() {
     c.strokeStyle = "#92400e"; c.lineWidth = 2; c.stroke();
   }
 }
-window.dropPlinko = async () => {
+window.dropPlinko = async (count = 1) => {
   if (!_plinko || !document.getElementById("plinkoCanvas")) return;
   const bet = readBet("plinkoBet");
-  if (!takeBet(bet)) return;
+  count = Math.max(1, Math.min(25, Math.floor(count) || 1));
+  const table = _plinko;
+  if (Date.now() < table.nextDrop) return;
+  if (!takeBet(bet * count + table.reserved)) return;
+  table.nextDrop = Date.now() + 140;
+  table.reserved += bet * count;
   // The risk table is locked in per ball at drop time, so switching risk
   // mid-flight can't reprice a chip already on the board.
   const risk = _plinko.risk;
   const slots = PLINKO_RISKS[risk].slots;
   let data;
-  try { data = await casinoRpc("plinko", "drop", { bet, risk, balls: 1 }); }
+  try { data = await casinoRpc("plinko", "drop", { bet, risk, balls: count }); }
   catch (e) { casinoFail(e); return; }
-  // Settled the moment the server replies; the chip is just the show. If the
-  // table is gone, take the server's balance as-is; otherwise hold this
-  // drop's payout back until the chip lands.
-  if (!_plinko || !document.getElementById("plinkoCanvas")) { applyMoney(data); return; }
-  const payout = Math.max(0, Math.floor(data.payout || 0));
-  _plinko.pending += payout;
-  if (typeof data.money === "number") { state.data.money = data.money - _plinko.pending; updateHUD(); }
+  finally { table.reserved -= bet * count; }
+  applyMoney(data);
+  if (_plinko !== table || !document.getElementById("plinkoCanvas")) return;
   const targets = Array.isArray(data.slots) ? data.slots : [];
   const mults = Array.isArray(data.mults) ? data.mults : [];
   const n = Math.max(1, targets.length);

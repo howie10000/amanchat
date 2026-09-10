@@ -491,17 +491,11 @@
   // A meal sets users/<me>/luck = { level, until, meal, emoji }. While active:
   //   * fishing rolls rarer (rarityWeights)
   //   * every VEGAS win pays an extra casinoBonus on top
-  //   * every VEGAS round carries `winChance` of extra chance to win outright
-  //
-  // `winChance` replaced an older "re-roll a lost round and keep the better
-  // result", which could show a player one outcome and then quietly swap it.
-  // This is the same maths stated honestly: your effective win rate on a
-  // single-roll game is p + (1 - p) * winChance, and you only ever see the
-  // result that actually counts.
+  //   * VEGAS bonuses apply only to actual net profit, never to lost stakes.
   const LUCK_MAX_LEVEL = 6;
   function luckEffects(level) {
     const L = Math.max(0, Math.min(LUCK_MAX_LEVEL, +level || 0));
-    return { level: L, fishWeightMult: 1 + 0.3 * L, casinoBonus: Math.min(0.30, 0.05 * L), winChance: Math.min(0.24, 0.04 * L) };
+    return { level: L, fishWeightMult: 1 + 0.3 * L, casinoBonus: Math.min(0.30, 0.05 * L), winChance: 0 };
   }
   function luckDurationMs(level) { return (10 + 4 * Math.max(1, Math.min(LUCK_MAX_LEVEL, +level || 1))) * 60000; }
   // A meal you eat while a STRONGER one is running waits its turn instead of

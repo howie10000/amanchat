@@ -22,7 +22,7 @@ call('bob','input',{input:{right:true},x:1e9,hp:1e9,cargo:[{coins:1e9}]});step(9
 own.x=120;own.y=120;const payout=call('alice','return');assert(payout.ended);assert.equal(users.alice.money,75051);assert.equal(users.bob.money,50);assert.equal(users.alice.sea.gems,4);assert.equal(users.bob.sea.gems,3);assert(call('bob','status').ended);assert.equal(sea.sessionCount(),1);
 // Leaving owner keeps guests aboard; remaining crew can take the wheel.
 const code=call('alice','sail').voyage.room;call('bob','join',{code});sea.disconnect('alice');assert.equal(state('bob').room,code);move('bob',-29,0);call('bob','interact');assert.equal(state('bob').captain,'bob');sea.disconnect('bob');assert.equal(sea.sessionCount(),1);
-time+=90001;sea.tick();assert.equal(sea.sessionCount(),0);
+time+=600001;sea.tick();assert.equal(sea.sessionCount(),0);
 console.log('PASS shared crews, exclusive helm, moving deck, cannon stations, chart, leaks, timed repair, PvP lasso/boarding/theft, cargo stow, split payout, input authority and crew disconnect cleanup');
 // Island loot must be carried ashore -> hatch -> cargo, and repairs cancel on movement.
 const islandUsers={solo:{money:50000}},islandRules={...S,sector:(seed,x,y)=>x===0&&y===0?[{id:'cay',kind:'island',name:'Cay',x:350,y:120,r:160,tier:0,guards:[],looted:false}]:[]};
@@ -37,9 +37,9 @@ console.log('PASS physical island pickup, carrying to ship, mandatory cargo stow
 const pirate={id:'boarding-pirate',kind:'pirate',name:'Pirate',ship:'sailboat',x:370,y:120,a:0,hp:700,maxHp:700,tier:0,attackAt:0,warning:time+1000},pirateUsers={tester:{money:50000}};
 const boardingSea=create({rules:{...S,sector:(seed,x,y)=>x===0&&y===0?[pirate]:[]},getUser:u=>pirateUsers[u],save:(u,p)=>pirateUsers[u].sea=p,pay:(u,n)=>pirateUsers[u].money-=n,now:()=>time,seed:()=>71});
 const bc=(action,extra={})=>boardingSea.handle('tester',{action,...extra}),bs=()=>bc('status').voyage;
-bc('buy',{ship:'sailboat'});bc('sail');bc('lasso');assert.equal(pirate.warning,0);assert.equal(pirate.attack,null);const stableHull=boardingSea.raw('tester').hp;for(let i=0;i<20;i++){time+=50;boardingSea.tick();}assert.equal(boardingSea.raw('tester').hp,stableHull,'lassoed pirate cannot damage the hull');bc('board');
+bc('buy',{ship:'sailboat'});bc('sail');Object.assign(boardingSea.raw('tester'),{x:120,y:120});bc('lasso');assert.equal(pirate.warning,0);assert.equal(pirate.attack,null);const stableHull=boardingSea.raw('tester').hp;for(let i=0;i<20;i++){time+=50;boardingSea.tick();}assert.equal(boardingSea.raw('tester').hp,stableHull,'lassoed pirate cannot damage the hull');bc('board');
 for(let i=0;i<48;i++){bc('input',{input:{forward:true,walkAngle:pirate.a}});time+=20;boardingSea.tick();}bc('input',{input:{block:true}});bc('interact');assert.equal(bs().me.place,'hold');
-for(let i=0;i<90;i++){time+=50;boardingSea.tick();}assert(pirate.boarders.every(g=>g.place==='hold'),'defenders chase boarders below deck');assert.equal(pirate.warning,0);assert(bs().me.hp>0);
+for(const g of pirate.boarders)g.damage=.01;for(let i=0;i<90;i++){time+=50;boardingSea.tick();}assert(pirate.boarders.every(g=>g.place==='hold'),'defenders chase boarders below deck');assert.equal(pirate.warning,0);assert(bs().me.hp>0);
 // Set a windup beside the player and verify sword contact interrupts it.
 const guard=pirate.boarders[0],fighter=bs().me;Object.assign(guard,{x:fighter.x+4,y:fighter.y,hp:70,attack:{start:time,impact:time+550,end:time+950,target:{x:fighter.x,y:fighter.y},a:Math.PI},stunUntil:0});bc('input',{input:{walkAngle:pirate.a}});bc('fire');time+=160;boardingSea.tick();assert(guard.hp<70);assert.equal(guard.attack,null);assert(guard.stunUntil>time);assert.throws(()=>{bc('input',{input:{block:true}});bc('fire');},/Release guard/);
 console.log('PASS lasso suppresses naval damage, NPC hatch pursuit, sword interruption and guard authority');

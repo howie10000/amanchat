@@ -29,6 +29,10 @@
     const d = state.dungeon, p = d.world;
     d.camera.x = Math.max(0, Math.min(p.width-canvas.width, state.pos.x-canvas.width/2));
     d.camera.y = Math.max(0, Math.min(p.height-canvas.height, state.pos.y-canvas.height/2));
+    if (state.pointerCanvas && !d.bossRoom) {
+      state.mouse.x = state.pointerCanvas.x + d.camera.x;
+      state.mouse.y = state.pointerCanvas.y + d.camera.y;
+    }
   }
   function discover() {
     const d = state.dungeon, p = d.world, now = Date.now();

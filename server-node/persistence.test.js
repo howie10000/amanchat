@@ -54,7 +54,8 @@ const STATIC_DIR = path.join(__dirname, '..');
 const srvDir = path.join(tmp, 'srv');
 const srvMods = path.join(srvDir, 'node_modules');
 fs.mkdirSync(path.join(srvMods, 'better-sqlite3'), { recursive: true });
-for (const f of ['server.js', 'games.js', 'hash-worker.js']) fs.copyFileSync(path.join(__dirname, f), path.join(srvDir, f));
+for (const f of fs.readdirSync(__dirname).filter(f=>f.endsWith('.js')&&!f.endsWith('.test.js'))) fs.copyFileSync(path.join(__dirname, f), path.join(srvDir, f));
+fs.cpSync(path.join(STATIC_DIR,'js','shared'),path.join(tmp,'js','shared'),{recursive:true});
 fs.copyFileSync(path.join(__dirname, 'testlib', 'real-sqlite-shim.js'), path.join(srvMods, 'better-sqlite3', 'index.js'));
 fs.writeFileSync(path.join(srvMods, 'better-sqlite3', 'package.json'), JSON.stringify({ name: 'better-sqlite3', version: '0.0.0-node-sqlite', main: 'index.js' }));
 // Everything else (ws, express, bcryptjs, …) comes from the real tree.
@@ -178,14 +179,16 @@ function decode(buf) { return JSON.parse(zlib.brotliDecompressSync(buf).toString
     const weakIngs = [{ kind: "fish", id: "Minnow" }];
 
     const strong = await cook(strongIngs);
-    const strongKey = strong.cooked.key, strongLevel = strong.cooked.luck;
+    const strongKey = strong.cooked.key;
+    let strongLevel = strong.cooked.luck;
     for (let i = 0; i < 6; i++) await cook(weakIngs);
     const weakKey = (await cook(weakIngs)).cooked.key;
     const weakLevel = (await lk.rpc("cook", { action: "status" })).meals[weakKey].luck;
     assert(strongLevel > weakLevel, `the two meals differ in strength (${strongLevel} vs ${weakLevel})`);
 
     const first = await eat(strongKey);
-    assert(first.ok && first.data.luck.level === strongLevel, "eating the strong meal starts the strong buff");
+    strongLevel=first.data.rolled;
+    assert(first.ok && first.data.luck.level === strongLevel && strongLevel>=strong.cooked.luckMin && strongLevel<=strong.cooked.luckMax, "eating the strong meal starts a buff within its advertised range");
     const until0 = first.data.luck.until;
 
     const second = await eat(weakKey);
@@ -200,11 +203,19 @@ function decode(buf) { return JSON.parse(zlib.brotliDecompressSync(buf).toString
     assert(luckAfter.luck.until === until0, "no amount of weak meals moves the strong timer");
     assert((luckAfter.luck.queue || []).length === 5, "they all stacked up in the queue instead");
 
-    // an equally strong meal still extends, which is fair
+    // Recipes roll a range: assert the actual roll, not the recipe's nominal level.
     await cook(strongIngs);
     const same = await eat(strongKey);
-    assert(same.ok && same.data.luck.until > until0, "an EQUALLY strong meal does still extend the timer");
-    assert((same.data.luck.queue || []).length === 5, "and does not disturb the queue");
+    if(same.data.rolled===strongLevel){
+        assert(same.ok && same.data.luck.until === until0+ECON.luckDurationMs(strongLevel), "an equally strong roll extends by exactly its duration");
+        assert((same.data.luck.queue || []).length === 5, "equal strength leaves the queue intact");
+    }else if(same.data.rolled<strongLevel){
+        assert(same.data.queued && same.data.luck.until===until0, "a lower roll cannot extend the stronger buff");
+        assert(same.data.luck.queue.length===6, "the lower roll is queued");
+    }else{
+        assert(!same.data.queued && same.data.luck.level===same.data.rolled, "a stronger roll becomes active");
+        assert(same.data.luck.queue.length===6, "the previous buff is preserved in the queue");
+    }
     lk.close(); st.close();
     await sleep(200);
     // ------------------------------------------------ money transfers
@@ -225,11 +236,13 @@ function decode(buf) { return JSON.parse(zlib.brotliDecompressSync(buf).toString
     assert(!(await send(ta, "getter", 999999)).ok, "you cannot send more cash than you hold");
 
     const s0 = await bal(ta, "sender"), g0 = await bal(tc, "getter");
+    const treasury0 = (await tb.rpc('treasury',{action:'status'})).balance;
     const okSend = await send(ta, "getter", 100);
     assert(okSend.ok && okSend.data.sent === 100, "a clean transfer goes through");
     assert(await bal(ta, "sender") === s0 - 100, "the sender is debited exactly");
-    assert(await bal(tc, "getter") === g0 + 100, "the recipient is credited exactly");
-    assert(await bal(ta, "sender") + await bal(tc, "getter") === s0 + g0, "no money is minted or burned");
+    const transferTax=ECON.transferTax(100),treasury1=(await tb.rpc('treasury',{action:'status'})).balance;
+    assert(await bal(tc, "getter") === g0 + 100-transferTax, "the recipient receives the amount after the configured transfer tax");
+    assert(treasury1-treasury0===transferTax && await bal(ta, "sender") + await bal(tc, "getter") + treasury1 === s0 + g0 + treasury0, "wallets plus treasury conserve the transfer exactly");
 
     assert(!(await send(ta, "getter", 10)).ok, "a second transfer inside the cooldown is refused");
     await sleep(ECON.TRANSFER_COOLDOWN + 200);

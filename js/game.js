@@ -355,10 +355,8 @@ function furnitureUnderMouse() {
   for (let i = state.interiorFurniture.length - 1; i >= 0; i--) {
     const f = state.interiorFurniture[i];
     const def = FURNITURE_CATALOG[f.id]; if (!def) continue;
-    // Quarter-turns swap the footprint; treat other angles by their bounding box.
-    const q = Math.round(((f.rot || 0) / (Math.PI / 2))) % 2 !== 0;
-    const hw = (q ? def.h : def.w) / 2, hh = (q ? def.w : def.h) / 2;
-    if (mx > f.x - hw && mx < f.x + hw && my > f.y - hh && my < f.y + hh) return i;
+    const p = gameInteriors.furnitureLocal(f,mx,my);
+    if (Math.abs(p.x)<def.w/2 && Math.abs(p.y)<def.h/2) return i;
   }
   return -1;
 }
@@ -481,6 +479,7 @@ function tryInteract() {
     const act = gameWorld.activityAtPlayer();
     if (act) return triggerActivity(act.type);
   } else if (state.area.startsWith("interior_")) {
+    if (gameInteriors.useHomeFurniture()) return;
     const hs = gameInteriors.hotspotAtPlayer();
     if (hs) return triggerHotspotAction(hs.action, hs);
     // ESC also leaves; but no hotspot? door check (close to bottom)
@@ -1974,6 +1973,7 @@ function update() {
     const m = Math.hypot(dx, dy) || 1;
     const speed = WALK_SPEED; // shared walking speed (core.js), per 60Hz tick
     if (m > 0.001 && (dx || dy)) {
+      if (state.homeUse?.kind === 'sit' && !gameInteriors.leaveHomeFurniture()) return;
       const nx = state.pos.x + (dx/m) * speed;
       const ny = state.pos.y + (dy/m) * speed;
       // check collisions
@@ -2001,6 +2001,7 @@ function update() {
     }
   }
 
+  gameInteriors.constrainHomeSwim();
   // Arrived? Drop the route so the arrow stops nagging.
   if (state.waypoint && state.area === "neighborhood" &&
       Math.hypot(state.pos.x - state.waypoint.x, state.pos.y - state.waypoint.y) < 70) {

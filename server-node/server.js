@@ -58,7 +58,7 @@ if (process.env.LOCAL_DEV_ID) {
 }
 app.use((req,res,next)=>{
     let asset;try{asset=path.posix.normalize(decodeURIComponent(req.path).replace(/\\/g,'/'));}catch{return res.sendStatus(400);}
-    if(!['/','/index.html','/style.css','/lake.js'].includes(asset)&&!/^\/(js|docs)\//.test(asset))return res.sendStatus(404);
+    if(!['/','/index.html','/style.css','/lake.js','/assets/dark-sea/blender-meshes.js','/assets/dark-sea/legendary-models.js','/assets/dark-sea/blender-animations.js','/assets/dark-sea/title-crest.png','/assets/dark-sea/title-wordmark.png','/assets/dark-sea/title-scroll.png'].includes(asset)&&!/^\/(js|docs)\//.test(asset))return res.sendStatus(404);
     next();
 });
 app.use(express.static(STATIC_DIR));
@@ -633,7 +633,7 @@ function setUser(c, user) {
 
 function removeClient(c) {
     clients.delete(c);
-    if (c.user && byUser.get(c.user) === c) { seaService.disconnect(c.user); byUser.delete(c.user); }
+    if (c.user && byUser.get(c.user) === c) { seaService.suspend(c.user); byUser.delete(c.user); }
 }
 
 function pushTo(user, msg) {
@@ -1574,15 +1574,12 @@ function luckOf(user, u, now) {
     if (changed) { u.luck = l; store.put(`users/${user}/luck`, l); }
     return l;
 }
-// Single-roll games luck's extra win chance can apply to (multi-step games keep
-// state across calls, so they only get the payout bonus).
-const LUCK_WIN_GAMES = new Set(['slots', 'jackpot', 'coinflip', 'scratch', 'roulette', 'dice', 'keno', 'baccarat', 'plinko', 'wheel']);
 // Minimum ms between round STARTS per game (roughly what the client animation
 // takes), so a console script can't spin a machine hundreds of times a minute.
 const casinoLast = new Map();   // user:game -> last accepted ts
 const CASINO_ROUND_START = new Set(['spin', 'flip', 'buy', 'roll', 'draw', 'deal', 'drop', 'race', 'start']);
 const CASINO_MIN_GAP = { slots: 1400, jackpot: 1600, coinflip: 900, scratch: 800, roulette: 2500, dice: 900, keno: 1200,
-    baccarat: 1200, plinko: 1200, horses: 3000, wheel: 2500, blackjack: 600, mines: 600, crash: 600, highlow: 600, videopoker: 600 };
+    baccarat: 1200, plinko: 120, horses: 3000, wheel: 2500, blackjack: 600, mines: 600, crash: 600, highlow: 600, videopoker: 600 };
 
 // ---- farm ----
 function farmOf(u) {
@@ -3119,22 +3116,12 @@ const ECONOMY_OPS = {
         // only ever apply to what the round actually WON above that stake.
         const before = GAMES.getRound(user, game);
         const stake = before ? Math.max(0, Math.floor(+before.bet || 0) * (before.balls || 1)) : 0;
-        let r = GAMES.play(user, game, action, msg, moneyOf(u));
+        const r = GAMES.play(user, game, action, msg, moneyOf(u));
         casinoLast.set(k, now);   // only an accepted action counts toward the gap
-        // Luck (from a cooked meal): a lost single-roll round may be re-rolled
-        // once, and every win pays a bonus on top. Multi-step games only get the bonus.
-        // Luck's casino effect is an extra chance to win outright. When a
-        // single-roll round loses, `winChance` decides whether it should have
-        // won; if it hits, the round is re-run until it does. The player only
-        // ever sees the outcome that counts, so the effective win rate is
-        // p + (1 - p) * winChance with no visible result ever changing.
-        let luckWin = false, luckBonus = 0;
-        if (eff && r.delta < 0 && LUCK_WIN_GAMES.has(game) && Math.random() < eff.winChance) {
-            for (let attempt = 0; attempt < 24; attempt++) {
-                const r2 = GAMES.play(user, game, action, msg, moneyOf(u));
-                if (r2.delta > 0) { r = r2; luckWin = true; break; }
-            }
-        }
+        // Settle exactly one outcome. Luck rewards genuine net profit; it
+        // never refunds a loss or rerolls the authoritative result.
+        const luckWin = false;
+        let luckBonus = 0;
         if (eff && game !== 'horses' && r.delta > 0) luckBonus = Math.floor(Math.max(0, r.delta - stake) * eff.casinoBonus);
         // A win is earnings (skimmed while a loan is overdue); a loss is a loss.
         if (r.delta > 0) creditEarnings(user, u, r.delta + luckBonus, 'casino');

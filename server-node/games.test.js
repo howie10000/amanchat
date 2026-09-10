@@ -26,9 +26,9 @@ function seq(values) { let i = 0; return () => values[i++ % values.length]; }
 
 console.log('paytables');
 {
-    // slots: three 7s on the line = 280x; the rng that always returns ~0 picks the first symbol (7)
+    // slots: three 7s on the line = 275x; the rng that always returns ~0 picks the first symbol (7)
     const r = G.slotSpin(10, 1, G.SLOT_SYMBOLS, [{ label: 'center line', cells: [[0, 0], [0, 1], [0, 2]] }], G.slotsBonus, () => 0.0001);
-    ok(r.grid[0].join('') === '777' && r.payout === 2800, 'slots: 777 pays 280x');
+    ok(r.grid[0].join('') === '777' && r.payout === 2750, 'slots: 777 pays 280x');
     // one 7 then two blanks (weight sums: 7 is first 1/42, blank is last)
     const r2 = G.slotSpin(10, 1, G.SLOT_SYMBOLS, [{ label: 'c', cells: [[0, 0], [0, 1], [0, 2]] }], G.slotsBonus, seq([0.0001, 0.999, 0.999]));
     ok(r2.wins.length === 0 && r2.bonus && r2.bonus.mult === 2 && r2.payout === 20, 'slots: a single 7 pays the 2x bonus');
