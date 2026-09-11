@@ -1,5 +1,7 @@
 # Dark Sea responsiveness
 
+Client-only follow-up: snapshot interpolation indexes each received entity/crew list once instead of repeated linear searches per rendered frame. A 128-entity busy-scene benchmark produced byte-identical snapshots and reduced 1,000 interpolation samples from 2,230 ms to 1,313 ms. Cannon recoil transforms are evaluated only for new muzzle events. Town buildings, houses and signs outside generously padded view bounds are skipped. Automatic release checks fetch one small page manifest instead of fetching every script/model twice; an explicit forced check retains full script comparison. Version detection, snapshot transitions, cannon/title rendering, home interactions and expedition checks pass.
+
 Follow-up: companions can escape the extra pathfinding clearance around rocks and trees. A regression reproduced frozen fighters and looters at the collision boundary and now verifies that both reach their targets. Walking animations follow actual displacement. Route candidates are scored once, static batched geometry skips redundant transform updates, and sustained frame pressure scales 3D resolution between 65% and 100% with gradual recovery. HUD resolution remains unchanged; expensive shadows are suspended at lower quality. Companion navigation, rendering, title and adaptive-quality checks pass.
 
 - Ship geometry stays opaque and the crew camera retains its selected distance. Removed three recursive geometry raycasts per frame and their temporary material swaps.

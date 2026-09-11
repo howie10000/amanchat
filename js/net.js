@@ -225,7 +225,21 @@
         } catch (e) {}
       }
       let stale = false, lastModified = null;
-      for (const url of clientScriptUrls()) {
+      if (!force) {
+        // Releases version their script URLs in index.html. Check that small
+        // manifest instead of downloading and decoding every model twice.
+        const boot = clientScriptUrls().find(url => new URL(url).pathname.endsWith('/js/net.js'));
+        if (!boot) return false;
+        const entry = new URL('../index.html', boot);
+        const response = await fetch(entry.href, { cache: 'no-store' });
+        if (!response.ok) return false;
+        const live = new DOMParser().parseFromString(await response.text(), 'text/html');
+        const signature = (doc, base) => JSON.stringify([...doc.querySelectorAll('script[src],link[rel="stylesheet"][href]')]
+          .map(el => new URL(el.getAttribute('src') || el.getAttribute('href'), base).href)
+          .filter(url => new URL(url).origin === entry.origin));
+        stale = signature(document, location.href) !== signature(live, entry.href);
+        lastModified = response.headers.get('last-modified');
+      } else for (const url of clientScriptUrls()) {
         let ran, live;
         try {
           const [a, b] = await Promise.all([

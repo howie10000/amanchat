@@ -616,17 +616,21 @@ function drawNeighborhood() {
 
   // ---- props ----
   drawStreetSigns();
-  for (const sp of SIGNPOSTS) drawSignpost(sp);
+  for (const sp of SIGNPOSTS) if (onScreen(sp.x, sp.y, 140)) drawSignpost(sp);
   for (const t of TREES) if (onScreen(t.x, t.y, 90)) drawTree(t);
   for (const p of DECOR.palms) if (onScreen(p.x, p.y, 90)) drawPalm(p.x, p.y);
   for (const l of DECOR.lamps) if (onScreen(l.x, l.y, 80)) drawLamp(l.x, l.y);
   drawMayorArch();
 
-  for (const b of BUILDINGS) {if(b.type==='shipwright')drawShipwrightDetail(b);else GFX.drawBuildingBox(ctx, b);}
+  for (const b of BUILDINGS) {
+    // Keep generous room for roofs, tower signs, shadows and lake camera shake.
+    if (!onScreen(b.x+b.w/2, b.y+b.h/2, Math.max(b.w,b.h)/2+(b.tower?650:200))) continue;
+    if(b.type==='shipwright')drawShipwrightDetail(b);else GFX.drawBuildingBox(ctx, b);
+  }
 
   const users = onlineHouseUsers();
   for (const [u, info] of Object.entries(users)) {
-    const r = houseRect(info.houseIndex); if (!r) continue;
+    const r = houseRect(info.houseIndex); if (!r || !onScreen(r.x+r.w/2, r.y+r.h/2, Math.max(r.w,r.h)/2+140)) continue;
     GFX.drawHouse(ctx, r, u, u === state.user, info.houseStyle);
     // Street address under the nameplate — so "come to 4 Oak Lane" works.
     ctx.fillStyle = "rgba(0,0,0,.6)";
