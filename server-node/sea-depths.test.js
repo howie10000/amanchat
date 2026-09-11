@@ -1,6 +1,16 @@
 'use strict';
 const assert=require('node:assert/strict'),S=require('../js/shared/sea'),create=require('./crew-sea');
 function fixture(entities=[]){let time=10000;const users={},sea=create({rules:{...S,sector:(_,x,y)=>x===0&&y===0?entities:[]},getUser:u=>users[u]??={money:1e7},save:(u,p)=>users[u].sea=p,pay:(u,n)=>users[u].money-=n,now:()=>time,seed:()=>16});const call=(u,action,extra={})=>sea.handle(u,{action,...extra}),state=u=>call(u,'status').voyage,step=ms=>{time+=ms;sea.tick();};function sail(u){call(u,'buy',{ship:'sailboat'});return call(u,'sail').voyage;}function move(u,x,y){for(let i=0;i<200;i++){const p=state(u).me;if(Math.hypot(p.x-x,p.y-y)<1)break;call(u,'input',{input:{forward:true,walkAngle:Math.atan2(y-p.y,x-p.x)+(p.shipA||0)}});step(20);}call(u,'input',{input:{}});}return{sea,call,state,step,sail,move,users,get time(){return time;}};}
+// A solo crew survives a 90-second idle period, including a suspended socket.
+for(const suspended of [false,true]){
+ const f=fixture(),start=f.sail('solo'),boat=f.sea.raw('solo');boat.cargo.push({rarity:'Weathered',coins:100,gems:10,rep:1});
+ if(suspended)f.sea.suspend('solo');
+ for(let i=0;i<900;i++){if(!suspended)f.call('solo','input',{input:{active:false}});f.step(100);}
+ assert.equal(f.state('solo').room,start.room,'90 seconds preserves the same voyage');
+ assert.equal(f.sea.raw('solo').cargo.length,1,'Idle does not discard cargo');
+ f.step(509999);assert(f.state('solo'),'Voyage survives until just before ten minutes');
+ f.step(1);const ended=f.call('solo','status');assert(ended.ended&&ended.returnToSpawn);assert.match(ended.reason,/10 minutes/);
+}
 // A suspended connection survives; one active member renews the whole crew.
 {
  const f=fixture(),a=f.sail('alice');f.call('bob','join',{code:a.room});assert.equal(a.crewName,"alice's crew");f.sea.suspend('alice');f.step(5000);assert(f.state('alice'));f.step(590000);f.call('bob','input',{input:{active:true}});f.step(599999);assert(f.state('alice'));f.call('bob','input',{input:{active:false}});f.step(1);assert.equal(f.sea.sessionCount(),0);const ended=f.call('alice','status');assert(ended.ended&&ended.returnToSpawn);assert(!f.sea.raw('alice'));
