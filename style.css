@@ -1294,7 +1294,7 @@ h3.section { margin: 14px 0 8px; font-size: 14px; color: #fbbf24; letter-spacing
 .seaBlenderCrest{display:block;width:112px;height:123px;object-fit:contain;margin:0 auto 3px;filter:drop-shadow(0 0 7px #d8ae5550)}
 .seaBlenderWordmark{display:block;width:min(820px,88vw);height:auto;filter:drop-shadow(0 3px 2px #000) drop-shadow(0 0 10px #d3ad4a38)}
 #loginScreen .loginBox{background:none;box-shadow:none;border:0;clip-path:none;padding:35px 38px 29px;filter:drop-shadow(0 16px 22px #0009)}
-#loginScreen .loginBox:before{inset:-32px -32px;height:auto;border:0;border-radius:0;z-index:-1;background:url('assets/dark-sea/title-scroll.png?v=1') center/100% 100% no-repeat;box-shadow:none}
+#loginScreen .loginBox:before{inset:-32px -32px;height:auto;border:0;border-radius:0;z-index:-1;background:url('assets/dark-sea/title-scroll.png?v=2') center/100% 100% no-repeat;box-shadow:none}
 #loginScreen .loginBox:after{display:none}
 #loginScreen .scrollDetails{opacity:.42}
 
