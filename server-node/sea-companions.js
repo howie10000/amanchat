@@ -29,7 +29,7 @@ module.exports=function(S){
    const move=(goal,radius=3)=>{
     if(d(h,goal)<=radius && !(h.place==='island' && !h.cave && isle && S.fortWalls(isle).some(w=>S.lineBox(h,goal,w,7))))return true;
     if(h.place==='island'&&isle){if(!h.waypoint||time>=(h.routeAt||0)||d(h.routeGoal||goal,goal)>60||h.routeCave!==h.cave){h.waypoint=h.cave?S.caveWaypoint(isle,h,goal):S.landWaypoint(isle,h,goal);h.routeGoal={x:goal.x,y:goal.y};h.routeCave=h.cave;h.routeAt=time+180;}goal=h.waypoint;}
-    const leg=d(h,goal)||1,step=Math.min(leg,h.speed*(h.state==='fleeing'?1.4:1)*(h.place==='island'?1:.22)*dt);h.a=Math.atan2(goal.y-h.y,goal.x-h.x)+(h.place==='island'?0:(h.boarded?mission?.a:v.a)||0);h.x+=(goal.x-h.x)/leg*step;h.y+=(goal.y-h.y)/leg*step;h.moving=true;if(h.place==='island'&&isle)S.constrainFoot(h,isle);return false;
+    const before={x:h.x,y:h.y},leg=d(h,goal)||1,step=Math.min(leg,h.speed*(h.state==='fleeing'?1.4:1)*(h.place==='island'?1:.22)*dt);h.a=Math.atan2(goal.y-h.y,goal.x-h.x)+(h.place==='island'?0:(h.boarded?mission?.a:v.a)||0);h.x+=(goal.x-h.x)/leg*step;h.y+=(goal.y-h.y)/leg*step;if(h.place==='island'&&isle)S.constrainFoot(h,isle);h.moving=d(before,h)>.001;if(!h.moving)h.waypoint=null;return false;
    };
    const changeCave=want=>{want=want||null;if((h.cave||null)===want)return true;const cave=isle?.caves?.find(c=>c.id===(h.cave||want));if(!cave){h.cave=null;return !want;}if(move(cave,18)){h.cave=h.cave?null:want;h.x=cave.x;h.y=cave.y;h.waypoint=null;}return false;};
    const home=()=>{

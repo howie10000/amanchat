@@ -134,13 +134,21 @@ function landWaypoint(e,p,goal){
  const target=fortWaypoint(e,p,goal),gap=Math.hypot(target.x-p.x,target.y-p.y);
  if(gap<1)return target;
  const end={x:p.x+(target.x-p.x)/gap*Math.min(100,gap),y:p.y+(target.y-p.y)/gap*Math.min(100,gap)};
- const props=islandProps(e),blocked=(a,b)=>fortWalls(e).some(w=>lineBox(a,b,w,10))||props.some(o=>segmentHit(a,b,o,o.r+9)!==null);
+ const props=islandProps(e),blocked=(a,b)=>fortWalls(e).some(w=>lineBox(a,b,w,10))||props.some(o=>{
+  // Collision leaves feet seven units from a prop; routing adds nine. Allow
+  // movement out of that two-unit safety margin instead of trapping the NPC.
+  const dx=a.x-o.x,dy=a.y-o.y,r=o.r+9;
+  if(Math.hypot(dx,dy)<r&&(b.x-a.x)*dx+(b.y-a.y)*dy>=0&&Math.hypot(b.x-o.x,b.y-o.y)>Math.hypot(dx,dy))return false;
+  return segmentHit(a,b,o,r)!==null;
+ });
  const obstacle=props.find(o=>segmentHit(p,end,o,o.r+9)!==null);
  if(!obstacle)return target;
  const choices=[];
  for(let i=0;i<16;i++){const a=i*Math.PI/8,q={x:obstacle.x+Math.cos(a)*(obstacle.r+20),y:obstacle.y+Math.sin(a)*(obstacle.r+20)};if(!blocked(p,q))choices.push(q);}
- choices.sort((a,b)=>(blocked(a,target)?300:0)+Math.hypot(p.x-a.x,p.y-a.y)+Math.hypot(target.x-a.x,target.y-a.y)-((blocked(b,target)?300:0)+Math.hypot(p.x-b.x,p.y-b.y)+Math.hypot(target.x-b.x,target.y-b.y)));
- return choices[0]||p;
+ // Score each candidate once, rather than repeating every obstacle test in sort comparisons.
+ let best=p,bestCost=Infinity;
+ for(const q of choices){const cost=(blocked(q,target)?300:0)+Math.hypot(p.x-q.x,p.y-q.y)+Math.hypot(target.x-q.x,target.y-q.y);if(cost<bestCost){best=q;bestCost=cost;}}
+ return best;
 }
 function islandAnchor(e,p,inset=.9){let best,bestD=Infinity,angle=0;for(let i=0;i<128;i++){const a=i*Math.PI/64,r=e.r*inset*shoreFactor(e,a),q={x:e.x+Math.cos(a)*r,y:e.y+Math.sin(a)*r},d=Math.hypot(p.x-q.x,p.y-q.y);if(d<bestD){best=q;bestD=d;angle=a;}}for(let k=0;k<5;k++){const step=Math.PI/64/2**(k+1);for(const a of [angle-step,angle+step]){const r=e.r*inset*shoreFactor(e,a),q={x:e.x+Math.cos(a)*r,y:e.y+Math.sin(a)*r},d=Math.hypot(p.x-q.x,p.y-q.y);if(d<bestD){best=q;bestD=d;angle=a;}}}return best;}
 function linkActive(link,time){return !!link.permanent||link.until>time;}

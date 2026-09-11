@@ -1,5 +1,7 @@
 # Dark Sea responsiveness
 
+Follow-up: companions can escape the extra pathfinding clearance around rocks and trees. A regression reproduced frozen fighters and looters at the collision boundary and now verifies that both reach their targets. Walking animations follow actual displacement. Route candidates are scored once, static batched geometry skips redundant transform updates, and sustained frame pressure scales 3D resolution between 65% and 100% with gradual recovery. HUD resolution remains unchanged; expensive shadows are suspended at lower quality. Companion navigation, rendering, title and adaptive-quality checks pass.
+
 - Ship geometry stays opaque and the crew camera retains its selected distance. Removed three recursive geometry raycasts per frame and their temporary material swaps.
 - Cache decoded Blender assets, instance matching palm crowns, animate their wind at 20 Hz, and omit distant crowns with a gradual size transition. Nearby island detail and guards remain available; collision and terrain rules are unchanged.
 - Movement direction changes bypass the 100 ms heartbeat. Short taps survive an outstanding request and remain pressed for 100 ms after delivery. Camera aiming still uses the bounded heartbeat rate. F11 and unrelated browser keys are no longer swallowed.
