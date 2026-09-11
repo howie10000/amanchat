@@ -79,10 +79,10 @@ for(const ship of Object.keys(S.SHIPS))for(const side of [-1,1]){
 }
 gl.reset();console.log('PASS all four ship types and both broadsides: exact barrel-tip launch and sight direction including aim and ship banking');
 
-// An actual occluder fades; it must never shorten the selected orbit distance.
+// An actual occluder stays opaque; it must never shorten the selected orbit distance.
 gl.reset();Object.assign(v,{ship:'brig',shipX:500,shipY:700,shipA:0,x:450,y:700,a:0,entities:[],onFoot:null,fx:[],crew:[],turnVelocity:0,me:{role:'crew',place:'deck',x:-25,y:0},interior:null});frame();
 const orbitHead=new THREE.Vector3(45,.25+2.88*(.36+S.SHIPS.brig.cannons*.013)*2+.85,70);assert(Math.abs(camera.position.distanceTo(orbitHead)-12)<1e-6,'Default crew orbit keeps 12 units');
-const hull=scene.children.find(g=>g.userData.shipType==='brig'),blocker=new THREE.Mesh(new THREE.BoxGeometry(3,3,3),new THREE.MeshStandardMaterial({color:0xabcdef})),opaque=blocker.material;hull.updateMatrixWorld(true);blocker.position.copy(hull.worldToLocal(orbitHead.clone().lerp(camera.position,.5)));hull.add(blocker);frame();assert(Math.abs(camera.position.distanceTo(orbitHead)-12)<1e-6,'Occlusion never pushes the camera into the player');assert(blocker.material.opacity<.3,'Occluder becomes translucent');assert.notEqual(blocker.material,opaque);assert.equal(opaque.opacity,1,'Shared originals stay opaque');
+const hull=scene.children.find(g=>g.userData.shipType==='brig'),blocker=new THREE.Mesh(new THREE.BoxGeometry(3,3,3),new THREE.MeshStandardMaterial({color:0xabcdef})),opaque=blocker.material;hull.updateMatrixWorld(true);blocker.position.copy(hull.worldToLocal(orbitHead.clone().lerp(camera.position,.5)));hull.add(blocker);frame();assert(Math.abs(camera.position.distanceTo(orbitHead)-12)<1e-6,'Occlusion never pushes the camera into the player');assert.equal(blocker.material.opacity,1,'Ship geometry remains opaque');assert.equal(blocker.material,opaque);assert.equal(opaque.opacity,1,'Shared originals stay opaque');
 v.me.role='starboard';v.me.cannon='1:0';frame();assert.equal(blocker.material,opaque,'Leaving third person restores the original material');
 v.me={role:'crew',place:'hold',x:0,y:0};v.interior={x:500,y:700,a:0,room:v.room,cargo:[]};v.x=500;frame();assert(Math.abs(camera.position.distanceTo(new THREE.Vector3(50,1.1,70))-12)<1e-6,'The hold also preserves orbit distance');gl.reset();
-console.log('PASS fixed orbit through real occlusion, temporary material fading, restoration and unchanged hold distance');
+console.log('PASS fixed orbit through real occlusion, opaque ship materials and unchanged hold distance');

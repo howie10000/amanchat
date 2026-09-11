@@ -116,6 +116,7 @@ document.addEventListener("focusin", pinScroll);
 // keyboard
 const keys = {};
 document.addEventListener("keydown", e => {
+  if (e.key === "F11") return; // Preserve the browser fullscreen shortcut.
   keys[e.key.toLowerCase()] = true;
   handleKey(e);
 });

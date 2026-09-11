@@ -1297,3 +1297,6 @@ h3.section { margin: 14px 0 8px; font-size: 14px; color: #fbbf24; letter-spacing
 #loginScreen .loginBox:before{inset:-32px -32px;height:auto;border:0;border-radius:0;z-index:-1;background:url('assets/dark-sea/title-scroll.png?v=1') center/100% 100% no-repeat;box-shadow:none}
 #loginScreen .loginBox:after{display:none}
 #loginScreen .scrollDetails{opacity:.42}
+
+/* Visible ocean backdrop while the animated title initializes. */
+#loginScreen{background:radial-gradient(ellipse at 18% 22%,#6c8994 0,transparent 32%),linear-gradient(178deg,#102938 0%,#284958 48%,#54707a 49%,#173d50 53%,#091f30 100%)}
