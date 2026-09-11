@@ -17,3 +17,9 @@ Validation: sea input/return, 3D rendering, title, snapshot interpolation, fort 
 ## Cold-start login loading
 
 The model libraries and animated title load after the initial login paint, through a shared asynchronous loader. Sailing and crew joins await the same model dependency promise. A 26,450-byte WebP of the existing title scene is embedded in the login background so the screen does not wait for WebGL. Optional script insertion is excluded from the update manifest signature. In a local browser check with all model requests delayed by 12 seconds, login handlers were ready at 458 ms before the models arrived; this is a local measurement, not an Intel Core Ultra 5 benchmark.
+
+## Title-only model pack and lower-end rendering
+
+`node tools/build-title-assets.cjs` traces the shared title model constructors and exports only the packed meshes they read. The browser preloads this 1,453,433-byte pack instead of fetching every gameplay mesh library for the title. Full gameplay assets still load through the shared promise before sailing; partial title globals do not count as a completed gameplay load. Run `TITLE_PACK=1 node --test js/sea-title.test.js` (set the environment variable separately in PowerShell) to exercise the original visual regression checks using only this pack.
+
+Client rendering uses a 96 by 96 water grid, switching to a preallocated 48 by 48 grid under load, compared with the previous 160 by 160 grid. The drawing buffer is capped at 2,073,600 pixels before adaptive scaling, which can now fall to 50 percent per dimension. Distant ship/prop cosmetics update at 10 Hz and foliage at 10 Hz under load. Authoritative simulation, combat, hitboxes, movement and server files are unchanged. These are workload reductions, not a guarantee of zero lag or a benchmark on the user's hardware.

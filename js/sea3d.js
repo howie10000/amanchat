@@ -20,10 +20,11 @@ const mortarBalls=[],terrainMats=new Map();let caveInterior,caveKey,explorerLigh
 let rain,explosionSmoke,explosionSparks,explosionRings,explosionDebris,splashSheets,splashDrops,splashFoam,splashMist;
 // Sustained frame pressure lowers only 3D resolution; HUD and controls stay native.
 let renderScale=1,slowFrames=0,fastFrames=0;
+let waterFine,waterCoarse;
 function adaptResolution(seconds){
  if(seconds<=0||seconds>.25){slowFrames=fastFrames=0;return;}
  if(seconds>1/40){slowFrames++;fastFrames=0;}else if(seconds<1/57){fastFrames++;slowFrames=0;}else{slowFrames=fastFrames=0;}
- if(slowFrames>=45){renderScale=Math.max(.65,Math.round((renderScale-.1)*100)/100);slowFrames=0;}
+ if(slowFrames>=35){renderScale=Math.max(.5,Math.round((renderScale-.1)*100)/100);slowFrames=0;}
  if(fastFrames>=240){renderScale=Math.min(1,Math.round((renderScale+.05)*100)/100);fastFrames=0;}
 }
 const crowd=new Map(),objects=new Map(),shared=[],balls=[],bursts=[],U=.1;
@@ -420,7 +421,7 @@ function animateShip(g,t,storm=0,fx=[]){
  (g.userData.lanterns||[]).forEach((lamp,i)=>{lamp.rotation.x=clip('lantern_sway','pitch',t+i*.6)*strength;lamp.rotation.z=clip('lantern_sway','roll',t+i*.4)*strength;});
  const muzzle=fx.filter(f=>f.kind==='muzzle'&&f.born>(g.userData.lastMuzzleAt??-Infinity));if(muzzle.length){g.updateMatrixWorld(true);g.userData.lastMuzzleAt=Math.max(...muzzle.map(f=>f.born));}for(const mount of g.userData.cannons||[]){const tip=muzzle.length?new THREE.Vector3(0,0,1.4).applyMatrix4(mount.matrixWorld):null;for(const f of muzzle)if(Math.hypot(f.x*U-tip.x,f.y*U-tip.z)<1.15&&(mount.userData.recoilAt??-1)<f.born)mount.userData.recoilAt=f.born;const recoil=clip('cannon_recoil','back',t-(mount.userData.recoilAt??-1e6)/1000);for(const child of mount.children){child.userData.restRecoilZ??=child.position.z;child.position.z=child.userData.restRecoilZ+recoil;}}
 }
-function animateWorld(g,t,storm=0){if(!g||!g.visible)return;if(g.userData.foliage&&t>=(g.userData.windAt||0)){g.userData.windAt=t+1/20;for(const batch of g.userData.foliage){let visible=0;for(let i=0;i<batch.poses.length;i++){const pose=batch.poses[i].elements,gap=Math.hypot(g.position.x+pose[12]-camera.position.x,g.position.z+pose[14]-camera.position.z);if(gap>100)continue;foliageWind.makeRotationZ(clip('foliage_wind','roll',t+i*.51)*(1+storm));foliagePose.copy(batch.poses[i]).multiply(foliageWind);const scale=Math.min(1,(100-gap)/15);foliagePose.scale(new THREE.Vector3(scale,scale,scale));batch.mesh.setMatrixAt(visible++,foliagePose);}batch.mesh.count=visible;batch.mesh.instanceMatrix.needsUpdate=true;}}let nodes=g.userData.motionProps;if(!nodes){nodes=[];g.traverse(o=>{if(o.userData.windCrown||o.isPointLight)nodes.push(o);});g.userData.motionProps=nodes;}for(const [i,o] of nodes.entries()){if(o.isPointLight){o.userData.baseIntensity??=o.intensity;o.intensity=o.userData.baseIntensity*clip('torch_flicker','intensity',t+i*.31,1);}else{o.rotation.x=clip('foliage_wind','pitch',t+i*.37)*(1+storm);o.rotation.z=clip('foliage_wind','roll',t+i*.51)*(1+storm);}}}
+function animateWorld(g,t,storm=0){if(!g||!g.visible)return;if(g.userData.foliage&&t>=(g.userData.windAt||0)){g.userData.windAt=t+1/(renderScale<.8?10:20);for(const batch of g.userData.foliage){let visible=0;for(let i=0;i<batch.poses.length;i++){const pose=batch.poses[i].elements,gap=Math.hypot(g.position.x+pose[12]-camera.position.x,g.position.z+pose[14]-camera.position.z);if(gap>100)continue;foliageWind.makeRotationZ(clip('foliage_wind','roll',t+i*.51)*(1+storm));foliagePose.copy(batch.poses[i]).multiply(foliageWind);const scale=Math.min(1,(100-gap)/15);foliagePose.scale(new THREE.Vector3(scale,scale,scale));batch.mesh.setMatrixAt(visible++,foliagePose);}batch.mesh.count=visible;batch.mesh.instanceMatrix.needsUpdate=true;}}let nodes=g.userData.motionProps;if(!nodes){nodes=[];g.traverse(o=>{if(o.userData.windCrown||o.isPointLight)nodes.push(o);});g.userData.motionProps=nodes;}for(const [i,o] of nodes.entries()){if(o.isPointLight){o.userData.baseIntensity??=o.intensity;o.intensity=o.userData.baseIntensity*clip('torch_flicker','intensity',t+i*.31,1);}else{o.rotation.x=clip('foliage_wind','pitch',t+i*.37)*(1+storm);o.rotation.z=clip('foliage_wind','roll',t+i*.51)*(1+storm);}}}
 function treasurePresence(g,present,t){if(!g)return;const u=g.userData;u.treasureRest??={y:g.position.y,scale:g.scale.clone()};if(u.treasurePresent===true&&!present)u.pickupAt=t;u.treasurePresent=present;const age=t-(u.pickupAt??-1000);g.visible=present||age<.36;g.scale.copy(u.treasureRest.scale);g.position.y=u.treasureRest.y;if(!present&&g.visible){g.scale.multiplyScalar(clip('treasure_pickup','scale',age,1-age/.36));g.position.y+=clip('treasure_pickup','rise',age)*u.treasureRest.scale.y;}}
 
 function bankVessel(g,heading,turn,t){g.position.y=.25+DARK_SEA.oceanSwell(g.position.x/U,g.position.z/U,t*1000)*U;g.rotation.set(Math.sin(t*1.3+g.position.x*.04)*.009+Math.max(-.09,Math.min(.09,(turn||0)*.16)),-heading,Math.sin(t*.9)*.003,'YXZ');}
@@ -437,7 +438,7 @@ function initialize(){if(renderer||failed)return !!renderer;try{
 
  initializeMaterials();
 
- const wg=new THREE.PlaneGeometry(900,900,160,160);wg.rotateX(-Math.PI/2);water=mesh(scene,wg,oceanMaterial());water.castShadow=false;water.receiveShadow=false;
+ const wg=new THREE.PlaneGeometry(900,900,96,96);wg.rotateX(-Math.PI/2);waterFine=wg;waterCoarse=new THREE.PlaneGeometry(900,900,48,48);waterCoarse.rotateX(-Math.PI/2);water=mesh(scene,wg,oceanMaterial());water.castShadow=false;water.receiveShadow=false;
 
  const home=new THREE.Group();home.position.set(-16,0,-16);scene.add(home);mesh(home,new THREE.CylinderGeometry(14,17,3,24),sand,0,0);box(home,17,2,13,grass,-2,1,0);box(home,10,7,8,wood,-4,5,-2);box(home,12,1,10,gold,-4,9,-2);box(home,16,.6,4,wood,13,1.5,6);for(const x of [8,15,21])for(const z of [4.5,7.5])box(home,.4,4,.4,wood,x,0,z);
 
@@ -489,7 +490,7 @@ function draw(ctx,v,w,h){if(!initialize()||failed)return false;const t=performan
  footCamera=!!(v.onFoot||v.multiplayer&&v.me?.role==='crew');
  const typing=['INPUT','TEXTAREA'].includes(document.activeElement?.tagName);if(!typing){yaw+=((keys.arrowright?1:0)-(keys.arrowleft?1:0))*dt*1.6*(v.multiplayer&&['port','starboard'].includes(v.me.role)?-1:1);pitch=clampLookPitch(pitch+((keys.arrowup?1:0)-(keys.arrowdown?1:0))*dt*(v.multiplayer&&['port','starboard'].includes(v.me.role)?-1:1));}
 
- const rw=Math.max(1,Math.round(w*renderScale)),rh=Math.max(1,Math.round(h*renderScale));if(renderer.domElement.width!==rw||renderer.domElement.height!==rh){renderer.setSize(rw,rh,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
+ const pixelScale=Math.min(1,Math.sqrt(1920*1080/(w*h)))*renderScale;water.geometry=renderScale<.8?waterCoarse:waterFine;const rw=Math.max(1,Math.round(w*pixelScale)),rh=Math.max(1,Math.round(h*pixelScale));if(renderer.domElement.width!==rw||renderer.domElement.height!==rh){renderer.setSize(rw,rh,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
 
  if(shipType!==v.ship||heroCrew!==v.crewId){if(hero)dispose(hero);hero=boat(v.ship,false,!!v.crewId);scene.add(hero);shipType=v.ship;heroCrew=v.crewId;}
 
@@ -511,7 +512,7 @@ function draw(ctx,v,w,h){if(!initialize()||failed)return false;const t=performan
  if(!inHold)for(const g of crowd.values())tiltCrew(g,g.userData.visualShip===v.room?hero:objects.get(g.userData.visualShip));
  for(const [id,g] of objects)if(!present.has(id)){dispose(g);objects.delete(id);}
 
- for(const g of [hero,...objects.values()]){if(g.userData.sails)animateShip(g,serverTime/1000,v.storm||0,v.fx);animateWorld(g,t,v.storm||0);}animateWorld(interior,t);animateWorld(caveInterior,t);
+ for(const g of [hero,...objects.values()]){if(!g.visible)continue;const far=g!==hero&&Math.hypot(g.position.x-center.x,g.position.z-center.z)>100;if(far&&t<(g.userData.cosmeticAt||0))continue;g.userData.cosmeticAt=t+(far?1/10:0);if(g.userData.sails)animateShip(g,serverTime/1000,v.storm||0,v.fx);animateWorld(g,t,v.storm||0);}animateWorld(interior,t);animateWorld(caveInterior,t);
 
  if(inCave){const e=v.entities.find(e=>e.id===v.onFoot),c=e?.caves?.find(c=>c.id===v.me.cave);if(c){if(caveKey!==c.id){if(caveInterior)dispose(caveInterior);caveInterior=caveModel(e,c);scene.add(caveInterior);caveKey=c.id;}caveInterior.visible=true;for(const {index,model} of caveInterior.userData.guards){const guard=e.guards[index];model.visible=guard.hp>0;model.position.set(guard.x*U,.5,guard.y*U);model.userData.weapon=guard.weapon;model.userData.hitAt=guard.hitAt;animatePerson(model,guard.moving,guard.a||0,guard.attack,serverTime,t,dt);}for(const item of caveInterior.userData.caches)treasurePresence(item.model,!e.chests.find(q=>q.id===item.id)?.taken,t);}hero.visible=water.visible=interior.visible=false;}else if(caveInterior)caveInterior.visible=false;
  updateAtmosphere(v,t,center,hero);rain.visible=!inHold&&!inCave&&(v.storm||0)>.15;if(rain.visible){const dummy=new THREE.Object3D();for(let i=0;i<128;i++){dummy.position.set(center.x+Math.sin(i*17.7)*45,2+((i*3.7-t*24)%35+35)%35,center.z+Math.cos(i*9.3)*45);dummy.rotation.z=.18;dummy.updateMatrix();rain.setMatrixAt(i,dummy.matrix);}rain.count=Math.ceil(128*(v.storm||0));rain.instanceMatrix.needsUpdate=true;}
@@ -530,7 +531,7 @@ function draw(ctx,v,w,h){if(!initialize()||failed)return false;const t=performan
  camera.position.copy(head).addScaledVector(desired.sub(head).normalize(),clear);camera.lookAt(head);const dash=v.me?.dash&&serverTime<v.me.dash.end;camera.fov+=( (dash?64:58)-camera.fov)*(1-Math.exp(-dt*7));camera.updateProjectionMatrix();
  }// Interpolation can cut across a curved shoreline: constrain the displayed hull too.
 
- const land=DARK_SEA.obstacles(v.entities);function safeModel(g,r){const b={x:g.position.x/U,y:g.position.z/U,ship:g.userData.shipType,a:-g.rotation.y};DARK_SEA.clearWater(b,r,land);g.position.x=b.x*U;g.position.z=b.y*U;}if(!v.multiplayer)safeModel(hero,DARK_SEA.hullRadius(v.ship));for(const e of v.entities)if(!v.multiplayer&&e.kind!=='island'&&objects.has(e.id))safeModel(objects.get(e.id),e.kind==='kraken'?DARK_SEA.KRAKEN_RADIUS:DARK_SEA.hullRadius(e.ship));
+ const land=v.multiplayer?null:DARK_SEA.obstacles(v.entities);function safeModel(g,r){const b={x:g.position.x/U,y:g.position.z/U,ship:g.userData.shipType,a:-g.rotation.y};DARK_SEA.clearWater(b,r,land);g.position.x=b.x*U;g.position.z=b.y*U;}if(!v.multiplayer)safeModel(hero,DARK_SEA.hullRadius(v.ship));for(const e of v.entities)if(!v.multiplayer&&e.kind!=='island'&&objects.has(e.id))safeModel(objects.get(e.id),e.kind==='kraken'?DARK_SEA.KRAKEN_RADIUS:DARK_SEA.hullRadius(e.ship));
 
  for(let i=0;i<balls.length;i++){const p=v.projectiles?.[i],ball=balls[i];ball.visible=!inCave&&!inHold&&!!p;if(p){const advance=Math.min((p.range||DARK_SEA.CANNON_RANGE)-p.travel,Math.max(0,serverTime-(v.serverNow||serverTime))/1000*DARK_SEA.CANNON_SPEED);const fraction=Math.min(1,(p.travel+advance)/(p.range||DARK_SEA.CANNON_RANGE)),height=(p.height==null?2.5:p.height*U)*(1-fraction*fraction)+Math.tan(p.elevation??.12)*(p.range||DARK_SEA.CANNON_RANGE)*U*fraction*(1-fraction);ball.position.set((p.x+p.dx*advance)*U,height,(p.y+p.dy*advance)*U);}}
 
