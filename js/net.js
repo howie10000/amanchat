@@ -234,7 +234,7 @@
         const response = await fetch(entry.href, { cache: 'no-store' });
         if (!response.ok) return false;
         const live = new DOMParser().parseFromString(await response.text(), 'text/html');
-        const signature = (doc, base) => JSON.stringify([...doc.querySelectorAll('script[src],link[rel="stylesheet"][href]')]
+        const signature = (doc, base) => JSON.stringify([...doc.querySelectorAll('script[src]:not([data-optional-asset]),link[rel="stylesheet"][href]')]
           .map(el => new URL(el.getAttribute('src') || el.getAttribute('href'), base).href)
           .filter(url => new URL(url).origin === entry.origin));
         stale = signature(document, location.href) !== signature(live, entry.href);

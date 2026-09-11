@@ -13,3 +13,7 @@ Follow-up: companions can escape the extra pathfinding clearance around rocks an
 - Normal voyage exits return to the shipwright dock. Inactivity exits still return to spawn.
 
 Validation: sea input/return, 3D rendering, title, snapshot interpolation, fort navigation, and cave companion tests pass. A generated tropical island benchmark with identical geometry reduced mesh draw submissions from 478 to 127 and construction time from 4,875 ms to 1,679 ms on the development machine, before distance culling. These are scene construction/submission measurements, not a guaranteed FPS on every device. Browser checks covered a rendered mountain island and full deferred application startup.
+
+## Cold-start login loading
+
+The model libraries and animated title load after the initial login paint, through a shared asynchronous loader. Sailing and crew joins await the same model dependency promise. A 26,450-byte WebP of the existing title scene is embedded in the login background so the screen does not wait for WebGL. Optional script insertion is excluded from the update manifest signature. In a local browser check with all model requests delayed by 12 seconds, login handlers were ready at 458 ms before the models arrived; this is a local measurement, not an Intel Core Ultra 5 benchmark.
