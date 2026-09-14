@@ -41,3 +41,14 @@ Admins and owners can set player purses, player banks, individual guild-bank dep
 Arcade racing adds stronger acceleration, responsive steering and handbrake turns, yellow boost strips, banked road surfaces, low jump ramps, bright modular-style roads, and a speed-sensitive chase camera. Track physics and rendering use the same banked surface heights.
 
 Use the Length and Difficulty selectors above the track to start Short, Long (1.7× circuit length), or Endless on Easy, Medium, or Hard. Changing either starts a fresh run. Endless streams connected road locally and discards older sections, keeping at most 360 points. Difficulty changes speed limits; Easy uses gentler circuit layouts, and Endless varies bend strength by difficulty.
+
+
+## Generation 2.0 EXPERIMENTAL
+
+The Generation selector sits between Length and Difficulty. Generation 1.0 is the default and retains the original generation and physics. Generation 2.0 EXPERIMENTAL supports Short, Long, and Endless at all three difficulties. Changing a selector starts a new run.
+
+The experimental generator offers Skyweave Overpass (a figure-eight with separated deck heights), Neon Switchbacks, and Cloudline Slalom, with randomized dimensions, mirroring, rotation, wall transitions, boosts and elevated jump sections. Cyan lanes rotate to a full 90-degree wall with grip assistance. Steering follows the road surface, the car and chase camera rotate with its normal, and jump landings use 3D surface queries so an overpass cannot snap the car onto the wrong deck. Easy has wider lanes and lower speed limits; Hard is narrower and faster. Cyan portions of the minimap mark wall sections.
+
+Endless generates new wall and sky-jump modules locally, retains at most 360 points, and releases obsolete track meshes and sign textures. Retry restarts the same experimental Endless seed at the beginning; R recovers at the last checkpoint with the existing time penalty. All racing remains client-only and awards no money or items.
+
+Checks: `node js/race-gen2.test.js` covers 180 layouts, true vertical driving, 18 complete laps with wall rides and jump landings, streamed Endless continuity and Generation 1.0 equivalence. `node js/race-art.test.js` also checks surface-aligned car poses and bounded geometry/texture lifetimes across experimental track rebuilds. Browser checks cover all 18 settings, wall camera orientation, desktop/mobile selectors, and clean exit.

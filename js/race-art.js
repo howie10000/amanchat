@@ -24,8 +24,45 @@
    for(const x of [-.57,.57]){box(g,x,.18,1.705,.44,.13,.04,'#fff0c2');box(g,x,.22,-1.705,.47,.1,.04,'#ef4846');}
    return g;
   }
-  function poseCar(g,p,time,speed=0){g.position.set(p.x,p.y+.55,p.z);g.rotation.set(p.pitch||0,p.yaw,p.roll||0,'YXZ');for(const w of g.userData.wheels)w.rotation.x=time*speed/ .37;}
+  const poseMatrix=new THREE.Matrix4(),poseRight=new THREE.Vector3(),poseUp=new THREE.Vector3(),poseForward=new THREE.Vector3();
+  function poseCar(g,p,time,speed=0){
+   if(p.forward&&p.normal){g.position.set(p.x,p.y,p.z);poseRight.set(p.right.x,p.right.y,p.right.z);poseUp.set(p.normal.x,p.normal.y,p.normal.z);poseForward.set(p.forward.x,p.forward.y,p.forward.z);poseMatrix.makeBasis(poseRight,poseUp,poseForward);g.quaternion.setFromRotationMatrix(poseMatrix);}
+   else{g.position.set(p.x,p.y+.55,p.z);g.rotation.set(p.pitch||0,p.yaw,p.roll||0,'YXZ');}
+   for(const w of g.userData.wheels)w.rotation.x=time*speed/ .37;
+  }
+  function circuit2(track){
+   const group=new THREE.Group(),points=track.points,verts=[],colors=[],cache=new Map(),half=track.width/2;
+   function at(p,x,y=0){return[p.x+p.right.x*x+p.normal.x*y,p.y+p.right.y*x+p.normal.y*y,p.z+p.right.z*x+p.normal.z*y];}
+   function tri(a,b,c,color){if(!cache.has(color)){const v=new THREE.Color(color).convertSRGBToLinear();cache.set(color,[v.r,v.g,v.b]);}verts.push(...a,...b,...c);const rgb=cache.get(color);colors.push(...rgb,...rgb,...rgb);}
+   function quad(a,b,c,d,color){tri(a,c,b,color);tri(b,c,d,color);}
+   function align(g,p){poseMatrix.makeBasis(poseRight.set(p.right.x,p.right.y,p.right.z),poseUp.set(p.normal.x,p.normal.y,p.normal.z),poseForward.set(p.tangent.x,p.tangent.y,p.tangent.z));g.quaternion.setFromRotationMatrix(poseMatrix);g.position.set(p.x,p.y,p.z);}
+   const count=track.open?points.length-1:points.length;
+   for(let i=0;i<count;i++){
+    const p=points[i],q=points[(i+1)%points.length],wall=Math.abs(p.bank)>.35,accent=wall?'#12bfe0':'#ff7552';
+    quad(at(p,-half),at(p,half),at(q,-half),at(q,half),p.boost?(p.id%2?'#ffc841':'#29344b'):wall?'#d1f3f7':'#eff1f3');
+    for(const edge of [-half,half]){
+     const inner=edge-Math.sign(edge)*.5;
+     quad(at(p,inner,.02),at(p,edge,.02),at(q,inner,.02),at(q,edge,.02),accent);
+     quad(at(p,edge),at(p,edge,-.65),at(q,edge),at(q,edge,-.65),'#364d68');
+     quad(at(p,edge,.05),at(p,edge,.72),at(q,edge,.05),at(q,edge,.72),wall?'#146789':'#6c829b');
+     quad(at(p,edge-.09,.74),at(p,edge+.09,.74),at(q,edge-.09,.74),at(q,edge+.09,.74),accent);
+    }
+    if(p.boost||p.launch){const mid=points[(i+1)%points.length];tri(at(p,-2.4,.035),at(p,2.4,.035),at(mid,0,.035),p.launch?'#ff774a':'#fff3bf');}
+    if(p.id%18===0){const anchor=at(p,0,-1.4);box(group,anchor[0],(anchor[1]-7)/2,anchor[2],1.4,Math.max(1,anchor[1]+7),1.4,'#62798e');}
+    // Surface-aligned arches make the ninety-degree wall transitions readable.
+    if(wall&&p.id%12===0){const arch=new THREE.Group();align(arch,p);group.add(arch);for(const x of [-half-.7,half+.7])box(arch,x,2.7,0,.28,5.4,.3,'#10c9e2');box(arch,0,5.4,0,track.width+1.7,.25,.3,'#10c9e2');}
+    if(p.id%30===0){const gate=new THREE.Group();align(gate,p);group.add(gate);const number=track.open?p.id/30:i/30;for(const x of [-half-.9,half+.9])box(gate,x,3.6,0,.45,7.2,.5,'#233c55');box(gate,0,7.2,0,track.width+2.4,.65,.6,'#233c55');sign(gate,number?'CHECKPOINT '+number:'GEN 2 · START / FINISH',0,7.2,0,track.width,.8,'#66e5f3');if(!number)for(let x=0;x<12;x++)for(let z=0;z<2;z++)box(gate,(x-5.5)*track.width/12,.025,z*.6,track.width/12,.03,.6,(x+z)%2?'#203449':'#ffffff');}
+    if(p.id%30===20){const marker=new THREE.Group();align(marker,p);group.add(marker);sign(marker,p.boost?'BOOST':p.feature||'APEX STUNTWORKS',0,4.8,0,9,.7,wall?'#54e3f5':'#ffca8c');}
+   }
+   const geo=own(new THREE.BufferGeometry());geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));geo.computeVertexNormals();
+   const material=new THREE.MeshStandardMaterial({vertexColors:true,side:THREE.DoubleSide,roughness:.83});materials.set('gen2-road',material);group.add(new THREE.Mesh(geo,material));group.userData.ownedGeometries=[geo];group.userData.roadMaterial=material;
+   const center=points[Math.floor(points.length/2)];box(group,track.open?center.x:0,-8,track.open?center.z:0,track.open?2400:1700,1,track.open?2400:1700,'#728c91');
+   for(let i=0;i<16;i++){const a=i/16*Math.PI*2,m=new THREE.Mesh(cone,mat(i%2?'#6b899a':'#93acb8'));m.position.set((track.open?center.x:0)+Math.cos(a)*560,30,(track.open?center.z:0)+Math.sin(a)*560);m.scale.set(75,130+(i%4)*22,80);group.add(m);}
+   group.updateMatrixWorld(true);const batches=new Map(),remove=[];group.traverse(m=>{if(m.isMesh&&m.geometry===cube){if(!batches.has(m.material))batches.set(m.material,[]);batches.get(m.material).push(m.matrixWorld.clone());remove.push(m);}});for(const m of remove)m.removeFromParent();for(const [material,list]of batches){const mesh=new THREE.InstancedMesh(cube,material,list.length);list.forEach((matrix,i)=>mesh.setMatrixAt(i,matrix));mesh.instanceMatrix.needsUpdate=true;group.add(mesh);}
+   return group;
+  }
   function circuit(track){
+   if(track.generation===2)return circuit2(track);
    const group=new THREE.Group(),palette=palettes[track.theme||0],points=track.points,n=points.length,verts=[],colors=[],owned=[];
    const normals=points.map((p,i)=>{const a=points[track.open?Math.max(0,i-1):(i+n-1)%n],b=points[track.open?Math.min(n-1,i+1):(i+1)%n],l=Math.hypot(b.x-a.x,b.z-a.z);return{x:-(b.z-a.z)/l,z:(b.x-a.x)/l};});
    const colorCache=new Map();
