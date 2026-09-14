@@ -38,7 +38,7 @@
    function align(g,p){poseMatrix.makeBasis(poseRight.set(p.right.x,p.right.y,p.right.z),poseUp.set(p.normal.x,p.normal.y,p.normal.z),poseForward.set(p.tangent.x,p.tangent.y,p.tangent.z));g.quaternion.setFromRotationMatrix(poseMatrix);g.position.set(p.x,p.y,p.z);}
    const count=track.open?points.length-1:points.length;
    for(let i=0;i<count;i++){
-    const p=points[i],q=points[(i+1)%points.length],wall=Math.abs(p.bank)>.35,accent=wall?'#12bfe0':'#ff7552';
+    const p=points[i],q=points[(i+1)%points.length],wall=Math.abs(p.normal.y)<.94||p.normal.y<0,accent=p.twist?'#b787ff':p.hyper?'#ffcf38':wall?'#12bfe0':'#ff7552';
     quad(at(p,-half),at(p,half),at(q,-half),at(q,half),p.boost?(p.id%2?'#ffc841':'#29344b'):wall?'#d1f3f7':'#eff1f3');
     for(const edge of [-half,half]){
      const inner=edge-Math.sign(edge)*.5;
@@ -48,11 +48,11 @@
      quad(at(p,edge-.09,.74),at(p,edge+.09,.74),at(q,edge-.09,.74),at(q,edge+.09,.74),accent);
     }
     if(p.boost||p.launch){const mid=points[(i+1)%points.length];tri(at(p,-2.4,.035),at(p,2.4,.035),at(mid,0,.035),p.launch?'#ff774a':'#fff3bf');}
-    if(p.id%18===0){const anchor=at(p,0,-1.4);box(group,anchor[0],(anchor[1]-7)/2,anchor[2],1.4,Math.max(1,anchor[1]+7),1.4,'#62798e');}
+    if(p.id%18===0&&p.normal.y>.65){const anchor=at(p,0,-1.4);box(group,anchor[0],(anchor[1]-7)/2,anchor[2],1.4,Math.max(1,anchor[1]+7),1.4,'#62798e');}
     // Surface-aligned arches make the ninety-degree wall transitions readable.
-    if(wall&&p.id%12===0){const arch=new THREE.Group();align(arch,p);group.add(arch);for(const x of [-half-.7,half+.7])box(arch,x,2.7,0,.28,5.4,.3,'#10c9e2');box(arch,0,5.4,0,track.width+1.7,.25,.3,'#10c9e2');}
+    if((wall&&p.id%12===0)||(p.hyper&&p.id%2===0)){const arch=new THREE.Group();align(arch,p);group.add(arch);for(const x of [-half-.7,half+.7])box(arch,x,2.7,0,.28,5.4,.3,accent);box(arch,0,5.4,0,track.width+1.7,.25,.3,accent);}
     if(p.id%30===0){const gate=new THREE.Group();align(gate,p);group.add(gate);const number=track.open?p.id/30:i/30;for(const x of [-half-.9,half+.9])box(gate,x,3.6,0,.45,7.2,.5,'#233c55');box(gate,0,7.2,0,track.width+2.4,.65,.6,'#233c55');sign(gate,number?'CHECKPOINT '+number:'GEN 2 · START / FINISH',0,7.2,0,track.width,.8,'#66e5f3');if(!number)for(let x=0;x<12;x++)for(let z=0;z<2;z++)box(gate,(x-5.5)*track.width/12,.025,z*.6,track.width/12,.03,.6,(x+z)%2?'#203449':'#ffffff');}
-    if(p.id%30===20){const marker=new THREE.Group();align(marker,p);group.add(marker);sign(marker,p.boost?'BOOST':p.feature||'APEX STUNTWORKS',0,4.8,0,9,.7,wall?'#54e3f5':'#ffca8c');}
+    if(p.id%30===20||(p.hyper&&!points[i-1]?.hyper)){const marker=new THREE.Group();align(marker,p);group.add(marker);sign(marker,p.hyper?'HYPER BOOST':p.twist?'CORKSCREW':p.boost?'BOOST':p.feature||'APEX STUNTWORKS',0,4.8,0,9,.7,wall?'#54e3f5':'#ffca8c');}
    }
    const geo=own(new THREE.BufferGeometry());geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));geo.computeVertexNormals();
    const material=new THREE.MeshStandardMaterial({vertexColors:true,side:THREE.DoubleSide,roughness:.83});materials.set('gen2-road',material);group.add(new THREE.Mesh(geo,material));group.userData.ownedGeometries=[geo];group.userData.roadMaterial=material;

@@ -17,3 +17,11 @@ for(const difficulty of ['easy','medium','hard']){
 console.log('PASS endless wall driving and streaming preserve world coordinates and bounded retained track');
 assert.deepEqual(race.generate(()=>.34),race.generate(()=>.34,{generation:'1'}));console.log('PASS Generation 1.0 remains unchanged');
 const crossing=g.generate(()=>2/13,{generation:2});assert.equal(crossing.name,'Skyweave Overpass');const low=crossing.points[0],high=crossing.points[120];assert(Math.abs(low.y-high.y)>20);const hitLow=g.nearest(crossing,low.x,low.z,low.y+.55),hitHigh=g.nearest(crossing,high.x,high.z,high.y+.55);assert(hitLow.index<2||hitLow.index>237);assert(Math.abs(hitHigh.index-120)<2);console.log('PASS overpass queries distinguish upper and lower decks');
+
+for(const mode of ['short','long','endless']){
+ const t=g.generate(()=>.53,{mode,difficulty:'medium'}),ceiling=t.points.findIndex(p=>p.normal.y<-.98);assert(ceiling>=0);assert(t.points.some(p=>p.hyper));
+ const c=g.spawn(t,ceiling);c.speed=45;for(let i=0;i<30;i++)g.step(c,t,{up:true},1/120);assert(c.grounded&&c.normal.y<-.95,'Car stays attached while driving on the ceiling');assert(c.topSpeed>=45);
+ const boostIndex=t.points.findIndex(p=>p.hyper),hyper=g.spawn(t,boostIndex),plain=g.spawn(t,0);g.step(hyper,t,{up:true},1/120);g.step(plain,t,{up:true},1/120);assert(hyper.speed>plain.speed);assert(hyper.hyper);
+ for(let i=0;i<t.segments.length;i++){const seg=t.segments[i];assert(dot(seg.p.normal,seg.q.normal)>.7,'Corkscrew surface must turn continuously');}
+}
+console.log('PASS ceiling grip, corkscrew continuity, hyper acceleration and stunt speed counters in every length');

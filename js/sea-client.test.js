@@ -14,7 +14,7 @@ async function test(){
  const elements=new Map(),el=id=>{if(!elements.has(id))elements.set(id,{tagName:'DIV',innerHTML:'',classList:{add(){}},appendChild(){},querySelectorAll(){return[];}});return elements.get(id);};
  let stamp=1000,calls=[],resets=0;const profile={ship:'sailboat',owned:['sailboat'],gems:0,reputation:0,crew:0,upgrades:{}};
  const voyage={x:120,y:120,ship:'sailboat',hp:700,magic:60,stats:S.stats(profile),cargo:[],remaining:60000,entities:[],fx:[]};
- const events={};const client={queueMicrotask,window:{NET:{on:(name,fn)=>events[name]=fn},SeaGL:{reset(){resets++;}}},DARK_SEA:S,state:world.state,gameWorld:W,keys:{},Date:{now:()=>stamp},performance:{now:()=>stamp},console,document:{addEventListener(){},activeElement:{tagName:'BODY'},getElementById:el,createElement:()=>el('hud'),querySelectorAll:()=>[]},openMenu(title,html){client.menuHtml=html;},closeMenu(){},toast(){},updateHUD(){},netSea:async payload=>{calls.push(payload);return{profile,money:0,...(payload.action==='status'?{}:payload.action==='return'?{ended:true}:{voyage})};}};
+ const events={},windowEvents={},documentEvents={};const client={queueMicrotask,window:{addEventListener:(name,fn)=>windowEvents[name]=fn,NET:{on:(name,fn)=>events[name]=fn},SeaGL:{reset(){resets++;}}},DARK_SEA:S,state:world.state,gameWorld:W,keys:{},Date:{now:()=>stamp},performance:{now:()=>stamp},console,document:{addEventListener(name,fn){(documentEvents[name]||=([])).push(fn);},activeElement:{tagName:'BODY'},getElementById:el,createElement:()=>el('hud'),querySelectorAll:()=>[]},openMenu(title,html){client.menuHtml=html;},closeMenu(){},toast(){},updateHUD(){},netSea:async payload=>{calls.push(payload);return{profile,money:0,...(payload.action==='status'?{}:payload.action==='return'?{ended:true}:{voyage})};}};
  vm.createContext(client);vm.runInContext(read('sea.js'),client);const sea=client.window.gameSea;
  client.state.pos={x:0,y:0};await sea.harbor();assert.equal(calls.length,0,'Shipwright must be reached physically');
  client.state.pos={x:4230,y:1120};world.state=client.state;await sea.harbor();assert(!client.menuHtml.includes('id="seaStaffGems"'),'Ordinary players receive no staff gem button markup');await el('seaSail').onclick();assert.equal(client.state.area,'sea');
@@ -26,6 +26,15 @@ async function test(){
  client.keys.arrowup=true;client.keys.arrowleft=true;sea.update();await new Promise(r=>setImmediate(r));assert.equal(calls.at(-1).input.forward,false);assert.equal(calls.at(-1).input.left,false);
  stamp+=250;client.keys.w=true;client.keys.d=true;sea.update();await new Promise(r=>setImmediate(r));assert.equal(calls.at(-1).input.forward,true);assert.equal(calls.at(-1).input.right,true);
 
+ // A continuously held key stays active without OS key-repeat or mouse events.
+ for(let i=0;i<60;i++){stamp+=1000;sea.update();await new Promise(r=>setImmediate(r));assert.equal(calls.at(-1).input.forward,true);assert.equal(calls.at(-1).input.active,true);}
+ client.keys.w=false;client.keys.d=false;stamp+=200;sea.update();await new Promise(r=>setImmediate(r));assert.equal(calls.at(-1).input.forward,false);assert.equal(calls.at(-1).input.active,false,'Releasing the last held control may become idle');
+ client.keys.w=true;client.document.activeElement=el('chatBox');stamp+=200;sea.update();await new Promise(r=>setImmediate(r));assert.equal(calls.at(-1).input.forward,false,'Typing cannot move');client.document.activeElement={tagName:'BODY'};
+ windowEvents.blur();await new Promise(r=>setImmediate(r));assert.equal(calls.at(-1).input.forward,false);assert.equal(calls.at(-1).input.active,false);assert.equal(client.keys.w,false);
+ windowEvents.focus();sea.update();await new Promise(r=>setImmediate(r));assert.equal(calls.at(-1).input.forward,false,'Focus does not re-latch stale keys');
+ client.keys.w=true;client.document.hidden=true;for(const fn of documentEvents.visibilitychange)fn();await new Promise(r=>setImmediate(r));assert.equal(calls.at(-1).input.forward,false);assert.equal(calls.at(-1).input.active,false);client.document.hidden=false;
+ client.keys.w=true;stamp+=200;sea.update();await new Promise(r=>setImmediate(r));assert.equal(calls.at(-1).input.forward,true);assert.equal(calls.at(-1).input.active,true);
+ console.log('PASS 60 seconds held W without repeat, release, chat, blur, focus and hidden-tab movement activity');
  const before=calls.length;await sea.act('fire');assert.equal(calls.length,before,'Space/click must not fire aboard');
  sea.key({key:' ',preventDefault(){}});assert.equal(calls.length,before);
  let release;const original=client.netSea;client.netSea=payload=>{calls.push(payload);return payload.action==='input'?new Promise(r=>release=()=>r({profile,voyage})):Promise.resolve({profile,voyage});};
