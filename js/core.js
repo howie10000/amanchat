@@ -867,7 +867,7 @@ function loop(now) {
       ticks++;
     }
     if (ticks === MAX_TICKS_PER_FRAME) _loopAcc = 0;
-    draw();
+    if(!window.gameRace?.active) draw();
   } catch (e) {
     console.error("[loop]", e);
     _loopAcc = 0;

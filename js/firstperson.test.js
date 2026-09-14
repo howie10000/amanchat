@@ -6,7 +6,7 @@ const painter=new Proxy({},{get:()=>()=>{}}),events={};
 THREE.WebGLRenderer=class{constructor(){this.domElement={addEventListener(){}};}setSize(){}render(s,c){scene=s;camera=c;s.updateMatrixWorld(true);}};
 let menu=false;
 const canvas={width:1280,height:800,addEventListener:(k,f)=>{events[k]=f;}};
-const env={THREE,ECON,DUNGEON,...furniture,canvas,ctx:painter,console,Date,Math,keys:{},DEFAULT_APPEARANCE:{skin:'#f5d0a9',hair:'short',hairColor:'#3f2210',shirt:'#3b82f6',pants:'#1e293b',hat:'none',accessory:'none',pet:'none',aura:'none'},
+const env={CARS:require('./shared/cars'),THREE,ECON,DUNGEON,...furniture,canvas,ctx:painter,console,Date,Math,keys:{},DEFAULT_APPEARANCE:{skin:'#f5d0a9',hair:'short',hairColor:'#3f2210',shirt:'#3b82f6',pants:'#1e293b',hat:'none',accessory:'none',pet:'none',aura:'none'},
  window:{addEventListener(){}},document:{activeElement:{tagName:'BODY'},addEventListener(){},createElement:()=>({getContext:()=>painter}),getElementById:()=>({classList:{contains:()=>!menu}})},
  state:{area:'interior_home',pos:{x:512,y:500},cam:{x:0,y:0},mouse:{},appearance:{},others:{},enemies:[],data:{},interiorFurniture:[],casinoFloor:0},
  WORLD_W:4400,WORLD_H:3400,HOUSE_ROW_Y:[],BUILDINGS:[],TREES:[],POND:{x:500,y:500,rx:200,ry:100},POND_DOCK:{x:500,y:600,w:90,h:120},COURT:{x:1000,y:1000,w:760,h:380},HOOPS:[],BALL_SPOT:{x:1380,y:1190},FOUNTAIN:{x:2200,y:980},HARBOR:{x:4050,y:660,w:350,h:650},SEA_DOCK:{x:4230,y:1120},STAGE:{x:2200,y:1720,r:90},NOTICE_SPOT:{x:2260,y:1400},NOTICE:{y:1318},DUNGEON_W:DUNGEON.DUNGEON_W,DUNGEON_H:DUNGEON.DUNGEON_H,

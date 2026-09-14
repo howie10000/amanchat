@@ -43,6 +43,9 @@ const BUILDINGS = [
   // interior is your own personal farm (seed stall, 12 beds, a cooking pot).
   { x: 1180, y: 1450, w: 250, h: 180, type: "farm", label: "FARM", color: "#b91c1c", roofColor: "#3f2210", signColor: "#fde68a" },
   { x: 3760, y: 860, w: 240, h: 180, type: "shipwright", label: "SHIPWRIGHT", color: "#245568", roofColor: "#283c48", signColor: "#f2d390" },
+  {x:1780,y:300,w:260,h:180,type:"dealership",label:"THE DEALERSHIP",color:"#164e63",roofColor:"#102334",signColor:"#67e8f9"},
+  {x:3660,y:300,w:290,h:180,type:"racetrack",label:"APEX RACETRACK",color:"#4338ca",roofColor:"#172038",signColor:"#bef264"},
+
 ];
 
 function mulberry32(a){return function(){var t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296;}}
@@ -663,13 +666,15 @@ function drawNeighborhood() {
     if (p.area && p.area !== "neighborhood") continue;
     const px = typeof p.dispX === "number" ? p.dispX : p.x;
     const py = typeof p.dispY === "number" ? p.dispY : p.y;
-    GFX.drawCharacter(ctx, px, py, p.appearance, { facing: p.facing, emote: p.emote });
+    if(p.car) gameCars.draw(ctx,px,py,p.car,p.facing);
+    else GFX.drawCharacter(ctx, px, py, p.appearance, { facing: p.facing, emote: p.emote });
     GFX.drawNameAndBubble(ctx, px, py, u, p.msgs || p.msg, false, p.appearance, p.role);
   }
   // When a staff member is invisible, nobody else's presence carries them, and
   // on their own screen they're drawn ghosted so they don't forget.
   if (state.invisible) ctx.globalAlpha = 0.35;
-  GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance,
+  if(state.data?.equippedCar) gameCars.draw(ctx,state.pos.x,state.pos.y,state.data.equippedCar,state.facing);
+  else GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance,
                     { facing: state.facing, walking: state.walking, emote: state.emote });
   GFX.drawNameAndBubble(ctx, state.pos.x, state.pos.y, state.user, state.msgs, true, state.appearance, state.role);
   ctx.globalAlpha = 1;

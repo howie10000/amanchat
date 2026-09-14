@@ -1,0 +1,14 @@
+'use strict';
+const assert=require('node:assert/strict'),{act}=require('./cars'),CARS=require('../js/shared/cars');
+let u={money:50000};
+assert.throws(()=>act(u,{action:'buy',car:'sport'},false),/dealer/);
+assert.throws(()=>act(u,{action:'buy',car:'toString'},true),/Unknown/);
+assert.throws(()=>act({money:1},{action:'buy',car:'sport'},true),/money/);
+assert.throws(()=>act(u,{action:'equip',car:'sport'},true),/own/);
+u=act(u,{action:'buy',car:'sport'},true);assert.equal(u.money,40000);assert.equal(u.equippedCar,'sport');
+u=act(u,{action:'buy',car:'sport'},true);assert.equal(u.money,40000);
+u=act(u,{action:'equip',car:''},false);assert.equal(u.equippedCar,'');assert.equal(u.cars.sport,true);
+u=act(JSON.parse(JSON.stringify(u)),{action:'equip',car:'sport'},false);assert.equal(u.equippedCar,'sport');
+assert.throws(()=>act(u,{action:'reward',amount:999999},true),/Unknown/);
+for(const c of Object.values(CARS))assert(c.speed>1&&c.speed<=2.2&&c.price>0);
+console.log('PASS dealer proximity, catalog validation, insufficient funds, ownership, duplicate buy, parking, persistence and no reward action');

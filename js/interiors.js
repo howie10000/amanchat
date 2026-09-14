@@ -3,6 +3,8 @@
 // Each interior is defined by: dimensions, floor color, wall color, hotspots.
 // Hotspots = { x, y, label, action }
 const INTERIORS = {
+  interior_dealership: {w:1024,h:640,floor:'#27384b',wall:'#d5eaf0',trim:'#22d3ee',hotspots:[{x:512,y:240,label:'TALK TO THE DEALER',action:'car_dealer',icon:'people'}]},
+  interior_racetrack: {w:1024,h:640,floor:'#27384b',wall:'#c7d2fe',trim:'#a3e635',hotspots:[{x:512,y:240,label:'RACE A NEW 3D TRACK',action:'car_race',icon:'flag'}]},
   interior_home: { w: 1024, h: 640, floor: "#a16207", wall: "#fef3c7", trim: "#7c2d12" },
   // VEGAS — the tower. One area, five floors; the stations you can use come
   // from the floor you're standing on (see currentHotspots). The elevator is
@@ -471,6 +473,8 @@ function drawInterior() {
 }
 
 function buildingTitle(area) {
+  if(area==='interior_dealership')return 'THE DEALERSHIP';
+  if(area==='interior_racetrack')return 'APEX RACETRACK';
   const map = {
     interior_home: state.interiorOf === state.user ? `${state.user}'s Home` : `${state.interiorOf}'s Home (visiting)`,
     interior_casino: "🎰 VEGAS — " + ((INTERIORS.interior_casino.floors[state.casinoFloor || 0] || {}).name || ""),
@@ -518,6 +522,11 @@ function drawHomeContents() {
 }
 
 function drawInteriorDecor(area) {
+  if(area==='interior_dealership'){
+    GFX.drawCharacter(ctx,512,208,{skin:'#d9a77c',shirt:'#164e63',pants:'#172033',hair:'#262025'},{facing:'down'});
+    ctx.fillStyle='#ecfeff';ctx.font='bold 17px sans-serif';ctx.textAlign='center';ctx.fillText('THE DEALER',512,157);
+    Object.keys(CARS).forEach((id,i)=>gameCars.draw(ctx,260+i*250,390,id,'up'));
+  }
   const room = interiorRoom();
   if (area === "interior_casino") {
     drawVegasFloor(state.casinoFloor || 0, room);

@@ -530,6 +530,8 @@ function triggerHotspotAction(action, hs) {
     case "quest_board":      openQuestBoard(); break;
     case "quest_invite":     openCoopInvite(); break;
     case "duel_open":        openDuelChallenge(); break;
+    case "car_dealer": gameCars.dealer(); break;
+    case "car_race": gameRace.start(); break;
     case "guild_broker":     gameGuild.openBroker(); break;
     case "gear_armory":     gameGear.openArmory(); break;
     case "guild_home":       gameGuild.enterGuildHall(); break;
@@ -1945,6 +1947,7 @@ async function renderMyBugReports() {
 
 // ---------- MAIN UPDATE ----------
 function update() {
+  if(window.gameRace?.active) return;
   if (state.attackCooldown > 0) state.attackCooldown--;
 
   if (state.area === "sea") { gameSea.update(); return; }
@@ -1971,7 +1974,7 @@ function update() {
     if (keys["a"] || keys["arrowleft"]) dx -= 1;
     if (keys["d"] || keys["arrowright"]) dx += 1;
     const m = Math.hypot(dx, dy) || 1;
-    const speed = WALK_SPEED; // shared walking speed (core.js), per 60Hz tick
+    const speed = WALK_SPEED * (state.area === 'neighborhood' ? (CARS[state.data?.equippedCar]?.speed || 1) : 1); // shared walking speed (core.js), per 60Hz tick
     if (m > 0.001 && (dx || dy)) {
       if (state.homeUse?.kind === 'sit' && !gameInteriors.leaveHomeFurniture()) return;
       const nx = state.pos.x + (dx/m) * speed;

@@ -147,6 +147,7 @@
 
   // Server-authoritative economy ops (see docs/SERVER-AUTHORITY.md). Each
   // resolves with the op's `data` (always includes the caller's new `money`).
+  window.netCar = (data) => rpc("car", data);
   window.netBank = (data) => rpc("bank", data);
   window.netEarn = (data) => rpc("earn", data);
   window.netFish = (data) => rpc("fish", data);

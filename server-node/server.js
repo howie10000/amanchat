@@ -14,6 +14,7 @@
 //   STATIC_DIR static files to serve      (default .. — the game's index.html/js/style.css)
 //   OWNERS    comma-separated owner usernames (also: roles/owners/<name>: true in the save)
 
+const carService = require('./cars.js');
 const express = require('express');
 const http = require('http');
 const path = require('path');
@@ -681,6 +682,7 @@ function presenceView(c) {
         // client's claim, so nobody can walk into a run they aren't in.
         run: p.area === 'dungeon' ? (guildRunOf.get(c.user) || undefined) : undefined,
         dfloor: p.area === 'dungeon' ? (p.dfloor | 0) : undefined,
+        car: p.car,
         facing: p.facing,
         hp: p.hp,
         emote: p.emote,
@@ -692,6 +694,7 @@ function presenceView(c) {
 }
 
 function broadcastPresence() {
+    if (!clients.size) { areaState.clear(); return; }
     const members = new Map();   // areaKey -> Client[]  (who is drawn there)
     const viewers = new Map();   // areaKey -> Client[]  (who receives that area)
     for (const c of clients) {
@@ -718,12 +721,17 @@ function broadcastPresence() {
         const next = new Map();
         const delta = {};
         const full = {};
+        const needsFull=vs.some(c=>c.sentArea!==key && !(c.ws.bufferedAmount>256*1024));
         for (const c of here) {
-            const view = presenceView(c);
-            const sig = JSON.stringify(view);
+            const role=roleOf(c.user),run=guildRunOf.get(c.user);
+            if(c._viewInput!==c.presence || c._viewRole!==role || c._viewRun!==run){
+                c._viewInput=c.presence;c._viewRole=role;c._viewRun=run;
+                c._view=presenceView(c);c._viewSig=JSON.stringify(c._view);
+            }
+            const view=c._view, sig=c._viewSig;
             const was = prev.get(c.user);
-            next.set(c.user, { sig, av: c.av });
-            full[c.user] = c.appearanceStr
+            next.set(c.user, was && was.sig===sig && was.av===c.av ? was : { sig, av: c.av });
+            if(needsFull || !was || was.av!==c.av) full[c.user] = c.appearanceStr
                 ? Object.assign({ appearance: c.presence.appearance }, view)
                 : view;
             // New to this area, or a new look -> send the whole thing (with
@@ -738,6 +746,9 @@ function broadcastPresence() {
         let fullMsg = null, deltaMsg = null;
         const hasDelta = gone.length > 0 || Object.keys(delta).length > 0;
         for (const c of vs) {
+            // Do not accumulate obsolete movement behind a slow connection.
+            // Once it drains, send a complete reset so no skipped delta is lost.
+            if(c.ws.bufferedAmount>256*1024){c.sentArea=null;continue;}
             if (c.sentArea !== key) {
                 c.sentArea = key;
                 if (fullMsg === null) fullMsg = JSON.stringify({ event: 'presence', area: key, reset: true, users: full, gone: [] });
@@ -802,7 +813,7 @@ setInterval(syncRoster, 2000);
 // Fields of users/<me> a player may never write directly: every change to
 // them goes through an op below (bank/buy/earn/fish/casino/furniture_set) or
 // a server-side settlement. Staff editing OTHER players keep their powers.
-const PROTECTED_FIELDS = new Set(['sea', 'money', 'inventory', 'cosmetics', 'vegasFloor', 'dailyStreak', 'lastDaily',
+const PROTECTED_FIELDS = new Set(['cars', 'equippedCar', 'sea', 'money', 'inventory', 'cosmetics', 'vegasFloor', 'dailyStreak', 'lastDaily',
     'lastInterest', 'fishInventory', 'houseStyle', 'furniture', 'houseIndex', 'createdAt',
     'bankBalance', 'bankLast', 'creditScore', 'creditGainLast', 'loan', 'notes',
     'farm', 'meals', 'luck', 'gear', 'equipped']);
@@ -1230,6 +1241,9 @@ function afterWrite(pathStr, val) {
 
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
 
+// One heartbeat timer for all sockets instead of a closure/timer per connection.
+setInterval(() => {for(const ws of wss.clients) if(ws.readyState===ws.OPEN) ws.ping();},30000).unref();
+
 wss.on('connection', (ws, req) => {
     // nginx sets X-Forwarded-For / X-Real-IP (deploy/nginx-northpvp.conf).
     const fwd = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
@@ -1238,9 +1252,7 @@ wss.on('connection', (ws, req) => {
     c.localOwnerSetup = ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket?.remoteAddress) && !req.headers['cf-connecting-ip'] && !req.headers['x-forwarded-for'] && !req.headers['x-real-ip'];
     clients.add(c);
 
-    const pingInterval = setInterval(() => {
-        if (ws.readyState === ws.OPEN) ws.ping();
-    }, 30000);
+
 
     ws.on('message', (raw) => {
         let msg;
@@ -1249,7 +1261,7 @@ wss.on('connection', (ws, req) => {
     });
 
     ws.on('close', () => {
-        clearInterval(pingInterval);
+
         removeClient(c);
     });
     ws.on('error', () => {});
@@ -1467,6 +1479,7 @@ function handleMessage(c, msg) {
                     if (s !== c.appearanceStr) { c.appearanceStr = s; c.av++; }
                 }
             }
+            if(p) { const u=userRec(c.user);p.car=p.area==='neighborhood' && u.cars?.[u.equippedCar] ? u.equippedCar : ''; }
             c.presence = p;
             // If we've never been told this socket's look (a reconnect that
             // thought it had already sent one), ask for it back.
@@ -1535,7 +1548,7 @@ function handleMessage(c, msg) {
         }
 
         // ----- server-authoritative economy ops (docs/SERVER-AUTHORITY.md) -----
-        case 'bank': case 'buy': case 'furniture_set': case 'earn': case 'fish': case 'casino': case 'home': case 'treasury': case 'staff_finance':
+        case 'car': case 'bank': case 'buy': case 'furniture_set': case 'earn': case 'fish': case 'casino': case 'home': case 'treasury': case 'staff_finance':
         case 'sea': case 'farm': case 'cook': case 'kraken': case 'guild': case 'mastery': case 'guild_dungeon': case 'gear': {
             if (!c.user) return replyErr('not authed');
             let out;
@@ -2463,6 +2476,19 @@ const seaService = require('./crew-sea.js')({rules:SEA_RULES,getUser:userRec,isS
     pay:(user,amount)=>{const u=userRec(user);return setMoney(user,u,moneyOf(u)-amount);}});
 const seaTimer=setInterval(()=>seaService.tick(),50);seaTimer.unref();
 const ECONOMY_OPS = {
+    car(user,msg) {
+        const u=userRec(user), p=byUser.get(user)?.presence;
+        const near=p?.area==='interior_dealership' && Math.hypot(p.x-512,p.y-290)<100;
+        const result=carService.act(u,msg,near);
+        if(msg.action==='buy'||msg.action==='equip'){
+            setMoney(user,u,result.money);
+            u.cars=result.cars;u.equippedCar=result.equippedCar;
+            store.put('users/'+user+'/cars',u.cars);
+            store.put('users/'+user+'/equippedCar',u.equippedCar);
+            const c=byUser.get(user);if(c?.presence){c.presence.car=c.presence.area==='neighborhood'?u.equippedCar:'';c._viewInput=null;}
+        }
+        return result;
+    },
     staff_finance(user, msg) {
         if (!isStaff(user)) throw Error('Staff only.');
         const action = msg.action || 'status';
