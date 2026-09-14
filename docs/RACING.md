@@ -39,3 +39,5 @@ Staff: open **Staff → Accounts & Money Ranking**. Choose **Player guild bank**
 Admins and owners can set player purses, player banks, individual guild-bank deposits, and guild treasuries in Staff → Accounts & Money Ranking. Changes are validated and audited server-side. Setting bank/deposit balances resets that account’s interest clock without changing other accounts or transferring treasury funds. All finance reads and edits reject ordinary players, unauthenticated clients, and demoted admins.
 
 Arcade racing adds stronger acceleration, responsive steering and handbrake turns, yellow boost strips, banked road surfaces, low jump ramps, bright modular-style roads, and a speed-sensitive chase camera. Track physics and rendering use the same banked surface heights.
+
+Use the Length and Difficulty selectors above the track to start Short, Long (1.7× circuit length), or Endless on Easy, Medium, or Hard. Changing either starts a fresh run. Endless streams connected road locally and discards older sections, keeping at most 360 points. Difficulty changes speed limits; Easy uses gentler circuit layouts, and Endless varies bend strength by difficulty.
