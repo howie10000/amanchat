@@ -64,6 +64,17 @@ async function client(headers={}){
  await assert.rejects(admin.rpc('staff_finance',{action:'set',kind:'bank',target:'vaultplayer/money',amount:0}),/valid account/);
  await assert.rejects(player.rpc('put',{path:'users/vaultplayer/bankBalance',value:999999}));
  await assert.rejects(admin.rpc('put',{path:'guilds/'+gid+'/treasury',value:999999}));
+ // Visibility controls allow self, peers and superiors without relaxing bans/mutes.
+ for(const actor of [owner,admin])for(const target of ['expowner','vaultadmin','vaultplayer']){
+  await actor.rpc('put',{path:'lb_bans/'+target,value:{by:'test',ts:Date.now()}});
+  assert(!(await owner.rpc('leaderboard')).rows.some(r=>r.user===target));
+  await assert.rejects(player.rpc('del',{path:'lb_bans/'+target}),/forbidden/);
+  await actor.rpc('del',{path:'lb_bans/'+target});
+  assert((await owner.rpc('leaderboard')).rows.some(r=>r.user===target));
+ }
+ await assert.rejects(player.rpc('put',{path:'lb_bans/expowner',value:true}),/forbidden/);
+ await assert.rejects(admin.rpc('put',{path:'lb_bans',value:{expowner:true}}),/forbidden/);
+ for(const top of ['bans','mutes'])for(const target of ['vaultadmin','expowner'])await assert.rejects(admin.rpc('put',{path:top+'/'+target,value:{until:0}}),/forbidden/);
  player.ws.close();await sleep(100);
  await admin.rpc('staff_finance',{action:'set',kind:'bank',target:'vaultplayer',amount:0});
  await admin.rpc('staff_finance',{action:'set',kind:'purse',target:'vaultplayer',amount:0});
@@ -72,5 +83,6 @@ async function client(headers={}){
  await owner.rpc('del',{path:'roles/admins/vaultadmin'});
  await assert.rejects(admin.rpc('staff_finance'),/Staff only/);
  for(const kind of ['purse','bank','guild','guildBank'])await assert.rejects(admin.rpc('staff_finance',{action:'set',kind,target:'vaultplayer',amount:12}),/Staff only/);
- console.log('PASS staff purse/member-deposit/bank/guild edits and server-only authorization; staff bank/guild view and edit, offline accounts, zero balance, strict validation, member deposit preservation, raw-write protection and role revocation');
+ await assert.rejects(admin.rpc('put',{path:'lb_bans/expowner',value:true}),/forbidden/);
+ console.log('PASS self/peer/superior leaderboard visibility with staff-only authorization; staff purse/member-deposit/bank/guild edits and server-only authorization; staff bank/guild view and edit, offline accounts, zero balance, strict validation, member deposit preservation, raw-write protection and role revocation');
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>{for(const ws of clients)ws.close();server.kill();});

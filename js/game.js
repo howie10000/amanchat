@@ -1544,12 +1544,13 @@ function renderStaffLists() {
       btns += muted
         ? `<button class="menuBtn green" onclick="staffUnmute('${u}')">Unmute</button>`
         : `<button class="menuBtn gray" onclick="staffMute('${u}')">Mute</button>`;
-      btns += lbBanned
-        ? `<button class="menuBtn green" onclick="staffLbUnban('${u}')" title="Show them on the town leaderboard again">Show on LB</button>`
-        : `<button class="menuBtn gray" onclick="staffLbBan('${u}')" title="Hide them from the town leaderboard">Hide from LB</button>`;
+
       btns += `<button class="menuBtn gold" onclick="staffGive('${u}')" title="Add to (or take from) their balance">+ $</button>`;
       btns += `<button class="menuBtn gold" onclick="staffSet('${u}')" title="Set their balance to an exact amount">Set $</button>`;
     }
+      btns += lbBanned
+        ? `<button class="menuBtn green" onclick="staffLbUnban('${u}')" title="Show them on the town leaderboard again">Show on LB</button>`
+        : `<button class="menuBtn gray" onclick="staffLbBan('${u}')" title="Hide them from the town leaderboard">Hide from LB</button>`;
     btns += `<button class="menuBtn" onclick="mayorTeleport('${u}')" title="Teleport to this player">📍 ${online ? "Go to" : (ud.houseIndex != null ? gameWorld.houseAddress(ud.houseIndex) : "House")}</button>`;
     if (state.role === "owner" && !me) {
       if (role === "user") btns += `<button class="menuBtn" style="background:linear-gradient(180deg,#3b82f6,#1d4ed8)" onclick="staffPromote('${u}')">Make Admin</button>`;

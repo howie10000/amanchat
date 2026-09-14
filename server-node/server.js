@@ -922,10 +922,9 @@ function canWrite(user, pathStr, op) {
         return outranks(user, parts[1]);          // can't touch equals or superiors
     }
     if (top === 'lb_bans') {
-        // Hidden from the town leaderboard. Staff only, and you can't hide a
-        // peer or a superior.
-        if (!isStaff(user) || parts.length < 2) return false;
-        return outranks(user, parts[1]);
+        // Leaderboard visibility is independent of account moderation rank.
+        // Admins and owners may hide/show any account, including themselves.
+        return isStaff(user) && parts.length === 2 && (op === 'put' || op === 'del');
     }
     if (top === 'banned_ips') return role === 'owner';
     if (top === 'meta') return false;             // server-written only (IPs)
