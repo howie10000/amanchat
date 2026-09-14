@@ -38,7 +38,7 @@ Staff: open **Staff → Accounts & Money Ranking**. Choose **Player guild bank**
 
 Admins and owners can set player purses, player banks, individual guild-bank deposits, and guild treasuries in Staff → Accounts & Money Ranking. Changes are validated and audited server-side. Setting bank/deposit balances resets that account’s interest clock without changing other accounts or transferring treasury funds. All finance reads and edits reject ordinary players, unauthenticated clients, and demoted admins.
 
-Arcade racing adds stronger acceleration, responsive steering and handbrake turns, yellow boost strips, banked road surfaces, low jump ramps, bright modular-style roads, and a speed-sensitive chase camera. Track physics and rendering use the same banked surface heights.
+Arcade racing adds stronger acceleration, responsive steering and handbrake turns, yellow boost strips, banked road surfaces, low road crests, bright modular-style roads, and a speed-sensitive chase camera. Track physics and rendering use the same banked surface heights.
 
 Use the Length and Difficulty selectors above the track to start Short, Long (1.7× circuit length), or Endless on Easy, Medium, or Hard. Changing either starts a fresh run. Endless streams connected road locally and discards older sections, keeping at most 360 points. Difficulty changes speed limits; Easy uses gentler circuit layouts, and Endless varies bend strength by difficulty.
 
@@ -50,10 +50,10 @@ The selector keeps three distinct versions available. Generation 3 is the defaul
 | Generation | Cars and environment | Roads |
 | --- | --- | --- |
 | 1 - Classic | Original block-shaped car, simple lighting, elevated road supports | Original randomized Skyline Circuit; the original short-layout coordinates and driving physics are preserved from commit 13b12ae. Long and Endless variants are also available. |
-| 2 - Stuntworks | Procedural sports coupe, metallic paint, animated steering/suspension, tire effects and clouded sky | Ground-based Serpent Rally, Razorback Switchbacks and Festival Gauntlet; banked sweepers, rally jumps and hyper boosts. |
+| 2 - Stuntworks | Procedural sports coupe, metallic paint, animated steering/suspension, tire effects and clouded sky | Ground-based Serpent Rally, Razorback Switchbacks and Festival Gauntlet; banked sweepers, rolling crests and hyper boosts. |
 | 3 - Blender | Blender-authored GT coupe, detailed wheels and brakes, beveled panels, matched glass/roof, individual-leaf trees, rocks and sculpted hills | The same ground-based stunt generator as Generation 2, with the Blender environment pack. |
 
-All three support Short, Long and Endless, plus Easy, Medium and Hard. Classic's original driving speed is retained; its Endless bend strength changes with difficulty. Switching a selector starts a new run. Generation 2 and 3 use wider roads than Classic. The elevated walls, ceilings and corkscrews from the previous experimental version are replaced by ground-supported banks and rally jumps. Road shoulders descend to surrounding terrain rather than floating on pillars.
+All three support Short, Long and Endless, plus Easy, Medium and Hard. Classic's original driving speed is retained; its Endless bend strength changes with difficulty. Switching a selector starts a new run. Generation 2 and 3 use wider roads than Classic. The elevated walls, ceilings and corkscrews from the previous experimental version are replaced by ground-supported banks and rolling crests. Road shoulders descend to surrounding terrain rather than floating on pillars.
 
 The modern chase camera stays between 58 and 62 degrees with only 0.55 meters of speed-dependent distance change. Position tracking compensates for vehicle motion, preventing camera lag from pushing the car into the distance at high speed. Camera-ground clearance keeps the view above nearby road surfaces. Classic uses a fixed 65-degree field of view.
 
@@ -70,7 +70,7 @@ The art direction was informed by visual review of [Forza's official Initial Dri
 ### Validation
 
 - `node js/race.test.js`: original Generation 1 coordinates/physics across 100 seeds; all 27 generation/length/difficulty settings; bounded streaming.
-- `node js/race-gen2.test.js`: 180 terrain-supported stunt routes, 18 complete laps, jump landings, hyper boosts and streamed continuity.
+- `node js/race-gen2.test.js`: 180 terrain-supported stunt routes, 18 complete grounded laps, no hidden launch impulses, hyper boosts and streamed continuity.
 - `node js/race-world.test.js`: road/mountain clearance, inside-obstacle recovery and high-speed swept collisions across 270 settings and streamed sections.
 - `node js/race-art.test.js`: correct model per generation, steering/wheel/brake animation and bounded resource lifetimes over repeated rebuilds.
 - `node js/race-effects.test.js`: bounded particles/skid marks, fade/reset/disposal and outward Blender terrain normals.

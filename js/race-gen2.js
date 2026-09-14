@@ -43,7 +43,7 @@
    const distance=i/240*lengths.at(-1);while(lengths[cursor+1]<distance)cursor++;
    const p=mix(dense[cursor],dense[cursor+1],(distance-lengths[cursor])/(lengths[cursor+1]-lengths[cursor]));
    const twist=false,bank=direction*(.5*plateau(i,24+wallShift,39+wallShift,51+wallShift,68+wallShift)-.6*plateau(i,139,153,166,184)+.35*plateau(i,188,198,205,214));
-   Object.assign(p,{id:i,bank,boost:(i>=10&&i<17)||(i>=125&&i<132)||(i>=210&&i<219),hyper:i>=210&&i<219,twist,ramp:i>=93&&i<=109,feature:twist?'SWITCHBACK':i>=210&&i<219?'HYPER TUNNEL':Math.abs(bank)>.3?'BANKED SWEEPER':i>=83&&i<=117?'RALLY JUMP':'',launch:i===104});
+   Object.assign(p,{id:i,bank,boost:(i>=10&&i<17)||(i>=125&&i<132)||(i>=210&&i<219),hyper:i>=210&&i<219,twist,ramp:i>=93&&i<=109,feature:twist?'SWITCHBACK':i>=210&&i<219?'HYPER TUNNEL':Math.abs(bank)>.3?'BANKED SWEEPER':i>=83&&i<=117?'RALLY CREST':''});
    p.y=.24+Math.abs(Math.sin(bank))*(track.width/2+1)+2.6*plateau(i,89,102,104,116);track.points.push(p);
   }
   rebuild(track);return world.populate(track);
@@ -53,7 +53,7 @@
    const id=track.nextId++,phase=id%180,prev=track.points.at(-1)||{x:0,y:12,z:-5};
    if(phase===0){track.turnTarget=(random(track)-.5)*(track.difficulty==='hard'?.05:track.difficulty==='easy'?.018:.032);track.wallSign=random(track)<.5?-1:1;track.lift=8+random(track)*15;}
    const bend=track.turnTarget*Math.sin(phase/180*TAU);track.heading=clamp(track.heading+bend*1.7+Math.sin(phase*.105)*.014,-1.18,1.18);
-   const twist=false,bank=track.wallSign*(.56*plateau(phase,27,44,60,80)-.44*plateau(phase,85,98,111,123)),p={x:prev.x+Math.sin(track.heading)*5,z:prev.z+Math.cos(track.heading)*5,y:.24+Math.abs(Math.sin(bank))*(track.width/2+1),bank,id,boost:phase>=12&&phase<19||phase>=151&&phase<162,hyper:phase>=151&&phase<162,twist:twist&&phase>=27&&phase<=94,ramp:phase>=114&&phase<=137,launch:phase===126,feature:twist&&phase>=27&&phase<=94?'CORKSCREW':phase>=151&&phase<162?'HYPER TUNNEL':Math.abs(bank)>.3?'BANKED SWEEPER':phase>=106&&phase<=146?'RALLY JUMP':''};
+   const twist=false,bank=track.wallSign*(.56*plateau(phase,27,44,60,80)-.44*plateau(phase,85,98,111,123)),p={x:prev.x+Math.sin(track.heading)*5,z:prev.z+Math.cos(track.heading)*5,y:.24+Math.abs(Math.sin(bank))*(track.width/2+1),bank,id,boost:phase>=12&&phase<19||phase>=151&&phase<162,hyper:phase>=151&&phase<162,twist:twist&&phase>=27&&phase<=94,ramp:phase>=114&&phase<=137,feature:twist&&phase>=27&&phase<=94?'CORKSCREW':phase>=151&&phase<162?'HYPER TUNNEL':Math.abs(bank)>.3?'BANKED SWEEPER':phase>=106&&phase<=146?'RALLY CREST':''};
    p.y+=2.6*plateau(phase,114,124,126,137);track.points.push(p);
   }
   // Keep an overlap so positions and checkpoint recovery remain stable at seams.
@@ -78,8 +78,7 @@
   car.x=f.x;car.y=f.y;car.z=f.z;car.frame=f;car.forward=add({x:f.tangent.x*Math.cos(theta),y:f.tangent.y*Math.cos(theta),z:f.tangent.z*Math.cos(theta)},f.right,Math.sin(theta));
   car.right=unit(cross(f.normal,car.forward));car.normal=f.normal;car.yaw=Math.atan2(car.forward.x,car.forward.z);
  }
- function spawn(track,index=0){const car={pathDistance:track.segments[index].start,lateral:0,heading:0,speed:0,vy:0,grounded:true,airTime:0,lastLaunch:-1,boost:false,airtime:0,topSpeed:0};pose(car,track);return car;}
- function detach(car,up=0){car.grounded=false;car.airTime=0;car.velocity=add({x:car.forward.x*car.speed,y:car.forward.y*car.speed,z:car.forward.z*car.speed},car.normal,up);}
+ function spawn(track,index=0){const car={pathDistance:track.segments[index].start,lateral:0,heading:0,speed:0,vy:0,grounded:true,airTime:0,boost:false,airtime:0,topSpeed:0};pose(car,track);return car;}
  function step(car,track,input,dt){
   car.topSpeed=Math.max(car.topSpeed||0,Math.abs(car.speed));
   if(!car.grounded){
@@ -103,8 +102,6 @@
   const edge=track.width/2-1.05;
   if(Math.abs(car.lateral)>edge){car.lateral=clamp(car.lateral,-edge,edge);car.speed*=.9;car.heading*=.45;}
   pose(car,track);
-  const segment=track.segments[next.index];
-  if(segment.p.launch&&car.lastLaunch!==segment.p.id&&car.speed>32){car.lastLaunch=segment.p.id;detach(car,5.2);}
   return{...next,distance:Math.abs(car.lateral),pathDistance:car.pathDistance};
  }
  const api={generate,extend,surface,nearest,spawn,step};
