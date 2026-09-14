@@ -16,12 +16,18 @@ assert.equal(completed,10);console.log('PASS 10 generated circuits completed wit
 const featureTrack=race.generate(()=>.42),boosted=race.spawn(featureTrack,5),plain={...boosted};
 const plainTrack={...featureTrack,points:featureTrack.points.map(p=>({...p,boost:false}))};
 race.step(boosted,featureTrack,{up:true},1/120);race.step(plain,plainTrack,{up:true},1/120);assert(boosted.speed>plain.speed);assert(boosted.boost);
-assert(featureTrack.points.some(p=>Math.abs(p.bank)>.03));assert(featureTrack.points.some(p=>p.ramp));
+assert(featureTrack.points.some(p=>Math.abs(p.bank)>.003));assert(featureTrack.points.every(p=>p.y===.2&&!p.ramp));assert.equal(featureTrack.width,22);
 for(const s of featureTrack.segments){const x=s.p.x-s.dz/s.len*3,z=s.p.z+s.dx/s.len*3,h=race.nearest(featureTrack,x,z);assert(Number.isFinite(h.y));assert(Math.abs(h.y-s.p.y)<1.5);}
-console.log('PASS boost acceleration, banked surface heights and generated ramps');
+console.log('PASS boost acceleration, banked surface heights and ground-level road generation');
 for(const difficulty of ['easy','medium','hard']){
  const short=race.generate(()=>.45,{mode:'short',difficulty}),long=race.generate(()=>.45,{mode:'long',difficulty});assert(long.length>short.length*1.6);
  const track=race.generate(()=>.45,{mode:'endless',difficulty});let lastId=0;
  for(let i=0;i<100;i++){const last={...track.points.at(-1)};race.extend(track);assert(track.points.length<=360);assert(track.points.at(-1).id>lastId);lastId=track.points.at(-1).id;assert(track.points.some(p=>p.id===last.id&&p.x===last.x&&p.z===last.z));assert.equal(track.segments.length,track.points.length-1);for(const s of track.segments){assert(Math.abs(s.len-5)<1e-6);assert(Number.isFinite(s.p.y));}}
 }
 console.log('PASS three difficulties, longer circuits, and 30 km of continuous bounded endless generation per difficulty');
+
+// The full visible asphalt width is driveable; railing contact matches the widened road.
+const wide=race.generate(()=>.42),seg=wide.segments[0],wideCar=race.spawn(wide);
+wideCar.x-=seg.dz/seg.len*8;wideCar.z+=seg.dx/seg.len*8;wideCar.y=race.nearest(wide,wideCar.x,wideCar.z).y+.55;
+for(let i=0;i<60;i++)race.step(wideCar,wide,{},1/120);assert(wideCar.grounded);assert(race.nearest(wide,wideCar.x,wideCar.z).distance>7);
+console.log('PASS widened road physics supports driving eight meters off center');

@@ -8,7 +8,7 @@ The Dealership is on the west side of Mayor's Avenue. Enter, walk to **the deale
 | Avenue Sport | $10,000 | 1.85× |
 | Midnight GT | $30,000 | 2.2× |
 
-Apex Racetrack is east of Town Plaza. Enter and use the racing station. Everyone gets a free race car. Each visit or **New random track** creates a fresh elevated low-poly circuit in your browser. **Retry track** keeps the current layout. Complete all eight checkpoint gates in order and cross the green finish gate.
+Apex Racetrack is east of Town Plaza. Enter and use the racing station. Everyone gets a free race car. Each visit or **New random track** creates a fresh scenic asphalt circuit in your browser. **Retry track** keeps the current layout. Complete all eight checkpoint gates in order and cross the green finish gate.
 
 - WASD or arrow keys: accelerate, brake/reverse, steer.
 - Space: handbrake; R: recover at the last checkpoint (+3 seconds).
@@ -45,7 +45,7 @@ Use the Length and Difficulty selectors above the track to start Short, Long (1.
 
 ## Generation 2.0 EXPERIMENTAL
 
-The Generation selector sits between Length and Difficulty. Generation 1.0 is the default and retains the original generation and physics. Generation 2.0 EXPERIMENTAL supports Short, Long, and Endless at all three difficulties. Changing a selector starts a new run.
+The Generation selector sits between Length and Difficulty. Scenic Roads (Generation 1) is the default and uses ground-level, 22-meter-wide asphalt roads. Generation 2.0 EXPERIMENTAL supports Short, Long, and Endless at all three difficulties. Changing a selector starts a new run.
 
 The experimental generator offers Skyweave Overpass (a figure-eight with separated deck heights), Neon Switchbacks, and Cloudline Slalom, with randomized dimensions, mirroring, rotation, wall transitions, boosts and elevated jump sections. Cyan lanes rotate to a full 90-degree wall with grip assistance. Steering follows the road surface, the car and chase camera rotate with its normal, and jump landings use 3D surface queries so an overpass cannot snap the car onto the wrong deck. Easy has wider lanes and lower speed limits; Hard is narrower and faster. Cyan portions of the minimap mark wall sections.
 
@@ -54,3 +54,14 @@ Endless generates new wall and sky-jump modules locally, retains at most 360 poi
 Checks: `node js/race-gen2.test.js` covers 180 layouts, true vertical driving, 18 complete laps with wall rides and jump landings, streamed Endless continuity and Generation 1.0 equivalence. `node js/race-art.test.js` also checks surface-aligned car poses and bounded geometry/texture lifetimes across experimental track rebuilds. Browser checks cover all 18 settings, wall camera orientation, desktop/mobile selectors, and clean exit.
 
 Experimental stunt expansion: purple corkscrews rotate the road through a full turn with a sustained upside-down section. Endless alternates wall and corkscrew modules. Gold hyper-boost tunnels add stronger acceleration and a higher speed cap. Airtime and top speed are local run statistics, preserved on checkpoint recovery and reset on a new run; they award nothing.
+
+
+## Scenic Roads graphics update
+
+The default circuits and Endless road now sit on the ground, with 22-meter-wide asphalt, slight corner camber, dashed center markings, painted edges, rumble strips, gravel shoulders and grass verges. Collision limits and checkpoint acceptance use the wider road. Raised jumps remain in Generation 2.0 EXPERIMENTAL.
+
+The shared sports coupe uses sculpted body and canopy meshes, clear-coated metallic paint, sky reflections, tinted glass, window pillars, mirrors, hood vents, detailed rotating alloy wheels, LED lights, exhausts, a rear wing and diffuser. Soft sun shadows follow the player. Scenic roads add textured terrain, instanced trees, rugged distant hills and trackside garages and stands. The login cars use the same artwork. All artwork is procedural and bundled; no third-party vehicle assets are required.
+
+This is an improvement to the browser renderer, not Forza-level photorealism. Shared geometry, instanced scenery and a bounded shadow camera keep the scene manageable. Rebuilding a track releases its meshes and signs; shared car geometry and reflection data remain until exiting.
+
+Validated with race, race-art, race-title and race-gen2 Node suites, plus a browser check across all 18 settings, acceleration, recovery, mobile selector bounds and clean exit with no JavaScript or shader errors.
