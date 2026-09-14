@@ -467,7 +467,7 @@ function roleOf(user) {
 }
 const ROLE_RANK = { user: 0, admin: 1, owner: 2 };
 function outranks(actor, target) { return ROLE_RANK[roleOf(actor)] > ROLE_RANK[roleOf(target)]; }
-function isStaff(user) { return roleOf(user) !== 'user'; }
+function isStaff(user) { const role = roleOf(user); return role === 'admin' || role === 'owner'; }
 
 // Returns the active ban for a user (clearing it if it has expired), or null.
 function activeBan(user) {
@@ -1331,6 +1331,7 @@ function handleMessage(c, msg) {
         case 'get': {
             if (!c.user) return replyErr('not authed');
             const parts = Store.splitPath(msg.path);
+            if (!parts.length && !isStaff(c.user)) return replyErr('forbidden');
             // Staff-only reads: IPs, the ban/mute lists (reasons + who did it),
             // the treasury balance, other players' bug reports.
             if (['meta', 'bans', 'mutes', 'banned_ips'].includes(parts[0]) && !isStaff(c.user)) return replyErr('forbidden');
@@ -2499,12 +2500,13 @@ const ECONOMY_OPS = {
         if (!Number.isSafeInteger(amount) || amount < 0 || amount > 1000000000000) throw Error('Enter a whole dollar balance from 0 to 1,000,000,000,000.');
         if (typeof id !== 'string' || !id || id.includes('/') || ['__proto__','prototype','constructor'].includes(id)) throw Error('Choose a valid account.');
         let before;
-        if (msg.kind === 'bank') {
+        if (msg.kind === 'bank' || msg.kind === 'purse') {
             const u = Object.prototype.hasOwnProperty.call(store.get('users') || {}, id) ? store.get('users/' + id) : null;
             if (!u) throw Error('Player no longer exists.');
-            before = Math.max(0, Math.floor(+u.bankBalance || 0));
-            store.put('users/' + id + '/bankBalance', amount);
-            store.put('users/' + id + '/bankLast', Date.now());
+            const field = msg.kind === 'purse' ? 'money' : 'bankBalance';
+            before = Math.max(0, Math.floor(+u[field] || 0));
+            store.put('users/' + id + '/' + field, amount);
+            if (msg.kind === 'bank') store.put('users/' + id + '/bankLast', Date.now());
         } else if (msg.kind === 'guild') {
             const g = Object.prototype.hasOwnProperty.call(store.get('guilds') || {}, id) ? guildRec(id) : null;
             if (!g) throw Error('Guild no longer exists.');
@@ -2512,7 +2514,17 @@ const ECONOMY_OPS = {
             g.treasury = amount;
             saveGuild(g);
             guildBroadcast(g, {kind: 'treasury', treasury: amount});
-        } else throw Error('Choose player bank or guild treasury.');
+        } else if (msg.kind === 'guildBank') {
+            const split = id.indexOf(':');
+            const guildId = id.slice(0, split), member = id.slice(split + 1);
+            const records = store.get('guilds') || {};
+            const g = split > 0 && Object.prototype.hasOwnProperty.call(records, guildId) ? records[guildId] : null;
+            const account = g && Object.prototype.hasOwnProperty.call(g.bank || {}, member) ? g.bank[member] : null;
+            if (!account || typeof account !== 'object') throw Error('Guild-bank account no longer exists.');
+            before = Math.max(0, Math.floor(+account.balance || 0));
+            // Reset the interest clock so the replacement balance earns only from now.
+            store.put('guilds/' + guildId + '/bank/' + member, {...account, balance: amount, last: Date.now()});
+        } else throw Error('Choose a valid account type.');
         console.log('[staff-finance] ' + JSON.stringify({staff:user, kind:msg.kind, target:id, before, balance:amount, at:Date.now()}));
         return {kind:msg.kind, target:id, before, balance:amount};
     },

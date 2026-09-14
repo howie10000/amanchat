@@ -40,7 +40,24 @@ async function client(headers={}){
  for(let i=1;i<overview.holdings.length;i++)assert(overview.holdings[i-1].balance>=overview.holdings[i].balance);
  assert(overview.holdings.some(a=>a.kind==='guildBank'&&a.user==='vaultplayer'));
  assert.deepEqual((await owner.rpc('get',{path:'guilds/'+gid})).bank,guildAfter.bank,'Staff inspection leaves interest clocks and deposits untouched');
- await assert.rejects(admin.rpc('staff_finance',{action:'set',kind:'guildBank',target:memberBank.id,amount:9999}),/Choose player bank/);
+ await admin.rpc('staff_finance',{action:'set',kind:'guildBank',target:memberBank.id,amount:9999});
+ const editedGuild=await owner.rpc('get',{path:'guilds/'+gid});
+ assert.equal(editedGuild.bank.vaultplayer.balance,9999);
+ assert.equal(editedGuild.treasury,67890);
+ assert(editedGuild.bank.vaultplayer.last>=guildAfter.bank.vaultplayer.last);
+ await admin.rpc('staff_finance',{action:'set',kind:'purse',target:'vaultplayer',amount:54321});
+ assert.equal((await player.rpc('get',{path:'users/vaultplayer/money'})),54321);
+ assert.equal((await player.rpc('bank',{action:'status'})).bankBalance,12345);
+ for(const kind of ['purse','bank','guild','guildBank']) {
+  await assert.rejects(player.rpc('staff_finance',{action:'set',kind,target:kind==='guildBank'?memberBank.id:kind==='guild'?gid:'vaultplayer',amount:999999,role:'admin',user:'vaultadmin'}),/Staff only/);
+  for(const amount of [-1,1.5,1000000000001,'100',null])await assert.rejects(admin.rpc('staff_finance',{action:'set',kind,target:'vaultplayer',amount}),/whole dollar/);
+ }
+ for(const op of ['whereis','ghost_accounts','delete_user'])await assert.rejects(player.rpc(op,{user:'vaultadmin'}),/forbidden/);
+ for(const path of ['','/','bans','mutes','meta'])await assert.rejects(player.rpc('get',{path}),/forbidden/);
+ await assert.rejects(player.rpc('put',{path:'roles/admins/vaultplayer',value:true}),/forbidden/);
+ await assert.rejects(admin.rpc('staff_finance',{action:'set',kind:'guildBank',target:gid+':missing',amount:9}),/no longer exists/);
+ await assert.rejects(admin.rpc('staff_finance',{action:'set',kind:'guildBank',target:gid+':__proto__',amount:9}),/no longer exists/);
+ const anonymous=await client();await assert.rejects(anonymous.rpc('staff_finance'),/not authed/);
 
  for(const amount of [-1,1.5,1000000000001,'100',null])await assert.rejects(admin.rpc('staff_finance',{action:'set',kind:'bank',target:'vaultplayer',amount}),/whole dollar/);
  await assert.rejects(admin.rpc('staff_finance',{action:'set',kind:'guild',target:'missing',amount:0}),/no longer exists/);
@@ -49,8 +66,11 @@ async function client(headers={}){
  await assert.rejects(admin.rpc('put',{path:'guilds/'+gid+'/treasury',value:999999}));
  player.ws.close();await sleep(100);
  await admin.rpc('staff_finance',{action:'set',kind:'bank',target:'vaultplayer',amount:0});
- const balances=await owner.rpc('staff_finance');assert.equal(balances.players.find(p=>p.id==='vaultplayer').balance,0);assert.equal(balances.guilds.find(g=>g.id===gid).balance,67890);
+ await admin.rpc('staff_finance',{action:'set',kind:'purse',target:'vaultplayer',amount:0});
+ await admin.rpc('staff_finance',{action:'set',kind:'guildBank',target:memberBank.id,amount:0});
+ const balances=await owner.rpc('staff_finance');assert.equal(balances.purses.find(p=>p.id==='vaultplayer').balance,0);assert.equal(balances.guildBanks.find(p=>p.id===memberBank.id).balance,0);assert.equal(balances.players.find(p=>p.id==='vaultplayer').balance,0);assert.equal(balances.guilds.find(g=>g.id===gid).balance,67890);
  await owner.rpc('del',{path:'roles/admins/vaultadmin'});
  await assert.rejects(admin.rpc('staff_finance'),/Staff only/);
- console.log('PASS staff bank/guild view and edit, offline accounts, zero balance, strict validation, member deposit preservation, raw-write protection and role revocation');
+ for(const kind of ['purse','bank','guild','guildBank'])await assert.rejects(admin.rpc('staff_finance',{action:'set',kind,target:'vaultplayer',amount:12}),/Staff only/);
+ console.log('PASS staff purse/member-deposit/bank/guild edits and server-only authorization; staff bank/guild view and edit, offline accounts, zero balance, strict validation, member deposit preservation, raw-write protection and role revocation');
 })().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>{for(const ws of clients)ws.close();server.kill();});

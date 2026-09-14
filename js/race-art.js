@@ -24,27 +24,27 @@
    for(const x of [-.57,.57]){box(g,x,.18,1.705,.44,.13,.04,'#fff0c2');box(g,x,.22,-1.705,.47,.1,.04,'#ef4846');}
    return g;
   }
-  function poseCar(g,p,time,speed=0){g.position.set(p.x,p.y+.55,p.z);g.rotation.set(p.pitch||0,p.yaw,0,'YXZ');for(const w of g.userData.wheels)w.rotation.x=time*speed/ .37;}
+  function poseCar(g,p,time,speed=0){g.position.set(p.x,p.y+.55,p.z);g.rotation.set(p.pitch||0,p.yaw,p.roll||0,'YXZ');for(const w of g.userData.wheels)w.rotation.x=time*speed/ .37;}
   function circuit(track){
    const group=new THREE.Group(),palette=palettes[track.theme||0],points=track.points,n=points.length,verts=[],colors=[],owned=[];
    const normals=points.map((p,i)=>{const a=points[(i+n-1)%n],b=points[(i+1)%n],l=Math.hypot(b.x-a.x,b.z-a.z);return{x:-(b.z-a.z)/l,z:(b.x-a.x)/l};});
    const colorCache=new Map();
    function triangle(a,b,c,color){let rgb=colorCache.get(color);if(!rgb){const v=new THREE.Color(color).convertSRGBToLinear();rgb=[v.r,v.g,v.b];colorCache.set(color,rgb);}verts.push(...a,...b,...c);colors.push(...rgb,...rgb,...rgb);}
-   function strip(i,lo,hi,color,depth=0){const a=points[i],b=points[(i+1)%n],na=normals[i],nb=normals[(i+1)%n];const p=[a.x+na.x*lo,a.y-depth,a.z+na.z*lo],q=[a.x+na.x*hi,a.y-depth,a.z+na.z*hi],r=[b.x+nb.x*lo,b.y-depth,b.z+nb.z*lo],s=[b.x+nb.x*hi,b.y-depth,b.z+nb.z*hi];triangle(p,r,q,color);triangle(q,r,s,color);}
-   function side(i,edge){const a=points[i],b=points[(i+1)%n],na=normals[i],nb=normals[(i+1)%n],p=[a.x+na.x*edge,a.y,a.z+na.z*edge],q=[...p],r=[b.x+nb.x*edge,b.y,b.z+nb.z*edge],s=[...r];q[1]-=.8;s[1]-=.8;triangle(p,q,r,'#526576');triangle(q,s,r,'#526576');}
+   function strip(i,lo,hi,color,depth=0){const a=points[i],b=points[(i+1)%n],na=normals[i],nb=normals[(i+1)%n];const p=[a.x+na.x*lo,a.y-depth+Math.sin(a.bank||0)*lo,a.z+na.z*lo],q=[a.x+na.x*hi,a.y-depth+Math.sin(a.bank||0)*hi,a.z+na.z*hi],r=[b.x+nb.x*lo,b.y-depth+Math.sin(b.bank||0)*lo,b.z+nb.z*lo],s=[b.x+nb.x*hi,b.y-depth+Math.sin(b.bank||0)*hi,b.z+nb.z*hi];triangle(p,r,q,color);triangle(q,r,s,color);}
+   function side(i,edge){const a=points[i],b=points[(i+1)%n],na=normals[i],nb=normals[(i+1)%n],p=[a.x+na.x*edge,a.y+Math.sin(a.bank||0)*edge,a.z+na.z*edge],q=[...p],r=[b.x+nb.x*edge,b.y+Math.sin(b.bank||0)*edge,b.z+nb.z*edge],s=[...r];q[1]-=.8;s[1]-=.8;triangle(p,q,r,'#526576');triangle(q,s,r,'#526576');}
    for(let i=0;i<n;i++){
-    strip(i,-5.35,-.07,'#263846');strip(i,.07,5.35,'#263846');strip(i,-.07,.07,i%7<3?'#e5e7dc':'#263846');strip(i,-6,-5.35,i%4<2?'#efe8d8':palette.accent);strip(i,5.35,6,i%4<2?'#efe8d8':palette.accent);side(i,-6);side(i,6);
+    const surface=points[i].boost?(i%2?'#ffd34b':'#292e36'):'#e7eced';strip(i,-5.35,5.35,surface);if(points[i].ramp){strip(i,-5.1,-4.7,'#ff7b3d',-.02);strip(i,4.7,5.1,'#ff7b3d',-.02);}strip(i,-6,-5.35,i%4<2?'#efe8d8':palette.accent);strip(i,5.35,6,i%4<2?'#efe8d8':palette.accent);side(i,-6);side(i,6);
     const s=track.segments[i],norm=normals[i];
     for(const edge of [-6.6,6.6]){
-     const q=s.q,nn=normals[(i+1)%n],p1=[s.p.x+norm.x*edge,s.p.y+.55,s.p.z+norm.z*edge],p2=[q.x+nn.x*edge,q.y+.55,q.z+nn.z*edge],p3=[p1[0],p1[1]+.4,p1[2]],p4=[p2[0],p2[1]+.4,p2[2]];
+     const q=s.q,nn=normals[(i+1)%n],p1=[s.p.x+norm.x*edge,s.p.y+.55+Math.sin(s.p.bank||0)*edge,s.p.z+norm.z*edge],p2=[q.x+nn.x*edge,q.y+.55+Math.sin(q.bank||0)*edge,q.z+nn.z*edge],p3=[p1[0],p1[1]+.4,p1[2]],p4=[p2[0],p2[1]+.4,p2[2]];
      triangle(p1,p2,p3,'#cbd6d5');triangle(p3,p2,p4,'#cbd6d5');strip(i,edge-.13,edge+.13,'#dfe4d8',-.95);
-     if(i%4===0)box(group,s.p.x+norm.x*edge,s.p.y+.25,s.p.z+norm.z*edge,.22,.9,.22,'#516975');
+     if(i%4===0)box(group,s.p.x+norm.x*edge,s.p.y+.25+Math.sin(s.p.bank||0)*edge,s.p.z+norm.z*edge,.22,.9,.22,'#516975');
     }
     if(i%12===0){box(group,s.p.x,s.p.y/2-1,s.p.z,2,s.p.y+2,2,'#667d89');if(s.p.y>10)box(group,s.p.x,s.p.y-1,s.p.z,12,1.2,2.4,'#718994');}
    }
    const roadGeo=own(new THREE.BufferGeometry());owned.push(roadGeo);roadGeo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));roadGeo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));roadGeo.computeVertexNormals();
    const roadMat=new THREE.MeshStandardMaterial({vertexColors:true,side:THREE.DoubleSide,roughness:.92});materials.set('road:'+geometries.size,roadMat);group.add(new THREE.Mesh(roadGeo,roadMat));group.userData.roadMaterial=roadMat;
-   for(let i=0;i<8;i++){const s=track.segments[i*n/8],g=new THREE.Group();g.position.set(s.p.x,s.p.y,s.p.z);g.rotation.y=Math.atan2(s.dx,s.dz);group.add(g);const accent=i?'#66c1ca':'#eec873';for(const x of [-7,7]){box(g,x,3,0,.55,6,.6,'#273e4e');box(g,x,3.4,.34,.16,4.5,.1,accent);}box(g,0,6,0,14.8,.8,.7,'#213745');sign(g,i?'CHECKPOINT '+i:'APEX · START / FINISH',0,6.02,0,12,.8,accent);if(!i){for(let x=0;x<12;x++)for(let z=0;z<2;z++)box(g,x-5.5,.02,z*.6,1,.025,.6,(x+z)%2?'#142531':'#f5f0da');}}
+   for(let i=0;i<8;i++){const s=track.segments[i*n/8],g=new THREE.Group();g.position.set(s.p.x,s.p.y,s.p.z);g.rotation.set(-Math.atan2(s.q.y-s.p.y,s.len),Math.atan2(s.dx,s.dz),-(s.p.bank||0),'YXZ');group.add(g);const accent=i?'#66c1ca':'#eec873';for(const x of [-7,7]){box(g,x,3,0,.55,6,.6,'#273e4e');box(g,x,3.4,.34,.16,4.5,.1,accent);}box(g,0,6,0,14.8,.8,.7,'#213745');sign(g,i?'CHECKPOINT '+i:'APEX · START / FINISH',0,6.02,0,12,.8,accent);if(!i){for(let x=0;x<12;x++)for(let z=0;z<2;z++)box(g,x-5.5,.02,z*.6,1,.025,.6,(x+z)%2?'#142531':'#f5f0da');}}
    box(group,0,-2.6,0,760,1,760,palette.ground);
    // Trackside pit complex and spectators, aligned to the start straight.
    const start=track.segments[0],pit=new THREE.Group();pit.position.set(start.p.x,start.p.y,start.p.z);pit.rotation.y=Math.atan2(start.dx,start.dz);group.add(pit);

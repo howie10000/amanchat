@@ -378,8 +378,8 @@ function wrapEconomyReplies() {
 // ROLES
 const ROLE_BADGE = { owner: "👑", admin: "🛡️", user: "" };
 function setRole(role) {
-  state.role = role || "user";
-  state.isMayor = state.role !== "user";
+  state.role = role === "admin" || role === "owner" ? role : "user";
+  state.isMayor = state.role === "admin" || state.role === "owner";
   if (!state.isMayor && state.invisible) {   // lost staff -> can't stay hidden
     state.invisible = false;
     const hi = document.getElementById("hudInvis"); if (hi) hi.style.display = "none";
