@@ -9,3 +9,23 @@ for(const generation of [1,2,3]){
  art.dispose();console.log('PASS Generation '+generation+' finite assets, expected model, animated wheels/brakes and bounded resources through 18 rebuilds');
 }
 const kit=env.ApexModels.kits;assert(kit.body&&kit.wheel&&kit.tree&&kit.rock&&kit.hill);assert(fs.statSync(require.resolve('./race-models')).size<2e6);console.log('PASS Blender car/world mesh pack present and under 2 MB');
+
+// Rendered bank edges must match the physics plane on both sides of the road.
+for(const generation of [2,3])for(const mode of ['short','long','endless']){
+ const art=(generation===2?env.RaceSportArt:env.RaceArt).create(),t=race.generate(()=>.42,{generation,mode}),group=art.circuit(t);
+ const mesh=group.children.find(m=>m.material===group.userData.roadMaterial),positions=mesh.geometry.attributes.position;
+ for(const sign of [-1,1]){
+  const p=t.points.find(p=>p.bank*sign>.3);assert(p,'Both bank directions covered');
+  for(const side of [-1,1]){
+   const expected=new THREE.Vector3(p.x,p.y,p.z).addScaledVector(new THREE.Vector3(p.right.x,p.right.y,p.right.z),side*t.width/2);let found=false;
+   for(let i=0;i<positions.count;i++)if(new THREE.Vector3().fromBufferAttribute(positions,i).distanceTo(expected)<.0002){found=true;break;}
+   assert(found,`Generation ${generation} ${mode} bank ${sign} edge ${side} agrees with physics`);
+  }
+ }
+ for(let i=0;i<(t.open?Math.floor((t.points.length-1)/30):8);i++){
+  const p=t.points[i*30],gate=group.children.find(g=>g.isGroup&&g.position.distanceTo(new THREE.Vector3(p.x,p.y,p.z))<.00001);
+  assert(gate);assert(new THREE.Vector3(0,1,0).applyQuaternion(gate.quaternion).distanceTo(new THREE.Vector3(p.normal.x,p.normal.y,p.normal.z))<.00001,'Checkpoint up matches driving surface');
+ }
+ art.disposeGroup(group);art.dispose();
+}
+console.log('PASS both bank directions and checkpoint orientation match physics in Generations 2 and 3, all lengths');
