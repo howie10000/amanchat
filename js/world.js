@@ -43,8 +43,8 @@ const BUILDINGS = [
   // interior is your own personal farm (seed stall, 12 beds, a cooking pot).
   { x: 1180, y: 1450, w: 250, h: 180, type: "farm", label: "FARM", color: "#b91c1c", roofColor: "#3f2210", signColor: "#fde68a" },
   { x: 3760, y: 860, w: 240, h: 180, type: "shipwright", label: "SHIPWRIGHT", color: "#245568", roofColor: "#283c48", signColor: "#f2d390" },
-  {x:1780,y:300,w:260,h:180,type:"dealership",label:"THE DEALERSHIP",color:"#164e63",roofColor:"#102334",signColor:"#67e8f9"},
-  {x:3660,y:300,w:290,h:180,type:"racetrack",label:"APEX RACETRACK",color:"#4338ca",roofColor:"#172038",signColor:"#bef264"},
+  {x:1740,y:140,w:300,h:220,type:"dealership",label:"THE DEALERSHIP",color:"#164e63",roofColor:"#102334",signColor:"#67e8f9"},
+  {x:3660,y:140,w:300,h:220,type:"racetrack",label:"APEX RACETRACK",color:"#4338ca",roofColor:"#172038",signColor:"#bef264"},
 
 ];
 

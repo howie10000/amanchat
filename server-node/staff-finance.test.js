@@ -33,6 +33,15 @@ async function client(headers={}){
  await owner.rpc('staff_finance',{action:'set',kind:'guild',target:gid,amount:67890});
  const guildAfter=await owner.rpc('get',{path:'guilds/'+gid});
  assert.equal(guildAfter.treasury,67890);assert.deepEqual(guildAfter.bank,guildBefore.bank);
+ const overview=await admin.rpc('staff_finance');
+ const memberBank=overview.guildBanks.find(a=>a.user==='vaultplayer'&&a.guild===gid);
+ assert.equal(memberBank.balance,guildBefore.bank.vaultplayer.balance);
+ assert(overview.purses.some(a=>a.id==='vaultplayer'));
+ for(let i=1;i<overview.holdings.length;i++)assert(overview.holdings[i-1].balance>=overview.holdings[i].balance);
+ assert(overview.holdings.some(a=>a.kind==='guildBank'&&a.user==='vaultplayer'));
+ assert.deepEqual((await owner.rpc('get',{path:'guilds/'+gid})).bank,guildAfter.bank,'Staff inspection leaves interest clocks and deposits untouched');
+ await assert.rejects(admin.rpc('staff_finance',{action:'set',kind:'guildBank',target:memberBank.id,amount:9999}),/Choose player bank/);
+
  for(const amount of [-1,1.5,1000000000001,'100',null])await assert.rejects(admin.rpc('staff_finance',{action:'set',kind:'bank',target:'vaultplayer',amount}),/whole dollar/);
  await assert.rejects(admin.rpc('staff_finance',{action:'set',kind:'guild',target:'missing',amount:0}),/no longer exists/);
  await assert.rejects(admin.rpc('staff_finance',{action:'set',kind:'bank',target:'vaultplayer/money',amount:0}),/valid account/);

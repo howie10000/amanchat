@@ -15,6 +15,7 @@
 //   OWNERS    comma-separated owner usernames (also: roles/owners/<name>: true in the save)
 
 const carService = require('./cars.js');
+const financeView = require('./finance-view.js');
 const express = require('express');
 const http = require('http');
 const path = require('path');
@@ -2492,10 +2493,7 @@ const ECONOMY_OPS = {
     staff_finance(user, msg) {
         if (!isStaff(user)) throw Error('Staff only.');
         const action = msg.action || 'status';
-        if (action === 'status') return {
-            players: Object.entries(store.get('users') || {}).map(([id, u]) => ({id, balance: Math.max(0, Math.floor(+u.bankBalance || 0))})),
-            guilds: Object.entries(store.get('guilds') || {}).map(([id, g]) => ({id, name: g.name, tag: g.tag, balance: Math.max(0, Math.floor(+g.treasury || 0))})),
-        };
+        if (action === 'status') return financeView(store.get('users'),store.get('guilds'));
         if (action !== 'set') throw Error('Unknown finance action.');
         const amount = msg.amount, id = msg.target;
         if (!Number.isSafeInteger(amount) || amount < 0 || amount > 1000000000000) throw Error('Enter a whole dollar balance from 0 to 1,000,000,000,000.');

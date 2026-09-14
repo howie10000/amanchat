@@ -2183,7 +2183,39 @@ function drawFarmBarn(ctx, b) {
 }
 function GFX_roundFill(ctx, x, y, w, h, r, color) { roundFill(ctx, x, y, w, h, r, color); }
 
+// Automotive venues use the same masonry, roof, glazing and sign helpers as town shops.
+function drawMotorVenue(ctx,b){
+  const racing=b.type==='racetrack',x=b.x,y=b.y,w=b.w,base=y+b.h,cx=x+w/2,accent=racing?'#a94e3d':'#20596a',trim='#e8d9b7',roof='#263c4b';
+  TB.ground(ctx,b,b.doorHalf||22,{apronW:88,apron:'#b8b5a7',mat:accent});
+  ctx.fillStyle=racing?'#ad7860':'#d3c6aa';ctx.fillRect(x,y+24,w,b.h-24);
+  ctx.strokeStyle=racing?'#835b4b':'#b8ab93';ctx.lineWidth=1;
+  for(let row=0;row<(b.h-24)/12;row++){const yy=y+24+row*12;ctx.beginPath();ctx.moveTo(x,yy);ctx.lineTo(x+w,yy);ctx.stroke();for(let xx=x+(row%2)*24;xx<x+w;xx+=48){ctx.beginPath();ctx.moveTo(xx,yy);ctx.lineTo(xx,yy+12);ctx.stroke();}}
+  // A shaded slate roof and deep cornice, matching the height of surrounding shops.
+  ctx.fillStyle=roof;ctx.beginPath();ctx.moveTo(x-10,y+29);ctx.lineTo(x+23,y-7);ctx.lineTo(x+w-23,y-7);ctx.lineTo(x+w+10,y+29);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#4c6570';for(let i=0;i<5;i++){ctx.beginPath();ctx.moveTo(x+16-i*5,y+i*6);ctx.lineTo(x+w-16+i*5,y+i*6);ctx.stroke();}
+  ctx.fillStyle=trim;ctx.fillRect(x-9,y+28,w+18,7);ctx.fillStyle='#172b36';ctx.fillRect(x-6,y+35,w+12,5);
+  TB.plate(ctx,x+17,y+46,w-34,28,racing?'APEX RACETRACK':'THE DEALERSHIP',accent,'#fff2cf',trim,'bold 16px Georgia');
+  const windowY=base-103,windowW=(w-100)/2;
+  for(const wx of [x+15,cx+35]){
+    ctx.fillStyle=trim;ctx.fillRect(wx-4,windowY-4,windowW+8,86);ctx.fillStyle='#183541';ctx.fillRect(wx,windowY,windowW,78);
+    const glow=ctx.createLinearGradient(wx,windowY,wx,windowY+78);glow.addColorStop(0,'#779fa3');glow.addColorStop(.55,'#325565');glow.addColorStop(1,'#142c39');ctx.fillStyle=glow;ctx.fillRect(wx+2,windowY+2,windowW-4,74);
+    ctx.fillStyle='#eadfbb';ctx.fillRect(wx+4,windowY+69,windowW-8,5);
+    if(!racing){ctx.save();ctx.translate(wx+windowW/2,windowY+49);ctx.scale(.8,.8);ctx.fillStyle=wx<cx?'#50bac3':'#dc8162';ctx.beginPath();ctx.moveTo(-39,8);ctx.lineTo(-31,-1);ctx.lineTo(-17,-4);ctx.lineTo(-8,-17);ctx.lineTo(17,-17);ctx.lineTo(29,-4);ctx.lineTo(39,0);ctx.lineTo(39,13);ctx.lineTo(-39,13);ctx.closePath();ctx.fill();ctx.fillStyle='#b9d8dc';ctx.fillRect(-5,-14,18,10);ctx.fillStyle='#14212a';for(const xx of [-24,24]){ctx.beginPath();ctx.arc(xx,12,8,0,Math.PI*2);ctx.fill();}ctx.restore();}
+    else if(wx<cx){for(let i=0;i<7;i++){ctx.fillStyle=i%2?'#284753':'#405963';ctx.fillRect(wx+5,windowY+5+i*9,windowW-10,7);}TB.plate(ctx,wx+7,windowY+29,windowW-14,18,'PIT LANE','#152b36','#f3d485',null,'bold 10px sans-serif');}
+    else{ctx.fillStyle='#e3bd62';ctx.fillRect(wx+windowW/2-3,windowY+39,6,17);ctx.fillRect(wx+windowW/2-17,windowY+56,34,5);ctx.beginPath();ctx.moveTo(wx+windowW/2-17,windowY+17);ctx.lineTo(wx+windowW/2+17,windowY+17);ctx.lineTo(wx+windowW/2+9,windowY+38);ctx.lineTo(wx+windowW/2-9,windowY+38);ctx.closePath();ctx.fill();}
+    ctx.fillStyle='#d7eeeb22';ctx.beginPath();ctx.moveTo(wx+4,windowY+2);ctx.lineTo(wx+27,windowY+2);ctx.lineTo(wx+windowW-13,windowY+75);ctx.lineTo(wx+windowW-36,windowY+75);ctx.closePath();ctx.fill();
+    ctx.fillStyle=trim;ctx.fillRect(wx+windowW/2-1,windowY,2,78);ctx.fillRect(wx-5,windowY+78,windowW+10,6);
+  }
+  ctx.fillStyle=trim;ctx.fillRect(cx-29,base-78,58,78);ctx.fillStyle='#152f3d';ctx.fillRect(cx-24,base-73,48,73);ctx.fillStyle='#7199a1';ctx.fillRect(cx-20,base-67,40,44);ctx.fillStyle='#ead6a4';ctx.fillRect(cx+13,base-29,3,11);
+  ctx.fillStyle=accent;ctx.fillRect(cx-39,base-86,78,9);ctx.fillStyle='#0c1d2855';ctx.fillRect(cx-31,base-77,62,4);TB.spill(ctx,cx,base,40,'255,222,157',.19);
+  if(racing){for(let i=0;i<20;i++)for(let row=0;row<2;row++){ctx.fillStyle=(i+row)%2?'#213543':'#ede4cf';ctx.fillRect(x+i*w/20,y+80+row*6,w/20,6);}for(const xx of [x+10,x+w-10]){ctx.fillStyle='#344c58';ctx.fillRect(xx,y-36,2,43);for(let a=0;a<4;a++)for(let r=0;r<3;r++){ctx.fillStyle=(a+r)%2?'#eff1df':'#263744';ctx.fillRect(xx+2+a*6,y-36+r*6,6,6);}}}
+  else TB.plate(ctx,cx-58,y+81,116,16,'MAYOR’S AVENUE MOTORS','#c3b798','#25414c',null,'bold 8px sans-serif');
+  for(const xx of [x+7,x+w-16]){ctx.fillStyle='#806e55';ctx.fillRect(xx,base-13,12,16);ctx.fillStyle='#557754';ctx.beginPath();ctx.arc(xx+6,base-16,10,0,Math.PI*2);ctx.fill();}
+}
+
 const BUILDING_RENDERERS = {
+  dealership:drawMotorVenue,
+  racetrack:drawMotorVenue,
   mayor: drawTownHall,
   farm: drawFarmBarn,
   bank: drawBank,

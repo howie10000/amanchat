@@ -1,0 +1,10 @@
+'use strict';
+const assert=require('node:assert/strict'),view=require('./finance-view');
+const users={alice:{money:100,bankBalance:900},bob:{money:5000,bankBalance:0},offline:{money:20,bankBalance:30}},guilds={g:{name:'Apex Club',tag:'APX',treasury:2000,bank:{alice:{balance:3000,last:1},bob:{balance:40,last:2}}}};
+const original=JSON.stringify({users,guilds}),result=view(users,guilds);
+assert.equal(result.purses.find(p=>p.id==='bob').balance,5000);assert.equal(result.guildBanks.find(p=>p.user==='alice').balance,3000);assert.equal(result.guilds[0].bankTotal,3040);
+assert.deepEqual(result.holdings.slice(0,4).map(a=>[a.kind,a.balance]),[['purse',5000],['guildBank',3000],['guild',2000],['bank',900]]);
+assert(result.holdings.some(a=>a.label==="alice's guild bank · Apex Club"));assert(result.holdings.some(a=>a.label==="Apex Club's guild treasury"));assert(result.holdings.some(a=>a.id==='offline'));
+assert.equal(JSON.stringify({users,guilds}),original,'Inspecting must not settle interest or mutate accounts');assert.equal(result.holdings.length,9,'Do not double-count guild bank totals');
+assert(view({x:{money:Infinity,bankBalance:-1}},{}).holdings.every(a=>a.balance===0));
+console.log('PASS unified descending money ranking, named member guild deposits, separate treasuries, offline accounts, no double counting and read-only snapshots');

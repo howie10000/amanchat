@@ -25,3 +25,13 @@ The server reuses unchanged presence views and signatures, builds full appearanc
 Checks: `node server-node/cars.test.js`, `node server-node/cars.integration.test.js`, `node js/race.test.js`, `node js/firstperson.test.js`, `node js/sea-client.test.js`, the existing authority suite and sea regression suites. Integration tests use an isolated database. Browser checks cover dealer purchases, garage selection, driving, recovery, new tracks, zero payout and repeated entry/exit.
 
 A local synthetic benchmark with 150 stationary players over 500 presence ticks measured 1,205 ms before and 219 ms after (82% less elapsed processing time). Thirty state-change scenarios produced identical payloads. This is a focused workload measurement, not a claim of an 82% reduction in total production CPU or RAM.
+
+## Racing and finance refresh
+
+Circuits now use four layout families (Grand Prix, Harbor Chicane, Highland Run and Sunset Speedway), with randomized proportions and direction, smooth rolling terrain, raised bridges, continuous safety rails, numbered checkpoint gantries and a live minimap. Pit garages, grandstands, mountains and detailed cars share a lightweight instanced artwork library. Racing remains free and entirely client-side.
+
+The login screen now shows fast cars passing a trackside camera. It runs at a maximum of 30 FPS, respects reduced-motion preferences and releases its scene resources when you log in. The old sea title model pack is no longer downloaded at login.
+
+Both automotive venues have masonry storefronts and furnished interiors. The Dealership and racetrack sit clear of the street signs, with open approaches from Main Street.
+
+Staff: open **Staff → Accounts & Money Ranking**. Choose **Player guild bank** to inspect a member's individual deposits, including offline accounts. **Where the money is** ranks player purses, player banks, guild treasuries and individual guild-bank balances together. Filter by account type or search for a player or guild; **View** selects that account above. Guild deposit totals are shown in the treasury inspector, but are not double-counted in the ranking. Inspection reads recorded balances without settling interest. Existing bank/treasury editing remains available; purse and guild-bank inspection is read-only here.

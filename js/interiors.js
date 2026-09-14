@@ -522,11 +522,6 @@ function drawHomeContents() {
 }
 
 function drawInteriorDecor(area) {
-  if(area==='interior_dealership'){
-    GFX.drawCharacter(ctx,512,208,{skin:'#d9a77c',shirt:'#164e63',pants:'#172033',hair:'#262025'},{facing:'down'});
-    ctx.fillStyle='#ecfeff';ctx.font='bold 17px sans-serif';ctx.textAlign='center';ctx.fillText('THE DEALER',512,157);
-    Object.keys(CARS).forEach((id,i)=>gameCars.draw(ctx,260+i*250,390,id,'up'));
-  }
   const room = interiorRoom();
   if (area === "interior_casino") {
     drawVegasFloor(state.casinoFloor || 0, room);
@@ -2958,7 +2953,37 @@ const plazaRoom = {
   },
 };
 
+function motorRoom(racing){return {
+ accent:racing?'#fbbf78':'#62c7cc',
+ base(room,t){
+  drawSurround(room,'#172b37');drawMarbleFloor(room,room.y+WALL_H,'#b9beb8','#78898d');
+  drawBackWall(room,{top:'#e5dcc6',bottom:'#d1c5aa',wainscot:racing?'#634538':'#285365',skirting:'#263b48'});drawSideWalls(room,'#a7aaa0');
+  ctx.strokeStyle='#405765';ctx.lineWidth=4;ctx.strokeRect(room.x+30,room.y+WALL_H+15,room.w-60,room.h-WALL_H-40);
+  for(const x of [250,770])drawLightPool(x,370,135,'#fff1c9',.2);
+  if(racing)for(let i=0;i<16;i++)for(let row=0;row<2;row++){ctx.fillStyle=(i+row)%2?'#233a48':'#e5dcc6';ctx.fillRect(room.x+32+i*50,room.y+WALL_H+15+row*12,50,12);}
+ },
+ decor(room,t){
+  wallSign(512,room.y+46,racing?'APEX MOTORSPORT CLUB':'MAYOR’S AVENUE MOTORS',{size:19,bg:'#1a3444',border:'#d3bd87',color:'#f4e4ba'});
+  drawClock(room.x+65,room.y+50,19,t);drawPlant(room.x+44,room.y+room.h-38,t,1);drawPlant(room.x+room.w-44,room.y+room.h-38,t,1);
+  if(!racing){
+   for(const [id,x,y]of [['compact',250,355],['sport',770,355],['super',770,465]]){ctx.fillStyle='#e0d7c0';ctx.beginPath();ctx.ellipse(x,y+12,64,29,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#ac986e';ctx.lineWidth=2;ctx.stroke();gameCars.draw(ctx,x,y,id,'right');wallSign(x,y+54,CARS[id].name,{size:11,bg:'#203f50',border:'#6bb9c2',color:'#eff2df'});}
+   GFX.roundFill(ctx,425,223,174,32,4,'#325469');ctx.fillStyle='#d5bf92';ctx.fillRect(422,218,180,8);
+   GFX.drawCharacter(ctx,512,207,{skin:'#d9a77c',shirt:'#164e63',pants:'#172033',hair:'short'},{facing:'down'});
+   wallSign(512,164,'THE DEALER',{size:12,bg:'#183345',border:'#d5bf92',color:'#f6e8c6'});
+   wallSign(255,room.y+102,'YOUR NEXT CAR STARTS HERE',{size:10,bg:'#274859',border:'#78b2b9',color:'#d7e9e6'});
+  }else{
+   // Framed circuit plan and two racing simulators flank the start station.
+   ctx.fillStyle='#213949';ctx.fillRect(400,165,224,94);ctx.strokeStyle='#e1bc74';ctx.lineWidth=4;ctx.strokeRect(400,165,224,94);ctx.strokeStyle='#88c8cb';ctx.lineWidth=7;ctx.beginPath();ctx.ellipse(512,210,80,29,-.12,0,Math.PI*2);ctx.stroke();
+   for(const x of [260,770]){GFX.roundFill(ctx,x-47,330,94,86,8,'#233949');ctx.fillStyle='#78a3b2';ctx.fillRect(x-39,340,78,40);ctx.strokeStyle='#e1ca87';ctx.lineWidth=4;ctx.beginPath();ctx.arc(x,405,16,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#a55e49';ctx.fillRect(x-23,430,46,34);wallSign(x,495,'PRACTICE · NO ENTRY FEE',{size:10,bg:'#203949',border:'#d3bb82',color:'#f0e6cb'});}
+   wallSign(512,164,'FRESH CIRCUITS · FREE RACING',{size:10,bg:'#203949',border:'#d3bb82',color:'#f0e6cb'});
+  }
+ }
+};}
+const dealershipRoom=motorRoom(false),racetrackRoom=motorRoom(true);
+
 const ROOM_RENDERERS = {
+  interior_dealership:dealershipRoom,
+  interior_racetrack:racetrackRoom,
   interior_home: homeRoom,
   interior_mayor: townHallRoom,
   interior_bank: bankRoom,

@@ -1395,7 +1395,7 @@ async function openStaffPanel() {
     <button class="menuBtn" onclick="toggleInvisible();closeMenu();">${state.invisible ? "TURN VISIBLE" : "GO INVISIBLE"}</button>
     <h3 class="section">🏛️ MAYOR'S TREASURY</h3>
     <div id="treasuryBox"><p class="muted">Loading…</p></div>
-    <h3 class="section">BANKS & GUILD TREASURIES</h3><div id="staffFinance"><p class="muted">Loading balances...</p></div>
+    <h3 class="section">ACCOUNTS & MONEY RANKING</h3><div id="staffFinance"><p class="muted">Loading balances...</p></div>
     <h3 class="section">PLAYERS</h3>
     <p class="muted">${isOwner
       ? "You can promote players to admin, and ban / mute anyone below you, and add to or set any player's balance. Owners are set in the server save file."
@@ -2050,34 +2050,17 @@ window.staffSeaGems=async()=>{try{const amount=Number(document.getElementById("s
 
 // Explicit staff RPCs keep bank and guild money protected from raw database writes.
 async function renderStaffFinance() {
-  const box = document.getElementById('staffFinance');
-  if (!box) return;
-  try {
-    const data = await netStaffFinance({action:'status'});
-    if (!box.isConnected) return;
-    box.innerHTML = `<p class="muted">View recorded bank balances and guild treasuries, including offline accounts. Set replaces the balance. Bank interest restarts from the edit time. Wallets and guild members' personal deposits are separate.</p><select id="staffFinanceKind"><option value="bank">Player bank</option><option value="guild">Guild treasury</option></select><select id="staffFinanceTarget" aria-label="Account"></select><p id="staffFinanceBalance"></p><input id="staffFinanceAmount" type="number" min="0" max="1000000000000" step="1" aria-label="New balance"><button class="menuBtn gold" id="staffFinanceSet">Set balance</button><button class="menuBtn" id="staffFinanceRefresh">Refresh balances</button>`;
-    const kind = box.querySelector('#staffFinanceKind'), target = box.querySelector('#staffFinanceTarget'), amount = box.querySelector('#staffFinanceAmount'), save = box.querySelector('#staffFinanceSet');
-    let accounts = [];
-    function selected() {
-      const a = accounts.find(a=>a.id===target.value);
-      box.querySelector('#staffFinanceBalance').textContent = a ? 'Current recorded balance: $'+a.balance.toLocaleString() : 'No accounts found.';
-      amount.value = a?.balance ?? 0;
-      save.disabled = !a;
-    }
-    function list() {
-      accounts = (kind.value==='bank'?data.players:data.guilds).slice().sort((a,b)=>(a.name||a.id).localeCompare(b.name||b.id));
-      target.innerHTML = accounts.map(a=>`<option value="${escapeHtml(a.id)}">${escapeHtml(a.name ? a.name+' ['+a.tag+']' : a.id)}</option>`).join('');
-      selected();
-    }
-    kind.onchange=list; target.onchange=selected; list();
-    box.querySelector('#staffFinanceRefresh').onclick=renderStaffFinance;
-    save.onclick=async()=>{
-      const a=accounts.find(a=>a.id===target.value), value=Number(amount.value);
-      if (!a || !amount.value.trim() || !Number.isSafeInteger(value) || value<0 || value>1000000000000) {toast('Enter a valid whole dollar balance.');return;}
-      if (!confirm(`Set ${kind.value==='bank'?'player bank':'guild treasury'} for ${a.name||a.id} to $${value.toLocaleString()}?`)) return;
-      save.disabled=true;
-      try {const result=await netStaffFinance({action:'set',kind:kind.value,target:a.id,amount:value});a.balance=result.balance;selected();toast('Balance updated.');}
-      catch(e){toast(e.message);}finally{save.disabled=false;}
-    };
-  } catch(e) {box.textContent=e.message;}
+  const box=document.getElementById('staffFinance');if(!box)return;
+  box.textContent='Loading account balances…';
+  try{
+    const data=await netStaffFinance({action:'status'});if(!box.isConnected)return;
+    const kinds={bank:'Player bank',purse:'Player purse',guild:'Guild treasury',guildBank:'Player guild bank'},sources={bank:data.players,purse:data.purses,guild:data.guilds,guildBank:data.guildBanks};
+    box.innerHTML=`<p>Inspect every player’s purse, bank and guild-bank deposits, including offline players. Guild treasuries are separate from member deposits. These are recorded balances; viewing does not collect interest.</p><div class="finance-controls"><label>Account type<select id="staffFinanceKind">${Object.entries(kinds).map(([id,label])=>`<option value="${id}">${label}</option>`).join('')}</select></label><label>Account<select id="staffFinanceTarget"></select></label></div><p id="staffFinanceBalance"></p><div id="staffFinanceEdit"><label>New balance<input id="staffFinanceAmount" type="number" min="0" max="1000000000000" step="1"></label><button class="menuBtn gold" id="staffFinanceSet">Set balance</button></div><p id="staffFinanceReadOnly" hidden>Purses and personal guild-bank deposits are read-only here.</p><button class="menuBtn" id="staffFinanceRefresh">Refresh all balances</button><h3>Where the money is</h3><p>Largest individual balances first. Member deposits appear separately; guild-bank totals are not counted again.</p><div class="finance-controls"><label>Filter<select id="financeRankKind"><option value="all">All account types</option>${Object.entries(kinds).map(([id,label])=>`<option value="${id}">${label}</option>`).join('')}</select></label><label>Search<input id="financeSearch" placeholder="Player or guild name"></label></div><div class="finance-table-wrap"><table class="finance-table"><thead><tr><th>#</th><th>Account</th><th>Balance</th><th></th></tr></thead><tbody id="financeRankRows"></tbody></table></div><p id="financeCount"></p>`;
+    const $=id=>box.querySelector('#'+id),kind=$('staffFinanceKind'),target=$('staffFinanceTarget'),amount=$('staffFinanceAmount'),save=$('staffFinanceSet');let accounts=[];
+    function selected(){const a=accounts.find(a=>a.id===target.value),editable=kind.value==='bank'||kind.value==='guild';$('staffFinanceBalance').textContent=a?'Recorded balance: $'+a.balance.toLocaleString()+(kind.value==='guild'?' · Members’ deposits: $'+a.bankTotal.toLocaleString():''):'No accounts found.';amount.value=a?.balance??0;save.disabled=!a;$('staffFinanceEdit').hidden=!editable;$('staffFinanceReadOnly').hidden=editable;}
+    function list(){accounts=(sources[kind.value]||[]).slice().sort((a,b)=>(a.name||a.id).localeCompare(b.name||b.id));target.innerHTML=accounts.map(a=>`<option value="${escapeHtml(a.id)}">${escapeHtml(a.name||a.id)}</option>`).join('');selected();}
+    function ranks(){const query=$('financeSearch').value.toLowerCase().trim(),filter=$('financeRankKind').value;const rows=data.holdings.filter(a=>(filter==='all'||a.kind===filter)&&a.label.toLowerCase().includes(query));$('financeRankRows').innerHTML=rows.slice(0,100).map((a,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(a.label)}</td><td>$${a.balance.toLocaleString()}</td><td><button class="menuBtn" data-holding="${data.holdings.indexOf(a)}">View</button></td></tr>`).join('')||'<tr><td colspan="4">No matching accounts.</td></tr>';$('financeCount').textContent=`Showing ${Math.min(rows.length,100)} of ${rows.length} accounts. Refreshed ${new Date(data.recordedAt).toLocaleTimeString()}.`;for(const b of box.querySelectorAll('[data-holding]'))b.onclick=()=>{const a=data.holdings[+b.dataset.holding];kind.value=a.kind;list();target.value=a.id;selected();$('staffFinanceBalance').scrollIntoView({block:'nearest'});};}
+    kind.onchange=list;target.onchange=selected;$('financeRankKind').onchange=ranks;$('financeSearch').oninput=ranks;$('staffFinanceRefresh').onclick=renderStaffFinance;list();ranks();
+    save.onclick=async()=>{const a=accounts.find(a=>a.id===target.value),value=Number(amount.value);if(!a||!amount.value.trim()||!Number.isSafeInteger(value)||value<0||value>1000000000000){toast('Enter a valid whole dollar balance.');return;}if(!confirm(`Set ${kinds[kind.value].toLowerCase()} for ${a.name||a.id} to $${value.toLocaleString()}?`))return;save.disabled=true;try{await netStaffFinance({action:'set',kind:kind.value,target:a.id,amount:value});await renderStaffFinance();toast('Balance updated.');}catch(e){toast(escapeHtml(e.message));save.disabled=false;}};
+  }catch(e){box.textContent=e.message;}
 }
