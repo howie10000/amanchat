@@ -57,7 +57,7 @@ All three support Short, Long and Endless, plus Easy, Medium and Hard. Classic's
 
 The modern chase camera stays between 58 and 62 degrees with only 0.55 meters of speed-dependent distance change. Position tracking compensates for vehicle motion, preventing camera lag from pushing the car into the distance at high speed. Camera-ground clearance keeps the view above nearby road surfaces. Classic uses a fixed 65-degree field of view.
 
-Front wheels steer, tires rotate by traveled distance, suspension responds to acceleration and steering, and brake lights brighten on braking. Tire smoke and skid marks have fixed-size pools. Engine and wind audio begin on a driving gesture; the Sound button mutes them. Audio pauses when focus is lost and is disposed on exit. These effects do not change payouts or multiplayer state.
+Front wheels steer, tires rotate by traveled distance, suspension responds to acceleration and steering, and brake lights brighten on braking. Tire smoke and skid marks have fixed-size pools. Racing has no audio. These effects do not change payouts or multiplayer state.
 
 All generations share conservative mountain footprints. Placement excludes every retained road segment and shoulder, including long routes and streamed Endless sections. A swept collision check also stops fast or airborne cars from tunneling through mountains. Rendering and collision use the same mountain data.
 
