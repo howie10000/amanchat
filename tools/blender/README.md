@@ -34,3 +34,8 @@ Run `node tools/blender/capture-animation-rigs.cjs`, then run background Blender
 The builder bakes a compact `blender-animations.js` curve library. `js/sea-animation.js` interpolates these samples in the game and title scene. Movement blends into idle; sword accents are retimed to the server impact; tentacle-tip accents taper to zero at contact; gun recoil affects visual parts without moving the aiming pivot. Ship rocking, world positions and projectile physics retain their authoritative calculations.
 
 The clips cover idle/walk/run, sword, guard, dash, reload, repair, carrying, creature breathing/fins/tentacle flow/strike/reveal, sail and pennant wind, lanterns, foliage, torch flicker, treasure pickup, cannon recoil, water sheets/rebound/mist and blast clouds. The runtime library is about 45 KB. Validate with `node js/sea-animation.test.js` plus the scene, title and Leviathan visual tests.
+
+
+## Apex Racing Generation 3
+
+Run `blender --background --factory-startup --python tools/blender/build-racing.py` from the repository root. This creates `assets/racing/apex-racing.blend`, the compact `apex-models.js` runtime library and the Cycles `apex-gt-review.png` review render. Named body/wheel/caliper collections support the runtime steering and suspension rig; tree, rock and hill collections supply instanced scenery. The model has boolean wheel arches, beveled coachwork, split-spoke wheels, brake discs/calipers, LED rings, exhaust tips, glazing and interior details. The export keeps the game's Y-up coordinates; the native studio display is rotated into Blender's Z-up convention.

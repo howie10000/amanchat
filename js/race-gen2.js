@@ -1,5 +1,6 @@
 /* Experimental local track surfaces. No networking or economy dependencies. */
 (function(root){'use strict';
+ const world=typeof module==='object'&&module.exports?require('./race-world'):root.RaceWorld;
  const TAU=Math.PI*2, clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
  const add=(a,b,k=1)=>({x:a.x+b.x*k,y:a.y+b.y*k,z:a.z+b.z*k});
  const sub=(a,b)=>add(a,b,-1),dot=(a,b)=>a.x*b.x+a.y*b.y+a.z*b.z;
@@ -23,44 +24,44 @@
  }
  function generate(rng=Math.random,options={}){
   const seed=(rng()*0xffffffff)>>>0,mode=options.mode||'short',difficulty=options.difficulty||'medium';
-  const track={seed,rngState:seed,generation:2,mode,difficulty,theme:2,width:difficulty==='easy'?15:difficulty==='hard'?11:13,points:[],segments:[],open:mode==='endless',nextId:0,heading:0};
+  const track={seed,rngState:seed,generation:2,mode,difficulty,theme:2,width:difficulty==='easy'?24:difficulty==='hard'?19:22,points:[],segments:[],open:mode==='endless',nextId:0,heading:0};
   if(track.open){track.name='Infinite Stuntworks';extend(track,300);return track;}
   const variant=Math.floor(random(track)*3),scale=(mode==='long'?1.7:1)*(.94+random(track)*.12),rotation=random(track)*TAU,mirror=random(track)<.5?-1:1;
-  track.name=['Skyweave Overpass','Neon Switchbacks','Cloudline Slalom'][variant];
+  track.name=['Serpent Rally','Razorback Switchbacks','Festival Gauntlet'][variant];
   const dense=[],count=1200,phase=random(track)*TAU;
   for(let i=0;i<=count;i++){
    const u=i/count,a=u*TAU;let x,z;
-   if(variant===0){x=205*Math.sin(a);z=112*Math.sin(2*a);}
-   else if(variant===1){x=(185+27*Math.cos(3*a+phase))*Math.cos(a);z=(118+22*Math.sin(2*a))*Math.sin(a);}
-   else{x=205*Math.cos(a)+24*Math.sin(3*a);z=112*Math.sin(a)+20*Math.sin(4*a);}
+   if(variant===0){x=225*Math.sin(a)+26*Math.sin(3*a);z=142*Math.cos(a)+30*Math.sin(4*a);}
+   else if(variant===1){x=(200+42*Math.cos(4*a+phase))*Math.cos(a);z=(145+28*Math.sin(3*a))*Math.sin(a);}
+   else{x=(220+35*Math.sin(5*a))*Math.cos(a);z=(150+22*Math.cos(5*a))*Math.sin(a);}
    x*=scale*mirror;z*=scale;
-   dense.push({x:x*Math.cos(rotation)-z*Math.sin(rotation),z:x*Math.sin(rotation)+z*Math.cos(rotation),y:variant===0?24-16*Math.cos(a):12+17*plateau(u,.28,.39,.55,.67)+2*Math.sin(3*a)});
+   dense.push({x:x*Math.cos(rotation)-z*Math.sin(rotation),z:x*Math.sin(rotation)+z*Math.cos(rotation),y:0});
   }
   const lengths=[0];for(let i=1;i<dense.length;i++)lengths.push(lengths[i-1]+Math.hypot(...Object.values(sub(dense[i],dense[i-1]))));
   let cursor=0;const direction=random(track)<.5?-1:1,wallShift=Math.floor(random(track)*5);
   for(let i=0;i<240;i++){
    const distance=i/240*lengths.at(-1);while(lengths[cursor+1]<distance)cursor++;
    const p=mix(dense[cursor],dense[cursor+1],(distance-lengths[cursor])/(lengths[cursor+1]-lengths[cursor]));
-   const twist=i>=139&&i<=197,bank=direction*(Math.PI/2*plateau(i,24+wallShift,39+wallShift,57+wallShift,74+wallShift)+corkscrew(i,139,159,173,197));
-   Object.assign(p,{id:i,bank,boost:(i>=10&&i<17)||(i>=125&&i<132)||(i>=210&&i<219),hyper:i>=210&&i<219,twist,ramp:i>=93&&i<=109,feature:twist?'CORKSCREW':i>=210&&i<219?'HYPER TUNNEL':Math.abs(bank)>.3?'WALL RIDE':i>=83&&i<=117?'SKY JUMP':'',launch:i===104});
-   p.y+=3.2*plateau(i,89,102,104,116);track.points.push(p);
+   const twist=false,bank=direction*(.5*plateau(i,24+wallShift,39+wallShift,51+wallShift,68+wallShift)-.6*plateau(i,139,153,166,184)+.35*plateau(i,188,198,205,214));
+   Object.assign(p,{id:i,bank,boost:(i>=10&&i<17)||(i>=125&&i<132)||(i>=210&&i<219),hyper:i>=210&&i<219,twist,ramp:i>=93&&i<=109,feature:twist?'SWITCHBACK':i>=210&&i<219?'HYPER TUNNEL':Math.abs(bank)>.3?'BANKED SWEEPER':i>=83&&i<=117?'RALLY JUMP':'',launch:i===104});
+   p.y=.24+Math.abs(Math.sin(bank))*(track.width/2+1)+2.6*plateau(i,89,102,104,116);track.points.push(p);
   }
-  rebuild(track);return track;
+  rebuild(track);return world.populate(track);
  }
  function extend(track,count=60){
   for(let i=0;i<count;i++){
    const id=track.nextId++,phase=id%180,prev=track.points.at(-1)||{x:0,y:12,z:-5};
    if(phase===0){track.turnTarget=(random(track)-.5)*(track.difficulty==='hard'?.05:track.difficulty==='easy'?.018:.032);track.wallSign=random(track)<.5?-1:1;track.lift=8+random(track)*15;}
-   const bend=track.turnTarget*Math.sin(phase/180*TAU);track.heading=clamp(track.heading+bend,-1.1,1.1);
-   const twist=Math.floor(id/180)%2===1,bank=track.wallSign*(twist?corkscrew(phase,27,47,63,94):Math.PI/2*plateau(phase,27,44,77,94)),p={x:prev.x+Math.sin(track.heading)*5,z:prev.z+Math.cos(track.heading)*5,y:12+track.lift*plateau(phase,95,119,139,170),bank,id,boost:phase>=12&&phase<19||phase>=151&&phase<162,hyper:phase>=151&&phase<162,twist:twist&&phase>=27&&phase<=94,ramp:phase>=114&&phase<=137,launch:phase===126,feature:twist&&phase>=27&&phase<=94?'CORKSCREW':phase>=151&&phase<162?'HYPER TUNNEL':Math.abs(bank)>.3?'WALL RIDE':phase>=106&&phase<=146?'SKY JUMP':''};
-   p.y+=3*plateau(phase,114,124,126,137);track.points.push(p);
+   const bend=track.turnTarget*Math.sin(phase/180*TAU);track.heading=clamp(track.heading+bend*1.7+Math.sin(phase*.105)*.014,-1.18,1.18);
+   const twist=false,bank=track.wallSign*(.56*plateau(phase,27,44,60,80)-.44*plateau(phase,85,98,111,123)),p={x:prev.x+Math.sin(track.heading)*5,z:prev.z+Math.cos(track.heading)*5,y:.24+Math.abs(Math.sin(bank))*(track.width/2+1),bank,id,boost:phase>=12&&phase<19||phase>=151&&phase<162,hyper:phase>=151&&phase<162,twist:twist&&phase>=27&&phase<=94,ramp:phase>=114&&phase<=137,launch:phase===126,feature:twist&&phase>=27&&phase<=94?'CORKSCREW':phase>=151&&phase<162?'HYPER TUNNEL':Math.abs(bank)>.3?'BANKED SWEEPER':phase>=106&&phase<=146?'RALLY JUMP':''};
+   p.y+=2.6*plateau(phase,114,124,126,137);track.points.push(p);
   }
   // Keep an overlap so positions and checkpoint recovery remain stable at seams.
   if(track.points.length>360)track.points.splice(0,track.points.length-360);
-  rebuild(track);return track;
+  rebuild(track);return world.populate(track);
  }
  function surface(track,distance,lateral=0,height=0){
-  const d=track.open?clamp(distance,track.startDistance,track.endDistance-.000001):((distance%track.length)+track.length)%track.length;
+  const d=track.open?clamp(distance,track.startDistance,track.endDistance-.000001):(distance>=0&&distance<track.length?distance:((distance%track.length)+track.length)%track.length);
   let lo=0,hi=track.segments.length-1;while(lo<hi){const mid=(lo+hi+1)>>1;if(track.segments[mid].start<=d)lo=mid;else hi=mid-1;}
   const s=track.segments[lo],t=clamp((d-s.start)/s.len,0,1),tangent=unit(mix(s.p.tangent,s.q.tangent,t));
   const normal=unit(mix(s.p.normal,s.q.normal,t)),right=unit(cross(normal,tangent)),up=unit(cross(tangent,right)),center=mix(s.p,s.q,t);
@@ -82,7 +83,7 @@
  function step(car,track,input,dt){
   car.topSpeed=Math.max(car.topSpeed||0,Math.abs(car.speed));
   if(!car.grounded){
-   car.airTime+=dt;car.airtime+=dt;car.velocity.y-=25*dt;const previous={x:car.x,y:car.y,z:car.z};Object.assign(car,add(previous,car.velocity,dt));
+   car.airTime+=dt;car.airtime+=dt;car.velocity.y-=25*dt;const previous={x:car.x,y:car.y,z:car.z};Object.assign(car,add(previous,car.velocity,dt));world.collide(car,previous,track);
    const hit=nearest(track,car.x,car.z,car.y),lastHeight=dot(sub(previous,hit.center),hit.normal);
    if(car.airTime>.12&&hit.distance<track.width/2-.4&&hit.height<=.6&&lastHeight>=.25&&dot(car.velocity,hit.normal)<0){
     car.pathDistance=hit.pathDistance;car.lateral=hit.lateral;car.heading=Math.atan2(dot(car.velocity,hit.right),dot(car.velocity,hit.tangent));car.speed=Math.hypot(dot(car.velocity,hit.right),dot(car.velocity,hit.tangent))*.985;car.grounded=true;pose(car,track);

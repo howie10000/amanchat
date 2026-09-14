@@ -8,7 +8,7 @@ The Dealership is on the west side of Mayor's Avenue. Enter, walk to **the deale
 | Avenue Sport | $10,000 | 1.85× |
 | Midnight GT | $30,000 | 2.2× |
 
-Apex Racetrack is east of Town Plaza. Enter and use the racing station. Everyone gets a free race car. Each visit or **New random track** creates a fresh scenic asphalt circuit in your browser. **Retry track** keeps the current layout. Complete all eight checkpoint gates in order and cross the green finish gate.
+Apex Racetrack is east of Town Plaza. Enter and use the racing station. Everyone gets a free race car. Each visit or **New random track** creates a fresh circuit for the selected generation in your browser. **Retry track** keeps the current layout. Complete all eight checkpoint gates in order and cross the green finish gate.
 
 - WASD or arrow keys: accelerate, brake/reverse, steer.
 - Space: handbrake; R: recover at the last checkpoint (+3 seconds).
@@ -43,25 +43,37 @@ Arcade racing adds stronger acceleration, responsive steering and handbrake turn
 Use the Length and Difficulty selectors above the track to start Short, Long (1.7× circuit length), or Endless on Easy, Medium, or Hard. Changing either starts a fresh run. Endless streams connected road locally and discards older sections, keeping at most 360 points. Difficulty changes speed limits; Easy uses gentler circuit layouts, and Endless varies bend strength by difficulty.
 
 
-## Generation 2.0 EXPERIMENTAL
+## Three racing generations
 
-The Generation selector sits between Length and Difficulty. Scenic Roads (Generation 1) is the default and uses ground-level, 22-meter-wide asphalt roads. Generation 2.0 EXPERIMENTAL supports Short, Long, and Endless at all three difficulties. Changing a selector starts a new run.
+The selector keeps three distinct versions available. Generation 3 is the default.
 
-The experimental generator offers Skyweave Overpass (a figure-eight with separated deck heights), Neon Switchbacks, and Cloudline Slalom, with randomized dimensions, mirroring, rotation, wall transitions, boosts and elevated jump sections. Cyan lanes rotate to a full 90-degree wall with grip assistance. Steering follows the road surface, the car and chase camera rotate with its normal, and jump landings use 3D surface queries so an overpass cannot snap the car onto the wrong deck. Easy has wider lanes and lower speed limits; Hard is narrower and faster. Cyan portions of the minimap mark wall sections.
+| Generation | Cars and environment | Roads |
+| --- | --- | --- |
+| 1 - Classic | Original block-shaped car, simple lighting, elevated road supports | Original randomized Skyline Circuit; the original short-layout coordinates and driving physics are preserved from commit 13b12ae. Long and Endless variants are also available. |
+| 2 - Stuntworks | Procedural sports coupe, metallic paint, animated steering/suspension, tire effects and clouded sky | Ground-based Serpent Rally, Razorback Switchbacks and Festival Gauntlet; banked sweepers, rally jumps and hyper boosts. |
+| 3 - Blender | Blender-authored GT coupe, detailed wheels and brakes, beveled panels, matched glass/roof, individual-leaf trees, rocks and sculpted hills | The same ground-based stunt generator as Generation 2, with the Blender environment pack. |
 
-Endless generates new wall and sky-jump modules locally, retains at most 360 points, and releases obsolete track meshes and sign textures. Retry restarts the same experimental Endless seed at the beginning; R recovers at the last checkpoint with the existing time penalty. All racing remains client-only and awards no money or items.
+All three support Short, Long and Endless, plus Easy, Medium and Hard. Classic's original driving speed is retained; its Endless bend strength changes with difficulty. Switching a selector starts a new run. Generation 2 and 3 use wider roads than Classic. The elevated walls, ceilings and corkscrews from the previous experimental version are replaced by ground-supported banks and rally jumps. Road shoulders descend to surrounding terrain rather than floating on pillars.
 
-Checks: `node js/race-gen2.test.js` covers 180 layouts, true vertical driving, 18 complete laps with wall rides and jump landings, streamed Endless continuity and Generation 1.0 equivalence. `node js/race-art.test.js` also checks surface-aligned car poses and bounded geometry/texture lifetimes across experimental track rebuilds. Browser checks cover all 18 settings, wall camera orientation, desktop/mobile selectors, and clean exit.
+The modern chase camera stays between 58 and 62 degrees with only 0.55 meters of speed-dependent distance change. Position tracking compensates for vehicle motion, preventing camera lag from pushing the car into the distance at high speed. Camera-ground clearance keeps the view above nearby road surfaces. Classic uses a fixed 65-degree field of view.
 
-Experimental stunt expansion: purple corkscrews rotate the road through a full turn with a sustained upside-down section. Endless alternates wall and corkscrew modules. Gold hyper-boost tunnels add stronger acceleration and a higher speed cap. Airtime and top speed are local run statistics, preserved on checkpoint recovery and reset on a new run; they award nothing.
+Front wheels steer, tires rotate by traveled distance, suspension responds to acceleration and steering, and brake lights brighten on braking. Tire smoke and skid marks have fixed-size pools. Engine and wind audio begin on a driving gesture; the Sound button mutes them. Audio pauses when focus is lost and is disposed on exit. These effects do not change payouts or multiplayer state.
 
+All generations share conservative mountain footprints. Placement excludes every retained road segment and shoulder, including long routes and streamed Endless sections. A swept collision check also stops fast or airborne cars from tunneling through mountains. Rendering and collision use the same mountain data.
 
-## Scenic Roads graphics update
+### Blender authoring
 
-The default circuits and Endless road now sit on the ground, with 22-meter-wide asphalt, slight corner camber, dashed center markings, painted edges, rumble strips, gravel shoulders and grass verges. Collision limits and checkpoint acceptance use the wider road. Raised jumps remain in Generation 2.0 EXPERIMENTAL.
+`assets/racing/apex-racing.blend` contains the editable body, wheel, caliper, tree, rock and hill collections. The displayed car has named suspension and steering pivots. `tools/blender/build-racing.py` builds the models, exports the material-batched `assets/racing/apex-models.js` runtime pack and renders `assets/racing/apex-gt-review.png`. The pack is about 1.4 MB before HTTP compression; native Blender files are not downloaded by the game. Geometry is decoded once per art instance and shared across wheels and instanced scenery. The generated road remains procedural so each seed has its own layout.
 
-The shared sports coupe uses sculpted body and canopy meshes, clear-coated metallic paint, sky reflections, tinted glass, window pillars, mirrors, hood vents, detailed rotating alloy wheels, LED lights, exhausts, a rear wing and diffuser. Soft sun shadows follow the player. Scenic roads add textured terrain, instanced trees, rugged distant hills and trackside garages and stands. The login cars use the same artwork. All artwork is procedural and bundled; no third-party vehicle assets are required.
+The art direction was informed by visual review of [Forza's official Initial Drive gameplay](https://www.youtube.com/watch?v=H1qlPZMfmiU): close vehicle framing, reflective paint, readable lamps, body movement, tire smoke, clouds and atmospheric terrain. Assets are original Blender models, not extracted Forza content. This remains a browser racer rather than a photorealistic AAA engine.
 
-This is an improvement to the browser renderer, not Forza-level photorealism. Shared geometry, instanced scenery and a bounded shadow camera keep the scene manageable. Rebuilding a track releases its meshes and signs; shared car geometry and reflection data remain until exiting.
+### Validation
 
-Validated with race, race-art, race-title and race-gen2 Node suites, plus a browser check across all 18 settings, acceleration, recovery, mobile selector bounds and clean exit with no JavaScript or shader errors.
+- `node js/race.test.js`: original Generation 1 coordinates/physics across 100 seeds; all 27 generation/length/difficulty settings; bounded streaming.
+- `node js/race-gen2.test.js`: 180 terrain-supported stunt routes, 18 complete laps, jump landings, hyper boosts and streamed continuity.
+- `node js/race-world.test.js`: road/mountain clearance, inside-obstacle recovery and high-speed swept collisions across 270 settings and streamed sections.
+- `node js/race-art.test.js`: correct model per generation, steering/wheel/brake animation and bounded resource lifetimes over repeated rebuilds.
+- `node js/race-effects.test.js`: bounded particles/skid marks, fade/reset/disposal and outward Blender terrain normals.
+- `node js/race-title.test.js`: login-animation cadence, reduced-motion support and cleanup.
+
+Browser checks cover all 27 settings, a complete Generation 3 lap, steering, braking, recovery, high-speed camera framing, mobile layout and exit. The game exposes a read-only `gameRace.inspect()` diagnostic snapshot while racing for verification.

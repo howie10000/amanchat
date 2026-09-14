@@ -8,7 +8,7 @@ window.loadSeaAssets=function(){return assets??=Promise.all([
  ['DarkSeaLegendary','assets/dark-sea/legendary-models.js?v=legendary-2'],
  ['DarkSeaAnimationClips','assets/dark-sea/blender-animations.js?v=1']
 ].map(([key,url])=>key==='DarkSeaAnimationClips'&&window[key]?Promise.resolve():script(url))).catch(e=>{assets=null;throw e;});};
-function start(){if(!login||login.classList.contains('hidden')||document.hidden)return;if(!title)title=script('js/race-title.js?v=scenic-roads-1').catch(()=>{title=null;});}
+function start(){if(!login||login.classList.contains('hidden')||document.hidden)return;if(!title)title=script('js/race-title.js?v=apex-generations-3').catch(()=>{title=null;});}
 window.titleBg={start};
 // Give HTML, form handlers and the lightweight backdrop a chance to paint first.
 requestAnimationFrame(()=>requestAnimationFrame(()=>{
