@@ -192,7 +192,7 @@ for name,col in kits.items():
  for key,g in groups.items():
   bounds=[min(g['v'][i::3]) for i in range(3)]+[max(g['v'][i::3]) for i in range(3)];positions=[round((v-bounds[i%3])/(bounds[3+i%3]-bounds[i%3] or 1)*65535) for i,v in enumerate(g['v'])]
   output['kits'][name][key]={'b':bounds,'p':enc(positions,'H'),'n':enc([max(-127,min(127,round(n*127))) for n in g['n']],'b'),'i':enc(g['i'],'I')}
-(OUT/'apex-models.js').write_text('/* Authored in Blender by tools/blender/build-racing.py. */\nglobalThis.ApexModels='+json.dumps(output,separators=(',',':'))+';\n')
+(OUT.parent.parent/'js/race-models.js').write_text('/* Authored in Blender by tools/blender/build-racing.py. */\nglobalThis.ApexModels='+json.dumps(output,separators=(',',':'))+';\n')
 # Keep named editable collections; rig the display car for Blender inspection.
 for name,col in kits.items():col.hide_render=name not in ['body','wheel','caliper'];col.hide_viewport=col.hide_render
 convert=Matrix.Rotation(math.pi/2,4,'X')
@@ -214,4 +214,4 @@ bpy.ops.object.camera_add(location=(6.3,8.5,3.5));cam=bpy.context.object;cam.rot
 for loc,power,size in [((-4,1,7),1700,5),((4,-5,5),2200,4),((1,6,4),1200,3)]:
  bpy.ops.object.light_add(type='AREA',location=loc);light=bpy.context.object;light.data.energy=power;light.data.shape='DISK';light.data.size=size;light.rotation_euler=(-light.location).to_track_quat('-Z','Y').to_euler()
 scene.render.engine='CYCLES';scene.cycles.samples=24;scene.cycles.use_denoising=True;scene.render.resolution_x=1400;scene.render.resolution_y=900;scene.render.resolution_percentage=100;scene.render.filepath=str(OUT/'apex-gt-review.png');bpy.ops.wm.save_as_mainfile(filepath=str(OUT/'apex-racing.blend'),compress=True);bpy.ops.render.render(write_still=True)
-print('APEX ASSETS', {k:sum(len(v['i'])*3//4//4//3 for v in kit.values()) for k,kit in output['kits'].items()});print('RUNTIME BYTES',(OUT/'apex-models.js').stat().st_size)
+print('APEX ASSETS', {k:sum(len(v['i'])*3//4//4//3 for v in kit.values()) for k,kit in output['kits'].items()});print('RUNTIME BYTES',(OUT.parent.parent/'js/race-models.js').stat().st_size)

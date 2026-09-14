@@ -63,7 +63,7 @@ All generations share conservative mountain footprints. Placement excludes every
 
 ### Blender authoring
 
-`assets/racing/apex-racing.blend` contains the editable body, wheel, caliper, tree, rock and hill collections. The displayed car has named suspension and steering pivots. `tools/blender/build-racing.py` builds the models, exports the material-batched `assets/racing/apex-models.js` runtime pack and renders `assets/racing/apex-gt-review.png`. The pack is about 1.4 MB before HTTP compression; native Blender files are not downloaded by the game. Geometry is decoded once per art instance and shared across wheels and instanced scenery. The generated road remains procedural so each seed has its own layout.
+`assets/racing/apex-racing.blend` contains the editable body, wheel, caliper, tree, rock and hill collections. The displayed car has named suspension and steering pivots. `tools/blender/build-racing.py` builds the models, exports the material-batched `js/race-models.js` runtime pack and renders `assets/racing/apex-gt-review.png`. The pack is about 1.4 MB before HTTP compression; native Blender files are not downloaded by the game. Geometry is decoded once per art instance and shared across wheels and instanced scenery. The generated road remains procedural so each seed has its own layout.
 
 The art direction was informed by visual review of [Forza's official Initial Drive gameplay](https://www.youtube.com/watch?v=H1qlPZMfmiU): close vehicle framing, reflective paint, readable lamps, body movement, tire smoke, clouds and atmospheric terrain. Assets are original Blender models, not extracted Forza content. This remains a browser racer rather than a photorealistic AAA engine.
 

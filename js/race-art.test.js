@@ -1,11 +1,11 @@
 'use strict';
 const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),THREE=require('./vendor/three.min'),race=require('./race');
 const painter=new Proxy({},{get:()=>()=>{}}),env={THREE,atob,document:{createElement:()=>({getContext:()=>painter})}};vm.createContext(env);
-for(const file of ['../assets/racing/apex-models','./race-classic-art','./race-sport-art','./race-art'])vm.runInContext(fs.readFileSync(require.resolve(file),'utf8'),env);
+for(const file of ['./race-models','./race-classic-art','./race-sport-art','./race-art'])vm.runInContext(fs.readFileSync(require.resolve(file),'utf8'),env);
 for(const generation of [1,2,3]){
  const factory=generation===1?env.RaceClassicArt:generation===2?env.RaceSportArt:env.RaceArt,art=factory.create(),model=art.car();assert.equal(!!model.userData.blender,generation===3);let baseline;
  for(let i=0;i<18;i++){const t=race.generate(()=>.2+i/100,{generation,mode:i%3===0?'endless':i%3===1?'short':'long'});if(t.open)race.extend(t);const group=art.circuit(t);group.updateMatrixWorld(true);group.traverse(m=>{assert([...m.matrixWorld.elements].every(Number.isFinite));if(m.geometry?.attributes.position)assert([...m.geometry.attributes.position.array].every(Number.isFinite));});const car=race.spawn(t);for(let j=0;j<30;j++){race.step(car,t,{up:true,left:true},1/120);art.poseCar(model,generation===1?{...car,y:car.y-.55}:car,j/120,car.speed,{up:true,left:true});}assert([...model.position.toArray(),...model.quaternion.toArray()].every(Number.isFinite));if(generation>=2){assert(model.userData.steering.some(p=>p.rotation.y>.1));const oldAngle=model.userData.wheelAngle;art.poseCar(model,car,31/120,0,{down:true});assert.equal(model.userData.wheelAngle,oldAngle,'Wheels stop without snapping backward');assert(model.userData.brakeMaterial.emissiveIntensity>3);}
  art.disposeGroup(group);const metrics=art.metrics();if(!baseline)baseline=metrics;else assert.deepEqual(metrics,baseline,'GPU resources stay bounded across routes');}
  art.dispose();console.log('PASS Generation '+generation+' finite assets, expected model, animated wheels/brakes and bounded resources through 18 rebuilds');
 }
-const kit=env.ApexModels.kits;assert(kit.body&&kit.wheel&&kit.tree&&kit.rock&&kit.hill);assert(fs.statSync(require.resolve('../assets/racing/apex-models')).size<2e6);console.log('PASS Blender car/world mesh pack present and under 2 MB');
+const kit=env.ApexModels.kits;assert(kit.body&&kit.wheel&&kit.tree&&kit.rock&&kit.hill);assert(fs.statSync(require.resolve('./race-models')).size<2e6);console.log('PASS Blender car/world mesh pack present and under 2 MB');
