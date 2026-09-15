@@ -9,6 +9,14 @@
    if(track.mountains.some(m=>Math.hypot(x-m.x,z-m.z)<r+m.radius+8))continue;
    track.mountains.push({x,z,rx:w,rz:d,y:-12,height:35+i%5*10,radius:r});
   }
+  if(track.generation===3){
+   for(let i=0;i<14;i++){
+    const a=i/14*Math.PI*2+.3,w=260+i%4*60,d=220+i%5*40,r=Math.hypot(w,d);
+    const x=cx+Math.cos(a)*(rx+r+460),z=cz+Math.sin(a)*(rz+r+460);
+    if(track.segments.some(s=>segmentDistance(x,z,s)<r+(track.width||22)/2+45))continue;
+    track.mountains.push({x,z,rx:w,rz:d,y:-2,height:90+i%3*40,radius:r,rotation:a,distant:true});
+   }
+  }
   return track;
  }
  function collide(car,previous,track){let collided=false;

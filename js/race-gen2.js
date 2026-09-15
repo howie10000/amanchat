@@ -26,7 +26,7 @@
   const seed=(rng()*0xffffffff)>>>0,mode=options.mode||'short',difficulty=options.difficulty||'medium';
   const track={seed,rngState:seed,generation:2,mode,difficulty,theme:2,width:difficulty==='easy'?24:difficulty==='hard'?19:22,points:[],segments:[],open:mode==='endless',nextId:0,heading:0};
   if(track.open){track.name='Infinite Stuntworks';extend(track,300);return track;}
-  const variant=Math.floor(random(track)*3),scale=(mode==='long'?1.7:1)*(.94+random(track)*.12),rotation=random(track)*TAU,mirror=random(track)<.5?-1:1;
+  const variant=Math.floor(random(track)*3),scale=(mode==='long'?3.4:1)*(.94+random(track)*.12),rotation=random(track)*TAU,mirror=random(track)<.5?-1:1;
   track.name=['Serpent Rally','Razorback Switchbacks','Festival Gauntlet'][variant];
   const dense=[],count=1200,phase=random(track)*TAU;
   for(let i=0;i<=count;i++){

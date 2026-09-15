@@ -29,3 +29,13 @@ for(const generation of [2,3])for(const mode of ['short','long','endless']){
  art.disposeGroup(group);art.dispose();
 }
 console.log('PASS both bank directions and checkpoint orientation match physics in Generations 2 and 3, all lengths');
+
+{
+ const art=env.RaceArt.create(),t=race.generate(()=>.42,{generation:3,mode:'long'}),group=art.circuit(t);
+ for(const mesh of group.children.filter(m=>m.userData.instancedKit==='hill')){
+  assert.equal(mesh.count,t.mountains.length,'Every rendered mountain uses validated placement data');
+  for(let i=0;i<mesh.count;i++){const matrix=new THREE.Matrix4();mesh.getMatrixAt(i,matrix);const position=new THREE.Vector3().setFromMatrixPosition(matrix),m=t.mountains[i];assert(position.distanceTo(new THREE.Vector3(m.x,m.y,m.z))<.001);}
+ }
+ art.disposeGroup(group);art.dispose();
+}
+console.log('PASS all rendered mountains, including distant layers, match validated course-clearance data');

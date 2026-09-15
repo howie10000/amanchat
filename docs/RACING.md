@@ -140,3 +140,7 @@ Validation: existing race, title, art and Generation 3 suites; headless Edge log
 Generation 3 now has eight route families. Each seed varies the outline's proportions, lobe count, asymmetric bends and smaller ripples. Tight base bends are enlarged before secondary ripples are reduced, preserving more of the generated shape. A local straight corridor protects crest approaches and landings. Endless varies bend frequency, phase and strength per section while keeping the landing corridor straight and existing streamed coordinates stable. Generations 1 and 2 are unchanged.
 
 Validation adds 120 reproducible, distinct profiles across all eight families and checks for centerline self-intersections, alongside the full lap, landing and streaming suites.
+
+## Continuous laps and startup
+
+Crossing all eight checkpoints adds one Finish and keeps driving and the session timer running. Retry resets finishes and time to zero. Long routes have twice the previous horizontal length; Short routes are unchanged. All Generation 3 mountain layers now use shared road-clearance placement, including the large distant scenery that previously bypassed it. The Blender model pack downloads asynchronously after the form initializes; login does not wait for it, and title scene initialization defers while a login field or button has focus.

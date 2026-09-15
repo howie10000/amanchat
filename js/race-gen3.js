@@ -75,6 +75,7 @@
    if(expansion<2.6)expansion=Math.min(2.6,expansion*Math.max(1.04,worst*radius*1.015));else amp*=.65;
   }
   track.amp=amp;track.layout={primary,secondary,strength,ripple,asymmetry,rx,rz,expansion,minimumRadius:radius};
+  if(mode==='long')for(const p of dense){p.x*=2;p.z*=2;}
   const lengths=[0];for(let i=1;i<dense.length;i++)lengths.push(lengths[i-1]+Math.hypot(...Object.values(sub(dense[i],dense[i-1]))));
   let cursor=0;const direction=random(track)<.5?-1:1,shift=Math.floor(random(track)*5),hillPhase=random(track)*TAU,hills=difficulty==='easy'?2.2:3;
   for(let i=0;i<240;i++){

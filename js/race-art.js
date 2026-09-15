@@ -270,9 +270,8 @@
      if(seed%4===1)place('grass',p.x+norm.x*(half+3.4)*side,-.02,p.z+norm.z*(half+3.4)*side,i,1.2);
      if(seed%7===2)place(['rock','rock2','rock3'][seed%3],x+5,-.05,z+4,i,1.2+(seed%3)*.3);
     }}
-    for(const obstacle of track.mountains||[])place('hill',obstacle.x,obstacle.y,obstacle.z,0,[obstacle.rx,obstacle.height,obstacle.rz]);
+    for(const obstacle of track.mountains||[])place('hill',obstacle.x,obstacle.y,obstacle.z,obstacle.rotation||0,[obstacle.rx,obstacle.height,obstacle.rz]);
     // Distant mountain layers with atmospheric tinting (fog does the perspective work).
-    const cx=track.open?middle.x:0,cz=track.open?middle.z:0;for(let k=0;k<14;k++){const a=k/14*Math.PI*2+.3,r=820+(k%3)*140;place('hill',cx+Math.cos(a)*r,-2,cz+Math.sin(a)*r,a,[260+(k%4)*60,90+(k%3)*40,220+(k%5)*40]);}
     for(const {kit,material,matrices} of instances.values()){const kitData=pack().kits[kit];for(const [key,data]of Object.entries(kitData)){const mesh=new THREE.InstancedMesh(unpack(kit,key,data),material||kitMaterial(key),matrices.length);matrices.forEach((m,i)=>mesh.setMatrixAt(i,m));mesh.instanceMatrix.needsUpdate=true;mesh.castShadow=kit!=='hill'&&kit!=='grass';mesh.receiveShadow=true;mesh.frustumCulled=false;mesh.userData.instancedKit=kit;group.add(mesh);}}
    }else{
     for(let i=0;i<n;i+=6){const p=points[i],norm=normals[i];for(const side of [-1,1]){const distance=half+12+(i%7)*3,x=p.x+norm.x*distance*side,z=p.z+norm.z*distance*side;if(points.some(q=>Math.hypot(q.x-x,q.z-z)<half+7))continue;const tree=new THREE.Mesh(cone,mat('#35532e'));tree.position.set(x,4,z);tree.scale.set(2.4,4,2.4);group.add(tree);}}
