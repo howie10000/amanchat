@@ -155,3 +155,14 @@ for(const difficulty of ['medium','extreme'])for(let seed=1;seed<=4;seed++){
  if(difficulty==='extreme')assert(stats[1].density/stats[0].density>.9,'Long retains Short bend density');
 }
 console.log('PASS extra distance adds dense road sections and bends, with checkpoints covering the entire circuit');
+
+// Extended routes must have an organic overall silhouette, not a circle with tiny ripples.
+const silhouettes=new Set();
+for(const difficulty of ['hard','extreme'])for(const mode of ['long','verylong'])for(let seed=1;seed<=6;seed++){
+ const t=g.generate(()=>seed/7,{mode,difficulty}),p=t.points,n=p.length,cx=p.reduce((s,q)=>s+q.x,0)/n,cz=p.reduce((s,q)=>s+q.z,0)/n;
+ const radii=p.map(q=>Math.hypot(q.x-cx,q.z-cz));assert(Math.max(...radii)/Math.min(...radii)>1.4,'Overall silhouette has deep inlets instead of circular rings');
+ silhouettes.add(JSON.stringify(t.challengeShape));assert(Math.max(...p.map(q=>Math.abs(q.curvature)))<.3,'Inlets leave space for road width');
+ assert.deepEqual(t.challengeShape,g.generate(()=>seed/7,{mode,difficulty}).challengeShape,'Shape reproduces from its seed');
+ for(let i=0;i<t.segments.length;i++)for(let j=i+2;j<t.segments.length;j++){if(i===0&&j===t.segments.length-1)continue;const a=t.segments[i],b=t.segments[j];if(Math.max(a.p.x,a.q.x)<Math.min(b.p.x,b.q.x)||Math.max(b.p.x,b.q.x)<Math.min(a.p.x,a.q.x)||Math.max(a.p.z,a.q.z)<Math.min(b.p.z,b.q.z)||Math.max(b.p.z,b.q.z)<Math.min(a.p.z,a.q.z))continue;assert(!(orient(a.p,a.q,b.p)*orient(a.p,a.q,b.q)<0&&orient(b.p,b.q,a.p)*orient(b.p,b.q,a.q)<0),'Organic extended routes never self-cross');}
+}
+assert.equal(silhouettes.size,6);console.log('PASS 24 organic extended layouts: non-circular silhouettes, distinct seeded shapes, bend clearance and no crossings');

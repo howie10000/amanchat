@@ -159,3 +159,5 @@ Generation 3 drifting retains lateral momentum when the body rotates. At speed, 
 Validation covers feature density across lengths, fixed point spacing, all-generation checkpoint placement, Extreme clearance and complete Short laps, plus drift initiation, momentum retention and countersteer recovery.
 
 Very Long scenery is instanced in spatial cells; distant roadside detail is skipped while terrain and mountain backdrops remain visible. Extreme chase cameras sit higher and look closer ahead to keep the car readable on steep descents. Browser QA covered Very Long Extreme rendering and driving, drift smoke/skid feedback and zero script errors.
+
+Long and Very Long now use seeded asymmetric outlines with varied proportions, lobes and inlets. Local bends follow the outline by distance, preserving bend density across wide and narrow sections. Short routes retain their existing shapes. Regression coverage checks overall non-circular shape, seed reproducibility, bend clearance and non-crossing layouts.

@@ -54,7 +54,14 @@
   const extreme=track.difficulty==='extreme',waveLength=extreme?280:340,waves=Math.max(6,Math.round(target/waveLength));
   const phase=random(track)*TAU,detail=random(track)*TAU,rotation=random(track)*TAU,amplitude=30;
   const count=Math.max(240,Math.ceil(target/7/8)*8),denseCount=count*3;
-  function outline(radius){const points=[];for(let i=0;i<=denseCount;i++){const a=i/denseCount*TAU,r=radius+amplitude*Math.sin(waves*a+phase)+amplitude*.12*Math.sin(waves*2*a+detail);points.push({x:r*Math.cos(a+rotation),z:r*Math.sin(a+rotation),y:0});}return points;}
+  // Give the whole route a seeded silhouette; small bends follow base arc length so narrow lobes
+  // get the same bend spacing as broad sections instead of compressing the local road geometry.
+  const aspect=1.08+random(track)*.25,lobes=3+Math.floor(random(track)*2),depth=.2+random(track)*.04,shapePhase=random(track)*TAU;
+  const base=[],baseDistance=[0];
+  for(let i=0;i<=denseCount;i++){const a=i/denseCount*TAU,r=1+depth*Math.cos(lobes*a+shapePhase)+.12*Math.sin(a+detail);base.push({x:r*Math.cos(a)*aspect,z:r*Math.sin(a)/aspect});if(i)baseDistance.push(baseDistance[i-1]+Math.hypot(base[i].x-base[i-1].x,base[i].z-base[i-1].z));}
+  const basis=base.map((p,i)=>{const a=base[(i+denseCount-1)%denseCount],b=base[(i+1)%denseCount],dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz),u=baseDistance[i]/baseDistance.at(-1)*TAU;return{...p,nx:dz/len,nz:-dx/len,u};});
+  function outline(radius){if(track.mode==='short'){const points=[];for(let i=0;i<=denseCount;i++){const a=i/denseCount*TAU,r=radius+amplitude*Math.sin(waves*a+phase)+amplitude*.12*Math.sin(waves*2*a+detail);points.push({x:r*Math.cos(a+rotation),z:r*Math.sin(a+rotation),y:0});}return points;}return basis.map(p=>{const u=p.u*waves+phase+.25*Math.sin(p.u*3+detail),ripple=amplitude*(.85+.15*Math.sin(p.u*5+phase))*(Math.sin(u)+.12*Math.sin(u*2+detail)),x=p.x*radius+p.nx*ripple,z=p.z*radius+p.nz*ripple;return{x:x*Math.cos(rotation)-z*Math.sin(rotation),z:x*Math.sin(rotation)+z*Math.cos(rotation),y:0};});}
+  track.challengeShape={aspect,lobes,depth,phase:shapePhase};
   const length=p=>p.slice(1).reduce((n,q,i)=>n+Math.hypot(q.x-p[i].x,q.z-p[i].z),0);
   let lo=amplitude*2,hi=target/TAU;for(let i=0;i<30;i++){const mid=(lo+hi)/2;if(length(outline(mid))>target)hi=mid;else lo=mid;}
   const dense=outline((lo+hi)/2),dist=[0];for(let i=1;i<dense.length;i++)dist.push(dist[i-1]+Math.hypot(dense[i].x-dense[i-1].x,dense[i].z-dense[i-1].z));
@@ -64,6 +71,10 @@
    const p=mix(dense[cursor],dense[cursor+1],(d-dist[cursor])/(dist[cursor+1]-dist[cursor])),u=i/count*TAU*waves;
    Object.assign(p,{id:i,bank:(extreme?.82:.42)*Math.sin(u+phase+.7),boost:false,hyper:false,twist:extreme,ramp:false,feature:extreme?'EXTREME SWITCHBACK':'LINKED BENDS'});
    p.elevation=(extreme?36:10)*(1+Math.sin(u*.5-(waves%2?i/count*Math.PI:0)+detail))+(extreme?10:3)*(1+Math.sin(u+detail));track.points.push(p);
+  }
+  // Locally round only overly tight sampled bends; preserve the seed's large-scale silhouette.
+  if(track.mode!=='short')for(let pass=0;pass<32;pass++){
+   let changed=false;const adjusted=track.points.map((p,i)=>{const a=track.points[(i+count-1)%count],b=track.points[(i+1)%count],dx=p.x-a.x,dz=p.z-a.z,ex=b.x-p.x,ez=b.z-p.z,turn=Math.abs(dx*ez-dz*ex)/(Math.hypot(dx,dz)*Math.hypot(ex,ez));if(turn<.23)return p;changed=true;return{...p,x:p.x*.7+(a.x+b.x)*.15,z:p.z*.7+(a.z+b.z)*.15};});track.points=adjusted;if(!changed)break;
   }
   const actual=track.points.reduce((n,p,i)=>{const q=track.points[(i+1)%track.points.length];return n+Math.hypot(q.x-p.x,q.z-p.z);},0),correction=target/actual;for(const p of track.points){p.x*=correction;p.z*=correction;}
   decorate(track,track.points,track.mode);
