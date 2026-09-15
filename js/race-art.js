@@ -262,7 +262,7 @@
     for(let k=0;k<3;k++){const s=points[(k*2+2)%n];placeFrame('pitBuilding',s,half+13,-.1,Math.PI/2,1);}
     for(let k=0;k<2;k++){const s=points[(k*3+3)%n];placeFrame('grandstand',s,-(half+12),-.1,Math.PI/2,1);}
     // Vegetation and rocks stream with the road; three tree species, bushes, grass clumps, boulders.
-    for(let i=0;i<n;i+=2){const p=points[i],norm=normals[i];for(const side of [-1,1]){
+    for(let i=0;i<n;i+=2*Math.max(1,Math.ceil(n/720))){const p=points[i],norm=normals[i];for(const side of [-1,1]){
      const seed=(i*7+side*3+n)%23,distance=half+13+(seed%9)*3.2,x=p.x+norm.x*distance*side,z=p.z+norm.z*distance*side;
      if(points.some(q=>Math.hypot(q.x-x,q.z-z)<half+8)||sceneryClearance.some(q=>Math.hypot(q.x-x,q.z-z)<q.r+9))continue;
      const species=['tree','tree2','tree3','tree','tree2'][seed%5],size=1.1+(seed%5)*.14;place(species,x,-.1,z,i*1.73+side,size);
@@ -272,7 +272,10 @@
     }}
     for(const obstacle of track.mountains||[])place('hill',obstacle.x,obstacle.y,obstacle.z,obstacle.rotation||0,[obstacle.rx,obstacle.height,obstacle.rz]);
     // Distant mountain layers with atmospheric tinting (fog does the perspective work).
-    for(const {kit,material,matrices} of instances.values()){const kitData=pack().kits[kit];for(const [key,data]of Object.entries(kitData)){const mesh=new THREE.InstancedMesh(unpack(kit,key,data),material||kitMaterial(key),matrices.length);matrices.forEach((m,i)=>mesh.setMatrixAt(i,m));mesh.instanceMatrix.needsUpdate=true;mesh.castShadow=kit!=='hill'&&kit!=='grass';mesh.receiveShadow=true;mesh.frustumCulled=false;mesh.userData.instancedKit=kit;group.add(mesh);}}
+    for(const {kit,material,matrices} of instances.values()){
+     const cells=new Map();for(const m of matrices){const x=Math.floor(m.elements[12]/300),z=Math.floor(m.elements[14]/300),key=n>720&&kit!=='hill'?x+','+z:'all';if(!cells.has(key))cells.set(key,{matrices:[],center:key==='all'?null:{x:x*300+150,z:z*300+150}});cells.get(key).matrices.push(m);}
+     const kitData=pack().kits[kit];for(const cell of cells.values())for(const [key,data]of Object.entries(kitData)){const mesh=new THREE.InstancedMesh(unpack(kit,key,data),material||kitMaterial(key),cell.matrices.length);cell.matrices.forEach((m,i)=>mesh.setMatrixAt(i,m));mesh.instanceMatrix.needsUpdate=true;mesh.castShadow=kit!=='hill'&&kit!=='grass';mesh.receiveShadow=true;mesh.frustumCulled=false;mesh.userData.instancedKit=kit;mesh.userData.sceneryCell=cell.center;group.add(mesh);}
+    }
    }else{
     for(let i=0;i<n;i+=6){const p=points[i],norm=normals[i];for(const side of [-1,1]){const distance=half+12+(i%7)*3,x=p.x+norm.x*distance*side,z=p.z+norm.z*distance*side;if(points.some(q=>Math.hypot(q.x-x,q.z-z)<half+7))continue;const tree=new THREE.Mesh(cone,mat('#35532e'));tree.position.set(x,4,z);tree.scale.set(2.4,4,2.4);group.add(tree);}}
     for(const obstacle of track.mountains||[]){const m=new THREE.Mesh(mountain,mat('#5e7466'));m.position.set(obstacle.x,obstacle.y,obstacle.z);m.scale.set(obstacle.rx,obstacle.height,obstacle.rz);group.add(m);}
@@ -323,7 +326,7 @@
    for(const obj of scene.children)if(obj.userData&&obj.userData.blender)obj.userData.night=t.night;
    return t;
   }
-  function updateLighting(scene,p,time=0){const sun=scene.userData.sun;if(!sun)return;const d=sun.userData.dir||new THREE.Vector3(-.65,.32,.4);sun.position.set(p.x+d.x*120,p.y+Math.max(18,d.y*120),p.z+d.z*120);sun.target.position.set(p.x,p.y,p.z);sun.target.updateMatrixWorld();if(scene.userData.fill){scene.userData.fill.position.set(p.x-d.x*80,p.y+40,p.z-d.z*80);scene.userData.fill.target.position.set(p.x,p.y,p.z);scene.userData.fill.target.updateMatrixWorld();}scene.userData.sky.position.set(p.x,p.y,p.z);scene.userData.sky.material.uniforms.time.value=time;timeUniform.value=time;for(const obj of scene.children)if(obj.userData&&obj.userData.blender&&obj.userData.night!==scene.userData.night)obj.userData.night=scene.userData.night;}
+  function updateLighting(scene,p,time=0){scene.traverse(m=>{const c=m.userData.sceneryCell;if(c)m.visible=Math.hypot(c.x-p.x,c.z-p.z)<900;});const sun=scene.userData.sun;if(!sun)return;const d=sun.userData.dir||new THREE.Vector3(-.65,.32,.4);sun.position.set(p.x+d.x*120,p.y+Math.max(18,d.y*120),p.z+d.z*120);sun.target.position.set(p.x,p.y,p.z);sun.target.updateMatrixWorld();if(scene.userData.fill){scene.userData.fill.position.set(p.x-d.x*80,p.y+40,p.z-d.z*80);scene.userData.fill.target.position.set(p.x,p.y,p.z);scene.userData.fill.target.updateMatrixWorld();}scene.userData.sky.position.set(p.x,p.y,p.z);scene.userData.sky.material.uniforms.time.value=time;timeUniform.value=time;for(const obj of scene.children)if(obj.userData&&obj.userData.blender&&obj.userData.night!==scene.userData.night)obj.userData.night=scene.userData.night;}
   function configure(r){renderer=r;renderer.outputEncoding=THREE.sRGBEncoding;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=currentTheme.exposure||.86;if(renderer.shadowMap){renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;}}
   // ---- post-processing: bloom (bright pass, 2 blur passes at quarter resolution), vignette, radial speed blur, heat shimmer ----
   let post=null;

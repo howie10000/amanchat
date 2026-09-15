@@ -3,7 +3,7 @@ const assert=require('node:assert/strict'),g=require('./race-gen2'),race=require
 const dot=(a,b)=>a.x*b.x+a.y*b.y+a.z*b.z;
 function drive(c,t){const f=g.surface(t,c.pathDistance),next=g.surface(t,c.pathDistance+10),d={x:next.x-c.x,y:next.y-c.y,z:next.z-c.z};const aim=Math.atan2(dot(d,f.right),dot(d,f.tangent)),e=Math.atan2(Math.sin(aim-c.heading),Math.cos(aim-c.heading));return g.step(c,t,{up:c.speed<32,down:c.speed>35,left:e>.025,right:e<-.025},1/120);}
 for(let seed=1;seed<=60;seed++)for(const difficulty of ['easy','medium','hard']){
- const t=race.generate(()=>seed/61,{mode:seed%2?'short':'long',difficulty,generation:'2'});assert.equal(t.generation,2);assert(t.points.some(p=>Math.abs(p.bank)>.45));assert(t.points.filter(p=>p.y<.3).length>80);assert(t.points.every(p=>p.normal.y>.75));
+ const t=g.generate(()=>seed/61,{mode:seed%2?'short':'long',difficulty});assert.equal(t.generation,2);assert(t.points.some(p=>Math.abs(p.bank)>.45));assert(t.points.filter(p=>p.y<.3).length>80);assert(t.points.every(p=>p.normal.y>.75));
  for(const p of t.points){assert(Math.abs(dot(p.normal,p.tangent))<1e-8);assert(Math.abs(dot(p.normal,p.right))<1e-8);assert(Math.abs(dot(p.right,p.tangent))<1e-8);assert(p.y-Math.abs(p.right.y)*t.width/2>.2,'Both edges stay above ground');}
  if(seed<=6){const car=g.spawn(t);let cp=0;for(let j=0;j<55000&&cp<8;j++){const hit=drive(car,t);assert(car.grounded,"No automatic jump impulse");if(hit.distance<t.width/2&&Math.abs(hit.index-((cp+1)%8)*30)<=2&&car.grounded&&car.speed>0)cp++;}assert.equal(cp,8,'seed '+seed+' '+difficulty);assert.equal(car.airtime,0);}
  for(const m of t.mountains)for(const s of t.segments)assert(world.segmentDistance(m.x,m.z,s)>m.radius+t.width/2+40);

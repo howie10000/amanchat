@@ -23,7 +23,7 @@ for(const generation of [2,3])for(const mode of ['short','long','endless']){
   }
  }
  for(let i=0;i<(t.open?Math.floor((t.points.length-1)/30):8);i++){
-  const p=t.points[i*30],gate=group.children.find(g=>g.isGroup&&g.position.distanceTo(new THREE.Vector3(p.x,p.y,p.z))<.00001);
+  const p=t.points[t.open?i*30:i*t.points.length/8],gate=group.children.find(g=>g.isGroup&&g.position.distanceTo(new THREE.Vector3(p.x,p.y,p.z))<.00001);
   assert(gate);assert(new THREE.Vector3(0,1,0).applyQuaternion(gate.quaternion).distanceTo(new THREE.Vector3(p.normal.x,p.normal.y,p.normal.z))<.00001,'Checkpoint up matches driving surface');
  }
  art.disposeGroup(group);art.dispose();

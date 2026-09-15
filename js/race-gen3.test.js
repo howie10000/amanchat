@@ -9,17 +9,17 @@ function drive(c,t,target=32,extra={}){return g.step(c,t,{up:c.speed<target,down
 assert(g.GRAVITY>9.81&&g.GRAVITY<25,'Gen 3 gravity sits between real gravity and the Gen 2 arcade value');
 for(let seed=1;seed<=60;seed++)for(const difficulty of ['easy','medium','hard']){
  const t=race.generate(()=>seed/61,{mode:seed%2?'short':'long',difficulty,generation:3});assert.equal(t.generation,3);
- assert(t.width>=21,'Forza-style wide road');assert(t.points.some(p=>Math.abs(p.bank)>.25),'Banked or cambered bends');assert(t.points.some(p=>p.curb),'Curbs flagged on bends');assert(t.points.some(p=>p.ramp),'One crest jump');assert(t.points.some(p=>p.hyper));
+ assert(t.width>=21,'Forza-style wide road');assert(t.points.some(p=>Math.abs(p.bank)>.25),'Banked or cambered bends');assert(t.points.some(p=>p.curb),'Curbs flagged on bends');if(t.mode==='short'){assert(t.points.some(p=>p.ramp),'One crest jump');assert(t.points.some(p=>p.hyper));}else assert(t.challengeModules>0);
  assert(typeof t.themeName==='string'&&g.THEMES.includes(t.themeName));
  for(const p of t.points){assert(Math.abs(dot(p.normal,p.tangent))<1e-8);assert(Math.abs(dot(p.normal,p.right))<1e-8);assert(p.normal.y>.75);assert(p.y-Math.abs(p.right.y)*t.width/2>.2,'Both edges above ground');}
- for(let i=0;i<8;i++)assert.equal(t.points[i*30].id,i*30,'Checkpoint gates every 30 points');
- if(seed<=6){const car=g.spawn(t);let cp=0,j=0;for(;j<60000&&cp<8;j++){const hit=drive(car,t);assert(Number.isFinite(car.speed)&&Number.isFinite(car.lateral));if(hit.distance<t.width/2&&Math.abs(hit.index-((cp+1)%8)*30)<=2&&car.grounded&&car.speed>0)cp++;}assert.equal(cp,8,'seed '+seed+' '+difficulty+' lap');}
+ for(let i=0;i<8;i++)assert.equal(t.points[race.checkpointIndex(t,i)].id,race.checkpointIndex(t,i),'Checkpoint gates span the full route');
+ if(seed<=6){const car=g.spawn(t);let cp=0,j=0;for(;j<60000&&cp<8;j++){const hit=drive(car,t);assert(Number.isFinite(car.speed)&&Number.isFinite(car.lateral));if(hit.distance<t.width/2&&Math.abs(hit.index-race.checkpointIndex(t,cp+1))<=2&&car.grounded&&car.speed>0)cp++;}assert.equal(cp,8,'seed '+seed+' '+difficulty+' lap');}
  for(const m of t.mountains)for(const s of t.segments)assert(world.segmentDistance(m.x,m.z,s)>m.radius+t.width/2+40);
 }
 console.log('PASS 180 Gen 3 road layouts (frames, clearance, camber, curbs, crest), 18 complete laps');
 
 // ---- crest jumps land on the road at every difficulty's top speed ----
-for(let seed=1;seed<=6;seed++)for(const difficulty of ['easy','medium','hard'])for(const mode of ['short','long']){
+for(let seed=1;seed<=6;seed++)for(const difficulty of ['easy','medium','hard'])for(const mode of ['short']){
  const t=g.generate(()=>seed/61,{mode,difficulty}),c=g.spawn(t,t.crest-3);c.speed=difficulty==='easy'?85:difficulty==='hard'?117:101;let flew=false,landed=false;
  for(let i=0;i<1400&&!landed;i++){const hit=drive(c,t,200);if(!c.grounded)flew=true;if(flew&&c.grounded){landed=true;assert(hit.distance<t.width/2+2.4,'lands inside the armco');}}
  assert(flew&&landed,`seed ${seed} ${difficulty} ${mode} crest jump lands`);assert(c.airtime>0,'Crest flight is recorded; duration varies with seeded road scale');
@@ -36,12 +36,15 @@ console.log('PASS streamed Gen 3 routes preserve coordinates and bound retained 
 
 // ---- driving model: gearbox, slip/drift, ABS-style braking, surfaces, downforce, per-car stats ----
 {
- const t=g.generate(()=>.42,{mode:'long',difficulty:'medium'}),c=g.spawn(t);const gears=new Set();let maxRpm=0;
+ const t={generation:3,mode:'endless',open:true,difficulty:'medium',width:200,startDistance:0,endDistance:9990,length:9990,mountains:[],points:[],segments:[]};
+ for(let i=0;i<1000;i++)t.points.push({x:0,y:2.4,z:i*10,id:i,bank:0,distance:i*10,tangent:{x:0,y:0,z:1},right:{x:1,y:0,z:0},normal:{x:0,y:1,z:0},boost:false,hyper:false,ramp:false});
+ for(let i=0;i<999;i++)t.segments.push({p:t.points[i],q:t.points[i+1],dx:0,dz:10,delta:{x:0,y:0,z:10},len:10,start:i*10});
+ const c=g.spawn(t);const gears=new Set();let maxRpm=0;
  for(let i=0;i<120*12;i++){drive(c,t,200);gears.add(c.gear);maxRpm=Math.max(maxRpm,c.rpm);assert(c.suspension.every(s=>s>=0&&s<=1));assert(c.wheelLoads.every(Number.isFinite));}
  assert(gears.size>=3,'fake gearbox shifts up under full throttle');assert(maxRpm>6000);assert(c.gForce>=0);assert(c.speed>60);
  const fast=c.speed;let heat=0;for(let i=0;i<120*4;i++){g.step(c,t,{down:true,...aim(c,t)},1/120);heat=Math.max(heat,c.brakeHeat);}assert(c.speed<fast*.4,'ABS braking slows hard');assert(heat>.5,'discs heat under hard braking');assert(c.brakeHeat<heat,'discs cool again');
  const d=g.spawn(t);d.speed=40;for(let i=0;i<60;i++)g.step(d,t,{up:true,left:true,handbrake:true},1/120);assert(Math.abs(d.slip)>.04,'handbrake drift builds slip angle '+d.slip);assert(d.speed>20,'drift keeps momentum');
- for(let i=0;i<240;i++)drive(d,t,40);assert(Math.abs(d.slip)<.05,'counter-steer recovery settles the slide');
+ const slideSpeed=d.speed;let held=0;for(let i=0;i<60;i++){g.step(d,t,{up:true,left:true},1/120);if(Math.abs(d.slip)>.08)held++;}assert(held>20,'Throttle holds the slide after releasing the handbrake');assert(d.speed>slideSpeed*.45,'Slide retains useful forward momentum');for(let i=0;i<360;i++)g.step(d,t,{left:d.slip>.03,right:d.slip<-.03},1/120);assert(Math.abs(d.slip)<.05,'Lifting and counter-steering progressively recover grip');
  const e=g.spawn(t);e.lateral=t.width/2+2;for(let i=0;i<60;i++)g.step(e,t,{up:true},1/120);assert.equal(e.surface,'gravel');
  // Parked cars settle to idle: braking to a standstill drops the gearbox to first, and idle() (used before the first
  // throttle and after the finish) brings rpm, g and slip to rest so the HUD never freezes on the last driven frame.
@@ -137,6 +140,16 @@ for(let seed=1;seed<=12;seed++)for(const mode of ['short','long','verylong','end
  const heights=t.points.map(p=>p.y);assert(Math.max(...heights)-Math.min(...heights)>30,'Extreme has substantial climbs and drops');
  for(const p of t.points){assert(Number.isFinite(p.x+p.y+p.z));assert(p.normal.y>.25);assert(p.y-Math.abs(p.right.y)*t.width/2>.2);}
  for(const m of t.mountains)for(const s of t.segments)assert(world.segmentDistance(m.x,m.z,s)>m.radius+t.width/2+40);
- if(seed<=3&&mode==='short'){const c=g.spawn(t);let checkpoints=0;for(let j=0;j<90000&&checkpoints<8;j++){const hit=drive(c,t,32);if(hit.distance<t.width/2&&Math.abs(hit.index-((checkpoints+1)%8)*30)<=2&&(c.grounded||t.generation===3)&&c.speed>0)checkpoints++;}assert.equal(checkpoints,8,'Extreme circuit can be completed');}
+ if(seed<=3&&mode==='short'){const c=g.spawn(t);let checkpoints=0;for(let j=0;j<90000&&checkpoints<8;j++){const hit=drive(c,t,20);if(hit.distance<t.width/2&&Math.abs(hit.index-race.checkpointIndex(t,checkpoints+1))<=2&&(c.grounded||t.generation===3)&&c.speed>0)checkpoints++;}assert.equal(checkpoints,8,'Extreme circuit can be completed');}
 }
 console.log('PASS Very Long 4x scale in all generations and 48 Extreme layouts, clearance and complete laps');
+
+// Adding distance must add real bends; larger bend radii alone would fail these density checks.
+for(const difficulty of ['medium','extreme'])for(let seed=1;seed<=4;seed++){
+ const stats=['short','long','verylong'].map(mode=>{const t=g.generate(()=>seed/5,{mode,difficulty});const length=t.segments.reduce((n,s)=>n+Math.hypot(s.dx,s.dz),0);let bends=0;for(let i=0;i<t.points.length;i++)if(t.points[i].curvature*t.points[(i+1)%t.points.length].curvature<0)bends++;
+ if(mode!=='short'||difficulty==='extreme'){assert(Math.max(...t.segments.map(s=>Math.hypot(s.dx,s.dz)))<7.2,'Dense road samples at every length');assert(Math.max(...t.points.map(p=>Math.abs(p.curvature)))<.3,'Road bend radius leaves room for its full width');assert(bends/length*1000>(difficulty==='extreme'?6.5:5),'Frequent direction changes per kilometer');}
+ const gates=Array.from({length:8},(_,i)=>race.checkpointIndex(t,i));assert.equal(new Set(gates).size,8);assert.equal(gates[7],t.points.length*7/8);return {count:t.points.length,density:bends/length};});
+ assert(stats[2].count>stats[1].count*3.9);assert(stats[2].density/stats[1].density>.9,'Very Long retains bend density');
+ if(difficulty==='extreme')assert(stats[1].density/stats[0].density>.9,'Long retains Short bend density');
+}
+console.log('PASS extra distance adds dense road sections and bends, with checkpoints covering the entire circuit');

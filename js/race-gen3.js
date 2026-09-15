@@ -46,14 +46,39 @@
    if(!b.feature||b.feature==='')b.feature=Math.abs(bend)>.028?'CAMBERED BEND':'';
    if(b.baseBank===undefined)b.baseBank=b.bank;
    b.curb=Math.abs(bend)>.02||Math.abs(b.baseBank)>.3;b.gravel=Math.abs(bend)>.03?(bend>0?1:-1):0;
-   b.bank=clamp(b.baseBank+b.camber,-.7,.7);
+   b.bank=clamp(b.baseBank+b.camber,track.difficulty==='extreme'?-.95:-.7,track.difficulty==='extreme'?.95:.7);
   }
+ }
+ // Distance-based challenge modules: length adds bends instead of enlarging their radius.
+ function challengeCircuit(track,target){
+  const extreme=track.difficulty==='extreme',waveLength=extreme?280:340,waves=Math.max(6,Math.round(target/waveLength));
+  const phase=random(track)*TAU,detail=random(track)*TAU,rotation=random(track)*TAU,amplitude=30;
+  const count=Math.max(240,Math.ceil(target/7/8)*8),denseCount=count*3;
+  function outline(radius){const points=[];for(let i=0;i<=denseCount;i++){const a=i/denseCount*TAU,r=radius+amplitude*Math.sin(waves*a+phase)+amplitude*.12*Math.sin(waves*2*a+detail);points.push({x:r*Math.cos(a+rotation),z:r*Math.sin(a+rotation),y:0});}return points;}
+  const length=p=>p.slice(1).reduce((n,q,i)=>n+Math.hypot(q.x-p[i].x,q.z-p[i].z),0);
+  let lo=amplitude*2,hi=target/TAU;for(let i=0;i<30;i++){const mid=(lo+hi)/2;if(length(outline(mid))>target)hi=mid;else lo=mid;}
+  const dense=outline((lo+hi)/2),dist=[0];for(let i=1;i<dense.length;i++)dist.push(dist[i-1]+Math.hypot(dense[i].x-dense[i-1].x,dense[i].z-dense[i-1].z));
+  let cursor=0;
+  for(let i=0;i<count;i++){
+   const d=i/count*dist.at(-1);while(dist[cursor+1]<d)cursor++;
+   const p=mix(dense[cursor],dense[cursor+1],(d-dist[cursor])/(dist[cursor+1]-dist[cursor])),u=i/count*TAU*waves;
+   Object.assign(p,{id:i,bank:(extreme?.82:.42)*Math.sin(u+phase+.7),boost:false,hyper:false,twist:extreme,ramp:false,feature:extreme?'EXTREME SWITCHBACK':'LINKED BENDS'});
+   p.elevation=(extreme?36:10)*(1+Math.sin(u*.5-(waves%2?i/count*Math.PI:0)+detail))+(extreme?10:3)*(1+Math.sin(u+detail));track.points.push(p);
+  }
+  const actual=track.points.reduce((n,p,i)=>{const q=track.points[(i+1)%track.points.length];return n+Math.hypot(q.x-p.x,q.z-p.z);},0),correction=target/actual;for(const p of track.points){p.x*=correction;p.z*=correction;}
+  decorate(track,track.points,track.mode);
+  for(const p of track.points){p.y=BASE+Math.abs(Math.sin(p.bank))*(track.width/2+1)+p.elevation;}
+  rebuild(track);track.name=extreme?'Extreme '+['Ridge Gauntlet','Serpent Peaks','Canyon Fury','Skyline Descent'][track.seed%4]:'Marathon '+['Coastal Bends','Highland Run','Sakura Traverse','Festival Circuit'][track.seed%4];
+  track.challengeModules=waves;track.checkpointStride=count/8;return world.populate(track);
  }
  function generate(rng=Math.random,options={}){
   const seed=(rng()*0xffffffff)>>>0,mode=options.mode||'short',difficulty=options.difficulty||'medium';
-  const track={seed,rngState:seed,generation:3,mode,difficulty,theme:0,width:difficulty==='easy'?26:difficulty==='hard'?21:24,points:[],segments:[],open:mode==='endless',nextId:0,heading:0};
+  const track={seed,rngState:seed,generation:3,mode,difficulty,theme:0,width:difficulty==='extreme'?18:difficulty==='easy'?26:difficulty==='hard'?21:24,points:[],segments:[],open:mode==='endless',nextId:0,heading:0};
   track.theme=Math.floor(random(track)*4);track.themeName=THEMES[track.theme];
   if(track.open){track.name='Endless Horizon';extend(track,300);return track;}
+  if(difficulty==='extreme')return challengeCircuit(track,mode==='verylong'?27200:mode==='long'?6800:2000);
+  if(mode==='long'){const short=generate(()=>(seed+.1)/0xffffffff,{mode:'short',difficulty});return challengeCircuit(track,short.segments.reduce((n,s)=>n+Math.hypot(s.dx,s.dz),0)*3.4);}
+  if(mode==='verylong'){const long=generate(()=>(seed+.1)/0xffffffff,{mode:'long',difficulty});return challengeCircuit(track,long.segments.reduce((n,s)=>n+Math.hypot(s.dx,s.dz),0)*4);}
   const variant=Math.floor(random(track)*8),scale=((mode==='long'||mode==='verylong')?1.7:1)*(.92+random(track)*.22),rotation=random(track)*TAU,mirror=random(track)<.5?-1:1;
   track.name=['Sakura Pass','Harbor Loop','Highland Circuit','Festival Speedway','Canyon Serpent','Wildflower Run','Ridgeway Rally','Coastal Switchbacks'][variant];track.variant=variant;
   // A seeded radial outline stays non-crossing while independently varying lobes, proportions and asymmetry.
@@ -111,6 +136,17 @@
   rebuild(track);return world.populate(track);
  }
  function extend(track,count=60){
+  if(track.difficulty==='extreme'){
+   for(let i=0;i<count;i++){
+    const id=track.nextId++,prev=track.points.at(-1)||{x:0,z:-5},phase=track.seed*.00001;
+    const heading=1.03*Math.sin(id*.039+phase)+.22*Math.sin(id*.091+phase),bank=.82*Math.sin(id*.044+phase);
+    track.points.push({x:prev.x+Math.sin(heading)*5,z:prev.z+Math.cos(heading)*5,y:0,id,bank,boost:false,hyper:false,twist:true,ramp:false,feature:'EXTREME SWITCHBACK',elevation:36*(1+Math.sin(id*.034+phase))+10*(1+Math.sin(id*.071+phase))});
+   }
+   if(track.points.length>360)track.points.splice(0,track.points.length-360);
+   decorate(track,track.points,'endless');for(const p of track.points)p.y=BASE+Math.abs(Math.sin(p.bank))*(track.width/2+1)+p.elevation;
+   rebuild(track);return world.populate(track);
+  }
+
   for(let i=0;i<count;i++){
    const id=track.nextId++,phase=id%180,prev=track.points.at(-1)||{x:0,y:12,z:-5};
    if(phase===0){track.turnTarget=(random(track)<.5?-1:1)*(.012+random(track)*.026)*(track.difficulty==='extreme'?1.7:track.difficulty==='hard'?1.2:track.difficulty==='easy'?.65:1);track.bendFrequency=1+Math.floor(random(track)*3);track.bendPhase=random(track)*TAU;track.wallSign=random(track)<.5?-1:1;track.lift=track.difficulty==='extreme'?18+random(track)*18:1.2+random(track)*1.8;}
@@ -143,7 +179,7 @@
  function spawn(track,index=0,stats){
   const s={...DEFAULT_STATS,...(stats||{})};
   const car={pathDistance:track.segments[index].start,lateral:0,heading:0,speed:0,side:0,vy:0,grounded:true,airTime:0,boost:false,hyper:false,airtime:0,topSpeed:0,stats:s,
-   steer:0,slip:0,throttle:0,brake:0,handbrake:false,reverse:false,rpm:s.idle,gear:1,shift:0,backfire:0,accelLong:0,accelLat:0,heave:0,heaveVel:0,pitchVel:0,rollVel:0,suspension:[.5,.5,.5,.5],wheelLoads:[1,1,1,1],brakeHeat:0,wingUp:0,railHit:0,surface:'tarmac',wheelSlip:0,landing:0,bump:0,gForce:0};
+   steer:0,slip:0,drift:0,throttle:0,brake:0,handbrake:false,reverse:false,rpm:s.idle,gear:1,shift:0,backfire:0,accelLong:0,accelLat:0,heave:0,heaveVel:0,pitchVel:0,rollVel:0,suspension:[.5,.5,.5,.5],wheelLoads:[1,1,1,1],brakeHeat:0,wingUp:0,railHit:0,surface:'tarmac',wheelSlip:0,landing:0,bump:0,gForce:0};
   pose(car,track);return car;
  }
  function land(car,track,hit){
@@ -172,18 +208,23 @@
   // Surface: tarmac, painted verge, gravel/grass beyond the edge, armco at the rail line.
   const edge=track.width/2,off=Math.abs(car.lateral);car.surface=off<edge-.4?'tarmac':off<edge+.6?'verge':'gravel';
   const surfaceGrip=car.surface==='tarmac'?1:car.surface==='verge'?.72:.45,surfaceDrag=car.surface==='tarmac'?0:car.surface==='verge'?.35:1.1;
-  const latGrip=LAT_GRIP*s.grip*surfaceGrip*(1+s.downforce*(abs/70)*(abs/70))*(hb?.55:1)*(1-.25*Math.min(1,car.landing));
+  // Rear grip breaks progressively; throttle sustains a slide after a short handbrake tap.
+  const counter=steer!==0&&car.side*steer>0,sliding=Math.abs(car.slip)>.07;
+  const initiate=abs>12&&hb&&Math.abs(steer)>.1;
+  const driftTarget=initiate?1:abs>10&&sliding&&gas&&!brakeIn?(counter?.25:.65+.25*s.drift):0;
+  car.drift=(car.drift||0)+(driftTarget-(car.drift||0))*Math.min(1,dt*(initiate?6:driftTarget?2:2.8));
+  const latGrip=LAT_GRIP*s.grip*surfaceGrip*(1+s.downforce*(abs/70)*(abs/70))*(1-.4*car.drift)*(1-.25*Math.min(1,car.landing));
   // Steering: keyboard steering assist (Forza style) caps lock so a held key rides ~92% of the grip circle instead
   // of scrubbing; the handbrake removes the cap so the rear can be thrown out. Rate slows with speed.
-  const wheelbase=2.6,assistLock=abs>4?latGrip*.92*wheelbase/(abs*abs):1,maxLock=Math.min(.52,hb?.52/(1+abs/30):assistLock)*(.85+.15*s.handling),target=steer*Math.max(.5,Math.min(1.3,Number(input.steeringScale)||1))*maxLock*(speed<-1?-1:1);
+  const wheelbase=2.6,assistLock=abs>4?latGrip*.92*wheelbase/(abs*abs):1,maxLock=Math.min(.52,car.drift>.15?.46/(1+abs/60):assistLock)*(.85+.15*s.handling),target=steer*Math.max(.5,Math.min(1.3,Number(input.steeringScale)||1))*maxLock*(speed<-1?-1:1);
   car.steer+=(target-car.steer)*Math.min(1,dt*(5.5+abs*.05)*(.7+.3*s.handling));
   const kin=abs>.5?car.steer*speed/wheelbase:0;let latNeeded=Math.abs(speed*kin),gripFactor=latNeeded>latGrip?latGrip/latNeeded:1;
   let yawRate=kin*gripFactor;
-  if(hb&&abs>4)yawRate+=car.steer*s.drift*2.2*Math.sign(speed);// rear steps out under the handbrake
+  if(car.drift>.1&&abs>4)yawRate+=car.steer*(.7+s.drift)*car.drift*Math.sign(speed);// rear steps out under the handbrake
   car.heading+=yawRate*dt;
   // Momentum: side velocity relaxes toward the heading through tire force (saturating). Drift keeps momentum.
-  const stiff=(hb?3.5:11)*(1-.35*s.drift+.35)*surfaceGrip;car.side+=(latNeeded>latGrip?(latNeeded-latGrip)*Math.sign(-kin)*.55:0)*dt;
-  const tireAccel=clamp(-car.side*stiff,-latGrip,latGrip);car.side+=tireAccel*dt;car.side*=1-Math.min(1,dt*.4);
+  const stiff=(11-9*car.drift)*(1-.35*s.drift+.35)*surfaceGrip;const driftYaw=yawRate*car.drift*dt,longitudinal=speed*Math.cos(driftYaw)+car.side*Math.sin(driftYaw);car.side=car.side*Math.cos(driftYaw)-speed*Math.sin(driftYaw);car.side+=(latNeeded>latGrip?(latNeeded-latGrip)*Math.sign(-kin)*.55*(1-car.drift):0)*dt;
+  const tireAccel=clamp(-car.side*stiff,-latGrip,latGrip);car.side+=tireAccel*dt;car.side*=1-Math.min(1,dt*.4);car.side=clamp(car.side,-abs*.85,abs*.85);
   car.slip=Math.atan2(car.side,Math.max(4,abs));car.accelLat=speed*yawRate+tireAccel*.35;
   // Longitudinal: engine, traction limit (friction circle), ABS braking that cannot also turn at the limit.
   const drive={AWD:1,RWD:.78,FWD:.66}[s.drivetrain]||.8,ratio=abs/cap,engine=44*s.power/massFactor*Math.max(0,1-ratio*ratio*ratio*.85)+(car.hyper?90:car.boost?55:0);
@@ -191,10 +232,10 @@
   const wantAccel=gas*engine,accelUsed=Math.min(wantAccel,Math.max(traction,circle*drive));car.wheelSlip=wantAccel>accelUsed+2&&abs<45?Math.min(1,(wantAccel-accelUsed)/20):0;
   const brakeMax=52*s.brake*(.85+.15*surfaceGrip),brakeUsed=brakeIn*(speed>.5?Math.min(brakeMax,Math.max(circle*1.35,brakeMax*.35)):(speed<-.5?brakeMax*.6:0));
   const reverseWant=brakeIn&&speed<=.5&&!gas?-14:0;car.reverse=speed<-.5;
-  const dragAccel=(s.drag*.0024+surfaceDrag*.02)*abs*abs*Math.sign(speed)+(abs>.5?2.2*Math.sign(speed):0)+(hb?abs*.9*Math.sign(speed):0);
+  const dragAccel=(s.drag*.0024+surfaceDrag*.02)*abs*abs*Math.sign(speed)+(abs>.5?2.2*Math.sign(speed):0)+(hb?abs*.22*Math.sign(speed):0);
   const slope=-f.tangent.y*GRAVITY*Math.cos(car.heading);
   let accel=accelUsed-brakeUsed*Math.sign(speed||1)-dragAccel+slope+reverseWant-Math.abs(car.side)*.45*Math.sign(speed||1);
-  car.speed=clamp(speed+accel*dt,-14,cap);if(brakeIn&&!gas&&Math.abs(car.speed)<.6&&Math.abs(speed)<.6&&!reverseWant)car.speed=0;
+  car.speed=clamp(longitudinal+accel*dt,-14,cap);if(brakeIn&&!gas&&Math.abs(car.speed)<.6&&Math.abs(speed)<.6&&!reverseWant)car.speed=0;
   car.throttle=gas;car.brake=brakeIn?1:0;car.accelLong=(car.speed-speed)/Math.max(dt,1e-4);
   car.brakeHeat=clamp(car.brakeHeat+(brakeUsed*abs*.00045-.35*(1+abs*.01))*dt,0,1);
   // Fake gearbox for HUD/audio-less feedback and lift-off backfires.
@@ -206,7 +247,7 @@
   const next=surface(track,car.pathDistance);
   car.heading+=Math.atan2(dot(f.tangent,next.right),dot(f.tangent,next.tangent));car.heading=Math.atan2(Math.sin(car.heading),Math.cos(car.heading));
   // Counter-steer recovery: the body yaws back toward the velocity direction unless the handbrake holds the drift.
-  if(!hb)car.heading+=car.slip*Math.min(1,dt*2.4);
+  if(!hb)car.heading+=car.slip*Math.min(1,dt*(car.drift>.15?(counter?1.6:.35):2.4));
   // Armco at the rail line: bounce, scrub speed, spark timer.
   const rail=track.width/2+RAIL;
   if(Math.abs(car.lateral)>rail){car.lateral=clamp(car.lateral,-rail,rail);car.speed*=.88;car.heading*=.5;car.side=-car.side*.3;car.railHit=.45;}

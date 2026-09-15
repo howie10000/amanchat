@@ -148,3 +148,14 @@ Crossing all eight checkpoints adds one Finish and keeps driving and the session
 ## Extreme, Very Long and prepared entry
 
 Extreme adds taller climbs and drops plus stronger, more frequent bends in Generation 3, with elevated Extreme variants in Classic and Stuntworks. Very Long is four times the horizontal length of Long. The top toolbar stays on a single row and scrolls horizontally on narrower screens. After login, Apex prepares its model pack, selected car, track, effects, shaders and post-processing in separate idle stages; opening Apex reuses the prepared renderer and scene. Entering before preparation finishes still needs a fallback startup. Right-click browser menus are suppressed throughout gameplay and racing.
+
+
+## Consistent road scale and sustained drifting
+
+Long and Very Long now add distance with extra bends and hills at fixed feature wavelengths instead of stretching a fixed point count. Closed Extreme routes use approximately one bend module per 280 horizontal meters and ordinary extended routes one per 340 meters. Very Long remains four times Long. Extreme has narrower asphalt, stronger banking, taller hills and sharper linked turns, including in Endless. Generations 1 and 2 use these new extended/Extreme layouts with their existing artwork and physics; their ordinary Short routes remain unchanged. Checkpoint gates, recovery and lap counting divide variable point counts into eight sections.
+
+Generation 3 drifting retains lateral momentum when the body rotates. At speed, tap Space while turning to initiate, release the handbrake and use throttle to sustain the slide, then lift and countersteer to regain grip. Car drift ratings influence grip and rotation. The HUD, tire smoke and skid marks follow the sustained slide after the handbrake is released.
+
+Validation covers feature density across lengths, fixed point spacing, all-generation checkpoint placement, Extreme clearance and complete Short laps, plus drift initiation, momentum retention and countersteer recovery.
+
+Very Long scenery is instanced in spatial cells; distant roadside detail is skipped while terrain and mountain backdrops remain visible. Extreme chase cameras sit higher and look closer ahead to keep the car readable on steep descents. Browser QA covered Very Long Extreme rendering and driving, drift smoke/skid feedback and zero script errors.
