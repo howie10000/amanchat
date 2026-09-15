@@ -60,7 +60,7 @@ if (process.env.LOCAL_DEV_ID) {
 }
 app.use((req,res,next)=>{
     let asset;try{asset=path.posix.normalize(decodeURIComponent(req.path).replace(/\\/g,'/'));}catch{return res.sendStatus(400);}
-    if(!['/','/index.html','/style.css','/lake.js','/assets/dark-sea/blender-meshes.js','/assets/dark-sea/legendary-models.js','/assets/dark-sea/blender-animations.js','/assets/dark-sea/title-crest.png','/assets/dark-sea/title-wordmark.png','/assets/dark-sea/title-scroll.png'].includes(asset)&&!/^\/(js|docs)\//.test(asset))return res.sendStatus(404);
+    if(!['/','/index.html','/style.css','/lake.js','/assets/dark-sea/blender-meshes.js','/assets/dark-sea/legendary-models.js','/assets/dark-sea/blender-animations.js','/assets/dark-sea/title-crest.png','/assets/dark-sea/title-wordmark.png','/assets/dark-sea/title-scroll.png'].includes(asset)&&!/^\/(js|docs)\//.test(asset)&&!/^\/assets\/racing\/[a-z0-9-]+\.(?:png|webp)$/.test(asset))return res.sendStatus(404);
     next();
 });
 app.use(express.static(STATIC_DIR));

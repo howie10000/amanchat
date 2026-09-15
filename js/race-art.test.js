@@ -8,7 +8,7 @@ for(const generation of [1,2,3]){
  art.disposeGroup(group);const metrics=art.metrics();if(!baseline)baseline=metrics;else assert.deepEqual(metrics,baseline,'GPU resources stay bounded across routes');}
  art.dispose();console.log('PASS Generation '+generation+' finite assets, expected model, animated wheels/brakes and bounded resources through 18 rebuilds');
 }
-const kit=env.ApexModels.kits;assert(kit.body&&kit.wheel&&kit.tree&&kit.rock&&kit.hill);assert(fs.statSync(require.resolve('./race-models')).size<2e6);console.log('PASS Blender car/world mesh pack present and under 2 MB');
+const kit=env.ApexModels.kits,cars=env.ApexModels.cars;assert.equal(cars.length,10);for(const c of cars)assert(kit[c.id+'.body']&&kit[c.id+'.wheel']&&kit[c.id+'.lod'],c.id+' kits');assert(kit.tree&&kit.rock&&kit.hill&&kit.armco&&kit.grandstand);assert(fs.statSync(require.resolve('./race-models')).size<6.5e6);console.log('PASS Blender ten-car/world mesh pack present and under 6.5 MB');
 
 // Rendered bank edges must match the physics plane on both sides of the road.
 for(const generation of [2,3])for(const mode of ['short','long','endless']){

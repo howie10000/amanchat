@@ -1325,3 +1325,13 @@ h3.section { margin: 14px 0 8px; font-size: 14px; color: #fbbf24; letter-spacing
 .finance-controls select,.finance-controls input,#staffFinanceAmount{display:block;margin-top:6px;padding:9px 10px;background:#203344;color:#edf3f4;border:1px solid #556d80;border-radius:5px;font:13px system-ui;box-sizing:border-box}.finance-controls label{font-size:12px;color:#b7c9d4}#staffFinanceBalance{padding:12px;background:#172d3d;border-left:3px solid #edc176;color:#f2e5cb}.finance-table td:nth-child(2){overflow-wrap:anywhere}
 
 .race-top label{font-size:12px;color:#c9dbe5}.race-top select{background:#203b4e;color:#fff;border:1px solid #68899b;border-radius:5px;padding:8px}.race-top{flex-wrap:wrap;gap:8px}@media(max-width:700px){.race-top h2{font-size:17px}.race-top label{font-size:11px}.race-top select{padding:4px}}
+
+.race-gear{color:#ffd275;font-variant-numeric:tabular-nums;letter-spacing:1px}.race-top label[hidden]{display:none}
+
+.race-login-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none}
+#loginScreen.racing-login #titleBg{background:transparent;opacity:0;transition:opacity .7s ease}
+#loginScreen.racing-login #titleBg.ready{opacity:1}
+.race-login-brand h1 img{display:block;width:100%;height:auto}
+.race-generation-label{font:700 12px system-ui;letter-spacing:5px;color:#edbd6b;margin-top:-8px}
+.race-top{flex-wrap:wrap}.race-top select{max-width:170px}
+@media(prefers-reduced-motion:reduce){#loginScreen.racing-login #titleBg{transition:none}}
