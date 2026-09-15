@@ -144,3 +144,7 @@ Validation adds 120 reproducible, distinct profiles across all eight families an
 ## Continuous laps and startup
 
 Crossing all eight checkpoints adds one Finish and keeps driving and the session timer running. Retry resets finishes and time to zero. Long routes have twice the previous horizontal length; Short routes are unchanged. All Generation 3 mountain layers now use shared road-clearance placement, including the large distant scenery that previously bypassed it. The Blender model pack downloads asynchronously after the form initializes; login does not wait for it, and title scene initialization defers while a login field or button has focus.
+
+## Extreme, Very Long and prepared entry
+
+Extreme adds taller climbs and drops plus stronger, more frequent bends in Generation 3, with elevated Extreme variants in Classic and Stuntworks. Very Long is four times the horizontal length of Long. The top toolbar stays on a single row and scrolls horizontally on narrower screens. After login, Apex prepares its model pack, selected car, track, effects, shaders and post-processing in separate idle stages; opening Apex reuses the prepared renderer and scene. Entering before preparation finishes still needs a fallback startup. Right-click browser menus are suppressed throughout gameplay and racing.

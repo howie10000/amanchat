@@ -54,14 +54,14 @@
   const track={seed,rngState:seed,generation:3,mode,difficulty,theme:0,width:difficulty==='easy'?26:difficulty==='hard'?21:24,points:[],segments:[],open:mode==='endless',nextId:0,heading:0};
   track.theme=Math.floor(random(track)*4);track.themeName=THEMES[track.theme];
   if(track.open){track.name='Endless Horizon';extend(track,300);return track;}
-  const variant=Math.floor(random(track)*8),scale=(mode==='long'?1.7:1)*(.92+random(track)*.22),rotation=random(track)*TAU,mirror=random(track)<.5?-1:1;
+  const variant=Math.floor(random(track)*8),scale=((mode==='long'||mode==='verylong')?1.7:1)*(.92+random(track)*.22),rotation=random(track)*TAU,mirror=random(track)<.5?-1:1;
   track.name=['Sakura Pass','Harbor Loop','Highland Circuit','Festival Speedway','Canyon Serpent','Wildflower Run','Ridgeway Rally','Coastal Switchbacks'][variant];track.variant=variant;
   // A seeded radial outline stays non-crossing while independently varying lobes, proportions and asymmetry.
   // Preserve its personality by enlarging tight bends before reducing the secondary ripples.
   const count=1200,rx=190+random(track)*95,rz=135+random(track)*85,primary=2+variant%3,secondary=4+Math.floor(random(track)*2);
   const phase=random(track)*TAU,phase2=random(track)*TAU,phase3=random(track)*TAU;
-  const strength=.13+random(track)*.13,ripple=.025+random(track)*.055,asymmetry=.04+random(track)*.10;
-  const radius=difficulty==='easy'?70:difficulty==='hard'?45:55;let dense,amp=1,expansion=1;
+  const strength=(difficulty==='extreme'?.24:.13)+random(track)*.13,ripple=.025+random(track)*.055,asymmetry=.04+random(track)*.10;
+  const radius=difficulty==='easy'?70:difficulty==='extreme'?38:difficulty==='hard'?45:55;let dense,amp=1,expansion=1;
   for(let attempt=0;attempt<18;attempt++){
    dense=[];
    for(let i=0;i<=count;i++){
@@ -75,13 +75,13 @@
    if(expansion<2.6)expansion=Math.min(2.6,expansion*Math.max(1.04,worst*radius*1.015));else amp*=.65;
   }
   track.amp=amp;track.layout={primary,secondary,strength,ripple,asymmetry,rx,rz,expansion,minimumRadius:radius};
-  if(mode==='long')for(const p of dense){p.x*=2;p.z*=2;}
+  if(mode==='long'||mode==='verylong')for(const p of dense){const scale=mode==='verylong'?8:2;p.x*=scale;p.z*=scale;}
   const lengths=[0];for(let i=1;i<dense.length;i++)lengths.push(lengths[i-1]+Math.hypot(...Object.values(sub(dense[i],dense[i-1]))));
-  let cursor=0;const direction=random(track)<.5?-1:1,shift=Math.floor(random(track)*5),hillPhase=random(track)*TAU,hills=difficulty==='easy'?2.2:3;
+  let cursor=0;const direction=random(track)<.5?-1:1,shift=Math.floor(random(track)*5),hillPhase=random(track)*TAU,hills=difficulty==='extreme'?38:difficulty==='easy'?2.2:3;
   for(let i=0;i<240;i++){
    const distance=i/240*lengths.at(-1);while(lengths[cursor+1]<distance)cursor++;
    const p=mix(dense[cursor],dense[cursor+1],(distance-lengths[cursor])/(lengths[cursor+1]-lengths[cursor]));
-   const bank=direction*(.42*plateau(i,24+shift,39+shift,51+shift,68+shift)-.5*plateau(i,139,153,166,184)+.3*plateau(i,188,198,205,214));
+   const bank=(difficulty==='extreme'?1.35:1)*direction*(.42*plateau(i,24+shift,39+shift,51+shift,68+shift)-.5*plateau(i,139,153,166,184)+.3*plateau(i,188,198,205,214));
    Object.assign(p,{id:i,bank,boost:(i>=10&&i<17)||(i>=125&&i<132)||(i>=210&&i<219),hyper:i>=210&&i<219,twist:false,ramp:false,feature:i>=210&&i<219?'HYPER STRAIGHT':Math.abs(bank)>.3?'BANKED SWEEPER':''});
    track.points.push(p);
   }
@@ -113,7 +113,7 @@
  function extend(track,count=60){
   for(let i=0;i<count;i++){
    const id=track.nextId++,phase=id%180,prev=track.points.at(-1)||{x:0,y:12,z:-5};
-   if(phase===0){track.turnTarget=(random(track)<.5?-1:1)*(.012+random(track)*.026)*(track.difficulty==='hard'?1.2:track.difficulty==='easy'?.65:1);track.bendFrequency=1+Math.floor(random(track)*3);track.bendPhase=random(track)*TAU;track.wallSign=random(track)<.5?-1:1;track.lift=1.2+random(track)*1.8;}
+   if(phase===0){track.turnTarget=(random(track)<.5?-1:1)*(.012+random(track)*.026)*(track.difficulty==='extreme'?1.7:track.difficulty==='hard'?1.2:track.difficulty==='easy'?.65:1);track.bendFrequency=1+Math.floor(random(track)*3);track.bendPhase=random(track)*TAU;track.wallSign=random(track)<.5?-1:1;track.lift=track.difficulty==='extreme'?18+random(track)*18:1.2+random(track)*1.8;}
    const envelope=plateau(phase,22,42,125,151),bend=envelope*track.turnTarget*(Math.sin(phase/180*TAU*track.bendFrequency+track.bendPhase)+.35*Math.sin(phase*.13));track.heading=clamp(track.heading+bend,-1.3,1.3);
    const bank=track.wallSign*(.46*plateau(phase,27,44,60,80)-.38*plateau(phase,85,98,111,123));
    // The lip sits at phase 176 where the block's bend crosses zero, so the landing zone (wrapping into the next

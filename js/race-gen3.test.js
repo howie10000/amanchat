@@ -126,3 +126,17 @@ for(let seed=1;seed<=120;seed++){
 }
 assert.equal(families.size,8);assert.equal(profiles.size,120);
 console.log('PASS eight route families, 120 unique reproducible profiles and non-crossing layouts');
+
+for(const generation of [1,2,3]){
+ const long=race.generate(()=>.42,{generation,mode:'long',difficulty:'extreme'}),very=race.generate(()=>.42,{generation,mode:'verylong',difficulty:'extreme'});
+ const length=t=>t.segments.reduce((n,s)=>n+Math.hypot(s.q.x-s.p.x,s.q.z-s.p.z),0);
+ assert(Math.abs(length(very)/length(long)-4)<1e-9,'Very Long is exactly four times Long');
+}
+for(let seed=1;seed<=12;seed++)for(const mode of ['short','long','verylong','endless']){
+ const t=g.generate(()=>seed/13,{mode,difficulty:'extreme'});if(t.open)g.extend(t);
+ const heights=t.points.map(p=>p.y);assert(Math.max(...heights)-Math.min(...heights)>30,'Extreme has substantial climbs and drops');
+ for(const p of t.points){assert(Number.isFinite(p.x+p.y+p.z));assert(p.normal.y>.25);assert(p.y-Math.abs(p.right.y)*t.width/2>.2);}
+ for(const m of t.mountains)for(const s of t.segments)assert(world.segmentDistance(m.x,m.z,s)>m.radius+t.width/2+40);
+ if(seed<=3&&mode==='short'){const c=g.spawn(t);let checkpoints=0;for(let j=0;j<90000&&checkpoints<8;j++){const hit=drive(c,t,32);if(hit.distance<t.width/2&&Math.abs(hit.index-((checkpoints+1)%8)*30)<=2&&(c.grounded||t.generation===3)&&c.speed>0)checkpoints++;}assert.equal(checkpoints,8,'Extreme circuit can be completed');}
+}
+console.log('PASS Very Long 4x scale in all generations and 48 Extreme layouts, clearance and complete laps');

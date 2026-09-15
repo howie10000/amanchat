@@ -155,6 +155,9 @@ canvas.addEventListener("mouseup", e => {
   }
 });
 canvas.addEventListener("contextmenu", e => e.preventDefault());
+document.addEventListener("contextmenu", e => {
+  if (window.gameRace?.active || !document.getElementById("gameScreen").classList.contains("hidden")) e.preventDefault();
+});
 
 function worldMouseX() { if(window.FirstPerson && FirstPerson.active()) return FirstPerson.aim().x; return state.mouse.x + state.cam.x; }
 function worldMouseY() { if(window.FirstPerson && FirstPerson.active()) return FirstPerson.aim().y; return state.mouse.y + state.cam.y; }

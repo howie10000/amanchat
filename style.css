@@ -1335,3 +1335,9 @@ h3.section { margin: 14px 0 8px; font-size: 14px; color: #fbbf24; letter-spacing
 .race-generation-label{font:700 12px system-ui;letter-spacing:5px;color:#edbd6b;margin-top:-8px}
 .race-top{flex-wrap:wrap}.race-top select{max-width:170px}
 @media(prefers-reduced-motion:reduce){#loginScreen.racing-login #titleBg{transition:none}}
+
+/* One-row racing toolbar; narrower displays scroll horizontally instead of wrapping. */
+.race-top{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;justify-content:flex-start;gap:10px;flex-shrink:0;padding:10px 14px;scrollbar-width:thin}
+.race-top>div,.race-top>label,.race-top>button{flex-shrink:0;white-space:nowrap}
+.race-top>div{max-width:180px}.race-top h2{font-size:16px;overflow:hidden;text-overflow:ellipsis}.race-top small{font-size:9px;letter-spacing:1px}
+.race-top label{display:flex;align-items:center;gap:4px}.race-top label[hidden]{display:none}.race-top select{max-width:135px;padding:6px}.race-top button{padding:8px 12px}

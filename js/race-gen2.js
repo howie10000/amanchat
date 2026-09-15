@@ -26,7 +26,7 @@
   const seed=(rng()*0xffffffff)>>>0,mode=options.mode||'short',difficulty=options.difficulty||'medium';
   const track={seed,rngState:seed,generation:2,mode,difficulty,theme:2,width:difficulty==='easy'?24:difficulty==='hard'?19:22,points:[],segments:[],open:mode==='endless',nextId:0,heading:0};
   if(track.open){track.name='Infinite Stuntworks';extend(track,300);return track;}
-  const variant=Math.floor(random(track)*3),scale=(mode==='long'?3.4:1)*(.94+random(track)*.12),rotation=random(track)*TAU,mirror=random(track)<.5?-1:1;
+  const variant=Math.floor(random(track)*3),scale=(mode==='verylong'?13.6:mode==='long'?3.4:1)*(.94+random(track)*.12),rotation=random(track)*TAU,mirror=random(track)<.5?-1:1;
   track.name=['Serpent Rally','Razorback Switchbacks','Festival Gauntlet'][variant];
   const dense=[],count=1200,phase=random(track)*TAU;
   for(let i=0;i<=count;i++){
@@ -42,9 +42,9 @@
   for(let i=0;i<240;i++){
    const distance=i/240*lengths.at(-1);while(lengths[cursor+1]<distance)cursor++;
    const p=mix(dense[cursor],dense[cursor+1],(distance-lengths[cursor])/(lengths[cursor+1]-lengths[cursor]));
-   const twist=false,bank=direction*(.5*plateau(i,24+wallShift,39+wallShift,51+wallShift,68+wallShift)-.6*plateau(i,139,153,166,184)+.35*plateau(i,188,198,205,214));
+   const twist=false,bank=(difficulty==='extreme'?1.45:1)*direction*(.5*plateau(i,24+wallShift,39+wallShift,51+wallShift,68+wallShift)-.6*plateau(i,139,153,166,184)+.35*plateau(i,188,198,205,214));
    Object.assign(p,{id:i,bank,boost:(i>=10&&i<17)||(i>=125&&i<132)||(i>=210&&i<219),hyper:i>=210&&i<219,twist,ramp:i>=93&&i<=109,feature:twist?'SWITCHBACK':i>=210&&i<219?'HYPER TUNNEL':Math.abs(bank)>.3?'BANKED SWEEPER':i>=83&&i<=117?'RALLY CREST':''});
-   p.y=.24+Math.abs(Math.sin(bank))*(track.width/2+1)+2.6*plateau(i,89,102,104,116);track.points.push(p);
+   p.y=.24+Math.abs(Math.sin(bank))*(track.width/2+1)+2.6*plateau(i,89,102,104,116);if(difficulty==='extreme')p.y+=24*(1+Math.sin(i/240*TAU*3));track.points.push(p);
   }
   rebuild(track);return world.populate(track);
  }
@@ -54,7 +54,7 @@
    if(phase===0){track.turnTarget=(random(track)-.5)*(track.difficulty==='hard'?.05:track.difficulty==='easy'?.018:.032);track.wallSign=random(track)<.5?-1:1;track.lift=8+random(track)*15;}
    const bend=track.turnTarget*Math.sin(phase/180*TAU);track.heading=clamp(track.heading+bend*1.7+Math.sin(phase*.105)*.014,-1.18,1.18);
    const twist=false,bank=track.wallSign*(.56*plateau(phase,27,44,60,80)-.44*plateau(phase,85,98,111,123)),p={x:prev.x+Math.sin(track.heading)*5,z:prev.z+Math.cos(track.heading)*5,y:.24+Math.abs(Math.sin(bank))*(track.width/2+1),bank,id,boost:phase>=12&&phase<19||phase>=151&&phase<162,hyper:phase>=151&&phase<162,twist:twist&&phase>=27&&phase<=94,ramp:phase>=114&&phase<=137,feature:twist&&phase>=27&&phase<=94?'CORKSCREW':phase>=151&&phase<162?'HYPER TUNNEL':Math.abs(bank)>.3?'BANKED SWEEPER':phase>=106&&phase<=146?'RALLY CREST':''};
-   p.y+=2.6*plateau(phase,114,124,126,137);track.points.push(p);
+   p.y+=2.6*plateau(phase,114,124,126,137);if(track.difficulty==='extreme')p.y+=24*(1-Math.cos(phase/180*TAU));track.points.push(p);
   }
   // Keep an overlap so positions and checkpoint recovery remain stable at seams.
   if(track.points.length>360)track.points.splice(0,track.points.length-360);
