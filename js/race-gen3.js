@@ -208,19 +208,19 @@
   // Surface: tarmac, painted verge, gravel/grass beyond the edge, armco at the rail line.
   const edge=track.width/2,off=Math.abs(car.lateral);car.surface=off<edge-.4?'tarmac':off<edge+.6?'verge':'gravel';
   const surfaceGrip=car.surface==='tarmac'?1:car.surface==='verge'?.72:.45,surfaceDrag=car.surface==='tarmac'?0:car.surface==='verge'?.35:1.1;
-  // Rear grip breaks progressively; throttle sustains a slide after a short handbrake tap.
-  const counter=steer!==0&&car.side*steer>0,sliding=Math.abs(car.slip)>.07;
+  // Space controls the drift. Releasing it restores grip quickly, even with throttle held.
+  const counter=steer!==0&&car.side*steer>0;
   const initiate=abs>12&&hb&&Math.abs(steer)>.1;
-  const driftTarget=initiate?1:abs>10&&sliding&&gas&&!brakeIn?(counter?.25:.65+.25*s.drift):0;
-  car.drift=(car.drift||0)+(driftTarget-(car.drift||0))*Math.min(1,dt*(initiate?6:driftTarget?2:2.8));
+  const driftTarget=initiate?1:0;
+  car.drift=(car.drift||0)+(driftTarget-(car.drift||0))*Math.min(1,dt*(initiate?6:12));
   const latGrip=LAT_GRIP*s.grip*surfaceGrip*(1+s.downforce*(abs/70)*(abs/70))*(1-.4*car.drift)*(1-.25*Math.min(1,car.landing));
   // Steering: keyboard steering assist (Forza style) caps lock so a held key rides ~92% of the grip circle instead
   // of scrubbing; the handbrake removes the cap so the rear can be thrown out. Rate slows with speed.
-  const wheelbase=2.6,assistLock=abs>4?latGrip*.92*wheelbase/(abs*abs):1,maxLock=Math.min(.52,car.drift>.15?.46/(1+abs/60):assistLock)*(.85+.15*s.handling),target=steer*Math.max(.5,Math.min(1.3,Number(input.steeringScale)||1))*maxLock*(speed<-1?-1:1);
+  const wheelbase=2.6,assistLock=abs>4?latGrip*.92*wheelbase/(abs*abs):1,maxLock=Math.min(.52,hb&&car.drift>.15?.46/(1+abs/60):assistLock)*(.85+.15*s.handling),target=steer*Math.max(.5,Math.min(1.3,Number(input.steeringScale)||1))*maxLock*(speed<-1?-1:1);
   car.steer+=(target-car.steer)*Math.min(1,dt*(5.5+abs*.05)*(.7+.3*s.handling));
   const kin=abs>.5?car.steer*speed/wheelbase:0;let latNeeded=Math.abs(speed*kin),gripFactor=latNeeded>latGrip?latGrip/latNeeded:1;
   let yawRate=kin*gripFactor;
-  if(car.drift>.1&&abs>4)yawRate+=car.steer*(.7+s.drift)*car.drift*Math.sign(speed);// rear steps out under the handbrake
+  if(hb&&car.drift>.1&&abs>4)yawRate+=car.steer*(.7+s.drift)*car.drift*Math.sign(speed);// rear steps out under the handbrake
   car.heading+=yawRate*dt;
   // Momentum: side velocity relaxes toward the heading through tire force (saturating). Drift keeps momentum.
   const stiff=(11-9*car.drift)*(1-.35*s.drift+.35)*surfaceGrip;const driftYaw=yawRate*car.drift*dt,longitudinal=speed*Math.cos(driftYaw)+car.side*Math.sin(driftYaw);car.side=car.side*Math.cos(driftYaw)-speed*Math.sin(driftYaw);car.side+=(latNeeded>latGrip?(latNeeded-latGrip)*Math.sign(-kin)*.55*(1-car.drift):0)*dt;
@@ -247,7 +247,7 @@
   const next=surface(track,car.pathDistance);
   car.heading+=Math.atan2(dot(f.tangent,next.right),dot(f.tangent,next.tangent));car.heading=Math.atan2(Math.sin(car.heading),Math.cos(car.heading));
   // Counter-steer recovery: the body yaws back toward the velocity direction unless the handbrake holds the drift.
-  if(!hb)car.heading+=car.slip*Math.min(1,dt*(car.drift>.15?(counter?1.6:.35):2.4));
+  if(!hb)car.heading+=car.slip*Math.min(1,dt*(car.drift>.001?(counter?6:4.8):2.4));
   // Armco at the rail line: bounce, scrub speed, spark timer.
   const rail=track.width/2+RAIL;
   if(Math.abs(car.lateral)>rail){car.lateral=clamp(car.lateral,-rail,rail);car.speed*=.88;car.heading*=.5;car.side=-car.side*.3;car.railHit=.45;}

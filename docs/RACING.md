@@ -154,7 +154,7 @@ Extreme adds taller climbs and drops plus stronger, more frequent bends in Gener
 
 Long and Very Long now add distance with extra bends and hills at fixed feature wavelengths instead of stretching a fixed point count. Closed Extreme routes use approximately one bend module per 280 horizontal meters and ordinary extended routes one per 340 meters. Very Long remains four times Long. Extreme has narrower asphalt, stronger banking, taller hills and sharper linked turns, including in Endless. Generations 1 and 2 use these new extended/Extreme layouts with their existing artwork and physics; their ordinary Short routes remain unchanged. Checkpoint gates, recovery and lap counting divide variable point counts into eight sections.
 
-Generation 3 drifting retains lateral momentum when the body rotates. At speed, tap Space while turning to initiate, release the handbrake and use throttle to sustain the slide, then lift and countersteer to regain grip. Car drift ratings influence grip and rotation. The HUD, tire smoke and skid marks follow the sustained slide after the handbrake is released.
+Generation 3 drifting retains lateral momentum when the body rotates. At speed, hold Space while turning to drift. Releasing Space quickly restores grip, including while throttle and steering remain held. Recovery blends out the lateral slide rather than instantly zeroing momentum. Car drift ratings influence grip and rotation. The HUD, tire smoke and skid marks follow the slip angle as grip returns.
 
 Validation covers feature density across lengths, fixed point spacing, all-generation checkpoint placement, Extreme clearance and complete Short laps, plus drift initiation, momentum retention and countersteer recovery.
 

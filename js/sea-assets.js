@@ -8,8 +8,8 @@ window.loadSeaAssets=function(){return assets??=Promise.all([
  ['DarkSeaLegendary','assets/dark-sea/legendary-models.js?v=legendary-2'],
  ['DarkSeaAnimationClips','assets/dark-sea/blender-animations.js?v=1']
 ].map(([key,url])=>key==='DarkSeaAnimationClips'&&window[key]?Promise.resolve():script(url))).catch(e=>{assets=null;throw e;});};
-window.loadRacingAssets=function(){return racing??=script('js/race-models.js?v=apex-flow-6').catch(e=>{racing=null;throw e;});};
-function start(){if(!login||login.classList.contains('hidden')||document.hidden)return;if(!title)title=window.loadRacingAssets().then(()=>{if(login.classList.contains('hidden')){title=null;window.gameRace?.preload();return;}return script('js/race-title.js?v=apex-flow-6');}).catch(()=>{title=null;});}
+window.loadRacingAssets=function(){return racing??=script('js/race-models.js?v=apex-grip-7').catch(e=>{racing=null;throw e;});};
+function start(){if(!login||login.classList.contains('hidden')||document.hidden)return;if(!title)title=window.loadRacingAssets().then(()=>{if(login.classList.contains('hidden')){title=null;window.gameRace?.preload();return;}return script('js/race-title.js?v=apex-grip-7');}).catch(()=>{title=null;});}
 window.titleBg={start};
 // Give HTML, form handlers and the lightweight backdrop a chance to paint first.
 requestAnimationFrame(()=>requestAnimationFrame(()=>{
