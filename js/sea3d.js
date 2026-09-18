@@ -577,7 +577,7 @@ for(const e of v.entities){if(inCave||e.kind!=='island'&&e.hp<=0&&!e.wreck)conti
  if(gunner){ctx.strokeStyle='#ffe8ab';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(w/2,h/2,12,0,Math.PI*2);ctx.moveTo(w/2-24,h/2);ctx.lineTo(w/2+24,h/2);ctx.moveTo(w/2,h/2-24);ctx.lineTo(w/2,h/2+24);ctx.stroke();for(let i=1;i<5;i++){ctx.beginPath();ctx.moveTo(w/2-5,h/2+i*24);ctx.lineTo(w/2+5,h/2+i*24);ctx.stroke();}ctx.fillStyle='rgba(3,15,22,.88)';ctx.fillRect(w/2-250,h-90,500,64);ctx.fillStyle='#f5dc9f';ctx.font='16px Georgia';ctx.fillText(v.me.role.toUpperCase()+' CANNON · '+Math.round(cannonAim.elevation*180/Math.PI)+'° elevation',w/2,h-64);ctx.font='12px system-ui';const reload=v.cannonReload?.[v.me.cannon]||0;ctx.fillText((reload>0?'RELOADING '+(reload/1000).toFixed(1)+'s':'READY — click / Space to fire')+' · Hold right mouse / arrows to aim · F leave',w/2,h-42);}
  ctx.restore();if(v.cinematic){ctx.fillStyle='#000';ctx.fillRect(0,0,w,h*.095);ctx.fillRect(0,h*.905,w,h*.095);}return true;}
 
-window.SeaGL={titleModels,metrics:()=>({frames:renderedFrames,renderScale,geometries:renderer?.info?.memory?.geometries||0,drawCalls:renderer?.info?.render?.calls||0}),draw,reset,lockLook,freeMouse,toggleMouse,isMouseFree:()=>mouseFreed,getMortarAim:()=>mortarAim,getYaw:()=>yaw,getCannonAim:()=>cannonAim,createShip:boat};
+window.SeaGL={titleModels,metrics:()=>({frames:renderedFrames,renderScale,geometries:renderer?.info?.memory?.geometries||0,drawCalls:renderer?.info?.render?.calls||0}),draw,reset,lockLook,freeMouse,toggleMouse,look,isMouseFree:()=>mouseFreed,getMortarAim:()=>mortarAim,getYaw:()=>yaw,getCannonAim:()=>cannonAim,createShip:boat};
 
 })();
 

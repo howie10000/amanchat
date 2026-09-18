@@ -55,6 +55,7 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
     const boss = client(), master = client(), officer = client(), member = client(), outsider = client();
     await Promise.all([boss.ready, master.ready, officer.ready, member.ready, outsider.ready]);
     await boss.rpc('auth', { user: 'gboss', pass: 'pw123456', register: true });
+    await boss.rpc('staff_unlock', { pass: 'pw123456' });
     banker = boss;
     await master.rpc('auth', { user: 'gmaster', pass: 'pw123456', register: true });
     await officer.rpc('auth', { user: 'gofficer', pass: 'pw123456', register: true });

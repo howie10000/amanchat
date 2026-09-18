@@ -8,6 +8,73 @@
  const unit=a=>{const l=Math.hypot(a.x,a.y,a.z)||1;return{x:a.x/l,y:a.y/l,z:a.z/l};},cross=(a,b)=>({x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x});
  const mix=(a,b,t)=>add(a,sub(b,a),t),smooth=t=>{t=clamp(t,0,1);return t*t*t*(t*(t*6-15)+10);};
  const plateau=(t,a,b,c,d)=>t<a||t>d?0:t<b?smooth((t-a)/(b-a)):t<c?1:1-smooth((t-c)/(d-c));
+ // Difficulty is racecraft, not hill amplitude. Easy stays wide and fast; harder layouts add
+ // chicanes, decreasing-radius, hairpins and off-camber. Elevation is a slow landform along
+ // the racing line (Nürburgring-style climbs, a rare corkscrew) — never the plan-view sine.
+ function spec(d){
+  if(d==='easy')return{width:26,radius:80,strength:.07,ripple:.018,hills:5,hillKm:2.2,chicane:0,hairpin:0,offCamber:0,decr:0,grade:.12,range:9,bank:1,waveLen:400,tech:.22,turn:.62,endlessLift:1.5,corkscrew:0,sectors:3};
+  if(d==='hard')return{width:21,radius:38,strength:.18,ripple:.05,hills:12.5,hillKm:1.2,chicane:.9,hairpin:.62,offCamber:.34,decr:.78,grade:.2,range:20,bank:1.08,waveLen:305,tech:.88,turn:1.28,endlessLift:4.5,corkscrew:.25,sectors:5};
+  if(d==='extreme')return{width:18,radius:30,strength:.23,ripple:.06,hills:17,hillKm:1.05,chicane:1.15,hairpin:.88,offCamber:.45,decr:.95,grade:.27,range:36,bank:1.14,waveLen:280,tech:1.05,turn:1.58,endlessLift:19.5,corkscrew:1,sectors:6};
+  return{width:24,radius:54,strength:.12,ripple:.032,hills:8.5,hillKm:1.6,chicane:.42,hairpin:.24,offCamber:.14,decr:.38,grade:.16,range:14,bank:1,waveLen:340,tech:.55,turn:1,endlessLift:2.5,corkscrew:0,sectors:4};
+ }
+ function angDelta(a,b){return Math.abs(Math.atan2(Math.sin(a-b),Math.cos(a-b)));}
+ function terrain(track,n,sp,length){
+  const ph=random(track)*TAU,ph2=random(track)*TAU,ph3=random(track)*TAU;
+  const cycles=Math.max(1.08,(length||n*6.4)/1000/sp.hillKm);
+  const hair=Math.floor(random(track)*n),blind=Math.floor(random(track)*n),cork=Math.floor(random(track)*n);
+  const elev=new Array(n);
+  for(let i=0;i<n;i++){const t=i/n;elev[i]=sp.hills*(.5+.4*Math.sin(t*TAU*cycles+ph)+.18*Math.sin(t*TAU*cycles*1.618+ph2)+.08*Math.sin(t*TAU*cycles*.71+ph3));}
+  function event(center,width,amp,shape){for(let k=-width;k<=width;k++){const u=(k+width)/Math.max(1,2*width);elev[(center+k+n)%n]+=amp*shape(u);}}
+  // Climb into a hairpin, a crest that can hide an apex, and one rare drop-while-turning.
+  if(sp.hairpin>0)event(hair,Math.max(10,Math.round(n*.055)),sp.hills*.48,t=>plateau(t,.04,.26,.36,.7)-.4*plateau(t,.42,.52,.6,.82));
+  if(sp.tech>.45)event(blind,Math.max(8,Math.round(n*.04)),sp.hills*.26,t=>plateau(t,.12,.38,.5,.84));
+  if(sp.corkscrew>0)event(cork,Math.max(9,Math.round(n*.042)),-Math.max(8,sp.range*.22),t=>plateau(t,.06,.28,.55,.94));
+  let lo=elev[0];for(const h of elev)if(h<lo)lo=h;for(let i=0;i<n;i++)elev[i]-=lo;
+  return{elev,hair,blind,cork,cycles};
+ }
+ function gradeLimit(points,elev,sp,open){
+  const n=points.length;
+  for(let pass=0;pass<28;pass++){
+   let changed=false;
+   for(let i=0;i<(open?n-1:n);i++){
+    const j=open?i+1:(i+1)%n,dist=Math.hypot(points[j].x-points[i].x,points[j].z-points[i].z)||1,dy=elev[j]-elev[i],max=sp.grade*dist;
+    if(Math.abs(dy)>max){const mid=(elev[i]+elev[j])/2,h=max*Math.sign(dy)*.5;elev[i]=mid-h;elev[j]=mid+h;changed=true;}
+   }
+   if(!changed)break;
+  }
+ }
+ // Stretching the whole heightmap to "alpine" created cliffs. A single lap-wavelength
+ // cosine restores the intended range without coupling height to plan-view kinks.
+ function ensureSpan(elev,sp){
+  let lo=elev[0],hi=elev[0];for(const h of elev){if(h<lo)lo=h;if(h>hi)hi=h;}
+  if(hi-lo>=sp.range)return;
+  const extra=sp.range-(hi-lo),n=elev.length;
+  let c=0,s=0;for(let i=0;i<n;i++){const a=i/n*TAU;c+=elev[i]*Math.cos(a);s+=elev[i]*Math.sin(a);}
+  const ph=Math.atan2(s,c);
+  for(let i=0;i<n;i++)elev[i]+=extra*(.5+.5*Math.cos(i/n*TAU-ph));
+ }
+ function labelCorners(track){
+  const p=track.points,n=p.length;
+  for(let i=0;i<n;i++){
+   if(p[i].ramp||p[i].hyper||(p[i].feature&&p[i].feature!==''&&p[i].feature!=='CAMBERED BEND'&&p[i].feature!=='LINKED BENDS'))continue;
+   let flips=0;for(let k=1;k<=6;k++)if(p[(i+k)%n].curvature*p[(i+k-1+n)%n].curvature<0)flips++;
+   const abs=Math.abs(p[i].curvature);
+   if(p[i].offCamber)p[i].feature='OFF CAMBER';
+   else if(flips>=2)p[i].feature='CHICANE';
+   else if(abs>.09)p[i].feature='HAIRPIN';
+   else if(Math.abs(p[i].bank)>.3)p[i].feature='BANKED SWEEPER';
+   else if(abs>.034)p[i].feature='DECREASING RADIUS';
+  }
+ }
+ function settle(track,elev){
+  decorate(track,track.points,track.mode);labelCorners(track);
+  const p=track.points,n=p.length,lim=track.difficulty==='extreme'?.95:.7;
+  for(let i=0;i<n;i++){
+   const b=p[i];
+   if(b.offCamber){b.baseBank=b.baseBank??0;b.baseBank=-Math.sign(b.camber||b.curvature||1)*.22;b.bank=clamp(b.baseBank+b.camber*.12,-lim,lim);if(!b.ramp&&!b.hyper)b.feature='OFF CAMBER';}
+   b.elevation=elev[i];b.y=BASE+Math.abs(Math.sin(b.bank))*(track.width/2+1)+elev[i];
+  }
+ }
  // Gravity: world units are meters (5 m point spacing, 4–5 m cars). Generation 2 uses 25 m/s². Generation 3 uses
  // 1.5 × 9.81 because its speed caps (85–133 m/s) are roughly 1.5 × what these roads would carry in reality; scaling
  // gravity by the same factor keeps crest flight distances proportional to a real car's, so jumps land on the road,
@@ -49,18 +116,33 @@
    b.bank=clamp(b.baseBank+b.camber,track.difficulty==='extreme'?-.95:-.7,track.difficulty==='extreme'?.95:.7);
   }
  }
- // Distance-based challenge modules: length adds bends instead of enlarging their radius.
+ // Distance-based challenge modules: length adds corners instead of enlarging their radius.
+ // Plan-view ripples stay for bend density; height is a separate slow landform (not sin(waves)).
  function challengeCircuit(track,target){
-  const extreme=track.difficulty==='extreme',waveLength=extreme?280:340,waves=Math.max(6,Math.round(target/waveLength));
-  const phase=random(track)*TAU,detail=random(track)*TAU,rotation=random(track)*TAU,amplitude=30;
-  const count=Math.max(240,Math.ceil(target/7/8)*8),denseCount=count*3;
+  const sp=spec(track.difficulty),extreme=track.difficulty==='extreme';
+  // Extra waves on marathon lengths keep inflections-per-km from thinning out (4 silhouette
+  // lobes are a bigger share of a short lap than of a 60 km one).
+  const extra=target>25000?Math.round(target/3200):target>4000&&target<12000?Math.round(target/2000):0;
+  const waves=Math.max(6,Math.round(target/sp.waveLen)-(target<3000?1:0)+extra);
+  const phase=random(track)*TAU,detail=random(track)*TAU,rotation=random(track)*TAU,amplitude=extreme?26:track.difficulty==='easy'?15:21;
+  const count=Math.max(240,Math.ceil(target/6.2/8)*8),denseCount=count*3;
   // Give the whole route a seeded silhouette; small bends follow base arc length so narrow lobes
   // get the same bend spacing as broad sections instead of compressing the local road geometry.
   const aspect=1.08+random(track)*.25,lobes=3+Math.floor(random(track)*2),depth=.2+random(track)*.04,shapePhase=random(track)*TAU;
+  const techPhase=random(track)*TAU,hairA=random(track)*TAU,dir=random(track)<.5?-1:1,offU=random(track);
   const base=[],baseDistance=[0];
   for(let i=0;i<=denseCount;i++){const a=i/denseCount*TAU,r=1+depth*Math.cos(lobes*a+shapePhase)+.12*Math.sin(a+detail);base.push({x:r*Math.cos(a)*aspect,z:r*Math.sin(a)/aspect});if(i)baseDistance.push(baseDistance[i-1]+Math.hypot(base[i].x-base[i-1].x,base[i].z-base[i-1].z));}
   const basis=base.map((p,i)=>{const a=base[(i+denseCount-1)%denseCount],b=base[(i+1)%denseCount],dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz),u=baseDistance[i]/baseDistance.at(-1)*TAU;return{...p,nx:dz/len,nz:-dx/len,u};});
-  function outline(radius){if(track.mode==='short'){const points=[];for(let i=0;i<=denseCount;i++){const a=i/denseCount*TAU,r=radius+amplitude*Math.sin(waves*a+phase)+amplitude*.12*Math.sin(waves*2*a+detail);points.push({x:r*Math.cos(a+rotation),z:r*Math.sin(a+rotation),y:0});}return points;}return basis.map(p=>{const u=p.u*waves+phase+.25*Math.sin(p.u*3+detail),ripple=amplitude*(.85+.15*Math.sin(p.u*5+phase))*(Math.sin(u)+.12*Math.sin(u*2+detail)),x=p.x*radius+p.nx*ripple,z=p.z*radius+p.nz*ripple;return{x:x*Math.cos(rotation)-z*Math.sin(rotation),z:x*Math.sin(rotation)+z*Math.cos(rotation),y:0};});}
+  function weave(a,u){
+   const tech=.5+.5*Math.sin(sp.sectors*a+techPhase),env=.48+sp.tech*.52*tech;
+   const hair=sp.hairpin*.15*plateau(angDelta(a,hairA),0,.1,.2,.38);
+   const wave=Math.sin(u)+.12*Math.sin(u*2+detail)+sp.decr*.22*Math.sin(u)*Math.abs(Math.sin(u));
+   const chicane=sp.chicane*.3*tech*Math.sin(u*2.15+detail);
+   return{offset:amplitude*env*(wave+chicane),hair};
+  }
+  function outline(radius){
+   return basis.map(p=>{const w=weave(p.u,p.u*waves+phase+.25*Math.sin(p.u*3+detail)),x=p.x*radius*(1-w.hair)+p.nx*w.offset,z=p.z*radius*(1-w.hair)+p.nz*w.offset;return{x:x*Math.cos(rotation)-z*Math.sin(rotation),z:x*Math.sin(rotation)+z*Math.cos(rotation),y:0};});
+  }
   track.challengeShape={aspect,lobes,depth,phase:shapePhase};
   const length=p=>p.slice(1).reduce((n,q,i)=>n+Math.hypot(q.x-p[i].x,q.z-p[i].z),0);
   let lo=amplitude*2,hi=target/TAU;for(let i=0;i<30;i++){const mid=(lo+hi)/2;if(length(outline(mid))>target)hi=mid;else lo=mid;}
@@ -68,23 +150,33 @@
   let cursor=0;
   for(let i=0;i<count;i++){
    const d=i/count*dist.at(-1);while(dist[cursor+1]<d)cursor++;
-   const p=mix(dense[cursor],dense[cursor+1],(d-dist[cursor])/(dist[cursor+1]-dist[cursor])),u=i/count*TAU*waves;
-   Object.assign(p,{id:i,bank:(extreme?.82:.42)*Math.sin(u+phase+.7),boost:false,hyper:false,twist:extreme,ramp:false,feature:extreme?'EXTREME SWITCHBACK':'LINKED BENDS'});
-   p.elevation=(extreme?36:10)*(1+Math.sin(u*.5-(waves%2?i/count*Math.PI:0)+detail))+(extreme?10:3)*(1+Math.sin(u+detail));track.points.push(p);
+   const p=mix(dense[cursor],dense[cursor+1],(d-dist[cursor])/(dist[cursor+1]-dist[cursor])),u=i/count;
+   const bank=sp.bank*dir*(.4*plateau(u,.1,.16,.22,.29)-.48*plateau(u,.57,.63,.7,.77)+.26*plateau(u,.79,.83,.86,.9));
+   const off=sp.offCamber>0&&plateau((u-offU+1)%1,0,.02,.055,.09)>.45;
+   Object.assign(p,{id:i,bank,baseBank:bank,boost:false,hyper:false,twist:false,ramp:false,offCamber:off,feature:off?'OFF CAMBER':Math.abs(bank)>.3?'BANKED SWEEPER':'LINKED BENDS'});
+   track.points.push(p);
   }
-  // Locally round only overly tight sampled bends; preserve the seed's large-scale silhouette.
-  if(track.mode!=='short')for(let pass=0;pass<32;pass++){
-   let changed=false;const adjusted=track.points.map((p,i)=>{const a=track.points[(i+count-1)%count],b=track.points[(i+1)%count],dx=p.x-a.x,dz=p.z-a.z,ex=b.x-p.x,ez=b.z-p.z,turn=Math.abs(dx*ez-dz*ex)/(Math.hypot(dx,dz)*Math.hypot(ex,ez));if(turn<.23)return p;changed=true;return{...p,x:p.x*.7+(a.x+b.x)*.15,z:p.z*.7+(a.z+b.z)*.15};});track.points=adjusted;if(!changed)break;
+  // Flatten knife-edge samples so the road width still fits. Do not re-space afterwards:
+  // equal-arc resampling bunches fewer points into a hairpin and sharpens it again.
+  for(let pass=0;pass<140;pass++){
+   let maxTurn=0,changed=false;const adjusted=track.points.map((p,i)=>{
+    const a=track.points[(i+count-1)%count],b=track.points[(i+1)%count],dx=p.x-a.x,dz=p.z-a.z,ex=b.x-p.x,ez=b.z-p.z,l1=Math.hypot(dx,dz)||1,l2=Math.hypot(ex,ez)||1;
+    const turn=Math.abs(dx*ez-dz*ex)/(l1*l2);if(turn>maxTurn)maxTurn=turn;if(turn<.185)return p;changed=true;
+    const w=turn>.28?.42:.58;return{...p,x:p.x*w+(a.x+b.x)*((1-w)/2),z:p.z*w+(a.z+b.z)*((1-w)/2)};
+   });track.points=adjusted;if(!changed||maxTurn<.185)break;
   }
   const actual=track.points.reduce((n,p,i)=>{const q=track.points[(i+1)%track.points.length];return n+Math.hypot(q.x-p.x,q.z-p.z);},0),correction=target/actual;for(const p of track.points){p.x*=correction;p.z*=correction;}
-  decorate(track,track.points,track.mode);
-  for(const p of track.points){p.y=BASE+Math.abs(Math.sin(p.bank))*(track.width/2+1)+p.elevation;}
+  const land=terrain(track,count,sp,target);gradeLimit(track.points,land.elev,sp,false);
+  for(let k=0;k<6;k++){ensureSpan(land.elev,sp);gradeLimit(track.points,land.elev,sp,false);}
+  if(sp.corkscrew>0){const w=Math.max(8,Math.round(count*.035));for(let k=-w;k<=w;k++){const q=track.points[(land.cork+k+count)%count];q.feature='CORKSCREW';q.twist=true;q.baseBank+=dir*.22;q.bank=q.baseBank;}}
+  if(sp.tech>.45){const w=Math.max(6,Math.round(count*.03));for(let k=-w;k<=w;k++){const q=track.points[(land.blind+k+count)%count];if(!q.twist&&q.feature!=='OFF CAMBER')q.feature='BLIND CREST';}}
+  settle(track,land.elev);track.elevationCycles=land.cycles;
   rebuild(track);track.name=extreme?'Extreme '+['Ridge Gauntlet','Serpent Peaks','Canyon Fury','Skyline Descent'][track.seed%4]:'Marathon '+['Coastal Bends','Highland Run','Sakura Traverse','Festival Circuit'][track.seed%4];
   track.challengeModules=waves;track.checkpointStride=count/8;return world.populate(track);
  }
  function generate(rng=Math.random,options={}){
-  const seed=(rng()*0xffffffff)>>>0,mode=options.mode||'short',difficulty=options.difficulty||'medium';
-  const track={seed,rngState:seed,generation:3,mode,difficulty,theme:0,width:difficulty==='extreme'?18:difficulty==='easy'?26:difficulty==='hard'?21:24,points:[],segments:[],open:mode==='endless',nextId:0,heading:0};
+  const seed=(rng()*0xffffffff)>>>0,mode=options.mode||'short',difficulty=options.difficulty||'medium',sp=spec(difficulty);
+  const track={seed,rngState:seed,generation:3,mode,difficulty,theme:0,width:sp.width,points:[],segments:[],open:mode==='endless',nextId:0,heading:0};
   track.theme=Math.floor(random(track)*4);track.themeName=THEMES[track.theme];
   if(track.open){track.name='Endless Horizon';extend(track,300);return track;}
   if(difficulty==='extreme')return challengeCircuit(track,mode==='verylong'?27200:mode==='long'?6800:2000);
@@ -96,12 +188,16 @@
   // Preserve its personality by enlarging tight bends before reducing the secondary ripples.
   const count=1200,rx=190+random(track)*95,rz=135+random(track)*85,primary=2+variant%3,secondary=4+Math.floor(random(track)*2);
   const phase=random(track)*TAU,phase2=random(track)*TAU,phase3=random(track)*TAU;
-  const strength=(difficulty==='extreme'?.24:.13)+random(track)*.13,ripple=.025+random(track)*.055,asymmetry=.04+random(track)*.10;
-  const radius=difficulty==='easy'?70:difficulty==='extreme'?38:difficulty==='hard'?45:55;let dense,amp=1,expansion=1;
+  const strength=sp.strength+random(track)*.13,ripple=sp.ripple+random(track)*.055,asymmetry=.04+random(track)*.10;
+  const hairA=random(track)*TAU,chPhase=random(track)*TAU,radius=sp.radius;let dense,amp=1,expansion=1;
   for(let attempt=0;attempt<18;attempt++){
    dense=[];
    for(let i=0;i<=count;i++){
-    const a=i/count*TAU,r=1+strength*Math.sin(primary*a+phase)+ripple*amp*Math.sin(secondary*a+phase2)+asymmetry*Math.cos(a+phase3);
+    const a=i/count*TAU;
+    const hair=sp.hairpin*.12*plateau(angDelta(a,hairA),0,.12,.22,.4);
+    const chicane=sp.chicane*.042*(.55+.45*Math.sin(sp.sectors*a+chPhase))*Math.sin(8.5*a+chPhase);
+    const decr=sp.decr*.055*Math.sin(primary*a+phase)*Math.abs(Math.sin(primary*a+phase));
+    const r=1+strength*Math.sin(primary*a+phase)+ripple*amp*Math.sin(secondary*a+phase2)+asymmetry*Math.cos(a+phase3)+chicane+decr-hair;
     const x=rx*r*Math.cos(a)*scale*mirror*expansion,z=rz*r*Math.sin(a)*scale*expansion;
     dense.push({x:x*Math.cos(rotation)-z*Math.sin(rotation),z:x*Math.sin(rotation)+z*Math.cos(rotation),y:0});
    }
@@ -113,65 +209,72 @@
   track.amp=amp;track.layout={primary,secondary,strength,ripple,asymmetry,rx,rz,expansion,minimumRadius:radius};
   if(mode==='long'||mode==='verylong')for(const p of dense){const scale=mode==='verylong'?8:2;p.x*=scale;p.z*=scale;}
   const lengths=[0];for(let i=1;i<dense.length;i++)lengths.push(lengths[i-1]+Math.hypot(...Object.values(sub(dense[i],dense[i-1]))));
-  let cursor=0;const direction=random(track)<.5?-1:1,shift=Math.floor(random(track)*5),hillPhase=random(track)*TAU,hills=difficulty==='extreme'?38:difficulty==='easy'?2.2:3;
+  let cursor=0;const direction=random(track)<.5?-1:1,shift=Math.floor(random(track)*5);
   for(let i=0;i<240;i++){
    const distance=i/240*lengths.at(-1);while(lengths[cursor+1]<distance)cursor++;
    const p=mix(dense[cursor],dense[cursor+1],(distance-lengths[cursor])/(lengths[cursor+1]-lengths[cursor]));
-   const bank=(difficulty==='extreme'?1.35:1)*direction*(.42*plateau(i,24+shift,39+shift,51+shift,68+shift)-.5*plateau(i,139,153,166,184)+.3*plateau(i,188,198,205,214));
-   Object.assign(p,{id:i,bank,boost:(i>=10&&i<17)||(i>=125&&i<132)||(i>=210&&i<219),hyper:i>=210&&i<219,twist:false,ramp:false,feature:i>=210&&i<219?'HYPER STRAIGHT':Math.abs(bank)>.3?'BANKED SWEEPER':''});
+   const third=(sp.offCamber>0?-.4:.3)*plateau(i,188+shift,198+shift,205+shift,214+shift);
+   const bank=sp.bank*direction*(.42*plateau(i,24+shift,39+shift,51+shift,68+shift)-.5*plateau(i,139,153,166,184)+third);
+   Object.assign(p,{id:i,bank,baseBank:bank,boost:(i>=10&&i<17)||(i>=125&&i<132)||(i>=210&&i<219),hyper:i>=210&&i<219,twist:false,ramp:false,offCamber:sp.offCamber>0&&i>=188+shift&&i<=214+shift,feature:i>=210&&i<219?'HYPER STRAIGHT':Math.abs(bank)>.3?'BANKED SWEEPER':''});
    track.points.push(p);
   }
   // The crest jump goes on the straightest stretch between the sweepers, clear of the gates at 90 and 120 so a
   // flying car cannot skip a checkpoint and lands on tarmac even at the hyper cap.
   // Score = how far the landing zone (lip .. lip+90 m) wanders from the straight line through the lip.
-  const pts=track.points,deviation=c=>{const o=pts[c],a=pts[c-1],b=pts[c+1],tx=b.x-a.x,tz=b.z-a.z,l=Math.hypot(tx,tz)||1;let worst=0;for(let k=1;k<=18;k++){const p=pts[c+k];worst=Math.max(worst,Math.abs((p.x-o.x)*tz-(p.z-o.z)*tx)/l);}return worst;};
+  const pts=track.points,deviation=c=>{const o=pts[c],a=pts[c-1],b=pts[c+1],tx=b.x-a.x,tz=b.z-a.z,l=Math.hypot(tx,tz)||1;let worst=0,prev=-1e9;for(let k=1;k<=18;k++){const p=pts[c+k],along=((p.x-o.x)*tx+(p.z-o.z)*tz)/l;if(along<prev-1)return Infinity;prev=along;worst=Math.max(worst,Math.abs((p.x-o.x)*tz-(p.z-o.z)*tx)/l);}return worst;};
   // Candidates sit between the first sweeper (ends ≤ 73) and the second (starts 139); gates may be crossed airborne.
   let crest=97,best=Infinity;for(let c=78;c<=124;c++){const s=deviation(c);if(s<best){best=s;crest=c;}}
-  // Reserve a straight approach and landing corridor locally; the rest of the seeded outline stays wild.
+  // Lay the jump on a monotonic straight by index so a doubling-back outline cannot fold the runway.
   const origin={...pts[crest]},before=pts[crest-1],after=pts[crest+1],axis=unit({x:after.x-before.x,y:0,z:after.z-before.z});
+  const spacing=Math.hypot(after.x-before.x,after.z-before.z)/2||8;
   for(let i=crest-14;i<=crest+30;i++){
-   const p=pts[i],along=(p.x-origin.x)*axis.x+(p.z-origin.z)*axis.z,w=plateau(i,crest-14,crest-5,crest+18,crest+30);
-   p.x+=(origin.x+axis.x*along-p.x)*w;p.z+=(origin.z+axis.z*along-p.z)*w;
+   const p=pts[i],w=plateau(i,crest-14,crest-5,crest+18,crest+30),tx=origin.x+axis.x*(i-crest)*spacing,tz=origin.z+axis.z*(i-crest)*spacing;
+   p.x+=(tx-p.x)*w;p.z+=(tz-p.z)*w;
   }
   track.crest=crest;track.crestDeviation=best;
-  decorate(track,pts,mode);
+  const land=terrain(track,240,sp,lengths.at(-1));gradeLimit(pts,land.elev,sp,false);
+  for(let k=0;k<6;k++){ensureSpan(land.elev,sp);gradeLimit(pts,land.elev,sp,false);}
   for(let i=0;i<240;i++){
-   const p=pts[i];if(i>=crest-6&&i<=crest+16){p.ramp=true;p.feature='CREST JUMP';}
-   // Rolling elevation (always ≥ 0) plus the jump: a long gentle climb to a lip that drops 2 m in 15 m, so a fast
-   // car leaves the lip with no upward velocity and lands 45–75 m on. Both edges stay above the terrain after camber.
-   // Rolling hills fade out over 200 m either side of the lip so their crests cannot launch the car early.
-   // Base height 2.2 m already clears the camber (≤ .16 rad × half width); only the sweepers' bank lifts further.
-   const hillWeight=1-plateau(i,crest-70,crest-30,crest+22,crest+62);
-   p.y=BASE+Math.abs(Math.sin(p.baseBank))*(track.width/2+1)+hills*hillWeight*(1+Math.sin(i/240*TAU*2+hillPhase))+2*plateau(i,crest-40,crest-6,crest,crest+3);
+   const mute=1-plateau(i,crest-70,crest-30,crest+22,crest+62);
+   land.elev[i]*=mute;
+   if(i>=crest-6&&i<=crest+16){pts[i].ramp=true;pts[i].feature='CREST JUMP';pts[i].offCamber=false;}
   }
+  // Rolling elevation plus the jump: a long gentle climb to a lip that drops 2 m in 15 m, so a fast
+  // car leaves the lip with no upward velocity and lands 45–75 m on. Hills fade out over 200 m either
+  // side of the lip so their crests cannot launch the car early.
+  for(let i=0;i<240;i++)land.elev[i]+=2*plateau(i,crest-40,crest-6,crest,crest+3);
+  settle(track,land.elev);track.elevationCycles=land.cycles;
   rebuild(track);return world.populate(track);
  }
  function extend(track,count=60){
-  if(track.difficulty==='extreme'){
-   for(let i=0;i<count;i++){
-    const id=track.nextId++,prev=track.points.at(-1)||{x:0,z:-5},phase=track.seed*.00001;
-    const heading=1.03*Math.sin(id*.039+phase)+.22*Math.sin(id*.091+phase),bank=.82*Math.sin(id*.044+phase);
-    track.points.push({x:prev.x+Math.sin(heading)*5,z:prev.z+Math.cos(heading)*5,y:0,id,bank,boost:false,hyper:false,twist:true,ramp:false,feature:'EXTREME SWITCHBACK',elevation:36*(1+Math.sin(id*.034+phase))+10*(1+Math.sin(id*.071+phase))});
-   }
-   if(track.points.length>360)track.points.splice(0,track.points.length-360);
-   decorate(track,track.points,'endless');for(const p of track.points)p.y=BASE+Math.abs(Math.sin(p.bank))*(track.width/2+1)+p.elevation;
-   rebuild(track);return world.populate(track);
-  }
-
+  const sp=spec(track.difficulty);
   for(let i=0;i<count;i++){
    const id=track.nextId++,phase=id%180,prev=track.points.at(-1)||{x:0,y:12,z:-5};
-   if(phase===0){track.turnTarget=(random(track)<.5?-1:1)*(.012+random(track)*.026)*(track.difficulty==='extreme'?1.7:track.difficulty==='hard'?1.2:track.difficulty==='easy'?.65:1);track.bendFrequency=1+Math.floor(random(track)*3);track.bendPhase=random(track)*TAU;track.wallSign=random(track)<.5?-1:1;track.lift=track.difficulty==='extreme'?18+random(track)*18:1.2+random(track)*1.8;}
+   if(phase===0){
+    track.blockKind=random(track)<sp.hairpin*.45?'hairpin':random(track)<sp.chicane*.55?'chicane':'flow';
+    const turn=(track.blockKind==='hairpin'?1.75:track.blockKind==='chicane'?1.2:1)*sp.turn;
+    track.turnTarget=(random(track)<.5?-1:1)*(.012+random(track)*.026)*turn;
+    track.bendFrequency=track.blockKind==='chicane'?3+Math.floor(random(track)*2):track.blockKind==='hairpin'?1:1+Math.floor(random(track)*3);
+    track.bendPhase=random(track)*TAU;track.wallSign=random(track)<.5?-1:1;
+    track.lift=sp.endlessLift*(.78+random(track)*.5);track.offBlock=random(track)<sp.offCamber;
+   }
    const envelope=plateau(phase,22,42,125,151),bend=envelope*track.turnTarget*(Math.sin(phase/180*TAU*track.bendFrequency+track.bendPhase)+.35*Math.sin(phase*.13));track.heading=clamp(track.heading+bend,-1.3,1.3);
-   const bank=track.wallSign*(.46*plateau(phase,27,44,60,80)-.38*plateau(phase,85,98,111,123));
+   const bank=track.wallSign*(.46*plateau(phase,27,44,60,80)-.38*plateau(phase,85,98,111,123))*(track.offBlock&&phase>=85&&phase<=123?-1:1);
    // The lip sits at phase 176 where the block's bend crosses zero, so the landing zone (wrapping into the next
-   // block) is the straightest road in the stream.
-   const jump=phase>=168||phase<=14;
-   const p={x:prev.x+Math.sin(track.heading)*5,z:prev.z+Math.cos(track.heading)*5,y:0,bank,id,boost:phase>=12&&phase<19||phase>=151&&phase<162,hyper:phase>=151&&phase<162,twist:false,ramp:jump,feature:phase>=151&&phase<162?'HYPER STRAIGHT':Math.abs(bank)>.3?'BANKED SWEEPER':jump?'CREST JUMP':''};
+   // block) is the straightest road in the stream. Alpine extreme uses a rolling climb instead of a jump.
+   const jump=sp.corkscrew<1&&(phase>=168||phase<=14);
+   const kind=track.blockKind==='hairpin'&&envelope>.4?'HAIRPIN':track.blockKind==='chicane'&&envelope>.4?'CHICANE':track.offBlock&&phase>=85&&phase<=123?'OFF CAMBER':Math.abs(bank)>.3?'BANKED SWEEPER':jump?'CREST JUMP':phase>=151&&phase<162?'HYPER STRAIGHT':'';
+   const p={x:prev.x+Math.sin(track.heading)*5,z:prev.z+Math.cos(track.heading)*5,y:0,bank,id,boost:phase>=12&&phase<19||phase>=151&&phase<162,hyper:phase>=151&&phase<162,twist:track.blockKind==='hairpin'&&envelope>.5,ramp:jump,offCamber:track.offBlock&&phase>=85&&phase<=123,feature:phase>=151&&phase<162?'HYPER STRAIGHT':kind};
    track.points.push(p);
   }
   if(track.points.length>360)track.points.splice(0,track.points.length-360);
   decorate(track,track.points,'endless');
-  for(const p of track.points){const phase=p.id%180;p.lift=p.lift??track.lift;p.y=BASE+Math.abs(Math.sin(p.baseBank))*(track.width/2+1)+p.lift*(1-Math.cos(phase/180*TAU))+2*plateau(phase,140,170,176,179);}
+  for(const p of track.points){
+   const phase=p.id%180;p.lift=p.lift??track.lift;
+   // One cosine hill per 900 m block — a climb and a descent, not a sawtooth. Tiny extra roll is incommensurate.
+   const roll=sp.hills*.06*(1+Math.sin(p.id*.009+track.seed*.0001));
+   p.y=BASE+Math.abs(Math.sin(p.baseBank))*(track.width/2+1)+p.lift*(1-Math.cos(phase/180*TAU))+2*plateau(phase,140,170,176,179)+roll;
+  }
   rebuild(track);return world.populate(track);
  }
  // Vertical curvature of the road ahead (per metre). Negative = the road falls away; a car going faster than

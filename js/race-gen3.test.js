@@ -13,7 +13,7 @@ for(let seed=1;seed<=60;seed++)for(const difficulty of ['easy','medium','hard'])
  assert(typeof t.themeName==='string'&&g.THEMES.includes(t.themeName));
  for(const p of t.points){assert(Math.abs(dot(p.normal,p.tangent))<1e-8);assert(Math.abs(dot(p.normal,p.right))<1e-8);assert(p.normal.y>.75);assert(p.y-Math.abs(p.right.y)*t.width/2>.2,'Both edges above ground');}
  for(let i=0;i<8;i++)assert.equal(t.points[race.checkpointIndex(t,i)].id,race.checkpointIndex(t,i),'Checkpoint gates span the full route');
- if(seed<=6){const car=g.spawn(t);let cp=0,j=0;for(;j<60000&&cp<8;j++){const hit=drive(car,t);assert(Number.isFinite(car.speed)&&Number.isFinite(car.lateral));if(hit.distance<t.width/2&&Math.abs(hit.index-race.checkpointIndex(t,cp+1))<=2&&car.grounded&&car.speed>0)cp++;}assert.equal(cp,8,'seed '+seed+' '+difficulty+' lap');}
+ if(seed<=6){const car=g.spawn(t);let cp=0,j=0,limit=Math.max(60000,Math.ceil(t.length/26*120));for(;j<limit&&cp<8;j++){const hit=drive(car,t);assert(Number.isFinite(car.speed)&&Number.isFinite(car.lateral));if(hit.distance<t.width/2&&Math.abs(hit.index-race.checkpointIndex(t,cp+1))<=2&&car.grounded&&car.speed>0)cp++;}assert.equal(cp,8,'seed '+seed+' '+difficulty+' lap');}
  for(const m of t.mountains)for(const s of t.segments)assert(world.segmentDistance(m.x,m.z,s)>m.radius+t.width/2+40);
 }
 console.log('PASS 180 Gen 3 road layouts (frames, clearance, camber, curbs, crest), 18 complete laps');
@@ -166,3 +166,29 @@ for(const difficulty of ['hard','extreme'])for(const mode of ['long','verylong']
  for(let i=0;i<t.segments.length;i++)for(let j=i+2;j<t.segments.length;j++){if(i===0&&j===t.segments.length-1)continue;const a=t.segments[i],b=t.segments[j];if(Math.max(a.p.x,a.q.x)<Math.min(b.p.x,b.q.x)||Math.max(b.p.x,b.q.x)<Math.min(a.p.x,a.q.x)||Math.max(a.p.z,a.q.z)<Math.min(b.p.z,b.q.z)||Math.max(b.p.z,b.q.z)<Math.min(a.p.z,a.q.z))continue;assert(!(orient(a.p,a.q,b.p)*orient(a.p,a.q,b.q)<0&&orient(b.p,b.q,a.p)*orient(b.p,b.q,a.q)<0),'Organic extended routes never self-cross');}
 }
 assert.equal(silhouettes.size,6);console.log('PASS 24 organic extended layouts: non-circular silhouettes, distinct seeded shapes, bend clearance and no crossings');
+
+// Difficulty is corner craft, not a sawtooth mountain locked to plan-view switchbacks.
+function peaks(ys,minDrop){let n=0;for(let i=1;i<ys.length-1;i++)if(ys[i]>=ys[i-1]&&ys[i]>=ys[i+1]&&ys[i]-Math.min(ys[i-1],ys[i+1])>minDrop)n++;return n;}
+function tightness(t){const c=t.points.map(p=>Math.abs(p.curvature)).sort((a,b)=>b-a);return c.slice(0,Math.max(8,Math.round(c.length*.08))).reduce((a,b)=>a+b,0);}
+function corr(ys,waves){const n=ys.length,mean=ys.reduce((a,b)=>a+b,0)/n;let ce=0,se=0,ss=0;for(let i=0;i<n;i++){const e=ys[i]-mean,s=Math.sin(i/n*Math.PI*2*waves);ce+=e*s;se+=e*e;ss+=s*s;}return Math.abs(ce)/Math.sqrt(se*ss+1e-12);}
+for(const mode of ['short','long']){
+ const easy=g.generate(()=>.33,{mode,difficulty:'easy'}),hard=g.generate(()=>.33,{mode,difficulty:'hard'}),extreme=g.generate(()=>.33,{mode,difficulty:'extreme'});
+ assert(easy.width>hard.width&&hard.width>extreme.width,'harder circuits run narrower');
+ assert(tightness(hard)>tightness(easy)*1.04,'hard uses tighter corners than easy');
+ assert(tightness(extreme)>tightness(easy)*1.08,'extreme is tighter than easy');
+ for(const t of [easy,hard,extreme]){
+  assert(!t.points.some(p=>p.feature==='EXTREME SWITCHBACK'),'no leftover switchback sawtooth label');
+  const ys=t.points.map(p=>p.y),span=Math.max(...ys)-Math.min(...ys);
+  if(t.difficulty==='extreme')assert(span>30,'extreme still has alpine range');else assert(span<32,'non-extreme stays rolling rather than alpine');
+  if(t.mode==='short')assert(peaks(ys,1.6)<=(t.difficulty==='easy'?6:10),'few elevation crests per lap, not a triangle wave');
+  for(const s of t.segments){const horiz=Math.hypot(s.dx,s.dz)||1;const dy=Math.abs((s.q.elevation??s.q.y)-(s.p.elevation??s.p.y));assert(dy/horiz<(t.difficulty==='extreme'?.32:.24),'driveable grade, not a cliff');}
+  if(t.challengeModules){
+   assert(t.elevationCycles<t.challengeModules*.6,'landforms are slower than plan-view bends');
+   assert(corr(ys,t.challengeModules)<.55,'elevation is not locked to plan-view switchbacks');
+  }
+ }
+ const hardFeatures=new Set(hard.points.map(p=>p.feature).filter(Boolean));
+ const extremeFeatures=new Set(extreme.points.map(p=>p.feature).filter(Boolean));
+ if(mode==='long')assert([...hardFeatures,...extremeFeatures].some(f=>/CHICANE|HAIRPIN|OFF CAMBER|CORKSCREW|DECREASING RADIUS/.test(f)),'harder long tracks grow real corner types');
+}
+console.log('PASS difficulty is racecraft (tighter corners, feature variety) not sawtooth mountains');

@@ -107,6 +107,7 @@ const tryRpc = async (c, op, args) => { try { return { ok: true, data: await c.r
   const boss = client(), amy = client();
   await Promise.all([boss.ready, amy.ready]);
   await boss.rpc('auth', { user: 'boss', pass: 'pass123', register: true });
+  await boss.rpc('staff_unlock', { pass: 'pass123' });
   const reg = await amy.rpc('auth', { user: 'amy', pass: 'pass123', register: true });
   ok(reg.data.creditScore === ECON.CREDIT_START, 'new account starts at credit ' + ECON.CREDIT_START);
   await boss.rpc('patch', { path: 'users/amy', value: { money: 20000 } });

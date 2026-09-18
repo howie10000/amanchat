@@ -36,7 +36,7 @@
    ()=>{b.art.render(b.renderer,b.scene,b.camera,{post:!matchMedia('(pointer:coarse)').matches,bloom:.65,heat:0,speed:0,time:0});prepared=b;warming=false;}
   ];
   function next(){if(api.active){b?.effects?.dispose();b?.art.dispose();b?.renderer.dispose();warming=false;return;}try{stages.shift()();if(stages.length)idle(next);}catch(e){b?.effects?.dispose();b?.art.dispose();b?.renderer.dispose();warming=false;console.warn('Apex background preparation unavailable',e);}}
-  if(root.Worker&&(navigator.hardwareConcurrency||2)>1){let worker,timeout,done=false;const finish=t=>{if(done)return;done=true;clearTimeout(timeout);worker?.terminate();workerTrack=t;idle(next);};try{worker=new Worker('js/race-preload-worker.js?v=apex-organic-8');worker.onmessage=e=>finish(e.data.track);worker.onerror=()=>finish();timeout=setTimeout(()=>finish(),5000);worker.postMessage({});}catch{finish();}}else idle(next);
+  if(root.Worker&&(navigator.hardwareConcurrency||2)>1){let worker,timeout,done=false;const finish=t=>{if(done)return;done=true;clearTimeout(timeout);worker?.terminate();workerTrack=t;idle(next);};try{worker=new Worker('js/race-preload-worker.js?v=apex-organic-10');worker.onmessage=e=>finish(e.data.track);worker.onerror=()=>finish();timeout=setTimeout(()=>finish(),5000);worker.postMessage({});}catch{finish();}}else idle(next);
  };
  const login=document.getElementById('loginScreen');if(login)new MutationObserver(()=>{if(login.classList.contains('hidden'))api.preload();}).observe(login,{attributes:true,attributeFilter:['class']});
  api.start=async function(){

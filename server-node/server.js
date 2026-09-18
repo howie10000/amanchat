@@ -469,6 +469,41 @@ const ROLE_RANK = { user: 0, admin: 1, owner: 2 };
 function outranks(actor, target) { return ROLE_RANK[roleOf(actor)] > ROLE_RANK[roleOf(target)]; }
 function isStaff(user) { const role = roleOf(user); return role === 'admin' || role === 'owner'; }
 
+// Staff-panel privilege is role PLUS a fresh account-password check. Login
+// alone is not enough: a phone left unlocked in someone's hand should not
+// open bans, wallets or the rest. The grant lives on this socket only.
+const STAFF_PANEL_TTL = 15 * 60 * 1000;
+const STAFF_UNLOCK_FAIL_MAX = 5;
+const STAFF_UNLOCK_LOCK_MS = 20 * 1000;
+function staffPanelOpen(c) {
+    return !!(c && c.user && isStaff(c.user) && c.staffPanelUntil && Date.now() < c.staffPanelUntil);
+}
+function staffPanelErr(c) {
+    if (!c || !c.user) return 'not authed';
+    if (!isStaff(c.user)) return 'forbidden';
+    if (!staffPanelOpen(c)) return 'Staff panel locked. Enter your account password.';
+    return null;
+}
+function requireStaffPanel(user) {
+    if (!isStaff(user)) throw new Error('Staff only.');
+    if (!staffPanelOpen(byUser.get(user))) throw new Error('Staff panel locked. Enter your account password.');
+}
+// Writes that only succeed because the caller is staff/owner — not because
+// they're editing their own friends leaf. These are the Staff panel tools.
+function staffPowerWrite(user, pathStr) {
+    const parts = Store.splitPath(pathStr);
+    if (!parts.length) return true;
+    const top = parts[0];
+    if (top === 'roles' || top === 'bans' || top === 'mutes' || top === 'lb_bans' || top === 'banned_ips') return true;
+    if (top === 'mayor' || top === 'announcements') return true;
+    if (top === 'bug_reports' && parts[1] !== user) return true;
+    if ((top === 'users' || top === 'players') && parts[1] && parts[1] !== user) {
+        if (parts.length === 4 && (parts[2] === 'friends' || parts[2] === 'keys') && parts[3] === user) return false;
+        return isStaff(user);
+    }
+    return false;
+}
+
 // Returns the active ban for a user (clearing it if it has expired), or null.
 function activeBan(user) {
     const b = store.get('bans/' + user);
@@ -620,6 +655,9 @@ class Client {
         this.av = 0;
         this.sentArea = null;
         this.rosterSynced = false;   // has this socket had the full online list?
+        this.staffPanelUntil = 0;
+        this.staffUnlockFails = 0;
+        this.staffUnlockBlockUntil = 0;
     }
 }
 
@@ -630,6 +668,9 @@ function setUser(c, user) {
         try { prev.ws.close(); } catch (e) {}
     }
     c.user = user;
+    c.staffPanelUntil = 0;
+    c.staffUnlockFails = 0;
+    c.staffUnlockBlockUntil = 0;
     byUser.set(user, c);
 }
 
@@ -1257,7 +1298,13 @@ wss.on('connection', (ws, req) => {
     ws.on('message', (raw) => {
         let msg;
         try { msg = JSON.parse(raw); } catch (e) { return; }
-        handleMessage(c, msg);
+        try { handleMessage(c, msg); }
+        catch (e) {
+            console.error('[ws] handleMessage', msg && msg.op, e);
+            if (msg && msg.id != null) {
+                try { c.ws.send(JSON.stringify({ id: msg.id, ok: false, err: String(e.message || e) })); } catch (e2) {}
+            }
+        }
     });
 
     ws.on('close', () => {
@@ -1330,12 +1377,19 @@ function handleMessage(c, msg) {
         case 'get': {
             if (!c.user) return replyErr('not authed');
             const parts = Store.splitPath(msg.path);
-            if (!parts.length && !isStaff(c.user)) return replyErr('forbidden');
+            if (!parts.length && !staffPanelOpen(c)) return replyErr(staffPanelErr(c) || 'forbidden');
             // Staff-only reads: IPs, the ban/mute lists (reasons + who did it),
-            // the treasury balance, other players' bug reports.
-            if (['meta', 'bans', 'mutes', 'banned_ips'].includes(parts[0]) && !isStaff(c.user)) return replyErr('forbidden');
-            if (parts[0] === 'bug_reports' && !isStaff(c.user) && parts[1] !== c.user) return replyErr('forbidden');
-            if (parts[0] === 'mayor' && parts[1] === 'treasury' && !isStaff(c.user)) return replyErr('forbidden');
+            // the treasury balance, other players' bug reports. Need a fresh
+            // password unlock, not just a staff login.
+            if (['meta', 'bans', 'mutes', 'banned_ips', 'lb_bans', 'roles'].includes(parts[0])) {
+                const err = staffPanelErr(c); if (err) return replyErr(err);
+            }
+            if (parts[0] === 'bug_reports' && parts[1] !== c.user) {
+                const err = staffPanelErr(c); if (err) return replyErr(err);
+            }
+            if (parts[0] === 'mayor' && parts[1] === 'treasury') {
+                const err = staffPanelErr(c); if (err) return replyErr(err);
+            }
 
             // ----- dm threads: the whole map used to go to everyone (every chat on
             // the server). Only threads the caller is in are returned now.
@@ -1345,10 +1399,10 @@ function handleMessage(c, msg) {
                     for (const [tid, t] of Object.entries(store.get('dm_threads') || {})) if (tid.split('__').includes(c.user)) out[tid] = t;
                     return reply(out);
                 }
-                if (!isStaff(c.user) && !parts[1].split('__').includes(c.user)) return replyErr('forbidden');
+                if (!staffPanelOpen(c) && !parts[1].split('__').includes(c.user)) return replyErr('forbidden');
             }
-            // ----- user records: only the owner or staff see the private fields.
-            if ((parts[0] === 'users' || parts[0] === 'players') && !isStaff(c.user)) {
+            // ----- user records: only the owner or unlocked staff see the private fields.
+            if ((parts[0] === 'users' || parts[0] === 'players') && !staffPanelOpen(c)) {
                 const raw = store.get(msg.path);
                 if (parts.length === 1) {                       // whole "users" map
                     const out = {};
@@ -1369,6 +1423,7 @@ function handleMessage(c, msg) {
         case 'put': {
             if (!c.user) return replyErr('not authed');
             if (!canWrite(c.user, msg.path, 'put')) return replyErr('forbidden');
+            if (staffPowerWrite(c.user, msg.path) && !staffPanelOpen(c)) return replyErr(staffPanelErr(c));
             let value = msg.value;
             {
                 const parts = Store.splitPath(msg.path);
@@ -1402,6 +1457,7 @@ function handleMessage(c, msg) {
         case 'patch': {
             if (!c.user) return replyErr('not authed');
             if (!canWrite(c.user, msg.path, 'patch')) return replyErr('forbidden');
+            if (staffPowerWrite(c.user, msg.path) && !staffPanelOpen(c)) return replyErr(staffPanelErr(c));
             if (!msg.value || typeof msg.value !== 'object' || Array.isArray(msg.value)) {
                 return replyErr('patch value must be object');
             }
@@ -1431,6 +1487,7 @@ function handleMessage(c, msg) {
         case 'post': { // Firebase-style push (auto-id)
             if (!c.user) return replyErr('not authed');
             if (!canWrite(c.user, msg.path, 'post')) return replyErr('forbidden');
+            if (staffPowerWrite(c.user, msg.path) && !staffPanelOpen(c)) return replyErr(staffPanelErr(c));
             {
                 // Muted players can't DM or push chat-like inbox entries.
                 const parts = Store.splitPath(msg.path);
@@ -1446,6 +1503,7 @@ function handleMessage(c, msg) {
         case 'del': {
             if (!c.user) return replyErr('not authed');
             if (!canWrite(c.user, msg.path, 'del')) return replyErr('forbidden');
+            if (staffPowerWrite(c.user, msg.path) && !staffPanelOpen(c)) return replyErr(staffPanelErr(c));
             store.delete(msg.path);
             afterModWrite(c.user, msg.path, null, 'del');
             reply(null);
@@ -1490,7 +1548,50 @@ function handleMessage(c, msg) {
 
         case 'whoami': {
             if (!c.user) return replyErr('not authed');
-            reply({ user: c.user, role: roleOf(c.user), mute: activeMute(c.user) });
+            reply({ user: c.user, role: roleOf(c.user), mute: activeMute(c.user), staffPanel: staffPanelOpen(c) });
+            break;
+        }
+
+        // Re-check the account password before any Staff panel work. The grant
+        // is per socket and dies on logout, lock, or TTL — each phone tap has
+        // to type it again (the client never reuses a remembered unlock).
+        case 'staff_unlock': {
+            if (!c.user) return replyErr('not authed');
+            if (!isStaff(c.user)) return replyErr('Staff only.');
+            const pass = String(msg.pass || '');
+            if (!pass) return replyErr('Enter your password.');
+            if (c.staffUnlockBlockUntil && Date.now() < c.staffUnlockBlockUntil) {
+                return replyErr('Too many attempts. Wait a few seconds.');
+            }
+            if (c.authBusy) return replyErr('already authenticating');
+            c.authBusy = true;
+            (async () => {
+              try {
+                try {
+                    await authLogin(c.user, pass);
+                } catch (e) {
+                    if (e.message === 'server busy, try again') return replyErr(e.message);
+                    c.staffUnlockFails = (c.staffUnlockFails || 0) + 1;
+                    if (c.staffUnlockFails >= STAFF_UNLOCK_FAIL_MAX) {
+                        c.staffUnlockBlockUntil = Date.now() + STAFF_UNLOCK_LOCK_MS;
+                        c.staffUnlockFails = 0;
+                    }
+                    return replyErr('Wrong password.');
+                }
+                if (c.ws.readyState !== c.ws.OPEN) return;
+                c.staffUnlockFails = 0;
+                c.staffUnlockBlockUntil = 0;
+                c.staffPanelUntil = Date.now() + STAFF_PANEL_TTL;
+                console.log(`[staff] ${c.user} unlocked staff panel`);
+                reply({ ok: true, until: c.staffPanelUntil });
+              } finally { c.authBusy = false; }
+            })();
+            break;
+        }
+        case 'staff_lock': {
+            if (!c.user) return replyErr('not authed');
+            c.staffPanelUntil = 0;
+            reply({ ok: true });
             break;
         }
 
@@ -1499,7 +1600,9 @@ function handleMessage(c, msg) {
         // carries. Staff-only, one player at a time — never a broadcast.
         case 'whereis': {
             if (!c.user) return replyErr('not authed');
-            if (!isStaff(c.user)) return replyErr('forbidden');
+            {
+                const err = staffPanelErr(c); if (err) return replyErr(err);
+            }
             const t = byUser.get(String(msg.user || '').trim().toLowerCase());
             const p = t && t.presence;
             reply(p ? { area: p.area, x: p.x, y: p.y, floor: p.floor } : null);
@@ -1530,7 +1633,9 @@ function handleMessage(c, msg) {
         // and only downward: an admin can't delete another admin or an owner.
         case 'delete_user': {
             if (!c.user) return replyErr('not authed');
-            if (!isStaff(c.user)) return replyErr('forbidden');
+            {
+                const err = staffPanelErr(c); if (err) return replyErr(err);
+            }
             const target = String(msg.user || '').trim().toLowerCase();
             if (!target) return replyErr('no such user');
             if (target === c.user) return replyErr("You can't delete your own account.");
@@ -1543,7 +1648,9 @@ function handleMessage(c, msg) {
         // delete button half-removed. They hold their name hostage until purged.
         case 'ghost_accounts': {
             if (!c.user) return replyErr('not authed');
-            if (!isStaff(c.user)) return replyErr('forbidden');
+            {
+                const err = staffPanelErr(c); if (err) return replyErr(err);
+            }
             reply(ghostAccounts());
             break;
         }
@@ -2491,7 +2598,7 @@ const ECONOMY_OPS = {
         return result;
     },
     staff_finance(user, msg) {
-        if (!isStaff(user)) throw Error('Staff only.');
+        requireStaffPanel(user);
         const action = msg.action || 'status';
         if (action === 'status') return financeView(store.get('users'),store.get('guilds'));
         if (action !== 'set') throw Error('Unknown finance action.');
@@ -2527,7 +2634,7 @@ const ECONOMY_OPS = {
         console.log('[staff-finance] ' + JSON.stringify({staff:user, kind:msg.kind, target:id, before, balance:amount, at:Date.now()}));
         return {kind:msg.kind, target:id, before, balance:amount};
     },
-    sea(user,msg) { seaRequestLimit(user); if(msg.action==='invite'){const to=String(msg.to||'');if(!userRec(user).friends?.[to])throw Error('Choose someone on your friends list.');if(!byUser.has(to))throw Error('That friend is offline.');return seaService.handle(user,msg);}if(msg.action==='staff_gems'){if(!isStaff(user))throw Error('Staff only.');const amount=Number(msg.amount);if(!Number.isSafeInteger(amount)||amount<1||amount>1000000)throw Error('Choose 1 to 1,000,000 gems.');seaService.handle(user,{action:'status'});const p=userRec(user).sea;p.gems=Math.min(1000000000,p.gems+amount);store.put('users/'+user+'/sea',p);console.log('[sea] STAFF '+user+' granted themselves '+amount+' gems');}return {...seaService.handle(user,msg.action==='staff_gems'?{action:'status'}:msg),canGrantSeaGems:isStaff(user)}; },
+    sea(user,msg) { seaRequestLimit(user); if(msg.action==='invite'){const to=String(msg.to||'');if(!userRec(user).friends?.[to])throw Error('Choose someone on your friends list.');if(!byUser.has(to))throw Error('That friend is offline.');return seaService.handle(user,msg);}if(msg.action==='staff_gems'){requireStaffPanel(user);const amount=Number(msg.amount);if(!Number.isSafeInteger(amount)||amount<1||amount>1000000)throw Error('Choose 1 to 1,000,000 gems.');seaService.handle(user,{action:'status'});const p=userRec(user).sea;p.gems=Math.min(1000000000,p.gems+amount);store.put('users/'+user+'/sea',p);console.log('[sea] STAFF '+user+' granted themselves '+amount+' gems');}return {...seaService.handle(user,msg.action==='staff_gems'?{action:'status'}:msg),canGrantSeaGems:isStaff(user)}; },
     bank(user, msg) {
         const u = userRec(user), now = Date.now();
         const sync = bankSync(user, u, now);
@@ -4077,10 +4184,11 @@ const ECONOMY_OPS = {
     treasury(user, msg) {
         const bal = treasuryBalance();
         if (msg.action === 'status') {
-            if (!isStaff(user)) throw new Error('Staff only.');
+            requireStaffPanel(user);
             return { balance: bal, taxRate: ECON.BANK_TAX_RATE };
         }
         if (msg.action === 'withdraw') {
+            requireStaffPanel(user);
             if (roleOf(user) !== 'owner') throw new Error('Only owners can draw from the treasury.');
             let amt = nonNegInt(msg.amount);
             if (msg.amount === 'all') amt = bal;

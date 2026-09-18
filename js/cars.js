@@ -12,6 +12,6 @@
   document.querySelectorAll('[data-drive]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await apply('equip',b.dataset.drive);closeMenu();}catch(e){toast(escapeHtml(e.message));b.disabled=false;}});
  }
  function draw(c,x,y,id,facing){const car=CARS[id];if(!car)return;c.save();c.translate(x,y);c.rotate({up:0,down:Math.PI,left:-Math.PI/2,right:Math.PI/2}[facing]||0);c.fillStyle='#111827';for(const a of [-1,1])for(const b of [-1,1])c.fillRect(a*15-4,b*16-7,8,14);c.fillStyle=car.color;c.fillRect(-14,-29,28,57);c.fillStyle='#173144';c.fillRect(-11,-13,22,23);c.fillStyle='#ddf8ff';c.fillRect(-10,-26,6,4);c.fillRect(4,-26,6,4);c.fillStyle='#fb7185';c.fillRect(-10,23,6,3);c.fillRect(4,23,6,3);c.restore();}
- document.addEventListener('keydown',e=>{if(e.key.toLowerCase()==='c'&&!e.repeat&&state.user&&!window.gameRace?.active&&document.getElementById('menu').classList.contains('hidden')&&!/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)){e.preventDefault();garage();}});
+ document.addEventListener('keydown',e=>{if(e.key.toLowerCase()!=='c'||e.repeat||!state.user||window.gameRace?.active||state.area==='sea')return;if(!document.getElementById('menu').classList.contains('hidden')||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName))return;e.preventDefault();garage();});
  window.gameCars={dealer,garage,draw};
 })();

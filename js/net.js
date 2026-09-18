@@ -131,6 +131,12 @@
   // Server-authoritative identity check: returns { user, role, mute }. Used to
   // re-verify staff powers (e.g. teleport) rather than trusting client state.
   window.netWhoami = () => rpc("whoami", {});
+  // Staff panel: bcrypt the account password again. Phone UI always asks; PC
+  // may reuse the in-memory login pass via netStaffUnlockSession so the same
+  // privileged APIs stay gated without a second prompt.
+  window.netStaffUnlock = (pass) => rpc("staff_unlock", { pass: String(pass || "") });
+  window.netStaffUnlockSession = () => rpc("staff_unlock", { pass: (lastAuth && lastAuth.pass) || "" });
+  window.netStaffLock = () => rpc("staff_lock", {});
   // Staff-only: a single player's live area/position. Presence is area-scoped,
   // so teleporting to someone in another area needs a direct lookup.
   window.netWhereIs = (user) => rpc("whereis", { user });

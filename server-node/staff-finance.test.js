@@ -20,7 +20,9 @@ async function client(headers={}){
  await owner.rpc('auth',{user:'expowner',pass:'test-pass-123',register:true});
  await player.rpc('auth',{user:'vaultplayer',pass:'test-pass-123',register:true});
  await admin.rpc('auth',{user:'vaultadmin',pass:'test-pass-123',register:true});
+ await owner.rpc('staff_unlock',{pass:'test-pass-123'});
  await owner.rpc('put',{path:'roles/admins/vaultadmin',value:true});
+ await admin.rpc('staff_unlock',{pass:'test-pass-123'});
  await owner.rpc('put',{path:'users/vaultplayer/money',value:300000});
  const made=await player.rpc('guild',{action:'create',name:'Vault Test Guild',tag:'VLT'}), gid=made.guild.id;
  await player.rpc('guild',{action:'bank_deposit',amount:1000});

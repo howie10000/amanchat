@@ -171,6 +171,7 @@ function decode(buf) { return JSON.parse(zlib.brotliDecompressSync(buf).toString
     // give ourselves the ingredients, as staff would
     const st = client(); await st.ready;
     await st.rpc("auth", { user: "boss", pass: "pass123" });
+    await st.rpc("staff_unlock", { pass: "pass123" });
     await st.rpc("put", { path: "users/cookie/fishInventory", value: { "Golden Kraken Tentacle": 8, "Minnow": 40 } });
 
     const cook = (ings) => lk.rpc("cook", { action: "cook", ingredients: ings });
@@ -222,6 +223,7 @@ function decode(buf) { return JSON.parse(zlib.brotliDecompressSync(buf).toString
     console.log("player-to-player transfers");
     const tb = client(); await tb.ready;   // staff, for the loan setup
     await tb.rpc("auth", { user: "boss", pass: "pass123" });
+    await tb.rpc("staff_unlock", { pass: "pass123" });
     const ta = client(); await ta.ready;
     await ta.rpc("auth", { user: "sender", pass: "sendpass", register: true });
     const tc = client(); await tc.ready;
@@ -282,6 +284,7 @@ function decode(buf) { return JSON.parse(zlib.brotliDecompressSync(buf).toString
     console.log('account deletion frees the name');
     const boss2 = client(); await boss2.ready;
     await boss2.rpc('auth', { user: 'boss', pass: 'pass123' });
+    await boss2.rpc('staff_unlock', { pass: 'pass123' });
     const doomed = client(); await doomed.ready;
     await doomed.rpc('auth', { user: 'doomed', pass: 'doompass', register: true });
     await doomed.rpc('put', { path: 'users/doomed/friends/alice', value: true });
@@ -367,6 +370,7 @@ function decode(buf) { return JSON.parse(zlib.brotliDecompressSync(buf).toString
     await sleep(200);
     await p1.rpc('auth', { user: 'alice', pass: 'pass123' });
     await p2.rpc('auth', { user: 'boss', pass: 'pass123' });
+    await p2.rpc('staff_unlock', { pass: 'pass123' });
     await p3.rpc('auth', { user: 'zoe', pass: 'pass123', register: true });
 
     const push = (c, d) => c.rpc('presence', { data: d });

@@ -20,6 +20,7 @@ async function client(headers={}){
  const remote=await client({'cf-connecting-ip':'203.0.113.42'});await assert.rejects(remote.rpc('auth',{user:'mayor',pass:'test-pass-123',register:true}),/hosting computer/);remote.ws.close();
  console.log('PASS public assets exclude server/save files and remote clients cannot claim owner names');
  const owner=await client();await owner.rpc('auth',{user:'expowner',pass:'test-pass-123',register:true});
+ await owner.rpc('staff_unlock',{pass:'test-pass-123'});
  const c=await client();await c.rpc('auth',{user:'seasailor',pass:'test-pass-123',register:true});
  await owner.rpc('put',{path:'users/seasailor/money',value:30000});const staffGems=await owner.rpc('sea',{action:'staff_gems',amount:1234});assert.equal(staffGems.profile.gems,1234);assert.equal(staffGems.canGrantSeaGems,true);await assert.rejects(c.rpc('sea',{action:'staff_gems',amount:1234}),/Staff only/);await assert.rejects(owner.rpc('sea',{action:'staff_gems',amount:-1}),/Choose/);
  const bought=await c.rpc('sea',{action:'buy',ship:'sailboat'});assert.equal(bought.money,5000);assert.equal(bought.profile.ship,'sailboat');assert.equal(bought.canGrantSeaGems,false);assert.equal(bought.canSummonSeaEnemies,false);await assert.rejects(c.rpc('sea',{action:'staff_summon',kind:'kraken',isStaff:true}),/Staff only/);

@@ -97,6 +97,7 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     const owner = client(), bob = client(), alice = client();
     await Promise.all([owner.ready, bob.ready, alice.ready]);
     assert((await owner.rpc('auth', { user: 'boss', pass: 'pass123', register: true })).role === 'owner', 'owner logs in');
+    await owner.rpc('staff_unlock', { pass: 'pass123' });
     const reg = await bob.rpc('auth', { user: 'bob', pass: 'pass123', register: true });
     const regA = await alice.rpc('auth', { user: 'alice', pass: 'pass123', register: true });
 

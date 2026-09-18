@@ -1370,20 +1370,117 @@ function staffRoleOf(u) {
 function iOutrank(u) { return ROLE_RANK[state.role] > ROLE_RANK[staffRoleOf(u)]; }
 function fmtUntil(ts) { return ts ? new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "permanent"; }
 
-async function openStaffPanel() {
-  if (!state.isMayor) { toast("Staff only."); return; }
-  // Re-check with the server so a tampered client can't open the panel.
+// Same coarse-pointer test as js/mobile.js — phones always re-type the account
+// password. A stolen websocket is not enough; the server bcrypts it.
+function staffOnPhone() {
+  if (typeof gameMobile !== "undefined" && gameMobile && typeof gameMobile.wanted === "function") {
+    try { return !!gameMobile.wanted(); } catch (e) {}
+  }
+  try {
+    return !!(matchMedia("(pointer:coarse)").matches && ((navigator.maxTouchPoints || 0) > 0 || "ontouchstart" in window));
+  } catch (e) { return false; }
+}
+let _staffPassPrompt = null;
+function promptStaffPassword() {
+  if (_staffPassPrompt) return _staffPassPrompt;
+  _staffPassPrompt = new Promise((resolve) => {
+    const old = document.getElementById("staffPassGate");
+    if (old) old.remove();
+    const wrap = document.createElement("div");
+    wrap.id = "staffPassGate";
+    wrap.setAttribute("role", "dialog");
+    wrap.setAttribute("aria-modal", "true");
+    wrap.setAttribute("aria-labelledby", "staffPassTitle");
+    wrap.innerHTML = `<div class="staffPassBox">
+      <h3 id="staffPassTitle">Staff panel</h3>
+      <p>Type your account password to open it. The server will not let you in without it.</p>
+      <input id="staffPassInput" type="password" maxlength="32" placeholder="Account password"
+        autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+        enterkeyhint="go" inputmode="text" />
+      <div class="staffPassBtns">
+        <button type="button" class="menuBtn gray" id="staffPassCancel">Cancel</button>
+        <button type="button" class="menuBtn gold" id="staffPassGo">Unlock</button>
+      </div>
+    </div>`;
+    (document.body || document.documentElement).appendChild(wrap);
+    const input = wrap.querySelector("#staffPassInput");
+    const done = (val) => {
+      if (!wrap.parentNode) return;
+      try { input.blur(); } catch (e) {}
+      wrap.remove();
+      _staffPassPrompt = null;
+      resolve(val);
+    };
+    wrap.querySelector("#staffPassCancel").onclick = () => done(null);
+    wrap.querySelector("#staffPassGo").onclick = () => done(input.value);
+    wrap.addEventListener("pointerdown", (e) => { if (e.target === wrap) done(null); });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); done(input.value); }
+      if (e.key === "Escape") { e.preventDefault(); done(null); }
+    });
+    setTimeout(() => { try { input.focus(); } catch (e) {} }, 40);
+  });
+  return _staffPassPrompt;
+}
+window.staffOnPhone = staffOnPhone;
+window.promptStaffPassword = promptStaffPassword;
+async function confirmStaffEntry() {
+  if (!state.isMayor) { toast("Staff only."); return false; }
   try {
     const who = await netWhoami();
     setRole(who && who.role);
-    if (!state.isMayor) { toast("Staff only."); return; }
-  } catch (e) { toast("Staff only."); return; }
-  const [users, roles, bans, mutes, ann, lbBans] = await Promise.all([
-    fbGet("users"), fbGet("roles"), fbGet("bans"), fbGet("mutes"), fbGet("mayor/announcement"), fbGet("lb_bans"),
-  ]);
-  _staff = { users: users || {}, roles: roles || {}, bans: bans || {}, mutes: mutes || {}, lbBans: lbBans || {}, ann: ann || "", filter: (_staff && _staff.filter) || "" };
-  const isOwner = state.role === "owner";
-  openMenu(`${state.role === "owner" ? "👑 OWNER" : "🛡️ ADMIN"} — STAFF PANEL`, `
+    if (!state.isMayor) { toast("Staff only."); return false; }
+  } catch (e) { toast("Staff only."); return false; }
+  const onPhone = (typeof window !== "undefined" && typeof window.staffOnPhone === "function") ? window.staffOnPhone : staffOnPhone;
+  const askPass = (typeof window !== "undefined" && typeof window.promptStaffPassword === "function") ? window.promptStaffPassword : promptStaffPassword;
+  const unlock = (typeof window !== "undefined" && typeof window.netStaffUnlock === "function") ? window.netStaffUnlock : netStaffUnlock;
+  const unlockSession = (typeof window !== "undefined" && typeof window.netStaffUnlockSession === "function") ? window.netStaffUnlockSession : (typeof netStaffUnlockSession === "function" ? netStaffUnlockSession : null);
+  try {
+    if (onPhone()) {
+      const pass = await askPass();
+      if (pass == null) return false;
+      if (!String(pass)) { toast("Enter your password."); return false; }
+      await unlock(pass);
+      return true;
+    }
+    try {
+      if (unlockSession) await unlockSession();
+      else await unlock("");
+      return true;
+    } catch (e) {
+      const pass = await askPass();
+      if (pass == null) return false;
+      if (!String(pass)) { toast("Enter your password."); return false; }
+      await unlock(pass);
+      return true;
+    }
+  } catch (e) {
+    toast(e.message || "Wrong password.");
+    return false;
+  }
+}
+let _staffKeepGate = false;
+async function openStaffPanel(opts) {
+  if (!state.isMayor) { toast("Staff only."); return; }
+  const refresh = !!(opts && opts.refresh);
+  // Re-check with the server so a tampered client can't open the panel.
+  // Phone: every tap types the account password. Refresh after a ban/mute
+  // keeps the grant from this entry so they aren't re-prompted mid-panel.
+  if (refresh) {
+    try {
+      const who = await netWhoami();
+      setRole(who && who.role);
+      if (!state.isMayor) { toast("Staff only."); return; }
+    } catch (e) { toast("Staff only."); return; }
+  } else if (!await confirmStaffEntry()) return;
+  _staffKeepGate = true;
+  try {
+    const [users, roles, bans, mutes, ann, lbBans] = await Promise.all([
+      fbGet("users"), fbGet("roles"), fbGet("bans"), fbGet("mutes"), fbGet("mayor/announcement"), fbGet("lb_bans"),
+    ]);
+    _staff = { users: users || {}, roles: roles || {}, bans: bans || {}, mutes: mutes || {}, lbBans: lbBans || {}, ann: ann || "", filter: (_staff && _staff.filter) || "" };
+    const isOwner = state.role === "owner";
+    openMenu(`${state.role === "owner" ? "👑 OWNER" : "🛡️ ADMIN"} — STAFF PANEL`, `
     ${isOwner ? `<h3 class="section">POST AN ANNOUNCEMENT (📣 News app + Town Plaza)</h3>
     <div class="flexRow">
       <input id="annInput" placeholder="Message to the whole town…"
@@ -1413,6 +1510,19 @@ async function openStaffPanel() {
     <h3 class="section">🐞 BUG REPORTS</h3>
     <div id="staffBugs"><p class="muted">Loading…</p></div>
   `, true);
+    if (typeof setMenuCloseCleanup === "function") {
+      setMenuCloseCleanup(() => {
+        if (_staffKeepGate) return;
+        if (typeof netStaffLock === "function") netStaffLock().catch(() => {});
+      });
+    }
+  } catch (e) {
+    toast(e.message || "Couldn't open the staff panel.");
+    if (!refresh && typeof netStaffLock === "function") netStaffLock().catch(() => {});
+    return;
+  } finally {
+    _staffKeepGate = false;
+  }
   renderStaffGhosts();
   try { renderStaffLists(); }
   catch (e) {
@@ -1651,7 +1761,7 @@ async function staffDo(fn, okMsg) {
   if (!await assertStaffRole()) return;
   try { await fn(); if (okMsg) toast(okMsg); }
   catch (e) { toast("Server refused: " + (e.message || e), 3500); }
-  openStaffPanel();
+  openStaffPanel({ refresh: true });
 }
 window.staffBan = (u) => {
   const reason = prompt(`Ban ${u} from the site. Reason (shown to them):`, "Breaking the rules");
@@ -1716,7 +1826,7 @@ window.mayorGive = async (u, amt) => {
   const ud = await fbGet(`users/${u}`); if (!ud) return;
   await fbPatch(`users/${u}`, { money: (ud.money || 0) + amt });
   toast(`Gave ${u} $${amt}.`);
-  openStaffPanel();
+  openStaffPanel({ refresh: true });
 };
 // Staff (admin or owner) teleport to a player. Lands ON them wherever they
 // actually are — the open town, inside a home (staff bypass the door lock), or
@@ -1776,7 +1886,7 @@ window.mayorDelete = async (u) => {
     const r = await netDeleteUser(u);
     toast(`Deleted ${u}${r && r.authRemoved ? " — the name is free again." : "."}`);
   } catch (e) { toast(e.message); }
-  openStaffPanel();
+  openStaffPanel({ refresh: true });
 };
 
 // ---------- NOTES APP ----------
@@ -1974,6 +2084,7 @@ function update() {
     if (keys["s"] || keys["arrowdown"]) dy += 1;
     if (keys["a"] || keys["arrowleft"]) dx -= 1;
     if (keys["d"] || keys["arrowright"]) dx += 1;
+    if (window.gameMobile?.active() && window.FirstPerson) ({dx,dy}=FirstPerson.movement(dx,dy));
     const m = Math.hypot(dx, dy) || 1;
     const speed = WALK_SPEED * (state.area === 'neighborhood' ? (CARS[state.data?.equippedCar]?.speed || 1) : 1); // shared walking speed (core.js), per 60Hz tick
     if (m > 0.001 && (dx || dy)) {

@@ -195,5 +195,5 @@
     for(const [name,p] of Object.entries(state.others||{})){if(!seen.has(name))continue;const g=actors.get(name)?.g;if(!g)continue;const target=g.position.clone().add(new THREE.Vector3(0,2.3,0)),point=target.clone().project(camera);if(point.z<=-1||point.z>=1)continue;const delta=target.clone().sub(camera.position),ray=new THREE.Raycaster(camera.position,delta.clone().normalize(),.05,delta.length());if(ray.intersectObjects(terrain.children,true).length)continue;const x=(point.x+1)*canvas.width/2,y=(1-point.y)*canvas.height/2;ctx.textAlign='center';ctx.fillStyle=p.appearance?.nameColor||'#ecf6ff';ctx.fillText(name,x,y);const chat=p.msgs?.at(-1);if(chat&&Date.now()-chat.ts<8000)ctx.fillText(chat.text,x,y-20);}
     ctx.textAlign='center';ctx.fillStyle='#ffe59a';ctx.fillText(hint,canvas.width/2,canvas.height-76);ctx.restore();return true;
   }
-  window.FirstPerson={draw,updateAim,movement,active,aim:()=>aim,avatar,furniture,box,ball,ring,material,hoop,dispose};
+  window.FirstPerson={draw,updateAim,movement,look,active,aim:()=>aim,avatar,furniture,box,ball,ring,material,hoop,dispose};
 })();
