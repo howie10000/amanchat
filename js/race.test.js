@@ -11,4 +11,17 @@ const a=race.generate(()=>.4,{generation:2}),b=race.generate(()=>.4,{generation:
 assert.notDeepEqual(a.points.map(p=>[p.x,p.z]),b.points.map(p=>[p.x,p.z]));assert.equal(b.points.length,240);assert.equal(b.segments.length,240);
 for(const p of b.points)for(const key of ['tangent','right','normal','bank','boost','hyper','ramp','feature','id'])assert(key in p,'Gen 3 point keeps '+key);
 for(const key of ['startDistance','endDistance','length','open','width'])assert(key in b,'Gen 3 track keeps '+key);
+{
+ const t={width:24,generation:3},idx=30,fwd={grounded:true,speed:10},half=race.gateHalfWidth(t);
+ assert.equal(half,12+race.GATE_EDGE_SLACK);
+ assert(race.passedCheckpoint({distance:0,index:idx},t,idx,fwd),'centre');
+ assert(race.passedCheckpoint({distance:12,index:idx},t,idx,fwd),'right edge of the tarmac');
+ assert(race.passedCheckpoint({distance:12,index:idx},t,idx,fwd),'left uses the same lateral distance');
+ assert(race.passedCheckpoint({distance:half,index:idx},t,idx,fwd),'road lip');
+ assert(!race.passedCheckpoint({distance:half+.05,index:idx},t,idx,fwd),'past the ribbon');
+ assert(!race.passedCheckpoint({distance:0,index:idx},t,idx,{grounded:true,speed:-3}),'reverse');
+ assert(!race.passedCheckpoint({distance:0,index:90},t,idx,fwd),'skipped gate');
+ assert(race.passedCheckpoint({distance:0,index:idx+2},t,idx,fwd),'thin along-track window still hits');
+ assert(!race.passedCheckpoint({distance:0,index:idx+3},t,idx,fwd),'further along is a different station');
+}
 console.log('PASS exact original Generation 1 geometry/physics for 100 seeds, all 27 settings, bounded streaming, unchanged Gen 2 routes and contract-compatible Gen 3 roads');

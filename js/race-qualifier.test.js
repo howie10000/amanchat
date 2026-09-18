@@ -50,7 +50,7 @@ const aim=(c)=>{
 let cp=0,j=0,limit=Math.max(90000,Math.ceil(t.length/18*120));
 for(;j<limit&&cp<8;j++){
  const hit=gen3.step(car,t,{up:car.speed<36,down:car.speed>40,...aim(car)},1/120);
- if(hit.distance<t.width/2&&Math.abs(hit.index-race.checkpointIndex(t,cp+1))<=2&&(car.grounded||true)&&car.speed>0)cp++;
+ if(race.passedCheckpoint(hit,t,race.checkpointIndex(t,cp+1),car))cp++;
 }
 assert.equal(cp,8,'hand-authored park circuit can be lapped');
 assert(t.floorMs===Math.ceil(t.length/t.maxSpeed*1000));
@@ -91,4 +91,32 @@ assert(game.includes('staffWipeQualifierAll'));
 assert(!game.includes('netStaffUnlockSession'));
 assert(game.includes('in-memory login password'));
 
-console.log('PASS hand-authored Park Circuit, gen3 lap, qualifier generate hook, phone banner placement');
+function place(gate,along,lateral){
+ const t=gate.tangent,r=gate.right;
+ return{x:gate.x+t.x*along+r.x*lateral,y:gate.y+t.y*along+r.y*lateral,z:gate.z+t.z*along+r.z*lateral};
+}
+{
+ const gate=t.checkpoints[1],half=layout.gateHalfWidth(t),edge=t.width/2;
+ assert.equal(half,t.width/2+layout.GATE_EDGE_SLACK);
+ assert.equal(race.GATE_EDGE_SLACK,layout.GATE_EDGE_SLACK);
+ assert(layout.crossedGate(place(gate,-5,0),place(gate,5,0),gate),'centre of the gate counts');
+ assert(layout.crossedGate(place(gate,-5,edge),place(gate,5,edge),gate),'right tarmac edge counts');
+ assert(layout.crossedGate(place(gate,-5,-edge),place(gate,5,-edge),gate),'left tarmac edge counts');
+ assert(layout.crossedGate(place(gate,-5,half),place(gate,5,half),gate),'outer lip still counts');
+ assert(layout.crossedGate(place(gate,-5,-half),place(gate,5,-half),gate),'inner lip still counts');
+ assert(!layout.crossedGate(place(gate,5,0),place(gate,-5,0),gate),'reverse through the gate does not count');
+ assert(!layout.crossedGate(place(gate,-5,half+1),place(gate,5,half+1),gate),'beyond the ribbon is not a legal pass');
+ const other=t.checkpoints[2];
+ assert(!layout.crossedGate(place(other,-5,0),place(other,5,0),gate),'crossing a later gate is not this checkpoint');
+ assert(layout.nearGate(place(gate,0,edge),gate));
+ assert(layout.nearGate(place(gate,0,-edge),gate));
+ const idx=race.checkpointIndex(t,1),fwd={grounded:true,speed:12};
+ assert(race.passedCheckpoint({distance:0,index:idx},t,idx,fwd),'centre hit');
+ assert(race.passedCheckpoint({distance:edge,index:idx},t,idx,fwd),'exact half-width used to miss with a strict centre test');
+ assert(race.passedCheckpoint({distance:half,index:idx},t,idx,fwd),'lip still counts');
+ assert(!race.passedCheckpoint({distance:half+.01,index:idx},t,idx,fwd),'outside the ribbon');
+ assert(!race.passedCheckpoint({distance:0,index:idx},t,idx,{grounded:true,speed:-4}),'reverse speed');
+ assert(!race.passedCheckpoint({distance:0,index:race.checkpointIndex(t,2)},t,idx,fwd),'skipped gate');
+}
+
+console.log('PASS hand-authored Park Circuit, gen3 lap, qualifier generate hook, phone banner placement, full-width gates');

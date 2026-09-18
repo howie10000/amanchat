@@ -99,13 +99,15 @@ module.exports=function createQualifier(opts={}){
    const lastGate=m.checkpoints[run.gatesHit]||m.checkpoints[0];
    if(!layout.nearGate(pos,lastGate,RECOVER_M))throw Error('Reversed or teleported.');
   }
-  const prevU=run.unwrapped;
+  const prevU=run.unwrapped,prevPos=run.last;
   run.unwrapped=unwrapped;run.wrapped=wrapped;run.last=pos;run.lastPing=t;run.samples++;
   if(!run.startedAt&&(unwrapped>=MIN_MOVE||worldDelta>MIN_MOVE))run.startedAt=t;
   const next=run.gatesHit+1;
   if(next>=1&&next<=7){
-   const gate=m.checkpoints[next];
-   if(prevU<gate.distance&&unwrapped>=gate.distance)run.gatesHit=next;
+   const gate=m.checkpoints[next],forward=unwrapped>=prevU-0.05;
+   const pathCross=forward&&prevU<gate.distance&&unwrapped>=gate.distance;
+   const planeCross=forward&&layout.crossedGate(prevPos,pos,gate,{width:m.width});
+   if(pathCross||planeCross)run.gatesHit=next;
   }
   return hit;
  }

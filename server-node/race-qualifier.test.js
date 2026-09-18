@@ -7,14 +7,19 @@ function memStore(){const data={};return {get(k){return data[k];},put(k,v){data[
 
 function clock(){return {t:1_000_000, now(){return this.t;}, add(ms){this.t+=ms;}}; }
 
-function driveLap(q,user,clk,speed){
+function sampleLateral(d,lateral){
+ const p=layout.sample(d),pt=layout.build().points[p.index],r=pt.right||{x:1,y:0,z:0};
+ return {x:p.x+r.x*lateral,y:p.y+r.y*lateral,z:p.z+r.z*lateral};
+}
+
+function driveLap(q,user,clk,speed,lateral){
  const m=layout.meta();
  const begin=q.handle(user,{action:'begin',user:'mallory'});
  clk.add(40);
  const dt=0.28;
  let d=1;
  const ping=()=>{
-  const p=layout.sample(d);
+  const p=sampleLateral(d,lateral||0);
   return q.handle(user,{action:'progress',user:'mallory',token:begin.token,x:p.x,y:p.y,z:p.z});
  };
  ping();
@@ -24,7 +29,7 @@ function driveLap(q,user,clk,speed){
   ping();
  }
  clk.add(dt*1000);
- const fin=layout.sample(m.length-2);
+ const fin=sampleLateral(m.length-2,lateral||0);
  return q.handle(user,{action:'finish',user:'mallory',token:begin.token,x:fin.x,y:fin.y,z:fin.z});
 }
 
@@ -164,6 +169,50 @@ assert.throws(()=>q.handle('erin',{action:'finish',user:'alice',token:b.token,..
  assert.equal(stranger.accepted,false);
  assert.equal(qC.handle('sam',{action:'board'}).rows.length,1);
  assert(!qC.handle('sam',{action:'board'}).rows.some(r=>r.user==='neo'));
+}
+
+{
+ const clkG=clock();const storeG=memStore();let nG=0;
+ const qG=create({now:()=>clkG.now(),store:storeG,token:()=>(nG++).toString(16).padStart(32,'0')});
+ const mG=layout.meta(),edge=mG.width/2;
+ function place(gate,along,lateral){
+  const t=gate.tangent,r=gate.right;
+  return{x:gate.x+t.x*along+r.x*lateral,y:gate.y+t.y*along+r.y*lateral,z:gate.z+t.z*along+r.z*lateral};
+ }
+ clkG.add(2000);
+ assert.equal(driveLap(qG,'lea',clkG,36,-edge).accepted,true,'left-edge lap counts');
+ clkG.add(2000);
+ assert.equal(driveLap(qG,'ria',clkG,36,edge).accepted,true,'right-edge lap counts');
+ clkG.add(2000);
+ assert.equal(driveLap(qG,'cen',clkG,36,0).accepted,true,'centre lap still counts');
+
+ clkG.add(2000);
+ const rev=qG.handle('rex',{action:'begin'});
+ const g1=mG.checkpoints[1],dt=.28,spd=30;
+ clkG.add(50);
+ qG.handle('rex',{action:'progress',token:rev.token,...layout.sample(1)});
+ let d=1;while(d<g1.distance-12){d+=spd*dt;clkG.add(dt*1000);qG.handle('rex',{action:'progress',token:rev.token,...layout.sample(d)});}
+ clkG.add(dt*1000);
+ qG.handle('rex',{action:'progress',token:rev.token,...place(g1,-6,edge)});
+ clkG.add(dt*1000);
+ const crossed=qG.handle('rex',{action:'progress',token:rev.token,...place(g1,6,edge)});
+ assert.equal(crossed.gatesHit,1,'side-of-gate forward ping counts');
+ clkG.add(dt*1000);
+ const reversed=qG.handle('rex',{action:'progress',token:rev.token,...place(g1,-6,edge)});
+ assert.equal(reversed.gatesHit,1,'reverse through the gate does not count');
+ clkG.add(2000);
+ assert.throws(()=>qG.handle('rex',{action:'finish',token:rev.token,...place(g1,6,edge)}),/Skipped a checkpoint/);
+ qG.handle('rex',{action:'abort',token:rev.token});
+
+ clkG.add(2000);
+ const sk=qG.handle('sid',{action:'begin'});
+ clkG.add(50);
+ qG.handle('sid',{action:'progress',token:sk.token,...layout.sample(1)});
+ clkG.add(dt*1000);
+ const g2=mG.checkpoints[2];
+ assert.throws(()=>qG.handle('sid',{action:'progress',token:sk.token,...place(g2,4,edge)}),/Skipped a sector|Impossible speed|Reversed/);
+ clkG.add(2000);
+ assert.throws(()=>qG.handle('sid',{action:'finish',token:sk.token,...layout.sample(2)}),/Skipped a checkpoint|Finish without starting|Did not complete|progress samples/);
 }
 
 console.log('PASS qualifier anti-cheat: too-fast, skipped gate, no-start, valid top 10, 11th evicted, PB replace, spoofed name ignored, cutoff freeze');

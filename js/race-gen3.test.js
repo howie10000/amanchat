@@ -13,7 +13,7 @@ for(let seed=1;seed<=60;seed++)for(const difficulty of ['easy','medium','hard'])
  assert(typeof t.themeName==='string'&&g.THEMES.includes(t.themeName));
  for(const p of t.points){assert(Math.abs(dot(p.normal,p.tangent))<1e-8);assert(Math.abs(dot(p.normal,p.right))<1e-8);assert(p.normal.y>.75);assert(p.y-Math.abs(p.right.y)*t.width/2>.2,'Both edges above ground');}
  for(let i=0;i<8;i++)assert.equal(t.points[race.checkpointIndex(t,i)].id,race.checkpointIndex(t,i),'Checkpoint gates span the full route');
- if(seed<=6){const car=g.spawn(t);let cp=0,j=0,limit=Math.max(60000,Math.ceil(t.length/26*120));for(;j<limit&&cp<8;j++){const hit=drive(car,t);assert(Number.isFinite(car.speed)&&Number.isFinite(car.lateral));if(hit.distance<t.width/2&&Math.abs(hit.index-race.checkpointIndex(t,cp+1))<=2&&car.grounded&&car.speed>0)cp++;}assert.equal(cp,8,'seed '+seed+' '+difficulty+' lap');}
+ if(seed<=6){const car=g.spawn(t);let cp=0,j=0,limit=Math.max(60000,Math.ceil(t.length/26*120));for(;j<limit&&cp<8;j++){const hit=drive(car,t);assert(Number.isFinite(car.speed)&&Number.isFinite(car.lateral));if(race.passedCheckpoint(hit,t,race.checkpointIndex(t,cp+1),car))cp++;}assert.equal(cp,8,'seed '+seed+' '+difficulty+' lap');}
  for(const m of t.mountains)for(const s of t.segments)assert(world.segmentDistance(m.x,m.z,s)>m.radius+t.width/2+40);
 }
 console.log('PASS 180 Gen 3 road layouts (frames, clearance, camber, curbs, crest), 18 complete laps');
@@ -142,7 +142,7 @@ for(let seed=1;seed<=12;seed++)for(const mode of ['short','long','verylong','end
  const heights=t.points.map(p=>p.y);assert(Math.max(...heights)-Math.min(...heights)>30,'Extreme has substantial climbs and drops');
  for(const p of t.points){assert(Number.isFinite(p.x+p.y+p.z));assert(p.normal.y>.25);assert(p.y-Math.abs(p.right.y)*t.width/2>.2);}
  for(const m of t.mountains)for(const s of t.segments)assert(world.segmentDistance(m.x,m.z,s)>m.radius+t.width/2+40);
- if(seed<=3&&mode==='short'){const c=g.spawn(t);let checkpoints=0;for(let j=0;j<90000&&checkpoints<8;j++){const hit=drive(c,t,20);if(hit.distance<t.width/2&&Math.abs(hit.index-race.checkpointIndex(t,checkpoints+1))<=2&&(c.grounded||t.generation===3)&&c.speed>0)checkpoints++;}assert.equal(checkpoints,8,'Extreme circuit can be completed');}
+ if(seed<=3&&mode==='short'){const c=g.spawn(t);let checkpoints=0;for(let j=0;j<90000&&checkpoints<8;j++){const hit=drive(c,t,20);if(race.passedCheckpoint(hit,t,race.checkpointIndex(t,checkpoints+1),c))checkpoints++;}assert.equal(checkpoints,8,'Extreme circuit can be completed');}
 }
 console.log('PASS Very Long 4x scale in all generations and 48 Extreme layouts, clearance and complete laps');
 

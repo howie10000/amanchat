@@ -18,7 +18,18 @@
  function step(car,t,input,dt){if(t.generation===3&&gen3)return gen3.step(car,t,input,dt);if(t.generation>=2)return gen2.step(car,t,input,dt);const previous={...car};const hit=classic.step(car,t,input,dt);return world.collide(car,previous,t)?nearest(t,car.x,car.z):hit;}
  function sample(t,distance){if(t.generation>=2){const f=(t.generation===3&&gen3?gen3:gen2).surface(t,distance);return{...f,yaw:Math.atan2(f.tangent.x,f.tangent.z),pitch:-Math.asin(f.tangent.y),roll:f.bank};}const count=t.segments.length,raw=distance/t.length*count,index=t.open?Math.max(0,Math.min(count-.00001,raw)):((raw%count)+count)%count,i=Math.floor(index),f=index-i,s=t.segments[i];return{x:s.p.x+s.dx*f,y:s.p.y+(s.q.y-s.p.y)*f,z:s.p.z+s.dz*f,yaw:Math.atan2(s.dx,s.dz),pitch:0,roll:0,index:i};}
  const checkpointIndex=(t,n)=>t.open?n*30:Math.floor((n%8)*t.points.length/8);
- const api={generate,nearest,spawn,step,sample,extend,checkpointIndex,active:false};
+ // Full road half-width plus a lip (tarmac edge, verge, inner gate posts). Matches qualifier GATE_EDGE_SLACK.
+ const GATE_EDGE_SLACK=2.5;
+ const gateHalfWidth=t=>(Number(t&&t.width)||12)/2+GATE_EDGE_SLACK;
+ function passedCheckpoint(hit,track,index,car){
+  if(!hit)return false;
+  if(!(hit.distance<=gateHalfWidth(track)))return false;
+  if(Math.abs(hit.index-index)>2)return false;
+  if(car&&!(car.grounded||track.generation===3))return false;
+  if(car&&!(car.speed>0))return false;
+  return true;
+ }
+ const api={generate,nearest,spawn,step,sample,extend,checkpointIndex,gateHalfWidth,passedCheckpoint,GATE_EDGE_SLACK,active:false};
  if(typeof module==='object'&&module.exports){module.exports=api;return;}
  root.gameRace=api;
  let prepared=null,warming=false;
@@ -117,7 +128,7 @@
   }
   reset(true);
   function frame(now){if(!api.active)return;raf=requestAnimationFrame(frame);if(document.hidden){last=0;return;}const dt=last?Math.min((now-last)/1000,.1):0;last=now;acc+=dt;
-   while(acc>=1/120){if(input.up){if(!started&&qualifierMode)qualifierArm();started=true;}if(started){elapsed+=1/120;const hit=step(car,track,input,1/120);if(track.open){if((car.grounded||track.generation===3)&&hit.distance<(track.width||12)/2)checkpoint=Math.max(checkpoint,Math.floor(track.points[hit.index].id/30));if(hit.index>180){extend(track);road();}}const next=checkpointIndex(track,checkpoint+1);if(!track.open&&hit.distance<(track.width||12)/2&&Math.abs(hit.index-next)<=2&&(car.grounded||track.generation===3)&&car.speed>0){checkpoint++;if(checkpoint%8===0){finishes++;if(qualifierMode)qualifierFinish();}}if(car.y< -8||hit.distance>65)recover();}else if(track.generation===3&&gen3?.idle)gen3.idle(car,1/120);acc-=1/120;}
+   while(acc>=1/120){if(input.up){if(!started&&qualifierMode)qualifierArm();started=true;}if(started){elapsed+=1/120;const hit=step(car,track,input,1/120);if(track.open){if((car.grounded||track.generation===3)&&hit.distance<=gateHalfWidth(track))checkpoint=Math.max(checkpoint,Math.floor(track.points[hit.index].id/30));if(hit.index>180){extend(track);road();}}const next=checkpointIndex(track,checkpoint+1);if(!track.open&&passedCheckpoint(hit,track,next,car)){checkpoint++;if(checkpoint%8===0){finishes++;if(qualifierMode)qualifierFinish();}}if(car.y< -8||hit.distance>65)recover();}else if(track.generation===3&&gen3?.idle)gen3.idle(car,1/120);acc-=1/120;}
    if(qualifierMode&&started){pingAcc+=dt;if(pingAcc>=.25){pingAcc=0;qualifierPing();}}
    const under=nearest(track,car.x,car.z,car.y),segment=track.segments[under.index];if(track.generation>=2)art.poseCar(carModel,car,elapsed,car.speed,input);else art.poseCar(carModel,{...car,y:car.y-.55,roll:car.grounded?-under.bank:0,pitch:car.grounded?-Math.atan2(segment.q.y-segment.p.y,segment.len):-.06},elapsed,car.speed,input);
    mapCtx.drawImage(mapStatic,0,0);const gate=track.open?(track.points.find(p=>p.id===(checkpoint+1)*30)||track.points.at(-1)):track.points[checkpointIndex(track,checkpoint+1)];for(const [p,color,r]of [[gate,'#ffd275',4],[car,'#ffffff',3]]){mapCtx.fillStyle=color;mapCtx.beginPath();mapCtx.arc(p.x*mapScale+mapX,p.z*mapScale+mapZ,r,0,TAU);mapCtx.fill();}

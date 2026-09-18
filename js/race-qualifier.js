@@ -11,6 +11,9 @@
  const CUTOFF_MS=Date.parse('2026-09-24T18:17:00.000Z'),CUTOFF_LABEL='September 24, 2026, 2:17 PM';
  const MEDIUM_CAP=101,BOOST_BONUS=24,MAX_CAR_TOP=1.14;
  const CHECKPOINT_HIT_M=18,LATERAL_SLACK=6;
+ // Half-width of the racing surface plus a lip so the tarmac edge, verge and inner
+ // face of the gate posts still register. Not a centre-radius; the ribbon is the full road.
+ const GATE_EDGE_SLACK=2.5;
  // Control stations of a real-style park circuit: long start/finish, right sweeper,
  // hairpin, climbing esses, crest, downhill, left sweeper, chicane. y is landform height.
  const STATIONS=[
@@ -144,8 +147,24 @@
  }
  function checkpointsOf(track){
   const n=track.points.length,out=[];
-  for(let i=0;i<GATES;i++){const idx=Math.floor(i*n/GATES),p=track.points[idx];out.push({index:idx,x:p.x,y:p.y,z:p.z,distance:p.distance||0});}
+  for(let i=0;i<GATES;i++){
+   const idx=Math.floor(i*n/GATES),p=track.points[idx];
+   out.push({index:idx,x:p.x,y:p.y,z:p.z,distance:p.distance||0,
+    tangent:p.tangent&&{x:p.tangent.x,y:p.tangent.y,z:p.tangent.z},
+    right:p.right&&{x:p.right.x,y:p.right.y,z:p.right.z},
+    normal:p.normal&&{x:p.normal.x,y:p.normal.y,z:p.normal.z}});
+  }
   return out;
+ }
+ function gateHalfWidth(track){
+  const w=track&&Number.isFinite(+track.width)?+track.width:WIDTH;
+  return w/2+GATE_EDGE_SLACK;
+ }
+ function offsetOf(pos,gate){
+  const dx=pos.x-gate.x,dy=(pos.y||0)-(gate.y||0),dz=pos.z-gate.z;
+  const t=gate.tangent,r=gate.right,n=gate.normal;
+  if(t&&r)return{along:dx*t.x+dy*t.y+dz*t.z,lateral:dx*r.x+dy*r.y+dz*r.z,up:n?dx*n.x+dy*n.y+dz*n.z:dy};
+  return{along:0,lateral:Math.hypot(dx,dz),up:dy};
  }
  function wrap(d,len){d=d%len;if(d<0)d+=len;return d;}
  function unwrap(prev,wrapped,len){
@@ -170,11 +189,23 @@
   const t=build();
   return {id:TRACK_ID,name:t.name,title:TITLE,length:t.length,width:t.width,rail:RAIL,gates:GATES,
    checkpoints:t.checkpoints,maxSpeed:t.maxSpeed,floorMs:t.floorMs,hasBoost:t.hasBoost,hasHyper:false,
-   checkpointHitM:CHECKPOINT_HIT_M,lateralLimit:t.width/2+RAIL+LATERAL_SLACK,count:t.points.length};
+   checkpointHitM:CHECKPOINT_HIT_M,gateHalfWidth:gateHalfWidth(t),gateEdgeSlack:GATE_EDGE_SLACK,
+   lateralLimit:t.width/2+RAIL+LATERAL_SLACK,count:t.points.length};
  }
  function nearGate(pos,gate,radius){
   radius=radius||CHECKPOINT_HIT_M;
-  return Math.hypot(pos.x-gate.x,pos.z-gate.z)<=radius+WIDTH/2 && Math.abs((pos.y||gate.y)-gate.y)<14;
+  const half=gateHalfWidth({width:WIDTH}),o=offsetOf(pos,gate);
+  if(gate.tangent&&gate.right)return Math.abs(o.along)<=radius&&Math.abs(o.lateral)<=half&&Math.abs(o.up)<14;
+  return Math.hypot(pos.x-gate.x,pos.z-gate.z)<=radius+half&&Math.abs((pos.y||gate.y)-gate.y)<14;
+ }
+ function crossedGate(prev,pos,gate,opts){
+  if(!prev||!pos||!gate)return false;
+  const half=opts&&opts.halfWidth!=null?opts.halfWidth:gateHalfWidth({width:opts&&opts.width});
+  const a=offsetOf(prev,gate),b=offsetOf(pos,gate);
+  if(!(a.along<0&&b.along>=0))return false;
+  const span=b.along-a.along,u=span===0?1:(-a.along)/span;
+  const lat=a.lateral+(b.lateral-a.lateral)*u,up=a.up+(b.up-a.up)*u;
+  return Math.abs(lat)<=half&&Math.abs(up)<14;
  }
  function formatMs(ms){ms=Math.max(0,Math.round(ms));const s=ms/1000;return Math.floor(s/60)+':'+(s%60).toFixed(3).padStart(6,'0');}
  function remainingParts(now){
@@ -190,6 +221,6 @@
   bits.push(String(p.minutes).padStart(2,'0')+'m');bits.push(String(p.seconds).padStart(2,'0')+'s');
   return bits.join(' ');
  }
- const api={TRACK_ID,TITLE,NAME,WIDTH,GATES,MAX_CAR_TOP,MEDIUM_CAP,BOOST_BONUS,RAIL,CUTOFF_MS,CUTOFF_LABEL,build,meta,sample,nearest,wrap,unwrap,nearGate,formatMs,remainingParts,formatCountdown,checkpointsOf};
+ const api={TRACK_ID,TITLE,NAME,WIDTH,GATES,MAX_CAR_TOP,MEDIUM_CAP,BOOST_BONUS,RAIL,CUTOFF_MS,CUTOFF_LABEL,GATE_EDGE_SLACK,CHECKPOINT_HIT_M,build,meta,sample,nearest,wrap,unwrap,nearGate,crossedGate,gateHalfWidth,formatMs,remainingParts,formatCountdown,checkpointsOf};
  if(typeof module==='object'&&module.exports)module.exports=api;else root.RaceQualifier=api;
 })(globalThis);
