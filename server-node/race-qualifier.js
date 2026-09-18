@@ -1,5 +1,5 @@
 'use strict';
-// Server authority for Neighborhood racing Tournament Open Qualifiers.
+// Server authority for The Apex League Tournament Open Qualifiers.
 // Client times, names and pathDistance are hints only. The logged-in session
 // owns the run; Date.now (injectable) is the official clock.
 const crypto=require('node:crypto');

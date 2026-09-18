@@ -6,7 +6,7 @@
  const add=(a,b,k=1)=>({x:a.x+b.x*k,y:a.y+b.y*k,z:a.z+b.z*k}),sub=(a,b)=>add(a,b,-1),dot=(a,b)=>a.x*b.x+a.y*b.y+a.z*b.z;
  const unit=a=>{const l=Math.hypot(a.x,a.y,a.z)||1;return{x:a.x/l,y:a.y/l,z:a.z/l};},cross=(a,b)=>({x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x});
  const mix=(a,b,t)=>add(a,sub(b,a),t),smooth=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
- const TRACK_ID='nbhd-open-qualifiers-1',TITLE='Neighborhood racing Tournament Open Qualifiers';
+ const TRACK_ID='nbhd-open-qualifiers-1',TITLE='The Apex League Tournament Open Qualifiers';
  const NAME='Neighborhood Park Circuit',WIDTH=24,COUNT=320,GATES=8,BASE=2.4,RAIL=1.35;
  const CUTOFF_MS=Date.parse('2026-09-24T18:17:00.000Z'),CUTOFF_LABEL='September 24, 2026, 2:17 PM';
  const MEDIUM_CAP=101,BOOST_BONUS=24,MAX_CAR_TOP=1.14;

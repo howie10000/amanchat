@@ -204,7 +204,8 @@ function openRaceQualifier() {
   const p = Q.remainingParts ? Q.remainingParts() : { ended: false };
   const fmt = Q.formatMs || (ms => ms);
   let rowsHtml = '<p class="muted">Loading standings…</p>';
-  uiPanel('OPEN QUALIFIERS', `
+  uiPanel(Q.TITLE || 'The Apex League Tournament Open Qualifiers', `
+    <p class="qualLunchNote">Tournament will be hosted on a lunch after qualifiers end</p>
     <p id="raceQualStatus">${p.ended
       ? 'Qualifiers ended September 24, 2026, 2:17 PM. Final standings below — you can still race the map.'
       : 'Ends September 24, 2026, 2:17 PM. Beat your personal best to stay in the top 10.'}</p>
@@ -1560,8 +1561,8 @@ async function openStaffPanel(opts) {
         style="flex:1;padding:8px;background:#0a0e15;color:white;border:1px solid #2a3344;border-radius:6px;" />
       <button class="menuBtn gold" onclick="mayorAnnounce()">Post</button>
     </div>` : ""}
-    <h3 class="section">OPEN QUALIFIERS TOP 10</h3>
-    <p class="muted">Wipe a racer off the Neighborhood racing Tournament board. Their time is deleted on the server — not hidden. Anyone can take the open slot with a valid lap while qualifiers are still running.</p>
+    <h3 class="section">THE APEX LEAGUE TOURNAMENT OPEN QUALIFIERS — TOP 10</h3>
+    <p class="muted">Wipe a racer off The Apex League Tournament Open Qualifiers board. Their time is deleted on the server — not hidden. Anyone can take the open slot with a valid lap while qualifiers are still running.</p>
     <div id="staffQualBoard"><p class="muted">Loading…</p></div>
     <div class="flexRow">
       <input id="staffQualWipeName" placeholder="Player name to wipe from the board"
