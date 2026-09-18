@@ -4,7 +4,7 @@
 // Hotspots = { x, y, label, action }
 const INTERIORS = {
   interior_dealership: {w:1024,h:640,floor:'#27384b',wall:'#d5eaf0',trim:'#22d3ee',hotspots:[{x:512,y:240,label:'TALK TO THE DEALER',action:'car_dealer',icon:'people'}]},
-  interior_racetrack: {w:1024,h:640,floor:'#27384b',wall:'#c7d2fe',trim:'#a3e635',hotspots:[{x:512,y:240,label:'RACE A NEW 3D TRACK',action:'car_race',icon:'flag'}]},
+  interior_racetrack: {w:1024,h:640,floor:'#27384b',wall:'#c7d2fe',trim:'#a3e635',hotspots:[{x:512,y:240,label:'RACE A NEW 3D TRACK',action:'car_race',icon:'flag'},{x:720,y:240,label:'OPEN QUALIFIERS',action:'car_race_qualifier',icon:'trophy'}]},
   interior_home: { w: 1024, h: 640, floor: "#a16207", wall: "#fef3c7", trim: "#7c2d12" },
   // VEGAS — the tower. One area, five floors; the stations you can use come
   // from the floor you're standing on (see currentHotspots). The elevator is

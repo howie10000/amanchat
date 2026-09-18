@@ -16,6 +16,7 @@
 
 const carService = require('./cars.js');
 const financeView = require('./finance-view.js');
+const createRaceQualifier = require('./race-qualifier.js');
 const express = require('express');
 const http = require('http');
 const path = require('path');
@@ -417,6 +418,9 @@ function pushId() {
 }
 
 const store = new Store();
+const raceQualifier = createRaceQualifier({
+    store: { get: k => store.get(k), put: (k, v) => store.put(k, v) }
+});
 setInterval(() => {
     try { store.snapshot(); } catch (e) { console.error('[snapshot]', e); }
 }, 2000);
@@ -988,6 +992,7 @@ function canWrite(user, pathStr, op) {
     }
     // Announcements feed: owners post, everyone reads.
     if (top === 'announcements') return role === 'owner';
+    if (top === 'race_qualifier') return false;
     // Bug reports live under bug_reports/<author>/<id>. Staff may do anything
     // (triage, delete); a player may only file into / amend their own subtree.
     if (top === 'bug_reports') {
@@ -1626,6 +1631,20 @@ function handleMessage(c, msg) {
 
         case 'ping': {
             reply('pong');
+            break;
+        }
+
+        case 'race_qualifier': {
+            if (!c.user) return replyErr('not authed');
+            const qAction = String(msg.action || 'board');
+            const staffWipe = qAction === 'wipe' || qAction === 'wipe_player' || qAction === 'wipe_all';
+            if (staffWipe) {
+                const err = staffPanelErr(c); if (err) return replyErr(err);
+            }
+            let out;
+            try { out = raceQualifier.handle(c.user, msg, staffWipe ? { staff: true } : undefined); }
+            catch (e) { return replyErr(e && e.message ? e.message : String(e)); }
+            reply(out);
             break;
         }
 

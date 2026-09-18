@@ -23,6 +23,7 @@ async function client(){
  await assert.rejects(player.rpc('staff_unlock',{pass:'player-pass-9'}),/Staff only/);
  await assert.rejects(player.rpc('get',{path:'bans'}),/forbidden/);
  await assert.rejects(player.rpc('staff_finance'),/Staff only/);
+ await assert.rejects(player.rpc('race_qualifier',{action:'wipe_all'}),/forbidden/);
  await assert.rejects(owner.rpc('staff_finance'),/account password/);
  await assert.rejects(owner.rpc('get',{path:'bans'}),/account password/);
  await assert.rejects(owner.rpc('get',{path:'roles'}),/account password/);
@@ -49,7 +50,12 @@ async function client(){
  await owner.rpc('staff_lock');
  await assert.rejects(owner.rpc('staff_finance'),/account password/);
  await assert.rejects(owner.rpc('get',{path:'bans'}),/account password/);
+ await assert.rejects(owner.rpc('race_qualifier',{action:'wipe',user:'panelplayer'}),/account password/);
+ await assert.rejects(owner.rpc('race_qualifier',{action:'wipe_all'}),/account password/);
  await owner.rpc('staff_unlock',{pass:'owner-pass-9'});
+ const wiped=await owner.rpc('race_qualifier',{action:'wipe_all'});
+ assert.equal(wiped.ok,true);
+ assert.equal(wiped.rows.length,0);
  await owner.rpc('del',{path:'bans/panelplayer'});
  console.log('PASS staff panel APIs stay locked until the account password is bcrypt-checked, wrong passwords deny, lock revokes the grant');
 })().catch(e=>{console.error(e);console.error(logs);process.exitCode=1;}).finally(()=>{for(const ws of clients)ws.close();server.kill();});

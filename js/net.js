@@ -131,11 +131,9 @@
   // Server-authoritative identity check: returns { user, role, mute }. Used to
   // re-verify staff powers (e.g. teleport) rather than trusting client state.
   window.netWhoami = () => rpc("whoami", {});
-  // Staff panel: bcrypt the account password again. Phone UI always asks; PC
-  // may reuse the in-memory login pass via netStaffUnlockSession so the same
-  // privileged APIs stay gated without a second prompt.
+  // Staff panel: bcrypt the account password the player typed. Do not send
+  // lastAuth.pass — that silent PC path skipped the prompt on phones.
   window.netStaffUnlock = (pass) => rpc("staff_unlock", { pass: String(pass || "") });
-  window.netStaffUnlockSession = () => rpc("staff_unlock", { pass: (lastAuth && lastAuth.pass) || "" });
   window.netStaffLock = () => rpc("staff_lock", {});
   // Staff-only: a single player's live area/position. Presence is area-scoped,
   // so teleporting to someone in another area needs a direct lookup.
@@ -146,6 +144,7 @@
   window.netGhostAccounts = () => rpc("ghost_accounts", {});
   // Richest-players board, ranked by the server so leaderboard bans hold.
   window.netLeaderboard = () => rpc("leaderboard", {});
+  window.netRaceQualifier = (data) => rpc("race_qualifier", data);
   // Server-authoritative economy ops (see docs/SERVER-AUTHORITY.md).
   window.netCasino = (data) => rpc("casino", data);
   // `id` is the rpc envelope field, so the purchase id travels as `item`.

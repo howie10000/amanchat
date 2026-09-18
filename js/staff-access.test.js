@@ -14,7 +14,7 @@ const ctx={
   setMenuCloseCleanup(){},
   fbGet:()=>{reads++;throw Error('Unauthorized data request');},
   openMenu:()=>{opened++;},
-  renderStaffGhosts(){},renderStaffLists(){},renderStaffBugs(){},renderTreasury(){},renderStaffFinance(){},
+  renderStaffGhosts(){},renderStaffLists(){},renderStaffBugs(){},renderTreasury(){},renderStaffFinance(){},renderStaffQualifierBoard(){},
   escapeHtml:s=>String(s||''),
   console,
   matchMedia:()=>({matches:false}),
@@ -54,6 +54,14 @@ vm.runInContext(game.slice(game.indexOf('let _staff = null'),game.indexOf('windo
   assert.equal(opened,1);
 
   ctx.staffOnPhone=()=>false;
+  ctx.netStaffUnlockSession=async()=>{throw Error('silent lastAuth unlock must not run');};
+  opened=0;reads=0;unlocks=0;typed.length=0;
+  ctx.promptStaffPassword=async()=>{typed.push('desktop');return 'secret';};
+  await ctx.openStaffPanel();
+  assert.equal(typed[0],'desktop','desktop opens still type the account password');
+  assert.equal(unlocks,1,'no silent session unlock');
+  assert.equal(opened,1);
+
   opened=0;reads=0;unlocks=0;
   await ctx.openStaffPanel({refresh:true});
   assert.equal(unlocks,0,'in-panel refresh does not re-prompt');

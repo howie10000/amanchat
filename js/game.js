@@ -52,6 +52,7 @@ document.querySelectorAll(".actBtn").forEach(b => {
     else if (a === "bugs") phoneApp(openBugReport);
     else if (a === "staff") openStaffPanel();
     else if (a === "help") phoneApp(openHelp);
+    else if (a === "race-qualifier") phoneApp(openRaceQualifier);
   };
 });
 
@@ -157,6 +158,79 @@ function tickPhoneClock() {
   if (el3) el3.textContent = d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
 }
 tickPhoneClock(); setInterval(tickPhoneClock, 10000);
+
+function raceBoardPreview(rows) {
+  if (!rows || !rows.length) return 'No times yet · tap to race';
+  const fmt = window.RaceQualifier && RaceQualifier.formatMs ? RaceQualifier.formatMs : (ms) => ms;
+  return rows.slice(0, 3).map((r, i) => (i + 1) + '. ' + r.user + ' ' + fmt(r.timeMs)).join(' · ');
+}
+function paintRaceBanner(data) {
+  const Q = window.RaceQualifier;
+  const parts = Q && Q.remainingParts ? Q.remainingParts() : null;
+  const closed = !!(data && data.closed) || !!(parts && parts.ended);
+  const ends = document.getElementById('phoneRaceEnds');
+  if (ends) ends.textContent = 'Ends September 24, 2026, 2:17 PM';
+  const count = document.getElementById('phoneRaceCountdown');
+  if (count) count.textContent = closed ? 'Qualifiers ended' : (data && data.countdown) || (Q && Q.formatCountdown ? Q.formatCountdown() : '—');
+  const board = document.getElementById('phoneRaceBoard');
+  if (board) board.textContent = raceBoardPreview(data && data.rows);
+  const banner = document.getElementById('phoneRaceBanner');
+  if (banner) banner.classList.toggle('ended', closed);
+  const live = document.getElementById('raceQualCountdown');
+  if (live) live.textContent = closed ? 'Qualifiers ended' : (Q && Q.formatCountdown ? Q.formatCountdown() : '—');
+  const note = document.getElementById('raceQualStatus');
+  if (note) note.textContent = closed
+    ? 'Qualifiers ended September 24, 2026, 2:17 PM. Final standings below — you can still race the map.'
+    : 'Ends September 24, 2026, 2:17 PM. Beat your personal best to stay in the top 10.';
+}
+function tickRaceCountdown() {
+  if (!window.RaceQualifier) return;
+  const p = RaceQualifier.remainingParts();
+  const text = p.ended ? 'Qualifiers ended' : RaceQualifier.formatCountdown();
+  const count = document.getElementById('phoneRaceCountdown');
+  if (count) count.textContent = text;
+  const live = document.getElementById('raceQualCountdown');
+  if (live) live.textContent = text;
+  const banner = document.getElementById('phoneRaceBanner');
+  if (banner) banner.classList.toggle('ended', p.ended);
+}
+function refreshRaceBanner() {
+  if (typeof netRaceQualifier !== 'function') { paintRaceBanner(null); tickRaceCountdown(); return; }
+  netRaceQualifier({ action: 'board' }).then(paintRaceBanner).catch(() => { paintRaceBanner(null); tickRaceCountdown(); });
+}
+window.refreshRaceBanner = refreshRaceBanner;
+function openRaceQualifier() {
+  const Q = window.RaceQualifier || {};
+  const p = Q.remainingParts ? Q.remainingParts() : { ended: false };
+  const fmt = Q.formatMs || (ms => ms);
+  let rowsHtml = '<p class="muted">Loading standings…</p>';
+  uiPanel('OPEN QUALIFIERS', `
+    <p id="raceQualStatus">${p.ended
+      ? 'Qualifiers ended September 24, 2026, 2:17 PM. Final standings below — you can still race the map.'
+      : 'Ends September 24, 2026, 2:17 PM. Beat your personal best to stay in the top 10.'}</p>
+    <p><b>Countdown:</b> <span id="raceQualCountdown">${p.ended ? 'Qualifiers ended' : (Q.formatCountdown ? Q.formatCountdown() : '—')}</span></p>
+    <button class="menuBtn gold" id="raceQualStart" type="button">${p.ended ? 'Race the map' : 'Race qualifier'}</button>
+    <h3 class="section">TOP 10</h3>
+    <div id="raceQualList">${rowsHtml}</div>
+  `);
+  const start = document.getElementById('raceQualStart');
+  if (start) start.onclick = () => { closeMenu(); if (window.gameRace) gameRace.start({ qualifier: true }); };
+  if (typeof netRaceQualifier === 'function') {
+    netRaceQualifier({ action: 'board' }).then(data => {
+      paintRaceBanner(data);
+      const list = document.getElementById('raceQualList');
+      if (!list) return;
+      const rows = (data && data.rows) || [];
+      list.innerHTML = rows.length
+        ? rows.map((r, i) => `<div class="flexBetween"><span>${i + 1}. ${escapeHtml(r.user)}</span><b>${fmt(r.timeMs)}</b></div>`).join('')
+        : '<p class="muted">No times yet. Be the first.</p>';
+    }).catch(() => {});
+  }
+}
+tickRaceCountdown();
+setInterval(tickRaceCountdown, 1000);
+setTimeout(refreshRaceBanner, 500);
+setInterval(refreshRaceBanner, 20000);
 // Any pending notification also lights the phone tab so a stowed phone still nags.
 new MutationObserver(() => {
   const any = document.querySelector(".actBtn.alert") || document.querySelector("#notifyArea .notifyCard");
@@ -532,6 +606,7 @@ function triggerHotspotAction(action, hs) {
     case "duel_open":        openDuelChallenge(); break;
     case "car_dealer": gameCars.dealer(); break;
     case "car_race": gameRace.start(); break;
+    case "car_race_qualifier": gameRace.start({qualifier:true}); break;
     case "guild_broker":     gameGuild.openBroker(); break;
     case "gear_armory":     gameGear.openArmory(); break;
     case "guild_home":       gameGuild.enterGuildHall(); break;
@@ -1370,15 +1445,19 @@ function staffRoleOf(u) {
 function iOutrank(u) { return ROLE_RANK[state.role] > ROLE_RANK[staffRoleOf(u)]; }
 function fmtUntil(ts) { return ts ? new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "permanent"; }
 
-// Same coarse-pointer test as js/mobile.js — phones always re-type the account
-// password. A stolen websocket is not enough; the server bcrypts it.
+// Every Staff open types the account password. Do not key this off
+// pointer:coarse / gameMobile.wanted() — phones that request a desktop site
+// fail that test and used to silently reuse the in-memory login password.
 function staffOnPhone() {
   if (typeof gameMobile !== "undefined" && gameMobile && typeof gameMobile.wanted === "function") {
-    try { return !!gameMobile.wanted(); } catch (e) {}
+    try { if (gameMobile.wanted()) return true; } catch (e) {}
   }
   try {
-    return !!(matchMedia("(pointer:coarse)").matches && ((navigator.maxTouchPoints || 0) > 0 || "ontouchstart" in window));
-  } catch (e) { return false; }
+    if (matchMedia("(pointer:coarse)").matches) return true;
+    if ((navigator.maxTouchPoints || 0) > 0 || "ontouchstart" in window) return true;
+  } catch (e) {}
+  try { if (document.getElementById("phone") && !document.getElementById("phone").classList.contains("closed")) return true; } catch (e) {}
+  return false;
 }
 let _staffPassPrompt = null;
 function promptStaffPassword() {
@@ -1393,7 +1472,7 @@ function promptStaffPassword() {
     wrap.setAttribute("aria-labelledby", "staffPassTitle");
     wrap.innerHTML = `<div class="staffPassBox">
       <h3 id="staffPassTitle">Staff panel</h3>
-      <p>Type your account password to open it. The server will not let you in without it.</p>
+      <p>Type your account password to open it. Closing this cancels. Opening Staff again will ask again.</p>
       <input id="staffPassInput" type="password" maxlength="32" placeholder="Account password"
         autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
         enterkeyhint="go" inputmode="text" />
@@ -1424,6 +1503,11 @@ function promptStaffPassword() {
 }
 window.staffOnPhone = staffOnPhone;
 window.promptStaffPassword = promptStaffPassword;
+function staffLockNow() {
+  const lock = (typeof window !== "undefined" && typeof window.netStaffLock === "function") ? window.netStaffLock : (typeof netStaffLock === "function" ? netStaffLock : null);
+  if (lock) return Promise.resolve(lock()).catch(() => {});
+  return Promise.resolve();
+}
 async function confirmStaffEntry() {
   if (!state.isMayor) { toast("Staff only."); return false; }
   try {
@@ -1431,31 +1515,20 @@ async function confirmStaffEntry() {
     setRole(who && who.role);
     if (!state.isMayor) { toast("Staff only."); return false; }
   } catch (e) { toast("Staff only."); return false; }
-  const onPhone = (typeof window !== "undefined" && typeof window.staffOnPhone === "function") ? window.staffOnPhone : staffOnPhone;
   const askPass = (typeof window !== "undefined" && typeof window.promptStaffPassword === "function") ? window.promptStaffPassword : promptStaffPassword;
   const unlock = (typeof window !== "undefined" && typeof window.netStaffUnlock === "function") ? window.netStaffUnlock : netStaffUnlock;
-  const unlockSession = (typeof window !== "undefined" && typeof window.netStaffUnlockSession === "function") ? window.netStaffUnlockSession : (typeof netStaffUnlockSession === "function" ? netStaffUnlockSession : null);
+  // Drop any leftover grant first so a 15-minute TTL or a missed close cannot
+  // keep the panel unlocked. Never send lastAuth.pass — that was the phone leak.
+  await staffLockNow();
   try {
-    if (onPhone()) {
-      const pass = await askPass();
-      if (pass == null) return false;
-      if (!String(pass)) { toast("Enter your password."); return false; }
-      await unlock(pass);
-      return true;
-    }
-    try {
-      if (unlockSession) await unlockSession();
-      else await unlock("");
-      return true;
-    } catch (e) {
-      const pass = await askPass();
-      if (pass == null) return false;
-      if (!String(pass)) { toast("Enter your password."); return false; }
-      await unlock(pass);
-      return true;
-    }
+    const pass = await askPass();
+    if (pass == null) return false;
+    if (!String(pass)) { toast("Enter your password."); return false; }
+    await unlock(pass);
+    return true;
   } catch (e) {
     toast(e.message || "Wrong password.");
+    await staffLockNow();
     return false;
   }
 }
@@ -1464,8 +1537,8 @@ async function openStaffPanel(opts) {
   if (!state.isMayor) { toast("Staff only."); return; }
   const refresh = !!(opts && opts.refresh);
   // Re-check with the server so a tampered client can't open the panel.
-  // Phone: every tap types the account password. Refresh after a ban/mute
-  // keeps the grant from this entry so they aren't re-prompted mid-panel.
+  // Every fresh open types the account password (phone and PC). Refresh after
+  // a ban/mute keeps the grant from this entry so they aren't re-prompted mid-panel.
   if (refresh) {
     try {
       const who = await netWhoami();
@@ -1487,6 +1560,15 @@ async function openStaffPanel(opts) {
         style="flex:1;padding:8px;background:#0a0e15;color:white;border:1px solid #2a3344;border-radius:6px;" />
       <button class="menuBtn gold" onclick="mayorAnnounce()">Post</button>
     </div>` : ""}
+    <h3 class="section">OPEN QUALIFIERS TOP 10</h3>
+    <p class="muted">Wipe a racer off the Neighborhood racing Tournament board. Their time is deleted on the server — not hidden. Anyone can take the open slot with a valid lap while qualifiers are still running.</p>
+    <div id="staffQualBoard"><p class="muted">Loading…</p></div>
+    <div class="flexRow">
+      <input id="staffQualWipeName" placeholder="Player name to wipe from the board"
+        style="flex:1;padding:8px;background:#0a0e15;color:white;border:1px solid #2a3344;border-radius:6px;" maxlength="16" />
+      <button class="menuBtn red" type="button" onclick="staffWipeQualifier()">Wipe named player</button>
+    </div>
+    <button class="menuBtn red" type="button" onclick="staffWipeQualifierAll()">Wipe entire qualifier board</button>
     <h3 class="section">SEA GEMS</h3><div class="flexRow"><input id="staffSeaGems" type="number" min="1" max="1000000" value="10000"><button class="menuBtn gold" onclick="staffSeaGems()">Grant gems to myself</button></div><h3 class="section">👻 INVISIBILITY</h3>
     <p class="muted">Vanish from every other player's screen. On your own screen you stay faintly visible. Hotkey: <b>V</b>.</p>
     <button class="menuBtn" onclick="toggleInvisible();closeMenu();">${state.invisible ? "TURN VISIBLE" : "GO INVISIBLE"}</button>
@@ -1533,10 +1615,64 @@ async function openStaffPanel(opts) {
   renderStaffBugs();
   renderTreasury();
   renderStaffFinance();
+  renderStaffQualifierBoard();
   // keep the "Staff" button state right if our role changed
   setRole(state.role);
 }
 window.openStaffPanel = openStaffPanel;
+
+function staffQualFmt(ms) {
+  return window.RaceQualifier && RaceQualifier.formatMs ? RaceQualifier.formatMs(ms) : String(ms);
+}
+async function renderStaffQualifierBoard() {
+  const el = document.getElementById("staffQualBoard");
+  if (!el) return;
+  if (typeof netRaceQualifier !== "function") {
+    el.innerHTML = `<p class="muted">Qualifier board unavailable.</p>`;
+    return;
+  }
+  let data;
+  try { data = await netRaceQualifier({ action: "board" }); }
+  catch (e) { el.innerHTML = `<p class="muted">Couldn't load: ${escapeHtml(e.message || e)}</p>`; return; }
+  if (!document.getElementById("staffQualBoard")) return;
+  const rows = (data && data.rows) || [];
+  if (!rows.length) {
+    el.innerHTML = `<p class="muted">Nobody is on the qualifier top 10.</p>`;
+    return;
+  }
+  el.innerHTML = rows.map((r, i) => `<div class="staffRow">
+    <div class="who"><b>${i + 1}. ${escapeHtml(r.user)}</b><small>${staffQualFmt(r.timeMs)}</small></div>
+    <div class="btns"><button class="menuBtn red" type="button" onclick="staffWipeQualifier('${escapeHtml(r.user)}')">Wipe</button></div>
+  </div>`).join("");
+}
+window.renderStaffQualifierBoard = renderStaffQualifierBoard;
+window.staffWipeQualifier = async (name) => {
+  if (!await assertStaffRole()) return;
+  let target = name;
+  if (target == null) {
+    const box = document.getElementById("staffQualWipeName");
+    target = box ? box.value : "";
+  }
+  target = String(target || "").trim().toLowerCase();
+  if (!target) { toast("Name a player to wipe."); return; }
+  if (!confirm(`Wipe ${target} from the Open Qualifiers top 10? Their time is deleted. Someone else can take the slot.`)) return;
+  try { await netRaceQualifier({ action: "wipe", user: target }); }
+  catch (e) { toast(e.message || "Wipe failed."); return; }
+  toast(`${target} is off the qualifier board.`);
+  const box = document.getElementById("staffQualWipeName");
+  if (box) box.value = "";
+  renderStaffQualifierBoard();
+  if (typeof refreshRaceBanner === "function") refreshRaceBanner();
+};
+window.staffWipeQualifierAll = async () => {
+  if (!await assertStaffRole()) return;
+  if (!confirm("Wipe the ENTIRE Open Qualifiers top 10? Every time is deleted. This cannot be undone.")) return;
+  try { await netRaceQualifier({ action: "wipe_all" }); }
+  catch (e) { toast(e.message || "Wipe failed."); return; }
+  toast("Qualifier board cleared.");
+  renderStaffQualifierBoard();
+  if (typeof refreshRaceBanner === "function") refreshRaceBanner();
+};
 
 // Accounts whose login outlived their player record. The server finds them by
 // walking the auth table for names with nothing in `users`.
