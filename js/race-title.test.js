@@ -33,22 +33,42 @@ assert(html.includes('>APEX LEAGUE<'),'Login title reads Apex League');
 assert(!/race-generation-label">GENERATION 3/.test(html),'Generation 3 is not on the login title');
 
 function packDistance(cam,scene){return Math.min(...scene.children.filter(c=>c.userData.wheels&&c.visible!==false).map(c=>Math.hypot(c.position.x-cam.x,c.position.y-cam.y,c.position.z-cam.z)));}
-function roadClearance(cam,venue){const track=venue?titleB:titleA,hit=race.nearest(track,cam.x,cam.z,cam.y);return {hit,above:(hit.height??0)>1.8||cam.y>hit.y+2.2};}
+function roadClearance(cam,venue){const track=venue?titleB:titleA,hit=race.nearest(track,cam.x,cam.z,cam.y);return {hit,above:(hit.height??0)>.95||cam.y>hit.y+1.1};}
 
 for(let i=1;i<=90;i++)strong.frame(1000+i*(1000/60));
 const held=title.metrics(),heldCam=held.camera,heldLead=held.lead;
 assert(heldLead,'Follow camera publishes the lead car');
-assert((heldLead.x-heldCam.x)*heldLead.tx+(heldLead.z-heldCam.z)*heldLead.tz>0,'Camera stays behind the lead car');
+assert((heldLead.x-heldCam.x)*heldLead.tx+(heldLead.z-heldCam.z)*heldLead.tz>-6,'Camera does not fly far ahead of the lead');
 assert(packDistance(heldCam,strong.scene())<70,'Camera stays with the pack');
+assert(Math.abs(held.gap-Math.hypot(held.back,held.side,held.h))<2.5,'Hold shot is pinned to the subject rig');
+assert(held.shot==='nose'?held.ahead<5.2:held.ahead<1,'Hold camera is not drifting in front of its car');
 assert(roadClearance(heldCam,held.venue).above,'Camera stays above the asphalt during the hold');
 
-const startCam=title.metrics().camera;for(let i=1;i<=220;i++){
- strong.frame(2600+i*40);
- const m=title.metrics(),d=packDistance(m.camera,strong.scene());
+const startCam=title.metrics().camera,seen=new Set(),gaps=[],aheads=[],pins=[],venues=[];
+for(let i=1;i<=400;i++){
+ strong.frame(2600+i*50);
+ const m=title.metrics(),d=packDistance(m.camera,strong.scene()),designed=Math.hypot(m.back,m.side,m.h);
  assert(d<90,'Camera re-acquires the pack instead of flying empty track');
  assert(roadClearance(m.camera,m.venue).above,'Camera never clips under the circuit');
+ assert((m.lead.x-m.camera.x)*m.lead.tx+(m.lead.z-m.camera.z)*m.lead.tz>-7,'Camera never flies far ahead of the pack');
+ assert(Math.abs(m.gap-designed)<2.8,'Chase distance stays on the shot rig');
+ assert(Math.abs(m.ahead+m.back)<2.5,'Along-track offset matches the shot back distance');
+ if(m.shot==='nose')assert(m.ahead<5.2,'Nose shot does not creep farther forward');
+ else assert(m.ahead<1,'Non-nose shots stay beside or behind the subject');
+ if(m.shot)seen.add(m.shot);
+ if(m.gap!=null)gaps.push(m.gap-designed);
+ aheads.push(m.ahead);
+ pins.push(Math.abs(m.ahead+m.back));
+ venues.push(m.venue);
 }
 assert(title.metrics().tracks===2);assert(Math.hypot(title.metrics().camera.x-startCam.x,title.metrics().camera.z-startCam.z)>200,'Camera flies from one race to the next');
+assert(venues.some((v,i)=>i&&v!==venues[i-1]),'Camera cuts between the two circuits');
+assert(seen.size>=5,'Title camera cycles multiple cinematic angles');
+assert(seen.has('rear3q')&&seen.has('side')&&seen.has('heli'),'Rear three-quarter, side, and helicopter shots all play');
+assert(![...seen].every(id=>id==='nose'),'The loop is not locked on a front/nose shot');
+const early=gaps.slice(0,50).reduce((a,b)=>a+b,0)/50,late=gaps.slice(-50).reduce((a,b)=>a+b,0)/50;
+assert(late<early+.8,'Rig error does not grow across scene changes');
+assert(Math.max(...pins)<2.5,'Camera never accumulates extra along-track offset');
 
 strong.hidden=true;strong.observer();assert.equal(title.metrics().active,false);assert.equal(title.metrics().resources,null);assert.equal(strong.frames.size,0);assert.equal(strong.disposed(),1);
 strong.hidden=false;strong.observer();strong.frame(2000);assert(title.metrics().active);strong.hidden=true;strong.observer();
@@ -61,4 +81,4 @@ assert(low.frames>=25&&low.frames<=32,'Weak iGPUs keep a 30 FPS floor');
 assert(low.width<=896&&low.height<=540,'Weak GPUs do not render the 1440 backdrop');
 assert.equal(low.cars,7);assert.equal(low.tracks,2);
 
-console.log('PASS seven title cars on two tournament circuits, pack-follow camera, road clearance, 60/30 FPS quality tiers, reduced motion, login scene disposal and restart');
+console.log('PASS seven title cars on two tournament circuits, pinned cinematic camera, road clearance, 60/30 FPS quality tiers, reduced motion, login scene disposal and restart');
