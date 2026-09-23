@@ -20,15 +20,22 @@
  function angDelta(a,b){return Math.abs(Math.atan2(Math.sin(a-b),Math.cos(a-b)));}
  function terrain(track,n,sp,length){
   const ph=random(track)*TAU,ph2=random(track)*TAU,ph3=random(track)*TAU;
-  const cycles=Math.max(1.08,(length||n*6.4)/1000/sp.hillKm);
+  const cycles=track.open?Math.max(1.08,(length||n*6.4)/1000/sp.hillKm):Math.max(1,Math.round((length||n*6.4)/1000/sp.hillKm));
   const hair=Math.floor(random(track)*n),blind=Math.floor(random(track)*n),cork=Math.floor(random(track)*n);
   const elev=new Array(n);
-  for(let i=0;i<n;i++){const t=i/n;elev[i]=sp.hills*(.5+.4*Math.sin(t*TAU*cycles+ph)+.18*Math.sin(t*TAU*cycles*1.618+ph2)+.08*Math.sin(t*TAU*cycles*.71+ph3));}
+  for(let i=0;i<n;i++){
+   const t=i/n;
+   if(track.open){
+    elev[i]=sp.hills*(.5+.4*Math.sin(t*TAU*cycles+ph)+.18*Math.sin(t*TAU*cycles*1.618+ph2)+.08*Math.sin(t*TAU*cycles*.71+ph3));
+   } else {
+    elev[i]=sp.hills*(.5+.4*Math.sin(t*TAU*cycles+ph)+.18*Math.sin(t*TAU*(cycles+1)+ph2)+.08*Math.sin(t*TAU*(Math.max(1,cycles-1))+ph3));
+   }
+  }
   function event(center,width,amp,shape){for(let k=-width;k<=width;k++){const u=(k+width)/Math.max(1,2*width);elev[(center+k+n)%n]+=amp*shape(u);}}
   // Climb into a hairpin, a crest that can hide an apex, and one rare drop-while-turning.
   if(sp.hairpin>0)event(hair,Math.max(10,Math.round(n*.055)),sp.hills*.48,t=>plateau(t,.04,.26,.36,.7)-.4*plateau(t,.42,.52,.6,.82));
   if(sp.tech>.45)event(blind,Math.max(8,Math.round(n*.04)),sp.hills*.26,t=>plateau(t,.12,.38,.5,.84));
-  if(sp.corkscrew>0)event(cork,Math.max(9,Math.round(n*.042)),-Math.max(8,sp.range*.22),t=>plateau(t,.06,.28,.55,.94));
+  if(sp.corkscrew>0)event(cork,Math.max(14,Math.round(n*.065)),-Math.max(6,sp.range*.18),t=>plateau(t,.06,.38,.58,.94));
   let lo=elev[0];for(const h of elev)if(h<lo)lo=h;for(let i=0;i<n;i++)elev[i]-=lo;
   return{elev,hair,blind,cork,cycles};
  }
@@ -71,8 +78,36 @@
   const p=track.points,n=p.length,lim=track.difficulty==='extreme'?.95:.7;
   for(let i=0;i<n;i++){
    const b=p[i];
-   if(b.offCamber){b.baseBank=b.baseBank??0;b.baseBank=-Math.sign(b.camber||b.curvature||1)*.22;b.bank=clamp(b.baseBank+b.camber*.12,-lim,lim);if(!b.ramp&&!b.hyper)b.feature='OFF CAMBER';}
-   b.elevation=elev[i];b.y=BASE+Math.abs(Math.sin(b.bank))*(track.width/2+1)+elev[i];
+   if(b.offCamber){
+    const sign=-Math.sign(b.camber||b.curvature||1);
+    b.baseBank=(b.baseBank===undefined||b.baseBank===0)?sign*.18:b.baseBank;
+    b.bank=clamp(b.baseBank+b.camber*.12,-lim,lim);
+    if(!b.ramp&&!b.hyper)b.feature='OFF CAMBER';
+   }
+  }
+  if(!track.open){
+   for(let pass=0;pass<4;pass++){
+    for(let i=0;i<n;i++){
+     const prev=p[(i-1+n)%n],cur=p[i],next=p[(i+1)%n];
+     if(!cur.ramp&&!cur.hyper){
+      const targetBank=(prev.bank+next.bank)/2;
+      cur.bank=clamp(cur.bank*.7+targetBank*.3,-lim,lim);
+     }
+    }
+   }
+  }
+  const bankLifts=new Array(n);
+  for(let i=0;i<n;i++)bankLifts[i]=Math.abs(Math.sin(p[i].bank))*(track.width/2+1);
+  const smoothLifts=new Array(n);
+  for(let i=0;i<n;i++){
+   let sum=0;
+   for(let k=-2;k<=2;k++){const idx=track.open?clamp(i+k,0,n-1):(i+k+n)%n;sum+=bankLifts[idx];}
+   smoothLifts[i]=sum/5;
+  }
+  for(let i=0;i<n;i++){
+   const b=p[i];
+   b.elevation=elev[i];
+   b.y=BASE+Math.max(bankLifts[i]*.4+smoothLifts[i]*.6,Math.abs(Math.sin(b.bank))*(track.width/2+.4))+elev[i];
   }
  }
  // Gravity: world units are meters (5 m point spacing, 4–5 m cars). Generation 2 uses 25 m/s². Generation 3 uses
@@ -168,7 +203,7 @@
   const actual=track.points.reduce((n,p,i)=>{const q=track.points[(i+1)%track.points.length];return n+Math.hypot(q.x-p.x,q.z-p.z);},0),correction=target/actual;for(const p of track.points){p.x*=correction;p.z*=correction;}
   const land=terrain(track,count,sp,target);gradeLimit(track.points,land.elev,sp,false);
   for(let k=0;k<6;k++){ensureSpan(land.elev,sp);gradeLimit(track.points,land.elev,sp,false);}
-  if(sp.corkscrew>0){const w=Math.max(8,Math.round(count*.035));for(let k=-w;k<=w;k++){const q=track.points[(land.cork+k+count)%count];q.feature='CORKSCREW';q.twist=true;q.baseBank+=dir*.22;q.bank=q.baseBank;}}
+   if(sp.corkscrew>0){const w=Math.max(8,Math.round(count*.035));for(let k=-w;k<=w;k++){const q=track.points[(land.cork+k+count)%count],env=smooth(1-Math.abs(k)/(w+1));q.feature='CORKSCREW';q.twist=true;q.baseBank+=dir*.22*env;q.bank=q.baseBank;}}
   if(sp.tech>.45){const w=Math.max(6,Math.round(count*.03));for(let k=-w;k<=w;k++){const q=track.points[(land.blind+k+count)%count];if(!q.twist&&q.feature!=='OFF CAMBER')q.feature='BLIND CREST';}}
   settle(track,land.elev);track.elevationCycles=land.cycles;
   rebuild(track);track.name=extreme?'Extreme '+['Ridge Gauntlet','Serpent Peaks','Canyon Fury','Skyline Descent'][track.seed%4]:'Marathon '+['Coastal Bends','Highland Run','Sakura Traverse','Festival Circuit'][track.seed%4];
@@ -214,7 +249,7 @@
    const distance=i/240*lengths.at(-1);while(lengths[cursor+1]<distance)cursor++;
    const p=mix(dense[cursor],dense[cursor+1],(distance-lengths[cursor])/(lengths[cursor+1]-lengths[cursor]));
    const third=(sp.offCamber>0?-.4:.3)*plateau(i,188+shift,198+shift,205+shift,214+shift);
-   const bank=sp.bank*direction*(.42*plateau(i,24+shift,39+shift,51+shift,68+shift)-.5*plateau(i,139,153,166,184)+third);
+   const bank=sp.bank*direction*(.5*plateau(i,24+shift,39+shift,51+shift,68+shift)-.5*plateau(i,139,153,166,184)+third);
    Object.assign(p,{id:i,bank,baseBank:bank,boost:(i>=10&&i<17)||(i>=125&&i<132)||(i>=210&&i<219),hyper:i>=210&&i<219,twist:false,ramp:false,offCamber:sp.offCamber>0&&i>=188+shift&&i<=214+shift,feature:i>=210&&i<219?'HYPER STRAIGHT':Math.abs(bank)>.3?'BANKED SWEEPER':''});
    track.points.push(p);
   }
@@ -322,46 +357,55 @@
   // Surface: tarmac, painted verge, gravel/grass beyond the edge, armco at the rail line.
   const edge=track.width/2,off=Math.abs(car.lateral);car.surface=off<edge-.4?'tarmac':off<edge+.6?'verge':'gravel';
   const surfaceGrip=car.surface==='tarmac'?1:car.surface==='verge'?.72:.45,surfaceDrag=car.surface==='tarmac'?0:car.surface==='verge'?.35:1.1;
-  // Space controls the drift. Releasing it restores grip quickly, even with throttle held.
-  const counter=steer!==0&&car.side*steer>0;
-  const initiate=abs>12&&hb&&Math.abs(steer)>.1;
-  const driftTarget=initiate?1:0;
-  car.drift=(car.drift||0)+(driftTarget-(car.drift||0))*Math.min(1,dt*(initiate?6:12));
-  const latGrip=LAT_GRIP*s.grip*surfaceGrip*(1+s.downforce*(abs/70)*(abs/70))*(1-.4*car.drift)*(1-.25*Math.min(1,car.landing));
-  // Steering: keyboard steering assist (Forza style) caps lock so a held key rides ~92% of the grip circle instead
-  // of scrubbing; the handbrake removes the cap so the rear can be thrown out. Rate slows with speed.
-  const wheelbase=2.6,assistLock=abs>4?latGrip*.92*wheelbase/(abs*abs):1,maxLock=Math.min(.52,hb&&car.drift>.15?.46/(1+abs/60):assistLock)*(.85+.15*s.handling),target=steer*Math.max(.5,Math.min(1.3,Number(input.steeringScale)||1))*maxLock*(speed<-1?-1:1);
-  car.steer+=(target-car.steer)*Math.min(1,dt*(5.5+abs*.05)*(.7+.3*s.handling));
-  const kin=abs>.5?car.steer*speed/wheelbase:0;let latNeeded=Math.abs(speed*kin),gripFactor=latNeeded>latGrip?latGrip/latNeeded:1;
-  let yawRate=kin*gripFactor;
-  if(hb&&car.drift>.1&&abs>4)yawRate+=car.steer*(.7+s.drift)*car.drift*Math.sign(speed);// rear steps out under the handbrake
-  car.heading+=yawRate*dt;
-  // Momentum: side velocity relaxes toward the heading through tire force (saturating). Drift keeps momentum.
-  const stiff=(11-9*car.drift)*(1-.35*s.drift+.35)*surfaceGrip;const driftYaw=yawRate*car.drift*dt,longitudinal=speed*Math.cos(driftYaw)+car.side*Math.sin(driftYaw);car.side=car.side*Math.cos(driftYaw)-speed*Math.sin(driftYaw);car.side+=(latNeeded>latGrip?(latNeeded-latGrip)*Math.sign(-kin)*.55*(1-car.drift):0)*dt;
-  const tireAccel=clamp(-car.side*stiff,-latGrip,latGrip);car.side+=tireAccel*dt;car.side*=1-Math.min(1,dt*.4);car.side=clamp(car.side,-abs*.85,abs*.85);
-  car.slip=Math.atan2(car.side,Math.max(4,abs));car.accelLat=speed*yawRate+tireAccel*.35;
-  // Longitudinal: engine, traction limit (friction circle), ABS braking that cannot also turn at the limit.
-  const drive={AWD:1,RWD:.78,FWD:.66}[s.drivetrain]||.8,ratio=abs/cap,engine=44*s.power/massFactor*Math.max(0,1-ratio*ratio*ratio*.85)+(car.hyper?90:car.boost?55:0);
-  const circle=Math.sqrt(Math.max(0,latGrip*latGrip-car.accelLat*car.accelLat*.6)),traction=latGrip*1.05*drive*(s.drivetrain==='FWD'?1:1+.3*Math.min(1,abs/30))*(.55+.45*surfaceGrip);
-  const wantAccel=gas*engine,accelUsed=Math.min(wantAccel,Math.max(traction,circle*drive));car.wheelSlip=wantAccel>accelUsed+2&&abs<45?Math.min(1,(wantAccel-accelUsed)/20):0;
-  const brakeMax=52*s.brake*(.85+.15*surfaceGrip),brakeUsed=brakeIn*(speed>.5?Math.min(brakeMax,Math.max(circle*1.35,brakeMax*.35)):(speed<-.5?brakeMax*.6:0));
-  const reverseWant=brakeIn&&speed<=.5&&!gas?-14:0;car.reverse=speed<-.5;
-  const dragAccel=(s.drag*.0024+surfaceDrag*.02)*abs*abs*Math.sign(speed)+(abs>.5?2.2*Math.sign(speed):0)+(hb?abs*.22*Math.sign(speed):0);
-  const slope=-f.tangent.y*GRAVITY*Math.cos(car.heading);
-  let accel=accelUsed-brakeUsed*Math.sign(speed||1)-dragAccel+slope+reverseWant-Math.abs(car.side)*.45*Math.sign(speed||1);
-  car.speed=clamp(longitudinal+accel*dt,-14,cap);if(brakeIn&&!gas&&Math.abs(car.speed)<.6&&Math.abs(speed)<.6&&!reverseWant)car.speed=0;
-  car.throttle=gas;car.brake=brakeIn?1:0;car.accelLong=(car.speed-speed)/Math.max(dt,1e-4);
-  car.brakeHeat=clamp(car.brakeHeat+(brakeUsed*abs*.00045-.35*(1+abs*.01))*dt,0,1);
-  // Fake gearbox for HUD/audio-less feedback and lift-off backfires.
-  gearbox(car,s,cap,gas,dt);
-  // Advance along the road; lateral uses the side velocity.
-  const forwardStep=Math.cos(car.heading)*car.speed*dt,lateralStep=Math.sin(car.heading)*car.speed*dt+car.side*Math.cos(car.heading)*dt;
-  car.lateral+=lateralStep;car.pathDistance+=forwardStep-car.side*Math.sin(car.heading)*dt;
-  if(track.open)car.pathDistance=clamp(car.pathDistance,track.startDistance,track.endDistance-.01);
-  const next=surface(track,car.pathDistance);
-  car.heading+=Math.atan2(dot(f.tangent,next.right),dot(f.tangent,next.tangent));car.heading=Math.atan2(Math.sin(car.heading),Math.cos(car.heading));
-  // Counter-steer recovery: the body yaws back toward the velocity direction unless the handbrake holds the drift.
-  if(!hb)car.heading+=car.slip*Math.min(1,dt*(car.drift>.001?(counter?6:4.8):2.4));
+   // Space controls the drift. Releasing it restores grip quickly, even with throttle held.
+   const counter=steer!==0&&car.side*steer>0;
+   const initiate=abs>12&&hb&&Math.abs(steer)>.1;
+   const driftTarget=initiate?1:0;
+   car.drift=(car.drift||0)+(driftTarget-(car.drift||0))*Math.min(1,dt*(initiate?6:12));
+   // Dynamic weight transfer: longitudinal (pitch/dive on brake, squat on acceleration)
+   const weightTransferLong=clamp((car.accelLong||0)/GRAVITY*.35,-.35,.35);
+   const latGrip=LAT_GRIP*s.grip*surfaceGrip*(1+s.downforce*(abs/70)*(abs/70))*(1-.4*car.drift)*(1-.25*Math.min(1,car.landing));
+   // Steering: keyboard steering assist (Forza style) caps lock so a held key rides ~92% of the grip circle instead
+   // of scrubbing; self-aligning torque naturally assists steering toward the slip angle.
+   const wheelbase=2.6,assistLock=abs>4?latGrip*.92*wheelbase/(abs*abs):1,maxLock=Math.min(.52,hb&&car.drift>.15?.46/(1+abs/60):assistLock)*(.85+.15*s.handling),target=steer*Math.max(.5,Math.min(1.3,Number(input.steeringScale)||1))*maxLock*(speed<-1?-1:1);
+   const alignTorque=(abs>4&&steer===0&&Math.abs(car.slip)>.02)?clamp(-car.slip*.35,-maxLock,maxLock)*(1-.3*car.drift):0;
+   car.steer+=(target+alignTorque-car.steer)*Math.min(1,dt*(5.5+abs*.05)*(.7+.3*s.handling));
+   const kin=abs>.5?car.steer*speed/wheelbase:0;let latNeeded=Math.abs(speed*kin),gripFactor=latNeeded>latGrip?latGrip/latNeeded:1;
+   let yawRate=kin*gripFactor;
+   // Trail braking: forward weight transfer under braking gives sharper turn-in rotation
+   if(brakeIn&&abs>6&&Math.abs(steer)>.05)yawRate+=steer*(-weightTransferLong)*.35*(.8+.2*s.handling);
+   // Drivetrain-specific throttle dynamics: RWD power oversteer when breaking traction, FWD lift-off oversteer
+   if(s.drivetrain==='RWD'&&gas>.5&&car.wheelSlip>.15&&abs>4)yawRate+=car.steer*(.35+s.drift*.35)*car.wheelSlip*Math.sign(speed);
+   else if(s.drivetrain==='FWD'&&gas>.5&&abs>12)yawRate*=(1-.15*gas);
+   else if(s.drivetrain==='FWD'&&!gas&&car.lastGas&&abs>10&&Math.abs(steer)>.1)yawRate+=steer*.2*Math.sign(speed);
+   if(hb&&car.drift>.1&&abs>4)yawRate+=car.steer*(.7+s.drift)*car.drift*Math.sign(speed);// rear steps out under the handbrake
+   car.heading+=yawRate*dt;
+   // Momentum: side velocity relaxes toward the heading through tire force (saturating). Drift keeps momentum.
+   const stiff=(11-9*car.drift)*(1-.35*s.drift+.35)*surfaceGrip;const driftYaw=yawRate*car.drift*dt,longitudinal=speed*Math.cos(driftYaw)+car.side*Math.sin(driftYaw);car.side=car.side*Math.cos(driftYaw)-speed*Math.sin(driftYaw);car.side+=(latNeeded>latGrip?(latNeeded-latGrip)*Math.sign(-kin)*.55*(1-car.drift):0)*dt;
+   const tireAccel=clamp(-car.side*stiff,-latGrip,latGrip);car.side+=tireAccel*dt;car.side*=1-Math.min(1,dt*.4);car.side=clamp(car.side,-abs*.85,abs*.85);
+   car.slip=Math.atan2(car.side,Math.max(4,abs));car.accelLat=speed*yawRate+tireAccel*.35;
+   // Longitudinal: engine, traction limit (friction circle), ABS braking that cannot also turn at the limit.
+   const drive={AWD:1,RWD:.78,FWD:.66}[s.drivetrain]||.8,ratio=abs/cap,engine=44*s.power/massFactor*Math.max(0,1-ratio*ratio*ratio*.85)+(car.hyper?90:car.boost?55:0);
+   const circle=Math.sqrt(Math.max(0,latGrip*latGrip-car.accelLat*car.accelLat*.6)),traction=latGrip*1.05*drive*(s.drivetrain==='FWD'?1:1+.3*Math.min(1,abs/30))*(.55+.45*surfaceGrip);
+   const wantAccel=gas*engine,accelUsed=Math.min(wantAccel,Math.max(traction,circle*drive));car.wheelSlip=wantAccel>accelUsed+2&&abs<45?Math.min(1,(wantAccel-accelUsed)/20):0;
+   const brakeMax=52*s.brake*(.85+.15*surfaceGrip),brakeUsed=brakeIn*(speed>.5?Math.min(brakeMax,Math.max(circle*1.35,brakeMax*.35)):(speed<-.5?brakeMax*.6:0));
+   const reverseWant=brakeIn&&speed<=.5&&!gas?-14:0;car.reverse=speed<-.5;
+   const dragAccel=(s.drag*.0024+surfaceDrag*.02)*abs*abs*Math.sign(speed)+(abs>.5?2.2*Math.sign(speed):0)+(hb?abs*.22*Math.sign(speed):0);
+   const slope=-f.tangent.y*GRAVITY*Math.cos(car.heading);
+   let accel=accelUsed-brakeUsed*Math.sign(speed||1)-dragAccel+slope+reverseWant-Math.abs(car.side)*.45*Math.sign(speed||1);
+   car.speed=clamp(longitudinal+accel*dt,-14,cap);if(brakeIn&&!gas&&Math.abs(car.speed)<.6&&Math.abs(speed)<.6&&!reverseWant)car.speed=0;
+   car.throttle=gas;car.brake=brakeIn?1:0;car.accelLong=(car.speed-speed)/Math.max(dt,1e-4);
+   car.brakeHeat=clamp(car.brakeHeat+(brakeUsed*abs*.00045-.35*(1+abs*.01))*dt,0,1);
+   // Fake gearbox for HUD/audio-less feedback and lift-off backfires.
+   gearbox(car,s,cap,gas,dt);
+   // Advance along the road; lateral uses the side velocity.
+   const forwardStep=Math.cos(car.heading)*car.speed*dt,lateralStep=Math.sin(car.heading)*car.speed*dt+car.side*Math.cos(car.heading)*dt;
+   car.lateral+=lateralStep;car.pathDistance+=forwardStep-car.side*Math.sin(car.heading)*dt;
+   if(track.open)car.pathDistance=clamp(car.pathDistance,track.startDistance,track.endDistance-.01);
+   const next=surface(track,car.pathDistance);
+   car.heading+=Math.atan2(dot(f.tangent,next.right),dot(f.tangent,next.tangent));car.heading=Math.atan2(Math.sin(car.heading),Math.cos(car.heading));
+   // Counter-steer recovery: the body yaws back toward the velocity direction unless the handbrake holds the drift.
+   if(!hb)car.heading+=car.slip*Math.min(1,dt*(car.drift>.001?(counter?6:4.8):2.4));
   // Armco at the rail line: bounce, scrub speed, spark timer.
   const rail=track.width/2+RAIL;
   if(Math.abs(car.lateral)>rail){car.lateral=clamp(car.lateral,-rail,rail);car.speed*=.88;car.heading*=.5;car.side=-car.side*.3;car.railHit=.45;}

@@ -220,9 +220,11 @@
      const curb=gen3&&p.curb,gravel=gen3&&p.gravel&&p.gravel===side;
      strip(i,side*half,side*(half+1.6),curb?(i%2?'#c2382d':'#e8e6dc'):theme.grass,curb?-.02:.03);
      strip(i,side*(half+1.6),side*(half+2.6),gravel?'#b9ad8f':theme.grass,gravel?.02:.05);
-     // Embankment down to the terrain plane so the raised road never floats.
-     const q=points[(i+1)%n],np=normals[i],nq=normals[(i+1)%n],inner=side*(half+2.6),outer=side*(half+11);
-     const v=at(p,i,inner,.05),w=at(q,(i+1)%n,inner,.05),u=[p.x+np.x*outer,-.08,p.z+np.z*outer],t=[q.x+nq.x*outer,-.08,q.z+nq.z*outer];triangle(v,w,u,theme.ground);triangle(u,w,t,theme.ground);
+      // Embankment down to the terrain plane so the raised road never floats.
+      const q=points[(i+1)%n],np=normals[i],nq=normals[(i+1)%n],inner=side*(half+2.6);
+      const shoulderP=half+2.6+(gen3?Math.max(8.4,(p.y-2.4)*1.5):8.4),outer=side*shoulderP;
+      const shoulderQ=half+2.6+(gen3?Math.max(8.4,(q.y-2.4)*1.5):8.4),outerQ=side*shoulderQ;
+      const v=at(p,i,inner,.05),w=at(q,(i+1)%n,inner,.05),u=[p.x+np.x*outer,-.08,p.z+np.z*outer],t=[q.x+nq.x*outerQ,-.08,q.z+nq.z*outerQ];triangle(v,w,u,theme.ground);triangle(u,w,t,theme.ground);
     }
     if(p.boost){for(const x of [-half*.55,0,half*.55])strip(i,x-.45,x+.45,i%2?(p.hyper?'#f0c24a':'#e2b854'):'#4b463a',-.018);}
     if(!gen3){const seg=track.segments[i];for(const edge of [-half-3,half+3]){const q=seg.q,p1=at(seg.p,i,edge,-.5),p2=at(q,(i+1)%n,edge,-.5),p3=[p1[0],p1[1]+.26,p1[2]],p4=[p2[0],p2[1]+.26,p2[2]];triangle(p1,p2,p3,'#aeb4b0');triangle(p3,p2,p4,'#aeb4b0');}}

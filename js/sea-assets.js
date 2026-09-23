@@ -11,10 +11,24 @@ window.loadSeaAssets=function(){return assets??=Promise.all([
 window.loadRacingAssets=function(){return racing??=script('js/race-models.js?v=apex-organic-8').catch(e=>{racing=null;throw e;});};
 function start(){if(!login||login.classList.contains('hidden')||document.hidden)return;if(!title)title=window.loadRacingAssets().then(()=>{if(login.classList.contains('hidden')){title=null;window.gameRace?.preload();return;}return script('js/race-title.js?v=league-5');}).catch(()=>{title=null;});}
 window.titleBg={start};
+const idle=fn=>(window.requestIdleCallback?window.requestIdleCallback(fn,{timeout:2500}):setTimeout(fn,120));
+let warmed2D=false;
+function onGameEnter(){
+ if(!login||!login.classList.contains('hidden')||warmed2D)return;
+ warmed2D=true;
+ idle(()=>{
+  window.loadSeaAssets?.().then(()=>{
+   window.SeaGL?.warmup?.();
+  }).catch(()=>{});
+  window.LakeGL?.warmup?.();
+  window.DungeonGL?.warmup?.();
+  window.Activity3D?.warmup?.();
+ });
+}
 // Give HTML, form handlers and the lightweight backdrop a chance to paint first.
 requestAnimationFrame(()=>requestAnimationFrame(()=>{
  start();
 }));
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)start();});
-new MutationObserver(start).observe(login,{attributes:true,attributeFilter:['class']});
+if(login)new MutationObserver(()=>{start();onGameEnter();}).observe(login,{attributes:true,attributeFilter:['class']});
 })();

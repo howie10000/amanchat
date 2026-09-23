@@ -47,6 +47,12 @@
       draw(cv,'cards',{cards,elements});source.style.display='none';cache.set(id,{source,sig});
     }
   }
+  function warmup(){
+    try{
+      if(!renderer){renderer=new THREE.WebGLRenderer({antialias:true});renderer.outputEncoding=THREE.sRGBEncoding;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.8;scene=new THREE.Scene();scene.background=new THREE.Color('#122132');scene.add(new THREE.HemisphereLight(0xdcefff,0x363226,2));const l=new THREE.DirectionalLight(0xffdfaa,2);l.position.set(-3,10,5);scene.add(l);camera=new THREE.PerspectiveCamera(58,1,.05,100);}
+      return true;
+    }catch(e){return false;}
+  }
   setInterval(boards,120);
-  window.Activity3D={draw};
+  window.Activity3D={draw,warmup};
 })();

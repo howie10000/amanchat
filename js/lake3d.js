@@ -769,8 +769,16 @@
     return glCanvas;
   }
 
+  function warmup() {
+    if (dead || renderer) return !dead;
+    if (!init()) return false;
+    if (renderer.compile) renderer.compile(scene, camera);
+    return true;
+  }
+
   window.LakeGL = {
     render,
+    warmup,
     available: () => !dead,
     // The 2D layer asks for this so the water it paints behind the GL pass
     // (and the fallback bands) agree on colour at every point of the storm.

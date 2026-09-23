@@ -2246,5 +2246,11 @@
     builder(root,shell,body,trim,accent||'#ffc976');
     root.userData.ownedMaterials=[body,trim];return root;
   }
-  window.DungeonGL = { render, createModel, available: () => !dead };
+  function warmup() {
+    if (dead || renderer) return !dead;
+    if (!init()) return false;
+    if (renderer.compile) renderer.compile(scene, camera);
+    return true;
+  }
+  window.DungeonGL = { render, createModel, warmup, available: () => !dead };
 })();

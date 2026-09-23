@@ -574,10 +574,26 @@ for(const e of v.entities){if(inCave||e.kind!=='island'&&e.hp<=0&&!e.wreck)conti
 
  if(v.onFoot){const e=v.entities.find(e=>e.id===v.onFoot);if(e){if(e.fort&&!inCave){const f=e.fort,p=project(f.x,f.height*U+11,f.y);if(p){ctx.fillStyle='#ffc8a0';ctx.fillText(f.name+' · '+e.chests.filter(c=>c.fort&&!c.taken).length+' sealed chests',p.x,p.y);}}for(const guard of e.guards.filter(g=>g.hp>0&&(g.cave||null)===(v.me?.cave||null)&&g.attack&&serverTime<g.attack.impact)){if(guard.attack.type==='gun'){const a=project(guard.x,DARK_SEA.terrainHeight(e,guard.x,guard.y,guard.cave)*U+1.7,guard.y),b=project(guard.attack.target.x,DARK_SEA.terrainHeight(e,guard.attack.target.x,guard.attack.target.y,guard.cave)*U+1.7,guard.attack.target.y);if(a&&b){ctx.strokeStyle='#ff7962';ctx.lineWidth=2;ctx.setLineDash([7,7]);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#ffd69f';ctx.fillText('MUSKET · MOVE!',a.x,a.y-14);}continue;}ctx.beginPath();for(let i=0;i<=40;i++){const a=i/40*Math.PI*2,x=guard.attack.target.x+Math.cos(a)*43,y=guard.attack.target.y+Math.sin(a)*43,p=project(x,DARK_SEA.terrainHeight(e,x,y,v.me?.cave)*U+.3,y);if(p){i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);}}ctx.closePath();ctx.fillStyle='rgba(255,62,56,.22)';ctx.strokeStyle='#ff9b73';ctx.fill();ctx.stroke();}for(const c of DARK_SEA.treasureCaches(e).filter(c=>!c.taken&&(c.cave||null)===(v.me?.cave||null)).sort((a,b)=>Math.hypot(a.x-v.x,a.y-v.y)-Math.hypot(b.x-v.x,b.y-v.y)).slice(0,3)){if(Math.hypot(c.x-v.x,c.y-v.y)>650)continue;const p=project(c.x,DARK_SEA.terrainHeight(e,c.x,c.y,c.cave)*U+3,c.y);if(p){ctx.fillStyle='#f5da93';ctx.fillText('SEALED CHEST [F]',p.x,p.y);}}for(const c of e.caves||[]){if(v.me?.cave&&v.me.cave!==c.id)continue;const p=project(c.x,DARK_SEA.terrainHeight(e,c.x,c.y,v.me?.cave)*U+5,c.y);if(p&&Math.hypot(c.x-v.x,c.y-v.y)<700){ctx.fillStyle='#8cdcd6';ctx.fillText(v.me?.cave?'EXIT CAVE [F]':'EXPLORE CAVE [F]',p.x,p.y);}}}}
  if(v.me?.weapon==='gun'&&v.me.role==='crew'){const a=yaw+Math.PI,ex=v.x+Math.cos(a)*150,ey=v.y+Math.sin(a)*150,e=v.entities.find(e=>e.id===v.onFoot),p=project(ex,e?DARK_SEA.terrainHeight(e,ex,ey,v.me.cave)*U+1.7:3,ey);if(p){ctx.strokeStyle='#ffe2aa';ctx.lineWidth=2;ctx.beginPath();ctx.arc(p.x,p.y,8,0,Math.PI*2);ctx.stroke();}}
- if(gunner){ctx.strokeStyle='#ffe8ab';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(w/2,h/2,12,0,Math.PI*2);ctx.moveTo(w/2-24,h/2);ctx.lineTo(w/2+24,h/2);ctx.moveTo(w/2,h/2-24);ctx.lineTo(w/2,h/2+24);ctx.stroke();for(let i=1;i<5;i++){ctx.beginPath();ctx.moveTo(w/2-5,h/2+i*24);ctx.lineTo(w/2+5,h/2+i*24);ctx.stroke();}ctx.fillStyle='rgba(3,15,22,.88)';ctx.fillRect(w/2-250,h-90,500,64);ctx.fillStyle='#f5dc9f';ctx.font='16px Georgia';ctx.fillText(v.me.role.toUpperCase()+' CANNON · '+Math.round(cannonAim.elevation*180/Math.PI)+'° elevation',w/2,h-64);ctx.font='12px system-ui';const reload=v.cannonReload?.[v.me.cannon]||0;ctx.fillText((reload>0?'RELOADING '+(reload/1000).toFixed(1)+'s':'READY — click / Space to fire')+' · Hold right mouse / arrows to aim · F leave',w/2,h-42);}
- ctx.restore();if(v.cinematic){ctx.fillStyle='#000';ctx.fillRect(0,0,w,h*.095);ctx.fillRect(0,h*.905,w,h*.095);}return true;}
+  if(gunner){ctx.strokeStyle='#ffe8ab';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(w/2,h/2,12,0,Math.PI*2);ctx.moveTo(w/2-24,h/2);ctx.lineTo(w/2+24,h/2);ctx.moveTo(w/2,h/2-24);ctx.lineTo(w/2,h/2+24);ctx.stroke();for(let i=1;i<5;i++){ctx.beginPath();ctx.moveTo(w/2-5,h/2+i*24);ctx.lineTo(w/2+5,h/2+i*24);ctx.stroke();}ctx.fillStyle='rgba(3,15,22,.88)';ctx.fillRect(w/2-250,h-90,500,64);ctx.fillStyle='#f5dc9f';ctx.font='16px Georgia';ctx.fillText(v.me.role.toUpperCase()+' CANNON · '+Math.round(cannonAim.elevation*180/Math.PI)+'° elevation',w/2,h-64);ctx.font='12px system-ui';const reload=v.cannonReload?.[v.me.cannon]||0;ctx.fillText((reload>0?'RELOADING '+(reload/1000).toFixed(1)+'s':'READY — click / Space to fire')+' · Hold right mouse / arrows to aim · F leave',w/2,h-42);}
+  ctx.restore();if(v.cinematic){ctx.fillStyle='#000';ctx.fillRect(0,0,w,h*.095);ctx.fillRect(0,h*.905,w,h*.095);}return true;}
+function warmup(){
+ if(renderer||failed)return !!renderer;
+ try{
+  if(!initialize())return false;
+  if(!hero){
+   hero=boat('brig',false,false);
+   scene.add(hero);
+   shipType='brig';
+  }
+  if(renderer.compile)renderer.compile(scene,camera);
+  return true;
+ }catch(e){
+  console.warn('SeaGL warmup unavailable',e);
+  return false;
+ }
+}
 
-window.SeaGL={titleModels,metrics:()=>({frames:renderedFrames,renderScale,geometries:renderer?.info?.memory?.geometries||0,drawCalls:renderer?.info?.render?.calls||0}),draw,reset,lockLook,freeMouse,toggleMouse,look,isMouseFree:()=>mouseFreed,getMortarAim:()=>mortarAim,getYaw:()=>yaw,getCannonAim:()=>cannonAim,createShip:boat};
+window.SeaGL={titleModels,metrics:()=>({frames:renderedFrames,renderScale,geometries:renderer?.info?.memory?.geometries||0,drawCalls:renderer?.info?.render?.calls||0}),draw,reset,lockLook,freeMouse,toggleMouse,look,isMouseFree:()=>mouseFreed,getMortarAim:()=>mortarAim,getYaw:()=>yaw,getCannonAim:()=>cannonAim,createShip:boat,warmup};
 
 })();
 
