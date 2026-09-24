@@ -41,7 +41,7 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
 (async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'guildtest-'));
     const srv = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
-        env: Object.assign({}, process.env, { PORT: String(PORT), DB_PATH: path.join(dir, 'test.db'), NODE_PATH: path.join(MODS, 'node_modules'), OWNERS: 'gboss' }),
+        env: Object.assign({}, process.env, { PORT: String(PORT), DB_PATH: path.join(dir, 'test.db'), NODE_PATH: path.join(MODS, 'node_modules'), OWNERS: 'gboss', RAID_TEST_VEST_MS: '4000' }),
         stdio: ['ignore', 'pipe', 'pipe'],
     });
     let srvOut = '';
@@ -101,6 +101,14 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
     assert(r.ok, 'the Master can promote to officer');
     await master.rpc('guild', { action: 'invite', user: 'gmember' });
     await member.rpc('guild', { action: 'accept', guild: gid });
+    // Alt funnel guard: a member who just joined cannot deposit to the vault
+    // until the tenure (24h live; 4s under RAID_TEST_VEST_MS here) has passed.
+    r = await tryRpc(member, 'guild', { action: 'vault_deposit', mat: 'dust', n: 1 });
+    assert(!r.ok && /after [0-9]+h in the guild/.test(r.err || ''), 'a member who joined moments ago cannot deposit to the vault yet: ' + (r.err || ''));
+    // ...but the Guild Master (who founded the guild moments ago) is exempt.
+    await boss.rpc('put', { path: 'users/gmaster/mats', value: { dust: 5 } });
+    r = await tryRpc(master, 'guild', { action: 'vault_deposit', mat: 'dust', n: 1 });
+    assert(r.ok && r.data.vault.dust === 1 && r.data.mats.dust === 4, 'the Guild Master can deposit to the vault straight away: ' + (r.err || ''));
     r = await tryRpc(member, 'guild', { action: 'kick', user: 'gofficer' });
     assert(!r.ok, 'a member cannot kick');
     r = await tryRpc(officer, 'guild', { action: 'kick', user: 'gmaster' });
@@ -210,6 +218,15 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
 
     r = await tryRpc(master, 'guild_dungeon', { action: 'party_start' });
     assert(r.ok && r.data.members.includes('gmaster') && r.data.members.includes('gmember'), 'starting takes everyone in the lobby into the run');
+    const gRunId = r.ok ? r.data.runId : null;
+    // Hits and kills need the swinger standing in the run, within the leash of
+    // the target's spawn (a floored plan is small: its middle covers it all).
+    const stand = async (who) => {
+      const st = await who.rpc('guild_dungeon', { action: 'floor_state' });
+      const es = (st.state && st.state.plan && st.state.plan.enemies) || [];
+      const x = es.length ? es.reduce((s, e) => s + e.x, 0) / es.length : 0, y = es.length ? es.reduce((s, e) => s + e.y, 0) / es.length : 0;
+      await who.rpc('presence', { data: { area: 'dungeon', run: gRunId, x, y, dfloor: st.state ? st.state.floor : 0 } });
+    };
     assert(r.ok && r.data.run === undefined || true, 'start returns the run handle');
     assert(r.ok && r.data.state && r.data.state.floor === 0, 'a fresh run starts on floor 0');
     assert(r.ok && r.data.state.plan && r.data.state.plan.maze.length === 4, 'the server hands out the floor plan');
@@ -224,6 +241,11 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
     assert(JSON.stringify(mState.state.plan) === JSON.stringify(bState.state.plan), 'every member is handed a byte-identical floor plan');
     assert(mState.state.enemies.length === bState.state.enemies.length, 'and the same enemy roster');
 
+    // No position in the run: the swing is refused, not landed from afar.
+    r = await tryRpc(master, 'guild_dungeon', { action: 'enemy_hit', enemies: [mState.state.enemies[0].id], weapon: 'sword' });
+    assert(r.ok && !r.data.changed.length && r.data.refused.some(x => x.why === 'no position'), 'a swing from a player with no position in the run is refused');
+    await sleep(ECON.DUNGEON_HIT_MIN_MS.sword + 10);
+    await stand(master);
     // An enemy killed by one member is dead for the other.
     const victim = mState.state.enemies[0].id;
     for (let i = 0; i < 40; i++) {
@@ -268,6 +290,7 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
         const st = await who.rpc('guild_dungeon', { action: 'floor_state' });
         const alive = st.state.enemies.filter(e => e.hp > 0).map(e => e.id);
         if (!alive.length) return true;
+        if (guard % 20 === 0) await stand(who);
         await tryRpc(who, 'guild_dungeon', { action: 'enemy_hit', enemies: alive.slice(0, ECON.DUNGEON_HIT_MAX_TARGETS), weapon: 'sword' });
         await sleep(ECON.DUNGEON_HIT_MIN_MS.sword + 8);
       }
@@ -352,6 +375,11 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
     assert(r.ok && r.data.gross === expectGross && r.data.tithe === expectTithe,
       `clearing pays ${expectGross} with a ${ECON.GUILD_DUNGEON_CUT * 100}% tithe (got ${r.ok ? r.data.gross + '/' + r.data.tithe : r.err})`);
     assert(r.ok && r.data.miniPurse === miniDef.reward, "the mini's bounty is folded into the purse, not paid on the spot");
+    // The single-guild fixture: byte-identical to the pre-Arcane-Depths math
+    // (only the master landed boss hits, so the purse splits one way).
+    assert(r.ok && r.data.gained === Math.floor((expectGross - expectTithe) / 1) && r.data.settlement && r.data.settlement.N === 1,
+      `a delve-0 single-guild run pays exactly the legacy share (${r.ok ? r.data.gained : r.err})`);
+    assert(r.ok && r.data.party.gmember && r.data.party.gmember.gross === 0 && !r.data.party.gmember.withheld, 'a member who never hit the boss is still not paid (and not "withheld")');
     assert(r.ok && (await moneyOf(master, 'gmaster')) === moneyBefore + r.data.gained, 'the clearing player is actually paid');
     const gAfter = (await master.rpc('guild', { action: 'status' })).guild;
     assert(gAfter.treasury === treasuryBefore + expectTithe, 'the tithe reaches the guild treasury');
@@ -383,6 +411,88 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
     assert(r.ok && r.data.skills.fishing === 1 && r.data.skillPoints === 0, 'the Master invests a point into a mastery track');
     r = await tryRpc(master, 'mastery', {});
     assert(r.ok && Math.abs(r.data.xpMult.fishing - (1 + ECON.GUILD_SKILL_XP_PER_RANK)) < 1e-9, 'the invested rank raises that track\'s XP multiplier');
+
+    console.log('the arcane depths: delve, locks, records, guild progression');
+    {
+        let info = await master.rpc('guild_dungeon', { action: 'depths_info' });
+        const crypt = info.tiers.find(t => t.key === 'guild_crypt');
+        assert(crypt && crypt.clears === 1 && crypt.delveUnlocked >= 1 && crypt.maxDelve === crypt.delveUnlocked, `a timed clear unlocks delve on that tier (unlocked ${crypt && crypt.delveUnlocked})`);
+        r = await tryRpc(master, 'guild_dungeon', { action: 'party_create', tier: 'guild_crypt', delve: crypt.delveUnlocked + 1 });
+        assert(!r.ok && /not unlocked that depth/.test(r.err), 'a deeper delve than unlocked is refused');
+        r = await tryRpc(master, 'guild_dungeon', { action: 'party_create', tier: 'guild_crypt', delve: crypt.delveUnlocked });
+        assert(r.ok && r.data.party.delve === crypt.delveUnlocked && r.data.party.maxDelve === crypt.delveUnlocked, 'the unlocked delve can be chosen; the lobby shows it');
+        await master.rpc('guild_dungeon', { action: 'party_leave' });
+        const arch = info.tiers.find(t => t.key === 'guild_archive');
+        assert(arch && !arch.unlocked && /Ashen Roost/.test(arch.lockedWhy), 'the Starlit Archive is locked until the Roost is cleared, and says so');
+        r = await tryRpc(master, 'guild_dungeon', { action: 'party_create', tier: 'guild_archive' });
+        assert(!r.ok && /sealed/.test(r.err), 'a sealed tier cannot be entered');
+        assert(info.tiers.filter(t => t.mode === 'story').length === 7 && info.tiers.some(t => t.key === 'raid_nexus') && info.tiers.some(t => t.key === 'arcane_depths'), 'depths_info lists the 7 story tiers, the raid and the Depths');
+        const rec = await master.rpc('guild_dungeon', { action: 'records', tier: 'guild_crypt' });
+        assert(rec.mine && rec.mine.tiers.guild_crypt.clears === 1 && rec.top.guild_crypt.deep.some(e => e.gid === gid && e.n === 1 && !e.raid), 'records: the guild\'s own tier record and the top board');
+
+        let g = (await master.rpc('guild', { action: 'status' })).guild;
+        assert(g.xp === ECON.GXP.guild_crypt && g.level === 1, `a crypt clear earns ${ECON.GXP.guild_crypt} guild XP`);
+        await boss.rpc('put', { path: 'guilds/' + gid + '/xp', value: 5000 });
+        g = (await master.rpc('guild', { action: 'status' })).guild;
+        const lvl = ECON.guildLevel(5000).level;
+        assert(g.level === lvl && g.researchPoints === ECON.researchPointsEarned(lvl), `levels grant research points idempotently (level ${lvl}: ${g.researchPoints})`);
+        r = await tryRpc(member, 'guild', { action: 'research', node: 'fortune' });
+        assert(!r.ok && /Guild Master/.test(r.err), 'only the Master spends research');
+        await setMoney(master, 'gmaster', 1000000);
+        await master.rpc('guild', { action: 'treasury_deposit', amount: 100000 });
+        const t0 = (await master.rpc('guild', { action: 'status' })).guild.treasury;
+        r = await tryRpc(master, 'guild', { action: 'research', node: 'fortune' });
+        assert(r.ok && r.data.rank === 1 && r.data.guild.research.fortune === 1 && r.data.guild.treasury === t0 - ECON.researchCost('fortune', 1).gold && r.data.guild.researchPoints === g.researchPoints - 1, 'research costs a point and $' + ECON.researchCost('fortune', 1).gold + ' of treasury');
+        // D30: once every skill track is full, leftover skill points become research
+        await boss.rpc('put', { path: 'guilds/' + gid + '/skills', value: { fishing: 4, cooking: 4, farming: 4, combat: 4 } });
+        await boss.rpc('put', { path: 'guilds/' + gid + '/skillPoints', value: 2 });
+        const g2 = (await master.rpc('guild', { action: 'status' })).guild;
+        assert(g2.skillPoints === 0 && g2.researchPoints === r.data.guild.researchPoints + 2, 'leftover skill points convert 1:1 to research');
+
+        // the guild vault and banners
+        await boss.rpc('put', { path: 'users/gmember/mats', value: { shard: 250, ember: 12, dust: 30 } });
+        r = await tryRpc(member, 'guild', { action: 'vault_deposit', mat: 'shard', n: 250 });
+
+        assert(r.ok && r.data.vault.shard === 250 && !(r.data.mats.shard > 0), 'any member can deposit materials');
+        await member.rpc('guild', { action: 'vault_deposit', mat: 'ember', n: 12 });
+        r = await tryRpc(member, 'guild', { action: 'vault_withdraw', mat: 'shard', n: 10, to: 'gmember' });
+        assert(!r.ok && /rank/.test(r.err), 'a member cannot withdraw');
+        r = await tryRpc(officer, 'guild', { action: 'vault_withdraw', mat: 'shard', n: 10, to: 'gmember' });
+        assert(r.ok && r.data.vault.shard === 240, 'an officer withdraws to a member');
+        assert((await member.rpc('forge', { action: 'status' })).mats.shard === 10, 'and it lands in their materials');
+        g = (await master.rpc('guild', { action: 'status' })).guild;
+        const lastLog = g.vlog[g.vlog.length - 1];
+        assert(lastLog && lastLog.by === 'gofficer' && lastLog.kind === 'out' && lastLog.mat === 'shard' && lastLog.n === 10 && lastLog.to === 'gmember' && lastLog.at > 0, 'the vault log records {at, by, kind, mat, n, to}');
+        r = await tryRpc(member, 'guild', { action: 'banner', banner: 'deep' });
+        assert(!r.ok, 'a member cannot raise a banner');
+        r = await tryRpc(officer, 'guild', { action: 'banner', banner: 'deep' });
+        assert(r.ok && r.data.banner.id === 'deep' && r.data.vault.shard === 40 && r.data.vault.ember === 2, 'an officer raises the Banner of the Deep from the vault: ' + (r.err || JSON.stringify(r.data && r.data.vault)));
+        r = await tryRpc(officer, 'guild', { action: 'banner', banner: 'plunder' });
+        assert(!r.ok && /already/.test(r.err), 'one banner at a time: ' + (r.err || 'accepted'));
+
+        // alliances
+        await setMoney(outsider, 'goutsider', 500000);
+        const og = (await outsider.rpc('guild', { action: 'create', name: 'Outer Ring', tag: 'OUT' })).guild.id;
+        r = await tryRpc(member, 'guild', { action: 'ally_request', gid: og });
+        assert(!r.ok && /rank/.test(r.err), 'alliances are officer business');
+        r = await tryRpc(officer, 'guild', { action: 'ally_request', gid: og });
+        assert(r.ok && r.data.guild.allyRequests.some(a => a.gid === og && a.dir === 'out'), 'an officer proposes an alliance');
+        r = await tryRpc(officer, 'guild', { action: 'ally_request', gid: og });
+        assert(!r.ok && /already waiting|Too fast/.test(r.err || ''), 'a standing alliance request cannot be re-sent to spam the other guild: ' + (r.err || 'accepted'));
+        let o = (await outsider.rpc('guild', { action: 'status' })).guild;
+        assert(o.allyRequests.some(a => a.gid === gid && a.dir === 'in' && a.tag), 'the other guild sees it as incoming');
+        r = await tryRpc(outsider, 'guild', { action: 'ally_accept', gid });
+        assert(r.ok && r.data.guild.allies.some(a => a.gid === gid), 'and accepts');
+        g = (await master.rpc('guild', { action: 'status' })).guild;
+        assert(g.allies.some(a => a.gid === og && a.tag === 'OUT') && !g.allyRequests.length, 'alliances are symmetric');
+        r = await tryRpc(officer, 'guild', { action: 'ally_remove', gid: og });
+        o = (await outsider.rpc('guild', { action: 'status' })).guild;
+        assert(r.ok && !o.allies.length, 'and either side can end one');
+        const list = (await outsider.rpc('guild', { action: 'browse' })).guilds;
+        assert(list[0].id === gid && list[0].level === lvl && list.every((x, i) => !i || list[i - 1].xp >= x.xp), 'browse sorts by guild XP and shows the level');
+        const raw = await boss.rpc('get', { path: 'guilds/' + gid });
+        assert(JSON.stringify(raw).length < 4096, `a guild record stays small (${JSON.stringify(raw).length} bytes)`);
+    }
 
     console.log('leaving');
     r = await tryRpc(master, 'guild', { action: 'leave' });

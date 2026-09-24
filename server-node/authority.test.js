@@ -123,6 +123,36 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     assert((await tryRpc(owner, 'patch', { path: 'users/bob', value: { money: 100000 } })).ok, 'owner can still set money');
     assert((await tryRpc(owner, 'patch', { path: 'users/alice', value: { money: 5000 } })).ok, 'owner funds alice');
 
+    console.log('mastery + Arcane Depths record fields (WP-0)');
+    // Combat mastery multiplies server-side boss/enemy damage, so a player must
+    // never be able to write it; the Arcane Depths record fields are protected
+    // up front so the server op that owns them is the only writer.
+    assert((await tryRpc(owner, 'patch', { path: 'users/bob', value: { mastery: { combat: { xp: 500 } } } })).ok, 'staff can set another player\'s mastery');
+    assert(!(await tryRpc(bob, 'put', { path: 'users/bob/mastery', value: { combat: { xp: 1e9 } } })).ok, 'mastery put (field path) rejected');
+    assert(!(await tryRpc(bob, 'patch', { path: 'users/bob/mastery', value: { combat: { xp: 1e9 } } })).ok, 'mastery patch (field path) rejected');
+    assert(!(await tryRpc(bob, 'put', { path: 'users/bob/mastery/combat', value: { xp: 1e9 } })).ok, 'mastery/combat put rejected');
+    assert(!(await tryRpc(bob, 'patch', { path: 'users/bob/mastery/combat', value: { xp: 1e9 } })).ok, 'mastery/combat patch rejected');
+    assert(!(await tryRpc(bob, 'patch', { path: 'users/bob', value: { mastery: { combat: { xp: 1e9 } } } })).ok, 'record patch containing mastery rejected');
+    assert(!(await tryRpc(bob, 'put', { path: 'users/bob', value: { friends: {}, mastery: { combat: { xp: 1e9 } } } })).ok, 'whole-record put containing mastery rejected');
+    for (const f of ['mats', 'gems', 'delve', 'codex', 'overflow', 'depthsBest']) {
+        const v = f === 'overflow' ? [{ id: 'x' }] : { x: 99 };
+        assert(!(await tryRpc(bob, 'put', { path: 'users/bob/' + f, value: v })).ok, `${f} put (field path) rejected`);
+        assert(!(await tryRpc(bob, 'patch', { path: 'users/bob', value: { [f]: v } })).ok, `record patch containing ${f} rejected`);
+    }
+    assert(!(await tryRpc(bob, 'put', { path: 'users/bob/mats/dust', value: 1e6 })).ok, 'a nested material leaf is rejected too');
+    assert((await tryRpc(bob, 'put', { path: 'users/bob', value: { friends: {} } })).ok, 'whole-record put without protected keys still accepted');
+    {
+        const m = await bob.rpc('get', { path: 'users/bob/mastery' });
+        assert(m && m.combat && m.combat.xp === 500, 'the server\'s mastery survives a whole-record put');
+    }
+    assert((await tryRpc(owner, 'put', { path: 'users/bob/mastery/combat', value: { xp: 600 } })).ok, 'staff editing another player\'s mastery still works');
+    assert((await tryRpc(owner, 'put', { path: 'users/bob/mats', value: { dust: 5 } })).ok, 'staff editing another player\'s materials still works');
+    {
+        const m = await bob.rpc('get', { path: 'users/bob/mastery' });
+        const mats = await bob.rpc('get', { path: 'users/bob/mats' });
+        assert(m && m.combat && m.combat.xp === 600 && mats && mats.dust === 5, 'and the staff writes landed');
+    }
+
     console.log('notes / announcements / private user data');
     // notes are local-only now — the server won't take them at all
     assert(!(await tryRpc(bob, 'patch', { path: 'users/bob', value: { notes: 'x'.repeat(5000) } })).ok, 'notes patch rejected (local-only)');
@@ -416,7 +446,10 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
         const hg = await tryRpc(owner, 'casino', { game: 'highlow', action: 'guess', dir: 'higher' });
         if (hg.ok && hg.data.status === 'playing') {
             const bk = await tryRpc(owner, 'casino', { game: 'highlow', action: 'bank' });
-            assert(bk.ok && bk.data.luckBonus === Math.floor(Math.max(0, bk.data.payout - 50) * eff.casinoBonus), 'high/low bank bonus applies to profit above the stake only');
+            // profit above the stake only, capped at one stake of profit (GAMES.luckBonus); none on exempt tables
+            const GM = require('./games.js');
+            const expHL = GM.LUCK_EXEMPT.has('highlow') ? 0 : Math.floor(Math.min(Math.max(0, bk.data.payout - 50), 50) * eff.casinoBonus);
+            assert(bk.ok && bk.data.luckBonus === expHL, 'high/low bank bonus applies to profit above the stake only (capped at one stake)');
         } else assert(true, '(high/low guess lost — bonus check skipped)');
     }
     console.log('casino anti-spam');

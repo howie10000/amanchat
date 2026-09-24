@@ -52,10 +52,16 @@ function shuffle(arr, rand) {
     return arr;
 }
 function intArg(v) { return Number.isInteger(v) ? v : (typeof v === 'string' && /^\d+$/.test(v) ? parseInt(v, 10) : NaN); }
-function validBet(bet, balance, min) {
+// Table limit: no single round may stake more than this (roulette: all chips
+// together; plinko: bet x balls). Keeps a lucky streak from printing money
+// off a nine-figure bankroll (QA-ECONOMY P2).
+const CASINO_MAX_BET = 50000;
+function validBet(bet, balance, min, max) {
     bet = intArg(bet);
     if (!Number.isInteger(bet) || bet < 1) throw new Error('Enter a bet.');
     if (min && bet < min) throw new Error(`Minimum bet is $${min}.`);
+    const cap = max == null ? CASINO_MAX_BET : max;
+    if (bet > cap) throw new Error(`The table limit is $${cap.toLocaleString('en-US')}.`);
     if (bet > balance) throw new Error('Not enough money.');
     return bet;
 }
@@ -182,6 +188,7 @@ function rouletteSpin(bets, balance, rand) {
         total += amount;
         return { type, value, amount };
     });
+    if (total > CASINO_MAX_BET) throw new Error(`The table limit is $${CASINO_MAX_BET.toLocaleString('en-US')} per spin.`);
     if (total > balance) throw new Error('Not enough money.');
     const number = Math.floor(rand() * 37);
     const color = numColor(number);
@@ -203,16 +210,18 @@ function rouletteSpin(bets, balance, rand) {
 }
 
 // =====================================================================
-// DICE
+// DICE — over/under pays 1.95x (a 7 pushes): 97.9% RTP. At an even 2x it
+// was exactly break-even, so any luck bonus made it +EV (QA-ECONOMY P2).
 // =====================================================================
+const DICE_OU_MULT = 1.95;
 function diceRoll(bet, call, rand) {
     if (!['over', 'under', 'seven'].includes(call)) throw new Error('Bad call.');
     const a = 1 + Math.floor(rand() * 6), b = 1 + Math.floor(rand() * 6);
     const total = a + b;
     let payout = 0, push = false;
     if (call === 'seven') { if (total === 7) payout = bet * 4; }
-    else if (call === 'under') { if (total < 7) payout = bet * 2; else if (total === 7) { payout = bet; push = true; } }
-    else { if (total > 7) payout = bet * 2; else if (total === 7) { payout = bet; push = true; } }
+    else if (call === 'under') { if (total < 7) payout = Math.floor(bet * DICE_OU_MULT); else if (total === 7) { payout = bet; push = true; } }
+    else { if (total > 7) payout = Math.floor(bet * DICE_OU_MULT); else if (total === 7) { payout = bet; push = true; } }
     return { dice: [a, b], total, win: payout > bet, push, payout };
 }
 
@@ -777,7 +786,7 @@ function play(user, game, action, args, balance, now, rand) {
             if (action !== 'drop') throw new Error('Unknown action.');
             const balls = args.balls == null ? 1 : intArg(args.balls);
             if (!Number.isInteger(balls) || balls < 1 || balls > PLINKO_MAX_BALLS) throw new Error(`Drop 1-${PLINKO_MAX_BALLS} balls.`);
-            const bet = validBet(args.bet, Math.floor(balance / balls));
+            const bet = validBet(args.bet, Math.floor(balance / balls), 0, Math.floor(CASINO_MAX_BET / balls));
             const r = plinkoDrop(bet, args.risk || 'medium', balls, rand);
             return { delta: r.payout - bet * balls, data: Object.assign(r, { bet, balls }) };
         }
@@ -804,8 +813,33 @@ function play(user, game, action, args, balance, now, rand) {
 
 function clearUser(user) { for (const g of GAMES) rounds.delete(key(user, g)); }
 
+// ---------------------------------------------------------------- LUCK
+// The Luck buff (cooked meals) pays `rate` (ECON.luckEffects().casinoBonus,
+// <= 2%) of a round's net profit, never on more than one stake of profit, so
+// a long-shot hit gets no bigger bonus than an even-money win. Tables whose
+// base edge is already thin (baccarat, blackjack, video poker) and the race
+// book pay no luck bonus: with it they would drop under a 1% house edge.
+// Worst case at Luck 6 is coinflip/roulette-red at ~98.3-98.5% RTP.
+const LUCK_EXEMPT = new Set(['horses', 'baccarat', 'blackjack', 'videopoker']);
+// r = the play() result; before = the round open before this action (multi-step
+// games took the stake then).
+function roundStake(game, r, before) {
+    if (before) return Math.max(0, Math.floor(+before.bet || 0) * (before.balls || 1));
+    const d = (r && r.data) || {};
+    if (game === 'roulette') return Math.max(0, Math.floor(+d.total || 0));
+    return Math.max(0, Math.floor(+d.bet || 0) * (d.balls || 1));
+}
+function luckBonus(game, r, before, rate) {
+    rate = Math.max(0, Math.min(0.02, +rate || 0));
+    if (!rate || LUCK_EXEMPT.has(game) || !r || !(r.delta > 0)) return 0;
+    const stakeTaken = before ? roundStake(game, r, before) : 0;          // already deducted at round start
+    const net = Math.max(0, r.delta - stakeTaken);                          // profit above the stake
+    const stake = roundStake(game, r, before);
+    return Math.floor(Math.min(net, stake > 0 ? stake : net) * rate);
+}
+
 module.exports = {
-    play, rounds, getRound, clearUser, GAMES,
+    play, rounds, getRound, clearUser, GAMES, CASINO_MAX_BET, DICE_OU_MULT, LUCK_EXEMPT, luckBonus, roundStake,
     // tables (for tests / inspection)
     SLOT_SYMBOLS, JACKPOT_SYMBOLS, JACKPOT_FULLBOARD_MULT, SLOT_LINES, SLOTS_MIN_BET, JACKPOT_MIN_BET, SCRATCH_PRIZES, KENO_PAYTABLES,
     PLINKO_RISKS, VP_PAYTABLE, HORSES, WHEEL_WEDGES, HL_MULT, MINES_GRID,

@@ -28,14 +28,17 @@
   if(on){if(typeof keys!=='undefined')keys[k]=true;padKeys.add(k);}
   else if(padKeys.has(k)){if(typeof keys!=='undefined')keys[k]=false;padKeys.delete(k);}
  }
- function clearPad(){for(const k of [...padKeys])setPad(k,false);hold.attack=hold.boost=hold.block=false;}
+ function clearPad(){for(const k of [...padKeys])setPad(k,false);hold.attack=hold.boost=hold.block=hold.use=false;}
 
  function syncKeys(){
   if(!playing()||typing()||menuOpen()){clearPad();return;}
   const m=sticks.move,dead=DEAD;
   setPad('w',m.y<-dead);setPad('s',m.y>dead);setPad('a',m.x<-dead);setPad('d',m.x>dead);
   setPad('shift',!!hold.boost);setPad('alt',!!hold.block);
+  // In a dungeon Use is held like E (features, hold-to-revive); elsewhere it is a tap.
+  setPad('e',inDungeon()&&!!hold.use);
  }
+ function inDungeon(){return typeof state!=='undefined'&&state.area==='dungeon';}
 
  function aimLook(dt){
   if(!playing()||typing()||menuOpen())return;
@@ -56,8 +59,23 @@
   else if(typeof attackAtCursor==='function')attackAtCursor();
  }
 
+ // Portrait squeezes the 16:10 stage into a thin band (QA UX-1): suggest turning
+ // the phone, once per session, and never over a menu.
+ let rotateEl=null,rotateDismissed=false;
+ function rotateHint(){
+  const want=!rotateDismissed&&playing()&&window.innerHeight>window.innerWidth*1.15;
+  if(!want){if(rotateEl)rotateEl.hidden=true;return;}
+  if(!rotateEl){
+   rotateEl=document.createElement('div');rotateEl.className='adRotate';rotateEl.setAttribute('role','status');
+   rotateEl.innerHTML='<i aria-hidden="true">📱</i><span>Turn your phone sideways — the Depths are wider than they are tall.</span><button type="button" aria-label="Dismiss">✕</button>';
+   rotateEl.querySelector('button').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();rotateDismissed=true;rotateEl.hidden=true;});
+   document.body.appendChild(rotateEl);
+  }
+  rotateEl.hidden=false;
+ }
  function paint(){
   if(!host)return;
+  rotateHint();
   const show=playing()&&!typing()&&!menuOpen();
   host.hidden=!show;
   host.setAttribute('aria-hidden',String(!show));
@@ -66,6 +84,7 @@
   const cars=host.querySelector('[data-touch="cars"]');if(cars)cars.hidden=sea;
   const boost=host.querySelector('[data-touch="boost"]');if(boost)boost.hidden=!sea;
   const block=host.querySelector('[data-touch="block"]');if(block)block.hidden=!sea;
+  const dash=host.querySelector('[data-touch="dash"]');if(dash){dash.hidden=typeof state==='undefined'||state.area!=='dungeon';dash.classList.toggle('ready',!!window.gameCombat?.dashReady?.());}
   const look=host.querySelector('.touchStick[data-stick="look"]');
   if(look){look.style.opacity=cover?0.35:1;look.style.pointerEvents=cover?'none':'auto';}
  }
@@ -104,6 +123,8 @@
   if(typing()&&action!=='chat')return;
   if(action==='attack')return;
   if(action==='boost'||action==='block')return;
+  // Dungeon dash (Arcane Depths, D21): the touch twin of Shift.
+  if(action==='dash'){window.gameCombat?.dash?.();return;}
   if(action==='use'){if(atSea())window.gameSea?.act?.('interact');else if(typeof tryInteract==='function')tryInteract();return;}
   if(action==='phone'){if(typeof togglePhone==='function')togglePhone();return;}
   if(action==='inv'){if(typeof openInventory==='function')openInventory();return;}
@@ -140,12 +161,13 @@
   host=document.createElement('div');
   host.id='touchPad';
   host.hidden=true;
-  host.innerHTML='<div class="touchStick" data-stick="move" aria-label="Move"><i></i></div><div class="touchStick" data-stick="look" aria-label="Look"><i></i></div><div class="touchBtns"><button type="button" data-touch="attack">Attack</button><button type="button" data-touch="use">Use</button><button type="button" data-touch="boost">Boost</button><button type="button" data-touch="block">Guard</button><button type="button" data-touch="phone">Phone</button><button type="button" data-touch="inv">Items</button><button type="button" data-touch="cars">Cars</button><button type="button" data-touch="chat">Chat</button><button type="button" data-touch="sword">1</button><button type="button" data-touch="gun">2</button></div>';
+  host.innerHTML='<div class="touchStick" data-stick="move" aria-label="Move"><i></i></div><div class="touchStick" data-stick="look" aria-label="Look"><i></i></div><div class="touchBtns"><button type="button" data-touch="attack">Attack</button><button type="button" data-touch="dash">Dash</button><button type="button" data-touch="use">Use</button><button type="button" data-touch="boost">Boost</button><button type="button" data-touch="block">Guard</button><button type="button" data-touch="phone">Phone</button><button type="button" data-touch="inv">Items</button><button type="button" data-touch="cars">Cars</button><button type="button" data-touch="chat">Chat</button><button type="button" data-touch="sword">1</button><button type="button" data-touch="gun">2</button></div>';
   stage.appendChild(host);
   host.querySelectorAll('.touchStick').forEach(el=>bindStick(el,el.dataset.stick));
   host.querySelectorAll('[data-touch]').forEach(b=>{
    const a=b.dataset.touch;
    if(a==='attack'||a==='boost'||a==='block')bindHold(b,a);
+   else if(a==='use'){bindHold(b,'use');b.addEventListener('pointerdown',()=>{if(!inDungeon())tap('use');});}
    else b.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();tap(a);},{passive:false});
   });
   host.addEventListener('contextmenu',e=>e.preventDefault());

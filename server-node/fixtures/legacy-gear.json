@@ -1,0 +1,1199 @@
+{
+ "generated": "2026-09-22 pre-Arcane-Depths makeGear",
+ "items": [
+  {
+   "item": {
+    "id": "fx0",
+    "base": "dragon_sigil",
+    "slot": "ring",
+    "lvl": 7,
+    "rarity": "fine",
+    "roll": 0.995,
+    "stats": {
+     "atk": 62,
+     "def": 16,
+     "vit": 26
+    },
+    "affix": ""
+   },
+   "power": 104,
+   "sell": 1990,
+   "totals": {
+    "atk": 62,
+    "def": 16,
+    "vit": 26
+   },
+   "name": "Dragon Sigil"
+  },
+  {
+   "item": {
+    "id": "fx1",
+    "base": "tin_band",
+    "slot": "ring",
+    "lvl": 1,
+    "rarity": "epic",
+    "roll": 0.954,
+    "stats": {
+     "atk": 6,
+     "def": 5,
+     "vit": 5
+    },
+    "affix": "of the Warden"
+   },
+   "power": 16,
+   "sell": 119,
+   "totals": {
+    "atk": 6,
+    "def": 5,
+    "vit": 5
+   },
+   "name": "Tin Band of the Warden"
+  },
+  {
+   "item": {
+    "id": "fx2",
+    "base": "throne_legs",
+    "slot": "legs",
+    "lvl": 6,
+    "rarity": "mythic",
+    "roll": 1.098,
+    "stats": {
+     "atk": 32,
+     "def": 183,
+     "vit": 54
+    },
+    "affix": "of the Drowned"
+   },
+   "power": 269,
+   "sell": 39528,
+   "totals": {
+    "atk": 32,
+    "def": 183,
+    "vit": 54
+   },
+   "name": "Throneguard Legs of the Drowned"
+  },
+  {
+   "item": {
+    "id": "fx3",
+    "base": "void_loop",
+    "slot": "ring",
+    "lvl": 6,
+    "rarity": "mythic",
+    "roll": 1.141,
+    "stats": {
+     "atk": 140,
+     "def": 70,
+     "vit": 70
+    },
+    "affix": "of the Long Night"
+   },
+   "power": 280,
+   "sell": 41076,
+   "totals": {
+    "atk": 140,
+    "def": 70,
+    "vit": 70
+   },
+   "name": "Void Loop of the Long Night"
+  },
+  {
+   "item": {
+    "id": "fx4",
+    "base": "iron_helm",
+    "slot": "helmet",
+    "lvl": 2,
+    "rarity": "rare",
+    "roll": 0.942,
+    "stats": {
+     "def": 15,
+     "vit": 4
+    },
+    "affix": ""
+   },
+   "power": 19,
+   "sell": 113,
+   "totals": {
+    "atk": 0,
+    "def": 15,
+    "vit": 4
+   },
+   "name": "Iron Helm"
+  },
+  {
+   "item": {
+    "id": "fx5",
+    "base": "ashen_greaves",
+    "slot": "legs",
+    "lvl": 7,
+    "rarity": "mythic",
+    "roll": 1.044,
+    "stats": {
+     "atk": 27,
+     "def": 239,
+     "vit": 75
+    },
+    "affix": "of the Tithe"
+   },
+   "power": 341,
+   "sell": 62640,
+   "totals": {
+    "atk": 27,
+    "def": 239,
+    "vit": 75
+   },
+   "name": "Ashen Greaves of the Tithe"
+  },
+  {
+   "item": {
+    "id": "fx6",
+    "base": "ashen_greaves",
+    "slot": "legs",
+    "lvl": 7,
+    "rarity": "epic",
+    "roll": 0.986,
+    "stats": {
+     "atk": 15,
+     "def": 129,
+     "vit": 41
+    },
+    "affix": "of the Warden"
+   },
+   "power": 185,
+   "sell": 9860,
+   "totals": {
+    "atk": 15,
+    "def": 129,
+    "vit": 41
+   },
+   "name": "Ashen Greaves of the Warden"
+  },
+  {
+   "item": {
+    "id": "fx7",
+    "base": "forge_mask",
+    "slot": "helmet",
+    "lvl": 5,
+    "rarity": "fine",
+    "roll": 1.076,
+    "stats": {
+     "atk": 8,
+     "def": 40,
+     "vit": 12
+    },
+    "affix": ""
+   },
+   "power": 60,
+   "sell": 699,
+   "totals": {
+    "atk": 8,
+    "def": 40,
+    "vit": 12
+   },
+   "name": "Forgemaster's Mask"
+  },
+  {
+   "item": {
+    "id": "fx8",
+    "base": "crypt_fang",
+    "slot": "weapon",
+    "lvl": 4,
+    "rarity": "fine",
+    "roll": 0.87,
+    "stats": {
+     "atk": 30,
+     "vit": 3
+    },
+    "affix": ""
+   },
+   "power": 33,
+   "sell": 261,
+   "totals": {
+    "atk": 30,
+    "def": 0,
+    "vit": 3
+   },
+   "name": "Crypt Fang"
+  },
+  {
+   "item": {
+    "id": "fx9",
+    "base": "iron_greaves",
+    "slot": "legs",
+    "lvl": 2,
+    "rarity": "mythic",
+    "roll": 0.954,
+    "stats": {
+     "def": 36,
+     "vit": 9
+    },
+    "affix": "of the Ember"
+   },
+   "power": 45,
+   "sell": 1574,
+   "totals": {
+    "atk": 0,
+    "def": 36,
+    "vit": 9
+   },
+   "name": "Iron Greaves of the Ember"
+  },
+  {
+   "item": {
+    "id": "fx10",
+    "base": "chipped_sword",
+    "slot": "weapon",
+    "lvl": 1,
+    "rarity": "legendary",
+    "roll": 1.093,
+    "stats": {
+     "atk": 24
+    },
+    "affix": "of the Warden"
+   },
+   "power": 24,
+   "sell": 327,
+   "totals": {
+    "atk": 24,
+    "def": 0,
+    "vit": 0
+   },
+   "name": "Chipped Shortsword of the Warden"
+  },
+  {
+   "item": {
+    "id": "fx11",
+    "base": "dragonscale",
+    "slot": "chest",
+    "lvl": 7,
+    "rarity": "legendary",
+    "roll": 1.131,
+    "stats": {
+     "atk": 28,
+     "def": 198,
+     "vit": 56
+    },
+    "affix": "of the Warden"
+   },
+   "power": 282,
+   "sell": 27144,
+   "totals": {
+    "atk": 28,
+    "def": 198,
+    "vit": 56
+   },
+   "name": "Dragonscale Plate of the Warden"
+  },
+  {
+   "item": {
+    "id": "fx12",
+    "base": "void_carapace",
+    "slot": "chest",
+    "lvl": 6,
+    "rarity": "mythic",
+    "roll": 1.026,
+    "stats": {
+     "def": 187,
+     "vit": 66
+    },
+    "affix": "of the Tithe"
+   },
+   "power": 253,
+   "sell": 36936,
+   "totals": {
+    "atk": 0,
+    "def": 187,
+    "vit": 66
+   },
+   "name": "Void Carapace of the Tithe"
+  },
+  {
+   "item": {
+    "id": "fx13",
+    "base": "bandit_mail",
+    "slot": "chest",
+    "lvl": 3,
+    "rarity": "fine",
+    "roll": 0.929,
+    "stats": {
+     "atk": 2,
+     "def": 17,
+     "vit": 4
+    },
+    "affix": ""
+   },
+   "power": 23,
+   "sell": 120,
+   "totals": {
+    "atk": 2,
+    "def": 17,
+    "vit": 4
+   },
+   "name": "Bandit Mail"
+  },
+  {
+   "item": {
+    "id": "fx14",
+    "base": "ember_cuirass",
+    "slot": "chest",
+    "lvl": 5,
+    "rarity": "legendary",
+    "roll": 0.942,
+    "stats": {
+     "atk": 13,
+     "def": 91,
+     "vit": 23
+    },
+    "affix": "of the Warden"
+   },
+   "power": 127,
+   "sell": 7347,
+   "totals": {
+    "atk": 13,
+    "def": 91,
+    "vit": 23
+   },
+   "name": "Ember Cuirass of the Warden"
+  },
+  {
+   "item": {
+    "id": "fx15",
+    "base": "signet",
+    "slot": "ring",
+    "lvl": 2,
+    "rarity": "rare",
+    "roll": 1.118,
+    "stats": {
+     "atk": 12,
+     "def": 5,
+     "vit": 6
+    },
+    "affix": ""
+   },
+   "power": 23,
+   "sell": 135,
+   "totals": {
+    "atk": 12,
+    "def": 5,
+    "vit": 6
+   },
+   "name": "Bandit Signet"
+  },
+  {
+   "item": {
+    "id": "fx16",
+    "base": "hollow_glaive",
+    "slot": "weapon",
+    "lvl": 6,
+    "rarity": "worn",
+    "roll": 0.906,
+    "stats": {
+     "atk": 38,
+     "def": 6
+    },
+    "affix": ""
+   },
+   "power": 44,
+   "sell": 543,
+   "totals": {
+    "atk": 38,
+    "def": 6,
+    "vit": 0
+   },
+   "name": "Hollow Glaive"
+  },
+  {
+   "item": {
+    "id": "fx17",
+    "base": "throne_legs",
+    "slot": "legs",
+    "lvl": 6,
+    "rarity": "rare",
+    "roll": 1.069,
+    "stats": {
+     "atk": 14,
+     "def": 77,
+     "vit": 23
+    },
+    "affix": ""
+   },
+   "power": 114,
+   "sell": 2822,
+   "totals": {
+    "atk": 14,
+    "def": 77,
+    "vit": 23
+   },
+   "name": "Throneguard Legs"
+  },
+  {
+   "item": {
+    "id": "fx18",
+    "base": "iron_chestplate",
+    "slot": "chest",
+    "lvl": 2,
+    "rarity": "worn",
+    "roll": 0.959,
+    "stats": {
+     "def": 7,
+     "vit": 2
+    },
+    "affix": ""
+   },
+   "power": 9,
+   "sell": 26,
+   "totals": {
+    "atk": 0,
+    "def": 7,
+    "vit": 2
+   },
+   "name": "Iron Chestplate"
+  },
+  {
+   "item": {
+    "id": "fx19",
+    "base": "dragon_sigil",
+    "slot": "ring",
+    "lvl": 7,
+    "rarity": "mythic",
+    "roll": 1.08,
+    "stats": {
+     "atk": 212,
+     "def": 53,
+     "vit": 88
+    },
+    "affix": "of the Hollow"
+   },
+   "power": 353,
+   "sell": 64800,
+   "totals": {
+    "atk": 212,
+    "def": 53,
+    "vit": 88
+   },
+   "name": "Dragon Sigil of the Hollow"
+  },
+  {
+   "item": {
+    "id": "fx20",
+    "base": "chipped_sword",
+    "slot": "weapon",
+    "lvl": 1,
+    "rarity": "epic",
+    "roll": 0.897,
+    "stats": {
+     "atk": 15
+    },
+    "affix": "of the Drowned"
+   },
+   "power": 15,
+   "sell": 112,
+   "totals": {
+    "atk": 15,
+    "def": 0,
+    "vit": 0
+   },
+   "name": "Chipped Shortsword of the Drowned"
+  },
+  {
+   "item": {
+    "id": "fx21",
+    "base": "hollow_glaive",
+    "slot": "weapon",
+    "lvl": 6,
+    "rarity": "legendary",
+    "roll": 1.125,
+    "stats": {
+     "atk": 181,
+     "def": 29
+    },
+    "affix": "of the Hollow"
+   },
+   "power": 210,
+   "sell": 16200,
+   "totals": {
+    "atk": 181,
+    "def": 29,
+    "vit": 0
+   },
+   "name": "Hollow Glaive of the Hollow"
+  },
+  {
+   "item": {
+    "id": "fx22",
+    "base": "throne_legs",
+    "slot": "legs",
+    "lvl": 6,
+    "rarity": "fine",
+    "roll": 1.079,
+    "stats": {
+     "atk": 10,
+     "def": 57,
+     "vit": 17
+    },
+    "affix": ""
+   },
+   "power": 84,
+   "sell": 1294,
+   "totals": {
+    "atk": 10,
+    "def": 57,
+    "vit": 17
+   },
+   "name": "Throneguard Legs"
+  },
+  {
+   "item": {
+    "id": "fx23",
+    "base": "void_loop",
+    "slot": "ring",
+    "lvl": 6,
+    "rarity": "worn",
+    "roll": 1.111,
+    "stats": {
+     "atk": 27,
+     "def": 13,
+     "vit": 13
+    },
+    "affix": ""
+   },
+   "power": 53,
+   "sell": 666,
+   "totals": {
+    "atk": 27,
+    "def": 13,
+    "vit": 13
+   },
+   "name": "Void Loop"
+  },
+  {
+   "item": {
+    "id": "fx24",
+    "base": "void_loop",
+    "slot": "ring",
+    "lvl": 6,
+    "rarity": "epic",
+    "roll": 0.854,
+    "stats": {
+     "atk": 60,
+     "def": 30,
+     "vit": 30
+    },
+    "affix": "of the Long Night"
+   },
+   "power": 120,
+   "sell": 5124,
+   "totals": {
+    "atk": 60,
+    "def": 30,
+    "vit": 30
+   },
+   "name": "Void Loop of the Long Night"
+  },
+  {
+   "item": {
+    "id": "fx25",
+    "base": "tidewalkers",
+    "slot": "legs",
+    "lvl": 4,
+    "rarity": "epic",
+    "roll": 1.031,
+    "stats": {
+     "def": 51,
+     "vit": 20
+    },
+    "affix": "of the Broker"
+   },
+   "power": 71,
+   "sell": 1546,
+   "totals": {
+    "atk": 0,
+    "def": 51,
+    "vit": 20
+   },
+   "name": "Tidewalker Greaves of the Broker"
+  },
+  {
+   "item": {
+    "id": "fx26",
+    "base": "tin_band",
+    "slot": "ring",
+    "lvl": 1,
+    "rarity": "mythic",
+    "roll": 1.114,
+    "stats": {
+     "atk": 13,
+     "def": 9,
+     "vit": 9
+    },
+    "affix": "of the Drowned"
+   },
+   "power": 31,
+   "sell": 835,
+   "totals": {
+    "atk": 13,
+    "def": 9,
+    "vit": 9
+   },
+   "name": "Tin Band of the Drowned"
+  },
+  {
+   "item": {
+    "id": "fx27",
+    "base": "roost_helm",
+    "slot": "helmet",
+    "lvl": 7,
+    "rarity": "fine",
+    "roll": 0.925,
+    "stats": {
+     "atk": 12,
+     "def": 64,
+     "vit": 21
+    },
+    "affix": ""
+   },
+   "power": 97,
+   "sell": 1850,
+   "totals": {
+    "atk": 12,
+    "def": 64,
+    "vit": 21
+   },
+   "name": "Roostwarden Helm"
+  },
+  {
+   "item": {
+    "id": "fx28",
+    "base": "dragon_sigil",
+    "slot": "ring",
+    "lvl": 7,
+    "rarity": "rare",
+    "roll": 0.899,
+    "stats": {
+     "atk": 76,
+     "def": 19,
+     "vit": 32
+    },
+    "affix": ""
+   },
+   "power": 127,
+   "sell": 3955,
+   "totals": {
+    "atk": 76,
+    "def": 19,
+    "vit": 32
+   },
+   "name": "Dragon Sigil"
+  },
+  {
+   "item": {
+    "id": "fx29",
+    "base": "chipped_sword",
+    "slot": "weapon",
+    "lvl": 1,
+    "rarity": "rare",
+    "roll": 0.935,
+    "stats": {
+     "atk": 11
+    },
+    "affix": ""
+   },
+   "power": 11,
+   "sell": 51,
+   "totals": {
+    "atk": 11,
+    "def": 0,
+    "vit": 0
+   },
+   "name": "Chipped Shortsword"
+  },
+  {
+   "item": {
+    "id": "fx30",
+    "base": "padded_vest",
+    "slot": "chest",
+    "lvl": 1,
+    "rarity": "fine",
+    "roll": 1.094,
+    "stats": {
+     "def": 8,
+     "vit": 1
+    },
+    "affix": ""
+   },
+   "power": 9,
+   "sell": 27,
+   "totals": {
+    "atk": 0,
+    "def": 8,
+    "vit": 1
+   },
+   "name": "Padded Vest"
+  },
+  {
+   "item": {
+    "id": "fx31",
+    "base": "forge_mask",
+    "slot": "helmet",
+    "lvl": 5,
+    "rarity": "mythic",
+    "roll": 1.095,
+    "stats": {
+     "atk": 27,
+     "def": 127,
+     "vit": 39
+    },
+    "affix": "of the Long Night"
+   },
+   "power": 193,
+   "sell": 21352,
+   "totals": {
+    "atk": 27,
+    "def": 127,
+    "vit": 39
+   },
+   "name": "Forgemaster's Mask of the Long Night"
+  },
+  {
+   "item": {
+    "id": "fx32",
+    "base": "cloth_leggings",
+    "slot": "legs",
+    "lvl": 1,
+    "rarity": "fine",
+    "roll": 0.86,
+    "stats": {
+     "def": 6,
+     "vit": 2
+    },
+    "affix": ""
+   },
+   "power": 8,
+   "sell": 21,
+   "totals": {
+    "atk": 0,
+    "def": 6,
+    "vit": 2
+   },
+   "name": "Cloth Leggings"
+  },
+  {
+   "item": {
+    "id": "fx33",
+    "base": "dragon_sigil",
+    "slot": "ring",
+    "lvl": 7,
+    "rarity": "worn",
+    "roll": 1.048,
+    "stats": {
+     "atk": 41,
+     "def": 10,
+     "vit": 17
+    },
+    "affix": ""
+   },
+   "power": 68,
+   "sell": 1048,
+   "totals": {
+    "atk": 41,
+    "def": 10,
+    "vit": 17
+   },
+   "name": "Dragon Sigil"
+  },
+  {
+   "item": {
+    "id": "fx34",
+    "base": "void_loop",
+    "slot": "ring",
+    "lvl": 6,
+    "rarity": "legendary",
+    "roll": 0.957,
+    "stats": {
+     "atk": 90,
+     "def": 45,
+     "vit": 45
+    },
+    "affix": "of the Warden"
+   },
+   "power": 180,
+   "sell": 13780,
+   "totals": {
+    "atk": 90,
+    "def": 45,
+    "vit": 45
+   },
+   "name": "Void Loop of the Warden"
+  },
+  {
+   "item": {
+    "id": "fx35",
+    "base": "cloth_leggings",
+    "slot": "legs",
+    "lvl": 1,
+    "rarity": "rare",
+    "roll": 0.85,
+    "stats": {
+     "def": 8,
+     "vit": 3
+    },
+    "affix": ""
+   },
+   "power": 11,
+   "sell": 46,
+   "totals": {
+    "atk": 0,
+    "def": 8,
+    "vit": 3
+   },
+   "name": "Cloth Leggings"
+  },
+  {
+   "item": {
+    "id": "fx36",
+    "base": "iron_greaves",
+    "slot": "legs",
+    "lvl": 2,
+    "rarity": "epic",
+    "roll": 0.871,
+    "stats": {
+     "def": 19,
+     "vit": 5
+    },
+    "affix": "of the Hollow"
+   },
+   "power": 24,
+   "sell": 239,
+   "totals": {
+    "atk": 0,
+    "def": 19,
+    "vit": 5
+   },
+   "name": "Iron Greaves of the Hollow"
+  },
+  {
+   "item": {
+    "id": "fx37",
+    "base": "dragonscale",
+    "slot": "chest",
+    "lvl": 7,
+    "rarity": "fine",
+    "roll": 1.032,
+    "stats": {
+     "atk": 11,
+     "def": 75,
+     "vit": 21
+    },
+    "affix": ""
+   },
+   "power": 107,
+   "sell": 2064,
+   "totals": {
+    "atk": 11,
+    "def": 75,
+    "vit": 21
+   },
+   "name": "Dragonscale Plate"
+  },
+  {
+   "item": {
+    "id": "fx38",
+    "base": "void_loop",
+    "slot": "ring",
+    "lvl": 6,
+    "rarity": "legendary",
+    "roll": 1.097,
+    "stats": {
+     "atk": 103,
+     "def": 51,
+     "vit": 51
+    },
+    "affix": "of the First Floor"
+   },
+   "power": 205,
+   "sell": 15796,
+   "totals": {
+    "atk": 103,
+    "def": 51,
+    "vit": 51
+   },
+   "name": "Void Loop of the First Floor"
+  },
+  {
+   "item": {
+    "id": "fx39",
+    "base": "roost_helm",
+    "slot": "helmet",
+    "lvl": 7,
+    "rarity": "mythic",
+    "roll": 1.109,
+    "stats": {
+     "atk": 44,
+     "def": 240,
+     "vit": 80
+    },
+    "affix": "of Ash"
+   },
+   "power": 364,
+   "sell": 66540,
+   "totals": {
+    "atk": 44,
+    "def": 240,
+    "vit": 80
+   },
+   "name": "Roostwarden Helm of Ash"
+  },
+  {
+   "item": {
+    "id": "fx40",
+    "base": "iron_greaves",
+    "slot": "legs",
+    "lvl": 2,
+    "rarity": "mythic",
+    "roll": 1.105,
+    "stats": {
+     "def": 42,
+     "vit": 10
+    },
+    "affix": "of the Warden"
+   },
+   "power": 52,
+   "sell": 1823,
+   "totals": {
+    "atk": 0,
+    "def": 42,
+    "vit": 10
+   },
+   "name": "Iron Greaves of the Warden"
+  },
+  {
+   "item": {
+    "id": "fx41",
+    "base": "void_loop",
+    "slot": "ring",
+    "lvl": 6,
+    "rarity": "rare",
+    "roll": 1.095,
+    "stats": {
+     "atk": 58,
+     "def": 29,
+     "vit": 29
+    },
+    "affix": ""
+   },
+   "power": 116,
+   "sell": 2890,
+   "totals": {
+    "atk": 58,
+    "def": 29,
+    "vit": 29
+   },
+   "name": "Void Loop"
+  },
+  {
+   "item": {
+    "id": "fx42",
+    "base": "warden_visor",
+    "slot": "helmet",
+    "lvl": 3,
+    "rarity": "rare",
+    "roll": 0.85,
+    "stats": {
+     "atk": 2,
+     "def": 20,
+     "vit": 6
+    },
+    "affix": ""
+   },
+   "power": 28,
+   "sell": 243,
+   "totals": {
+    "atk": 2,
+    "def": 20,
+    "vit": 6
+   },
+   "name": "Warden's Visor"
+  },
+  {
+   "item": {
+    "id": "fx43",
+    "base": "ashen_maw",
+    "slot": "weapon",
+    "lvl": 7,
+    "rarity": "worn",
+    "roll": 1.007,
+    "stats": {
+     "atk": 65
+    },
+    "affix": ""
+   },
+   "power": 65,
+   "sell": 1006,
+   "totals": {
+    "atk": 65,
+    "def": 0,
+    "vit": 0
+   },
+   "name": "Ashen Maw"
+  },
+  {
+   "item": {
+    "id": "fx44",
+    "base": "stalker_legs",
+    "slot": "legs",
+    "lvl": 3,
+    "rarity": "worn",
+    "roll": 1.035,
+    "stats": {
+     "atk": 2,
+     "def": 10,
+     "vit": 3
+    },
+    "affix": ""
+   },
+   "power": 15,
+   "sell": 67,
+   "totals": {
+    "atk": 2,
+    "def": 10,
+    "vit": 3
+   },
+   "name": "Stalker's Legguards"
+  },
+  {
+   "item": {
+    "id": "fx45",
+    "base": "forge_ring",
+    "slot": "ring",
+    "lvl": 5,
+    "rarity": "epic",
+    "roll": 1.005,
+    "stats": {
+     "atk": 66,
+     "def": 35
+    },
+    "affix": "of the Long Night"
+   },
+   "power": 101,
+   "sell": 3266,
+   "totals": {
+    "atk": 66,
+    "def": 35,
+    "vit": 0
+   },
+   "name": "Forgefire Ring of the Long Night"
+  },
+  {
+   "item": {
+    "id": "fx46",
+    "base": "stalker_legs",
+    "slot": "legs",
+    "lvl": 3,
+    "rarity": "fine",
+    "roll": 1.025,
+    "stats": {
+     "atk": 3,
+     "def": 16,
+     "vit": 5
+    },
+    "affix": ""
+   },
+   "power": 24,
+   "sell": 133,
+   "totals": {
+    "atk": 3,
+    "def": 16,
+    "vit": 5
+   },
+   "name": "Stalker's Legguards"
+  },
+  {
+   "item": {
+    "id": "fx47",
+    "base": "dragon_sigil",
+    "slot": "ring",
+    "lvl": 7,
+    "rarity": "fine",
+    "roll": 0.985,
+    "stats": {
+     "atk": 61,
+     "def": 15,
+     "vit": 26
+    },
+    "affix": ""
+   },
+   "power": 102,
+   "sell": 1970,
+   "totals": {
+    "atk": 61,
+    "def": 15,
+    "vit": 26
+   },
+   "name": "Dragon Sigil"
+  },
+  {
+   "item": {
+    "id": "fx48",
+    "base": "stalker_legs",
+    "slot": "legs",
+    "lvl": 3,
+    "rarity": "rare",
+    "roll": 0.888,
+    "stats": {
+     "atk": 4,
+     "def": 19,
+     "vit": 6
+    },
+    "affix": ""
+   },
+   "power": 29,
+   "sell": 253,
+   "totals": {
+    "atk": 4,
+    "def": 19,
+    "vit": 6
+   },
+   "name": "Stalker's Legguards"
+  },
+  {
+   "item": {
+    "id": "fx49",
+    "base": "tidewalkers",
+    "slot": "legs",
+    "lvl": 4,
+    "rarity": "mythic",
+    "roll": 1.077,
+    "stats": {
+     "def": 93,
+     "vit": 36
+    },
+    "affix": "of the Tithe"
+   },
+   "power": 129,
+   "sell": 9693,
+   "totals": {
+    "atk": 0,
+    "def": 93,
+    "vit": 36
+   },
+   "name": "Tidewalker Greaves of the Tithe"
+  }
+ ],
+ "totalsAll": {
+  "atk": 1645,
+  "def": 2514,
+  "vit": 1094
+ },
+ "attackMult": [
+  1,
+  2,
+  6,
+  8.2,
+  8.16
+ ],
+ "maxHp": [
+  100,
+  150,
+  400
+ ]
+}

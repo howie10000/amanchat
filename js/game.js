@@ -43,6 +43,7 @@ document.querySelectorAll(".actBtn").forEach(b => {
     if (a === "friends") gameSocial.openSidePanelFriends();
     else if (a === "dms") gameSocial.openSidePanelDMs();
     else if (a === "announcements") phoneApp(openAnnouncements);
+    else if (a === "journey") { if (window.gameJourney) gameJourney.open(); else toast("The Journey is still waking up."); }
     else if (a === "notes") phoneApp(openNotes);
     else if (a === "directory") phoneApp(openDirectory);
     else if (a === "inv") phoneApp(openInventory);
@@ -66,11 +67,26 @@ const _phoneHomeView = document.getElementById("phoneHomeView");
 const _phoneAppView = document.getElementById("phoneAppView");
 function phoneOpen() { return _phoneEl && !_phoneEl.classList.contains("closed"); }
 function phoneAppShowing() { return _phoneAppView && !_phoneAppView.classList.contains("hidden"); }
-function setPhone(open) {
+function setPhone(open, keepPref) {
   if (!_phoneEl) return;
   _phoneEl.classList.toggle("closed", !open);
   _phoneTab.classList.toggle("hidden", open);
-  try { localStorage.setItem("phoneOpen", open ? "1" : "0"); } catch (e) {}
+  if (!keepPref) { _phoneAutoHidden = false; try { localStorage.setItem("phoneOpen", open ? "1" : "0"); } catch (e) {} }
+}
+// The docked phone covers the right-hand quarter of a dungeon (boss planets,
+// sanctuary rooms, the loot reveal). Tuck it away on the way into a dungeon and
+// bring it back on the way out, without touching the player's saved preference.
+let _phoneAutoHidden = false, _phoneLastArea = null;
+function autoDockPhone() {
+  const a = state.area;
+  if (a === _phoneLastArea) return;
+  const wasDungeon = _phoneLastArea === "dungeon";
+  _phoneLastArea = a;
+  if (a === "dungeon" && phoneOpen() && !phoneAppShowing() && !(_phoneEl && _phoneEl.classList.contains("expanded"))) {
+    setPhone(false, true); _phoneAutoHidden = true;
+  } else if (wasDungeon && a !== "dungeon" && _phoneAutoHidden) {
+    _phoneAutoHidden = false; setPhone(true, true);
+  }
 }
 window.togglePhone = () => setPhone(!phoneOpen());
 _phoneTab.onclick = () => setPhone(true);
@@ -680,10 +696,10 @@ function openTownMap() {
     for (const d of rows) {
       const dist = Math.round(Math.hypot(state.pos.x - d.x, state.pos.y - d.y));
       html += `<div class="shopItem">
-        <div class="info"><b${d.mine ? ' style="color:#fbbf24"' : ""}>${d.label}</b>
+        <div class="info"><b${d.mine ? ' style="color:#fbbf24"' : ""}>${escapeHtml(d.label)}</b>
           ${d.online ? '<span class="statusDot online"></span>' : ""}
           <br/><small>${d.addr ? escapeHtml(d.addr) + " · " : ""}${dist} steps away</small></div>
-        <button class="menuBtn gold" onclick="guideMeTo(${Math.round(d.x)},${Math.round(d.y)},'${d.label.replace(/'/g, "\\'")}')">Guide me</button>
+        <button class="menuBtn gold" onclick="guideMeTo(${Math.round(d.x)},${Math.round(d.y)},${escapeHtml(JSON.stringify(String(d.label)))})">Guide me</button>
       </div>`;
     }
   }
@@ -1221,9 +1237,9 @@ function openCoopInvite() {
   let html = `<p>Invite a friend to a co-op quest. They'll join you in the dungeon.</p>`;
   for (const f of friends) {
     html += `<div class="friendItem">
-      <div class="info"><span class="statusDot ${isOnline(f) ? "online":""}"></span><b>${f}</b></div>
+      <div class="info"><span class="statusDot ${isOnline(f) ? "online":""}"></span><b>${escapeHtml(f)}</b></div>
       <div class="flexRow">
-        <button class="menuBtn green" onclick="inviteCoop('${f}')">Invite</button>
+        <button class="menuBtn green" onclick="inviteCoop(${escapeHtml(JSON.stringify(String(f)))})">Invite</button>
       </div>
     </div>`;
   }
@@ -1235,8 +1251,8 @@ function openDuelChallenge() {
   let html = `<p>Challenge a friend. Both stake the same money. Winner takes all.</p>`;
   for (const f of friends) {
     html += `<div class="friendItem">
-      <div class="info"><span class="statusDot ${isOnline(f) ? "online":""}"></span><b>${f}</b></div>
-      <button class="menuBtn gold" onclick="challengeDuel('${f}')">Challenge</button>
+      <div class="info"><span class="statusDot ${isOnline(f) ? "online":""}"></span><b>${escapeHtml(f)}</b></div>
+      <button class="menuBtn gold" onclick="challengeDuel(${escapeHtml(JSON.stringify(String(f)))})">Challenge</button>
     </div>`;
   }
   openMenu("DUEL CHALLENGE", html);
@@ -1250,6 +1266,8 @@ const COSMETICS = ECON.COSMETICS; // catalogue lives in js/shared/economy.js
 const COSMETIC_LABELS = { hat: "HATS", accessory: "FACE & NECK", aura: "AURAS", pet: "PETS", nameColor: "NAME COLOUR" };
 function ownsCosmetic(key, id) {
   const def = COSMETICS[key].find(c => c.id === id);
+  // Earned cosmetics (Delver ranks, codex pages, achievements, the Journey) — same rule as the server.
+  if (def && def.unlock) return typeof ECON.cosmeticUnlockOk === "function" ? ECON.cosmeticUnlockOk(def, state.data || {}) : !!((state.data.cosmetics || {})[`${key}:${id}`]);
   if (!def || def.price === 0) return true;
   return !!((state.data.cosmetics || {})[`${key}:${id}`]);
 }
@@ -1275,7 +1293,7 @@ function openBarber() {
       : `<canvas data-cos="${key}" data-id="${c.id}" width="96" height="44"></canvas>`;
     return `<div class="cosCard ${sel ? "selected" : ""} ${owned ? "" : "locked"}" data-cos="${key}" data-id="${c.id}">
       ${preview}<div>${c.name}</div>
-      ${owned ? (c.price ? `<div class="owned">owned</div>` : "") : `<div class="price">🔒 $${c.price}</div>`}
+      ${owned ? (c.price ? `<div class="owned">${c.unlock ? "earned" : "owned"}</div>` : "") : `<div class="price">${c.unlock ? "🔒 earned" : `🔒 $${c.price}`}</div>`}
     </div>`;
   }).join("") + `</div>`;
 
@@ -1368,6 +1386,7 @@ function openBarber() {
       const key = el.dataset.cos, id = el.dataset.id;
       if (!ownsCosmetic(key, id)) {
         const def = ECON.COSMETICS[key].find(c => c.id === id);
+        if (def && def.unlock) { toast(`The ${def.name} is earned, not bought.`); return; }
         if ((state.data.money || 0) < def.price) { toast(`Need $${def.price} for the ${def.name}.`); return; }
         if (!confirm(`Buy ${def.name} for $${def.price}? It's yours forever.`)) return;
         let data;
@@ -1643,7 +1662,7 @@ async function renderStaffQualifierBoard() {
   }
   el.innerHTML = rows.map((r, i) => `<div class="staffRow">
     <div class="who"><b>${i + 1}. ${escapeHtml(r.user)}</b><small>${staffQualFmt(r.timeMs)}</small></div>
-    <div class="btns"><button class="menuBtn red" type="button" onclick="staffWipeQualifier('${escapeHtml(r.user)}')">Wipe</button></div>
+    <div class="btns"><button class="menuBtn red" type="button" onclick="staffWipeQualifier(${escapeHtml(JSON.stringify(String(r.user)))})">Wipe</button></div>
   </div>`).join("");
 }
 window.renderStaffQualifierBoard = renderStaffQualifierBoard;
@@ -1688,13 +1707,13 @@ async function renderStaffGhosts() {
   el.innerHTML = list.map(g => `<div class="staffRow">
     <div class="who"><b>${escapeHtml(g.user)}</b>
       <small>login only · registered ${g.created ? new Date(g.created * 1000).toLocaleDateString() : "?"}</small></div>
-    <div class="btns"><button class="menuBtn red" onclick="purgeGhost('${escapeHtml(g.user)}')">Purge</button></div>
+    <div class="btns"><button class="menuBtn red" onclick="purgeGhost(${escapeHtml(JSON.stringify(String(g.user)))})">Purge</button></div>
   </div>`).join("");
 }
 window.purgeGhost = async (u) => {
   if (!confirm(`Purge the leftover login "${u}"? The name becomes available again.`)) return;
   if (!await assertStaffRole()) return;
-  try { await netDeleteUser(u); toast(`Purged ${u} — the name is free.`); }
+  try { await netDeleteUser(u); toast(`Purged ${escapeHtml(u)} — the name is free.`); }
   catch (e) { toast(e.message); return; }
   renderStaffGhosts();
 };
@@ -1746,7 +1765,7 @@ window.staffLbBan = async (u) => {
   try { await fbPut(`lb_bans/${u}`, { by: state.user, ts: Date.now(), reason: String(reason).slice(0, 140) }); }
   catch (e) { toast(e.message || "Not allowed."); return; }
   if (_staff) _staff.lbBans[u] = { by: state.user, ts: Date.now() };
-  toast(`${u} is hidden from the leaderboard.`);
+  toast(`${escapeHtml(u)} is hidden from the leaderboard.`);
   renderStaffLists();
 };
 window.staffLbUnban = async (u) => {
@@ -1754,7 +1773,7 @@ window.staffLbUnban = async (u) => {
   try { await fbDelete(`lb_bans/${u}`); }
   catch (e) { toast(e.message || "Not allowed."); return; }
   if (_staff) delete _staff.lbBans[u];
-  toast(`${u} is back on the leaderboard.`);
+  toast(`${escapeHtml(u)} is back on the leaderboard.`);
   renderStaffLists();
 };
 window.staffFilter = (v) => { if (_staff) { _staff.filter = v; renderStaffLists(); } };
@@ -1782,30 +1801,30 @@ function renderStaffLists() {
     const can = iOutrank(u);
     let btns = "";
     if (me) {
-      btns += `<button class="menuBtn gold" onclick="staffGive('${u}')" title="Add to (or take from) your own balance">+ $</button>`;
-      btns += `<button class="menuBtn gold" onclick="staffSet('${u}')" title="Set your balance to an exact amount">Set $</button>`;
+      btns += `<button class="menuBtn gold" onclick="staffGive(${escapeHtml(JSON.stringify(String(u)))})" title="Add to (or take from) your own balance">+ $</button>`;
+      btns += `<button class="menuBtn gold" onclick="staffSet(${escapeHtml(JSON.stringify(String(u)))})" title="Set your balance to an exact amount">Set $</button>`;
     } else if (can) {
       btns += banned
-        ? `<button class="menuBtn green" onclick="staffUnban('${u}')">Unban</button>`
-        : `<button class="menuBtn red" onclick="staffBan('${u}')">Ban</button>`;
+        ? `<button class="menuBtn green" onclick="staffUnban(${escapeHtml(JSON.stringify(String(u)))})">Unban</button>`
+        : `<button class="menuBtn red" onclick="staffBan(${escapeHtml(JSON.stringify(String(u)))})">Ban</button>`;
       btns += muted
-        ? `<button class="menuBtn green" onclick="staffUnmute('${u}')">Unmute</button>`
-        : `<button class="menuBtn gray" onclick="staffMute('${u}')">Mute</button>`;
+        ? `<button class="menuBtn green" onclick="staffUnmute(${escapeHtml(JSON.stringify(String(u)))})">Unmute</button>`
+        : `<button class="menuBtn gray" onclick="staffMute(${escapeHtml(JSON.stringify(String(u)))})">Mute</button>`;
 
-      btns += `<button class="menuBtn gold" onclick="staffGive('${u}')" title="Add to (or take from) their balance">+ $</button>`;
-      btns += `<button class="menuBtn gold" onclick="staffSet('${u}')" title="Set their balance to an exact amount">Set $</button>`;
+      btns += `<button class="menuBtn gold" onclick="staffGive(${escapeHtml(JSON.stringify(String(u)))})" title="Add to (or take from) their balance">+ $</button>`;
+      btns += `<button class="menuBtn gold" onclick="staffSet(${escapeHtml(JSON.stringify(String(u)))})" title="Set their balance to an exact amount">Set $</button>`;
     }
       btns += lbBanned
-        ? `<button class="menuBtn green" onclick="staffLbUnban('${u}')" title="Show them on the town leaderboard again">Show on LB</button>`
-        : `<button class="menuBtn gray" onclick="staffLbBan('${u}')" title="Hide them from the town leaderboard">Hide from LB</button>`;
-    btns += `<button class="menuBtn" onclick="mayorTeleport('${u}')" title="Teleport to this player">📍 ${online ? "Go to" : (ud.houseIndex != null ? gameWorld.houseAddress(ud.houseIndex) : "House")}</button>`;
+        ? `<button class="menuBtn green" onclick="staffLbUnban(${escapeHtml(JSON.stringify(String(u)))})" title="Show them on the town leaderboard again">Show on LB</button>`
+        : `<button class="menuBtn gray" onclick="staffLbBan(${escapeHtml(JSON.stringify(String(u)))})" title="Hide them from the town leaderboard">Hide from LB</button>`;
+    btns += `<button class="menuBtn" onclick="mayorTeleport(${escapeHtml(JSON.stringify(String(u)))})" title="Teleport to this player">📍 ${online ? "Go to" : (ud.houseIndex != null ? gameWorld.houseAddress(ud.houseIndex) : "House")}</button>`;
     if (state.role === "owner" && !me) {
-      if (role === "user") btns += `<button class="menuBtn" style="background:linear-gradient(180deg,#3b82f6,#1d4ed8)" onclick="staffPromote('${u}')">Make Admin</button>`;
-      else if (role === "admin") btns += `<button class="menuBtn gray" onclick="staffDemote('${u}')">Remove Admin</button>`;
-      if (role !== "owner") btns += `<button class="menuBtn red" onclick="mayorDelete('${u}')">Delete</button>`;
+      if (role === "user") btns += `<button class="menuBtn" style="background:linear-gradient(180deg,#3b82f6,#1d4ed8)" onclick="staffPromote(${escapeHtml(JSON.stringify(String(u)))})">Make Admin</button>`;
+      else if (role === "admin") btns += `<button class="menuBtn gray" onclick="staffDemote(${escapeHtml(JSON.stringify(String(u)))})">Remove Admin</button>`;
+      if (role !== "owner") btns += `<button class="menuBtn red" onclick="mayorDelete(${escapeHtml(JSON.stringify(String(u)))})">Delete</button>`;
     }
     html += `<div class="staffRow">
-      <div class="who"><span class="statusDot ${online ? "online" : ""}"></span> <b>${u}</b>${me ? " <small>(you)</small>" : ""}
+      <div class="who"><span class="statusDot ${online ? "online" : ""}"></span> <b>${escapeHtml(u)}</b>${me ? " <small>(you)</small>" : ""}
         ${role !== "user" ? `<span class="roleTag ${role}">${role.toUpperCase()}</span>` : ""}
         ${banned ? `<span class="roleTag banned">BANNED</span>` : ""}${muted ? `<span class="roleTag muted">MUTED</span>` : ""}${lbBanned ? `<span class="roleTag muted">LB HIDDEN</span>` : ""}
         <small>$${ud.money || 0} · joined ${ud.createdAt ? new Date(ud.createdAt).toLocaleDateString() : "?"}</small></div>
@@ -1823,15 +1842,15 @@ function renderStaffLists() {
   const bansEl = document.getElementById("staffBans");
   const activeBans = Object.entries(_staff.bans).filter(([, b]) => b && (!b.until || b.until > now));
   bansEl.innerHTML = activeBans.length ? activeBans.map(([u, b]) => `<div class="staffRow">
-      <div class="who"><b>${u}</b><small>by ${b.by || "?"} · ${fmtUntil(b.until)}${b.reason ? " · " + escapeHtml(b.reason) : ""}${b.ip ? " · IP banned" : ""}</small></div>
-      <div class="btns">${iOutrank(u) ? `<button class="menuBtn green" onclick="staffUnban('${u}')">Unban</button>` : ""}</div>
+      <div class="who"><b>${escapeHtml(u)}</b><small>by ${b.by || "?"} · ${fmtUntil(b.until)}${b.reason ? " · " + escapeHtml(b.reason) : ""}${b.ip ? " · IP banned" : ""}</small></div>
+      <div class="btns">${iOutrank(u) ? `<button class="menuBtn green" onclick="staffUnban(${escapeHtml(JSON.stringify(String(u)))})">Unban</button>` : ""}</div>
     </div>`).join("") : `<p class="muted">Nobody is banned.</p>`;
 
   const mutesEl = document.getElementById("staffMutes");
   const activeMutes = Object.entries(_staff.mutes).filter(([, m]) => m && (!m.until || m.until > now));
   mutesEl.innerHTML = activeMutes.length ? activeMutes.map(([u, m]) => `<div class="staffRow">
-      <div class="who"><b>${u}</b><small>by ${m.by || "?"} · until ${fmtUntil(m.until)}${m.reason ? " · " + escapeHtml(m.reason) : ""}</small></div>
-      <div class="btns">${iOutrank(u) ? `<button class="menuBtn green" onclick="staffUnmute('${u}')">Unmute</button>` : ""}</div>
+      <div class="who"><b>${escapeHtml(u)}</b><small>by ${m.by || "?"} · until ${fmtUntil(m.until)}${m.reason ? " · " + escapeHtml(m.reason) : ""}</small></div>
+      <div class="btns">${iOutrank(u) ? `<button class="menuBtn green" onclick="staffUnmute(${escapeHtml(JSON.stringify(String(u)))})">Unmute</button>` : ""}</div>
     </div>`).join("") : `<p class="muted">Nobody is muted.</p>`;
 }
 
@@ -1962,7 +1981,7 @@ window.mayorGive = async (u, amt) => {
   if (!await assertStaffRole()) return;
   const ud = await fbGet(`users/${u}`); if (!ud) return;
   await fbPatch(`users/${u}`, { money: (ud.money || 0) + amt });
-  toast(`Gave ${u} $${amt}.`);
+  toast(`Gave ${escapeHtml(u)} $${amt}.`);
   openStaffPanel({ refresh: true });
 };
 // Staff (admin or owner) teleport to a player. Lands ON them wherever they
@@ -1983,7 +2002,7 @@ window.mayorTeleport = async (u) => {
     state.area = "neighborhood"; state.interiorOf = null;
     dropAt(p.x, p.y);
     updateHUD();
-    toast(`Teleported to ${u}.`);
+    toast(`Teleported to ${escapeHtml(u)}.`);
     return;
   }
   if (p && typeof p.area === "string" && p.area.indexOf("inside:") === 0) {
@@ -1991,7 +2010,7 @@ window.mayorTeleport = async (u) => {
     if (owner === state.user) await gameInteriors.enterOwnHome(false);
     else await gameInteriors.enterOtherHome(owner);
     dropAt(p.x, p.y);
-    toast(`Teleported to ${u} — inside ${owner === state.user ? "your" : owner + "'s"} house.`);
+    toast(`Teleported to ${escapeHtml(u)} — inside ${owner === state.user ? "your" : owner + "'s"} house.`);
     return;
   }
   if (p && typeof p.area === "string" && p.area.indexOf("interior_") === 0) {
@@ -2001,17 +2020,17 @@ window.mayorTeleport = async (u) => {
     if (p.area === "interior_casino" && typeof p.floor === "number") state.casinoFloor = p.floor;
     dropAt(p.x, p.y);
     updateHUD();
-    toast(`Teleported to ${u}${b.label ? " — " + b.label : ""}.`);
+    toast(`Teleported to ${escapeHtml(u)}${b.label ? " — " + b.label : ""}.`);
     return;
   }
 
   // Offline, or in a dungeon/duel — best we can do is their house.
   const r = ud && gameWorld.houseRect(ud.houseIndex);
-  if (!r) { toast(`Can't locate ${u} right now.`); return; }
+  if (!r) { toast(`Can't locate ${escapeHtml(u)} right now.`); return; }
   state.area = "neighborhood"; state.interiorOf = null;
   state.pos.x = r.x + r.w / 2; state.pos.y = r.y + r.h + 30;
   updateHUD();
-  toast(p ? `${u} is somewhere you can't follow — sent you to their house.` : `${u} isn't online — sent you to their house.`);
+  toast(p ? `${escapeHtml(u)} is somewhere you can't follow — sent you to their house.` : `${escapeHtml(u)} isn't online — sent you to their house.`);
 };
 window.mayorDelete = async (u) => {
   if (!confirm("Delete user " + u + "? This wipes their house, money and inventory, and frees the name.")) return;
@@ -2021,7 +2040,7 @@ window.mayorDelete = async (u) => {
   // the account invisible to the staff panel.
   try {
     const r = await netDeleteUser(u);
-    toast(`Deleted ${u}${r && r.authRemoved ? " — the name is free again." : "."}`);
+    toast(`Deleted ${escapeHtml(u)}${r && r.authRemoved ? " — the name is free again." : "."}`);
   } catch (e) { toast(e.message); }
   openStaffPanel({ refresh: true });
 };
@@ -2118,9 +2137,9 @@ function renderDirectory() {
         ${addr ? `<div class="muted" style="font-size:10px;">${escapeHtml(addr)}</div>` : ""}</div>
       <div class="dirActions">
         ${isFriend
-          ? `<button class="iconBtn" title="Open chat" onclick="openDMThread('${u}');closeMenu();">💬</button>`
-          : `<button class="iconBtn green" title="Add friend" onclick="directoryAddFriend('${u}')">+</button>`}
-        ${addr ? `<button class="iconBtn gold" title="Route to their house" onclick="directoryGuide('${u}')">📍</button>` : ""}
+          ? `<button class="iconBtn" title="Open chat" onclick="openDMThread(${escapeHtml(JSON.stringify(String(u)))});closeMenu();">💬</button>`
+          : `<button class="iconBtn green" title="Add friend" onclick="directoryAddFriend(${escapeHtml(JSON.stringify(String(u)))})">+</button>`}
+        ${addr ? `<button class="iconBtn gold" title="Route to their house" onclick="directoryGuide(${escapeHtml(JSON.stringify(String(u)))})">📍</button>` : ""}
       </div>
     </div>`;
   }
@@ -2195,6 +2214,7 @@ async function renderMyBugReports() {
 
 // ---------- MAIN UPDATE ----------
 function update() {
+  autoDockPhone();
   if(window.gameRace?.active) return;
   if (state.attackCooldown > 0) state.attackCooldown--;
 

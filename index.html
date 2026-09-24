@@ -4,18 +4,41 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Neighborhood</title>
-<link rel="stylesheet" href="style.css?v=league-1" />
+<link rel="icon" href="data:," />
+<link rel="stylesheet" href="style.css?v=release-20260923-1" />
 
 </head>
 <body>
   <!-- LOGIN SCREEN -->
-  <div id="loginScreen" class="screen racing-login">
-    <img class="race-login-poster" src="assets/racing/login-poster.webp" alt="" fetchpriority="high" /><canvas id="titleBg" aria-hidden="true"></canvas>
+  <div id="loginScreen" class="screen arcane-login">
+    <canvas id="titleBg" aria-hidden="true"></canvas>
+    <div class="arcane-motes" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
     <div class="loginStack">
-      <div class="race-login-brand"><span>NEIGHBORHOOD / MOTORSPORT</span><h1><img src="assets/racing/apex-wordmark.png" width="1200" height="500" alt="Apex Racing" /></h1><div class="race-generation-label">APEX LEAGUE</div><p>Tournament open. New roads. New rivals.</p></div>
+      <div class="arcane-brand">
+        <span class="arcane-eyebrow">NEIGHBORHOOD <b>·</b> GUILD DUNGEONS UPDATE</span>
+        <div class="arcane-title-wrap">
+          <div class="arcane-sigil" aria-hidden="true"><i></i><i></i><i></i></div>
+          <h1 class="arcane-title" aria-label="The Arcane Depths"><small>THE </small><span class="arcane-word">ARCANE DEPTHS</span></h1>
+          <span class="arcane-flare" aria-hidden="true"></span>
+        </div>
+        <p class="arcane-tagline">Three new dungeons. An endless abyss. Raids that unite every guild.</p>
+        <ul class="arcane-roster" aria-label="New dungeons">
+          <li class="r-archive">The Starlit Archive</li>
+          <li class="r-geode">The Singing Geode</li>
+          <li class="r-rime">The Rimeveil Abyss</li>
+        </ul>
+        <ul class="arcane-chips" aria-label="What's new">
+          <li><b>7</b> Guild Dungeons</li>
+          <li>New Bosses &amp; Phases</li>
+          <li>Mythic Loot &amp; Sets</li>
+          <li>Delve Ranks &amp; Endless Depths</li>
+          <li>Multi-Guild Raids</li>
+        </ul>
+      </div>
     <div class="loginBox">
+      <span class="arcane-new">NEW UPDATE LIVE</span>
       <h1>NEIGHBORHOOD</h1>
-      <p class="tagline">Build your life in town. Find your next adventure.<br/>Take a free lap at Apex Racetrack.</p>
+      <p class="tagline">Gather your guild. The vault beneath the town has opened.</p>
       <input id="loginUser" placeholder="Username" maxlength="16" autocomplete="username" />
       <input id="loginPass" type="password" placeholder="Password" maxlength="32" autocomplete="current-password" />
       <div class="loginBtns">
@@ -23,6 +46,7 @@
         <button id="btnRegister">Register</button>
       </div>
       <div id="loginMsg" class="msg"></div>
+      <p class="arcane-rarity"><span>Ancient</span> &amp; <span>Arcane</span> rarities now drop</p>
       <div class="hint">Owners and admins get the Staff panel. Be nice — bans and mutes are real.</div>
     </div>
     </div>
@@ -74,6 +98,7 @@
               <button class="actBtn app" data-act="friends"><span class="ico" style="--c:#22c55e">👥</span><span>Friends</span></button>
               <button class="actBtn app" data-act="dms"><span class="ico" style="--c:#3b82f6">💬</span><span class="appBadge hidden" id="dmBadge">0</span><span>Messages</span></button>
               <button class="actBtn app" data-act="announcements"><span class="ico" style="--c:#eab308">📣</span><span class="appBadge hidden" id="newsBadge">0</span><span>News</span></button>
+              <button class="actBtn app" data-act="journey"><span class="ico" style="--c:#a78bfa">✦</span><span>Journey</span></button>
               <button class="actBtn app" data-act="notes"><span class="ico" style="--c:#facc15">📝</span><span>Notes</span></button>
               <button class="actBtn app" data-act="directory"><span class="ico" style="--c:#0ea5e9">🌐</span><span>Directory</span></button>
               <button class="actBtn app" data-act="map"><span class="ico" style="--c:#f97316">🗺️</span><span>Map</span></button>
@@ -109,7 +134,7 @@
       <input id="chatBox" maxlength="80" placeholder="Say something... (Enter to send, ESC to cancel)" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="send" />
     </div>
 
-    <!-- "Your client is out of date" — see the version check in js/net.js -->
+    <!-- "Your client is out of date" — see the version check in js/net.js?v=release-20260923-1 -->
     <div id="updateBanner" class="hidden">
       <span class="ubIcon">⚠️</span>
       <div class="ubText"><b>Update available</b><div id="ubDetail" class="ubDetail"></div></div>
@@ -148,56 +173,90 @@
   <!-- three.js must come before the WebGL cutscene layers (lake3d, dungeon3d) -->
 
 
-  <script defer src="js/vendor/three.min.js?v=racing-2"></script>
-  <script defer src="js/shared/sea.js?v=racing-2"></script>
+  <script type="text/plain" data-boot src="js/vendor/three.min.js?v=racing-2"></script>
+  <script type="text/plain" data-boot src="js/shared/sea.js?v=racing-2"></script>
 
-<script defer src="js/sea-animation.js?v=1"></script><script defer src="js/sea3d.js?v=release-20260922-1"></script>
+<script type="text/plain" data-boot src="js/sea-animation.js?v=1"></script><script type="text/plain" data-boot src="js/sea3d.js?v=release-20260922-1"></script>
 
-  <script defer src="js/net.js?v=qual-2"></script>
-  <script defer src="js/furniture.js?v=racing-2"></script>
-  <script defer src="js/shared/economy.js?v=racing-2"></script>
-  <script defer src="js/shared/dungeon.js?v=racing-2"></script>
-  <script defer src="js/shared/sea-wire.js?v=racing-2"></script>
-  <script defer src="js/activity-models.js?v=racing-2"></script>
-  <script defer src="js/graphics.js?v=racing-2"></script>
-  <script defer src="js/core.js?v=apex-organic-8"></script>
-  <script defer src="js/scene-config.js?v=racing-2"></script>
-  <script defer src="js/title-path.js?v=racing-2"></script>
-  <script defer src="js/shared/cars.js?v=racing-2"></script>
-  <script defer src="js/cars.js?v=touch-1"></script>
-  <script defer src="js/race-classic.js?v=apex-organic-8"></script>
-  <script defer src="js/race-classic-art.js?v=apex-organic-8"></script>
-  <script defer src="js/race-sport-art.js?v=apex-organic-8"></script>
-  <script defer src="js/race-world.js?v=apex-organic-8"></script>
-  <script defer src="js/race-gen2.js?v=apex-organic-8"></script>
-  <script defer src="js/race-gen3.js?v=release-20260922-1"></script>
-  <script defer src="js/race-qualifier.js?v=qual-3"></script>
-  <script defer src="js/race-art.js?v=release-20260922-1"></script>
-  <script defer src="js/race-effects.js?v=apex-organic-8"></script>
-  <script defer src="js/race-effects3.js?v=apex-organic-8"></script>
-  <script defer src="js/race.js?v=release-20260922-1"></script>
-  <script defer src="js/world.js?v=racing-2"></script>
-  <script defer src="js/scenery.js?v=racing-2"></script>
-  <script defer src="js/interiors.js?v=qual-3"></script>
-  <script defer src="js/casino.js?v=racing-2"></script>
-  <script defer src="js/jobs.js?v=racing-2"></script>
-  <script defer src="js/mobs.js?v=racing-2"></script>
-  <script defer src="js/dungeon3d.js?v=release-20260922-1"></script>
-  <script defer src="js/bosses.js?v=racing-2"></script>
-  <script defer src="js/visibility.js?v=racing-2"></script>
-  <script defer src="js/combat.js?v=racing-2"></script>
-  <script defer src="js/expedition.js?v=racing-2"></script>
-  <script defer src="js/guild.js?v=racing-2"></script>
-  <script defer src="js/gear.js?v=racing-2"></script>
-  <script defer src="js/social.js?v=racing-2"></script>
-  <script defer src="js/outdoor.js?v=racing-2"></script>
-  <script defer src="js/lake3d.js?v=release-20260922-1"></script>
-  <script defer src="js/lake.js?v=racing-2"></script>
-  <script defer src="js/farm.js?v=racing-2"></script>
-  <script defer src="js/sea-motion.js?v=racing-2"></script>
-  <script defer src="js/sea.js?v=touch-1"></script>
-  <script defer src="js/game.js?v=qual-3"></script>
-  <script defer src="js/mobile.js?v=touch-1"></script>
-  <script defer src="js/sea-assets.js?v=release-20260922-1"></script>
+  <script type="text/plain" data-boot src="js/net.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/furniture.js?v=racing-2"></script>
+  <script type="text/plain" data-boot src="js/shared/economy.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/shared/depths.js?v=depths-1"></script>
+  <script type="text/plain" data-boot src="js/shared/journey.js?v=depths-1"></script>
+  <script type="text/plain" data-boot src="js/shared/dungeon.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/shared/sea-wire.js?v=racing-2"></script>
+  <script type="text/plain" data-boot src="js/activity-models.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/graphics.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/core.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/scene-config.js?v=racing-2"></script>
+  <script type="text/plain" data-boot src="js/title-path.js?v=racing-2"></script>
+  <script type="text/plain" data-boot src="js/shared/cars.js?v=racing-2"></script>
+  <script type="text/plain" data-boot src="js/cars.js?v=touch-1"></script>
+  <script type="text/plain" data-boot src="js/race-classic.js?v=apex-organic-8"></script>
+  <script type="text/plain" data-boot src="js/race-classic-art.js?v=apex-organic-8"></script>
+  <script type="text/plain" data-boot src="js/race-sport-art.js?v=apex-organic-8"></script>
+  <script type="text/plain" data-boot src="js/race-world.js?v=apex-organic-8"></script>
+  <script type="text/plain" data-boot src="js/race-gen2.js?v=apex-organic-8"></script>
+  <script type="text/plain" data-boot src="js/race-gen3.js?v=release-20260922-1"></script>
+  <script type="text/plain" data-boot src="js/race-qualifier.js?v=qual-3"></script>
+  <script type="text/plain" data-boot src="js/race-art.js?v=release-20260922-1"></script>
+  <script type="text/plain" data-boot src="js/race-effects.js?v=apex-organic-8"></script>
+  <script type="text/plain" data-boot src="js/race-effects3.js?v=apex-organic-8"></script>
+  <script type="text/plain" data-boot src="js/race.js?v=release-20260922-1"></script>
+  <script type="text/plain" data-boot src="js/world.js?v=racing-2"></script>
+  <script type="text/plain" data-boot src="js/scenery.js?v=racing-2"></script>
+  <script type="text/plain" data-boot src="js/interiors.js?v=qual-3"></script>
+  <script type="text/plain" data-boot src="js/casino.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/jobs.js?v=racing-2"></script>
+  <script type="text/plain" data-boot src="js/mobs.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/dungeon3d.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/bosses.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/visibility.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/combat.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/depths-client.js?v=depths-3"></script>
+  <script type="text/plain" data-boot src="js/expedition.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/guild.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/raid-ui.js?v=depths-2"></script>
+  <script type="text/plain" data-boot src="js/item-icons.js?v=depths-3"></script>
+  <script type="text/plain" data-boot src="js/gear.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/forge.js?v=depths-3"></script>
+  <script type="text/plain" data-boot src="js/codex.js?v=depths-2"></script>
+  <script type="text/plain" data-boot src="js/loot-reveal.js?v=depths-2"></script>
+  <script type="text/plain" data-boot src="js/journey-ui.js?v=depths-2"></script>
+  <script type="text/plain" data-boot src="js/social.js?v=racing-2"></script>
+  <script type="text/plain" data-boot src="js/outdoor.js?v=racing-2"></script>
+  <script type="text/plain" data-boot src="js/lake3d.js?v=release-20260922-1"></script>
+  <script type="text/plain" data-boot src="js/lake.js?v=racing-2"></script>
+  <script type="text/plain" data-boot src="js/farm.js?v=racing-2"></script>
+  <script type="text/plain" data-boot src="js/sea-motion.js?v=racing-2"></script>
+  <script type="text/plain" data-boot src="js/sea.js?v=touch-1"></script>
+  <script type="text/plain" data-boot src="js/game.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/mobile.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/sea-assets.js?v=release-20260923-1"></script>
+  <!-- Boot order: three.js + the Arcane Depths login backdrop load and draw their first frame on
+       their own; the game scripts above download in parallel meanwhile (the browser compiles them
+       off the main thread) and only execute once the title is on screen, in document order. -->
+  <script>
+  (function(){
+   var tags=[].slice.call(document.querySelectorAll('script[data-boot]')),three=null,rest=[];
+   tags.forEach(function(t){var src=t.getAttribute('src');if(/vendor\/three\.min\.js/.test(src))three=src;else rest.push(src);});
+   rest.forEach(function(src){var l=document.createElement('link');l.rel='preload';l.as='script';l.href=src;l.fetchPriority='low';document.head.appendChild(l);});
+   function load(src,high){return new Promise(function(ok,fail){var el=document.createElement('script');el.src=src;el.async=true;if(high)el.fetchPriority='high';el.onload=ok;el.onerror=fail;document.head.appendChild(el);});}
+   var started=false;
+   function startGame(){if(started)return;started=true;rest.forEach(function(src){var el=document.createElement('script');el.src=src;el.async=false;document.body.appendChild(el);});}
+   // Hand over once the title has presented a frame, given up (fallback), or the login is gone.
+   function waitForTitle(){
+    var t0=performance.now(),login=document.getElementById('loginScreen');
+    (function poll(){
+     var m=window.titleBg&&window.titleBg.metrics&&window.titleBg.metrics();
+     if(!login||login.classList.contains('hidden')||(m&&(m.frames>0||m.fallback))||performance.now()-t0>2500||document.hidden)return requestAnimationFrame(startGame);
+     requestAnimationFrame(poll);
+    })();
+   }
+   window.__titleBoot=load(three,true).then(function(){return load('js/dungeon-title.js?v=arcane-2',true);});
+   window.__titleBoot.then(waitForTitle,startGame);
+   setTimeout(startGame,6000);
+  })();
+  </script>
 </body>
 </html>

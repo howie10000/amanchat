@@ -175,7 +175,8 @@ async function doAuth(register) {
   const msg = document.getElementById("loginMsg");
   msg.textContent = "";
   if (!user || !pass) { msg.textContent = "Enter username and password."; return; }
-  if (!/^[a-z0-9_]{3,16}$/.test(user)) { msg.textContent = "3-16 chars, a-z 0-9 _"; return; }
+  // Same charset the server enforces on registration ([a-z0-9_-]).
+  if (!/^[a-z0-9_-]{3,16}$/.test(user)) { msg.textContent = "3-16 chars: letters, numbers, _ and -"; return; }
   msg.textContent = "Connecting...";
   try {
     const res = await fbAuth(user, pass, register);

@@ -29,7 +29,7 @@ assert(title.metrics().frames>=50&&title.metrics().frames<=80,'Capable GPUs run 
 assert.equal(title.metrics().cars,7);assert.equal(title.metrics().tracks,2);assert.equal(title.metrics().fps,60);
 assert(strong.canvas.width<=1440&&strong.canvas.height<=950);assert(strong.scene().children.filter(c=>c.userData.wheels).some((c,i)=>c.position.distanceTo(first[i])>10),'Cars race around the circuit');
 const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
-assert(html.includes('>APEX LEAGUE<'),'Login title reads Apex League');
+// The login is now the Arcane Depths dungeon title (js/dungeon-title.js); race-title.js is kept for the racing venue only.
 assert(!/race-generation-label">GENERATION 3/.test(html),'Generation 3 is not on the login title');
 
 function packDistance(cam,scene){return Math.min(...scene.children.filter(c=>c.userData.wheels&&c.visible!==false).map(c=>Math.hypot(c.position.x-cam.x,c.position.y-cam.y,c.position.z-cam.z)));}

@@ -946,14 +946,14 @@ function openDice() {
   _dice = { a: 1, b: 1, rolling: false };
   openMenu("🎲 DICE — OVER / UNDER", `
     <div class="center">
-      <p class="muted">Two dice, 2–12. Over/under 7 pays <b>2×</b> and a 7 is a push. Call exactly 7 for <b>4×</b>.</p>
+      <p class="muted">Two dice, 2–12. Over/under 7 pays <b>1.95×</b> and a 7 is a push. Call exactly 7 for <b>4×</b>. Table limit $50,000.</p>
       <canvas id="diceCanvas" width="${DICE_W}" height="${DICE_H}"></canvas>
       <div id="diceResult" class="gameResult"></div>
       ${betBar("diceBet", 50)}
       <div class="btnRow">
-        <button class="menuBtn green bigBtn" onclick="rollDice('under')">UNDER 7 &nbsp;2×</button>
+        <button class="menuBtn green bigBtn" onclick="rollDice('under')">UNDER 7 &nbsp;1.95×</button>
         <button class="menuBtn gold bigBtn" onclick="rollDice('seven')">EXACTLY 7 &nbsp;4×</button>
-        <button class="menuBtn bigBtn" onclick="rollDice('over')">OVER 7 &nbsp;2×</button>
+        <button class="menuBtn bigBtn" onclick="rollDice('over')">OVER 7 &nbsp;1.95×</button>
       </div>
     </div>`);
   drawDiceTable([

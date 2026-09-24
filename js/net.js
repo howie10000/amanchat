@@ -169,6 +169,9 @@
   window.netMastery = (data) => rpc("mastery", data || {}); // per-skill mastery tracks
   window.netGuildDungeon = (data) => rpc("guild_dungeon", data); // guild runs + their bosses
   window.netGear = (data) => rpc("gear", data);          // dungeon loot: equip / take off / sell
+  window.netForge = (data) => rpc("forge", data);        // Arcane Forge: enhance / salvage / reforge / sockets / ascend
+  window.netDelver = (data) => rpc("delver", data || {}); // Delver rank, codex, achievements, titles
+  window.netJourney = (data) => rpc("journey", data || {}); // THE ARCANE DEPTHS journey & endgame
 
   // For dev console / debugging
   window.fb = { fbGet: window.fbGet, fbPut: window.fbPut, fbPatch: window.fbPatch, fbPost: window.fbPost, fbDelete: window.fbDelete };

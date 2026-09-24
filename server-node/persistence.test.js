@@ -55,7 +55,12 @@ const srvDir = path.join(tmp, 'srv');
 const srvMods = path.join(srvDir, 'node_modules');
 fs.mkdirSync(path.join(srvMods, 'better-sqlite3'), { recursive: true });
 for (const f of fs.readdirSync(__dirname).filter(f=>f.endsWith('.js')&&!f.endsWith('.test.js'))) fs.copyFileSync(path.join(__dirname, f), path.join(srvDir, f));
+// The server modules require their siblings (guild-features/raids/progress are
+// copied above with every other non-test .js) and a few files by a relative
+// '../js/…' path (race-qualifier.js -> ../js/race-qualifier.js, the shared
+// economy/depths/dungeon modules): mirror js/shared and every top-level js/*.js.
 fs.cpSync(path.join(STATIC_DIR,'js','shared'),path.join(tmp,'js','shared'),{recursive:true});
+for (const f of fs.readdirSync(path.join(STATIC_DIR,'js')).filter(f=>f.endsWith('.js')&&!f.endsWith('.test.js'))) fs.copyFileSync(path.join(STATIC_DIR,'js',f), path.join(tmp,'js',f));
 fs.copyFileSync(path.join(__dirname, 'testlib', 'real-sqlite-shim.js'), path.join(srvMods, 'better-sqlite3', 'index.js'));
 fs.writeFileSync(path.join(srvMods, 'better-sqlite3', 'package.json'), JSON.stringify({ name: 'better-sqlite3', version: '0.0.0-node-sqlite', main: 'index.js' }));
 // Everything else (ws, express, bcryptjs, …) comes from the real tree.
@@ -161,6 +166,56 @@ function decode(buf) { return JSON.parse(zlib.brotliDecompressSync(buf).toString
     assert(!rowMap().has('dm_threads/alice__bob'), 'deleting a record deletes its row');
     assert(rowMap().has('users/alice') && rowMap().has('users/bob'), 'deleting one record leaves the others alone');
     a2.close();
+
+    // ------------------------------------- THE ARCANE DEPTHS record fields
+    // mats/gems/delve/codex/overflow/depthsBest are server-written (protected);
+    // an owner may seed them on another player. They must survive a restart and
+    // compaction, and while empty they are dropped from the row and read back as {}.
+    console.log('arcane depths record fields');
+    {
+        const st = client(), al = client(), bo = client();
+        await Promise.all([st.ready, al.ready, bo.ready]);
+        await st.rpc('auth', { user: 'boss', pass: 'pass123' });
+        await st.rpc('staff_unlock', { pass: 'pass123' });
+        await al.rpc('auth', { user: 'alice', pass: 'pass123' });
+        await bo.rpc('auth', { user: 'bob', pass: 'pass123' });
+        const own = await tryRpc(al, 'put', { path: 'users/alice/mats', value: { dust: 9999 } });
+        assert(!own.ok, 'a player cannot write their own materials');
+        const item = ECON.makeGear('ashen_maw', 'epic', () => 0.5, 'ovtest1', { now: Date.now() });
+        item.ovAt = Date.now(); item.exp = Date.now() + 7 * 86400000;
+        await st.rpc('put', { path: 'users/alice/mats', value: { dust: 12, shard: 3, sigil_warden: 2 } });
+        await st.rpc('put', { path: 'users/alice/gems', value: { 'ruby:2': 1 } });
+        await st.rpc('put', { path: 'users/alice/delve', value: { xp: 500, pity: { leg: 4, uq: { warden: 7 }, set: {} }, ach: { bane_warden_1: 1 }, titles: ['Delver'], title: 'Delver', stats: { goblins: 2 } } });
+        await st.rpc('put', { path: 'users/alice/codex', value: { i: { ashen_maw: [3, 1, 1] }, b: { warden: 3 }, f: {}, d: { guild_crypt: 2 } } });
+        await st.rpc('put', { path: 'users/alice/overflow', value: [item] });
+        await st.rpc('put', { path: 'users/alice/depthsBest', value: { floor: 7, at: 1 } });
+        // bob holds only empty shells
+        await st.rpc('put', { path: 'users/bob/mats', value: {} });
+        await st.rpc('put', { path: 'users/bob/codex', value: { i: {}, b: {}, f: {}, d: {} } });
+        await st.rpc('put', { path: 'users/bob/delve', value: { xp: 0, pity: { leg: 0, uq: {}, set: {} }, weekly: { wk: 0, tiers: {} }, ach: {}, titles: [], title: '', stats: {} } });
+        await sleep(2600);
+        const brow = decode(rowMap().get('users/bob'));
+        assert(!('mats' in brow) && !('codex' in brow) && !('delve' in brow), 'empty mats / codex / delve are compacted out of the row');
+        const arow = decode(rowMap().get('users/alice'));
+        assert(arow.mats && arow.mats.dust === 12 && arow.delve && arow.delve.xp === 500 && arow.codex.b.warden === 3, 'non-empty depths fields land in the row');
+        st.close(); al.close(); bo.close();
+        await restart();
+        const al2 = client(), bo2 = client();
+        await Promise.all([al2.ready, bo2.ready]);
+        await al2.rpc('auth', { user: 'alice', pass: 'pass123' });
+        await bo2.rpc('auth', { user: 'bob', pass: 'pass123' });
+        const fs1 = await al2.rpc('forge', { action: 'status' });
+        assert(fs1.mats.dust === 12 && fs1.mats.shard === 3 && fs1.mats.sigil_warden === 2 && fs1.gems['ruby:2'] === 1, 'materials and gems survive a restart');
+        const dv = await al2.rpc('delver', { action: 'status' });
+        assert(dv.xp === 500 && dv.title === 'Delver' && dv.achievements.bane_warden_1 && dv.codex.b.warden === 3, 'delver xp, titles, achievements and the codex survive a restart');
+        const gv = await al2.rpc('gear', { action: 'status' });
+        assert(gv.overflow.length === 1 && gv.overflow[0].id === 'ovtest1' && gv.overflow[0].exp > Date.now(), 'the Lost & Found overflow survives a restart');
+        assert((await al2.rpc('get', { path: 'users/alice/depthsBest' })).floor === 7, 'depthsBest survives a restart');
+        const fb = await bo2.rpc('forge', { action: 'status' });
+        const db2 = await bo2.rpc('delver', { action: 'status' });
+        assert(JSON.stringify(fb.mats) === '{}' && JSON.stringify(fb.gems) === '{}' && db2.xp === 0 && JSON.stringify(db2.codex.i) === '{}', 'compacted-away fields read back as {} lazily');
+        al2.close(); bo2.close();
+    }
 
     // ------------------------------------------------------ luck queue
     // A weaker meal must never extend a stronger buff — that let the best buff

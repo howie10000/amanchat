@@ -1,0 +1,69 @@
+<!doctype html><meta charset="utf-8"><title>Arcane Depths icon review</title>
+<link rel="stylesheet" href="../../style.css">
+<style>
+html,body{margin:0!important;padding:0!important;background:#07060c!important;color:#dbc791!important;font:13px Georgia,serif!important;overflow:auto!important;height:auto!important;position:static!important}
+header{position:sticky;top:0;z-index:5;background:#0d0b16ee;border-bottom:1px solid #2e2544;padding:8px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+header b{color:#c4b5fd;font-size:15px;letter-spacing:.06em}
+header label{color:#a8a29e}
+select,button{background:#1a1726;color:#e9d5ff;border:1px solid #4c3d6b;padding:4px 8px;font:12px Georgia}
+h2{margin:18px 14px 6px;color:#fde68a;font-size:14px;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid #2a2238;padding-bottom:4px}
+h2 small{color:#78716c;text-transform:none;letter-spacing:0;font-size:11px}
+.grid{display:flex;flex-wrap:wrap;gap:10px;padding:4px 14px}
+.cell{display:flex;flex-direction:column;align-items:center;gap:3px;width:var(--w,92px)}
+.cell span{font-size:10px;color:#a8a29e;text-align:center;line-height:1.15;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cell span.u{color:#fb923c}.cell span.s{color:#34d399}
+#stats{color:#78716c;margin-left:auto}
+</style>
+<header><b>ARCANE DEPTHS · ICONS</b>
+  <label>size <select id="size"><option>32</option><option>40</option><option>48</option><option selected>64</option><option>72</option><option>80</option><option>96</option><option>128</option></select></label>
+  <label>base rarity <select id="rar"></select></label>
+  <label><input type="checkbox" id="box"> iiBox (hover shimmer)</label>
+  <span id="stats"></span></header>
+<main id="out"></main>
+<script src="../../js/shared/economy.js"></script>
+<script src="../../js/shared/depths.js"></script>
+<script src="../../js/item-icons.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const P = Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
+const R = ECON.GEAR_RARITIES;
+$("rar").innerHTML = R.map(r => `<option ${r === (P.rar || "legendary") ? "selected" : ""}>${r}</option>`).join("");
+if (P.size) $("size").value = P.size;
+if (P.box) $("box").checked = true;
+function cell(kind, arg, label, cls) {
+  const s = +$("size").value;
+  const f = $("box").checked ? ItemIcons.box : ItemIcons.html;
+  return `<div class="cell" style="--w:${Math.max(s + 8, 70)}px">${f(kind, arg, s)}<span class="${cls || ""}" title="${label}">${label}</span></div>`;
+}
+function sec(title, note, cells) { return `<h2>${title} <small>${note || ""}</small></h2><div class="grid">${cells.join("")}</div>`; }
+function build() {
+  const t0 = performance.now();
+  const rar = $("rar").value, only = P.only;
+  let h = "";
+  const want = k => !only || only.split(",").includes(k);
+  if (want("frames")) h += sec("Rarity frames", "worn → arcane", R.map(r => cell("frame", r, r)));
+  if (want("ladder")) h += sec("One item, every rarity", "Rimefang +0..+12, sockets by rarity",
+    R.map((r, i) => cell("gear", { base: "rimefang", slot: "weapon", lvl: 10, rarity: r, plus: [0, 0, 2, 4, 6, 8, 10, 12][i], sockets: (ECON.SOCKETS_BY_RARITY || {})[r] | 0, gems: i > 5 ? ["ruby:4", "rune_storm"] : i > 3 ? ["sapphire:3"] : [] }, r)));
+  for (const slot of ["weapon", "helmet", "chest", "legs", "ring"]) {
+    if (!want(slot)) continue;
+    const bases = ECON.GEAR_BASES.filter(b => b.slot === slot && !b.unique && !b.set).sort((a, b) => a.lvl - b.lvl);
+    h += sec(slot + " bases", `${bases.length} · rendered at ${rar} · family shown`, bases.map(b => cell("gear", { base: b.id, slot, lvl: b.lvl, rarity: rar }, `L${b.lvl} ${b.name} · ${ItemIcons.family(b.id)}`)));
+  }
+  if (want("uniques")) h += sec("Uniques", "bespoke motif + orange-gold marks", Object.keys(ECON.GEAR_UNIQUES).map(id => { const u = ECON.GEAR_UNIQUES[id]; return cell("gear", { base: id, slot: u.slot, lvl: u.lvl || 8, rarity: u.minRarity, uq: id }, u.name, "u"); }));
+  if (want("sets")) h += sec("Set pieces", "set emblem pip", Object.keys(ECON.GEAR_SETS).flatMap(sid => ECON.SET_SLOTS.map(sl => cell("gear", { base: sid + "_" + sl, slot: sl, rarity: "legendary", set: sid }, ECON.GEAR_BASE_BY_ID[sid + "_" + sl].name, "s"))));
+  if (want("tomes")) h += sec("Tomes", "", ECON.TOME_ORDER.map(id => cell("tome", id, ECON.TOMES[id].name)));
+  if (want("mats")) h += sec("Materials & sigils", "", ECON.MATERIAL_IDS.map(id => cell("mat", id, ECON.MATERIALS[id].name)));
+  if (want("gems")) h += sec("Gems & runes", "grades I–V", ECON.GEM_TYPES.flatMap(t => [1, 2, 3, 4, 5].map(g => cell("gem", t + ":" + g, t + " " + g))).concat(ECON.RUNE_IDS.map(r => cell("gem", r, ECON.RUNES[r].name))));
+  if (want("chests")) h += sec("Chests & keys", "tiers 0-3 + feature kinds", [0, 1, 2, 3].map(t => cell("chest", t, "tier " + t)).concat(DEPTHS.CHEST_KINDS.map(k => cell("chest", k, k)), ["silver", "gold", "shard", "gilded"].map(k => cell("key", k, k + " key"))));
+  if (want("bosses")) h += sec("Boss portraits", "story bosses · minis · raid · special", [].concat(ECON.GUILD_BOSS_ORDER, ECON.GUILD_MINIS, ECON.GUILD_RAID_MINIS, ECON.GUILD_SPECIAL_BOSSES).map(id => cell("boss", id, ECON.GUILD_BOSSES[id].name)));
+  if (want("tiers")) h += sec("Dungeon emblems", "", Object.keys(ECON.GUILD_DUNGEONS).map(t => cell("tier", t, ECON.GUILD_DUNGEONS[t].name)));
+  if (want("trophies")) h += sec("Trophies", "bronze / silver / gold / arcane", ["warden", "dragon", "khyra", "iskarra", "concordant", "heart"].flatMap(b => [1, 2, 3, 4].map(t => cell("trophy", [b, t], b + " " + t))));
+  if (want("ach")) h += sec("Achievements", "", ECON.ACHIEVEMENTS.map(a => cell("achievement", a.id, a.label)));
+  if (want("cos")) h += sec("Cosmetics", "codex unlock hats", ECON.COSMETICS.hat.filter(x => x.unlock).map(x => cell("cosmetic", x.id, x.name)));
+  $("out").innerHTML = h;
+  const st = ItemIcons._stats();
+  $("stats").textContent = `${document.querySelectorAll("#out img").length} icons · ${st.draws} drawn · ${st.hits} cache hits · ${(performance.now() - t0).toFixed(0)} ms`;
+}
+["size", "rar", "box"].forEach(id => $(id).onchange = build);
+build();
+</script>

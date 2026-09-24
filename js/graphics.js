@@ -86,6 +86,53 @@ function drawAura(ctx, x, y, kind) {
       ctx.font = "bold 9px sans-serif"; ctx.fillStyle = "#fbbf24"; ctx.textAlign = "center";
       ctx.fillText("$", x - 14 + (i * 6) % 28, y + 8 - ph * 36);
     }
+  } else if (kind === "lantern") {
+    // THE ARCANE DEPTHS (Delver 7): a little lantern that floats at your shoulder
+    const lx = x + 16 + Math.sin(t * 1.3) * 2, ly = y - 18 + Math.sin(t * 2.1) * 2.5;
+    const g = ctx.createRadialGradient(lx, ly, 1, lx, ly, 26);
+    g.addColorStop(0, "rgba(253,224,71,.45)"); g.addColorStop(1, "rgba(253,224,71,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(lx, ly, 26, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#78350f"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(lx, ly - 7); ctx.lineTo(lx, ly - 10); ctx.stroke();
+    ctx.fillStyle = "#44403c"; ctx.fillRect(lx - 3.5, ly - 7, 7, 2); ctx.fillRect(lx - 3.5, ly + 4, 7, 2);
+    ctx.fillStyle = `rgba(254,240,138,${0.8 + 0.2 * Math.sin(t * 9)})`; ctx.fillRect(lx - 2.5, ly - 5, 5, 9);
+    ctx.fillStyle = "#fff7d6"; ctx.fillRect(lx - 1, ly - 2, 2, 3);
+  } else if (kind === "arcane_halo") {
+    // Delver 40: a ring of runes turning over your head, in every colour of an Arcane drop
+    const P = ["#f472b6", "#a78bfa", "#38bdf8", "#34d399", "#fde047"];
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 10; i++) {
+      const a = t * 1.2 + i / 10 * Math.PI * 2, px = x + Math.cos(a) * 13, py = y - 30 + Math.sin(a) * 4;
+      ctx.globalAlpha = Math.sin(a) > 0 ? 1 : 0.55; ctx.fillStyle = P[i % 5];
+      ctx.beginPath(); ctx.moveTo(px, py - 2.6); ctx.lineTo(px + 2, py); ctx.lineTo(px, py + 2.6); ctx.lineTo(px - 2, py); ctx.closePath(); ctx.fill();
+    }
+    ctx.globalAlpha = 0.5; ctx.strokeStyle = P[Math.floor(t * 2) % 5];
+    ctx.beginPath(); ctx.ellipse(x, y - 30, 13, 4, 0, 0, Math.PI * 2); ctx.stroke();
+    const g = ctx.createRadialGradient(x, y - 6, 2, x, y - 6, 28); g.addColorStop(0, "rgba(167,139,250,.22)"); g.addColorStop(1, "rgba(167,139,250,0)");
+    ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y - 6, 28, 0, Math.PI * 2); ctx.fill();
+  } else if (kind === "starfall") {
+    // Delver 60: small stars falling round you forever, each with a tail
+    for (let i = 0; i < 8; i++) {
+      const ph = (t * 0.7 + i * 0.37) % 1, px = x - 20 + ((i * 53) % 40) + ph * 6, py = y - 40 + ph * 56;
+      ctx.globalAlpha = Math.sin(ph * Math.PI);
+      ctx.strokeStyle = "rgba(253,230,138,.6)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(px - 5, py - 8); ctx.lineTo(px, py); ctx.stroke();
+      ctx.fillStyle = i % 3 ? "#fef3c7" : "#c4b5fd";
+      ctx.beginPath(); for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2, r = k % 2 ? 1 : 3; k ? ctx.lineTo(px + Math.cos(a) * r, py + Math.sin(a) * r) : ctx.moveTo(px + r, py); } ctx.closePath(); ctx.fill();
+    }
+  } else if (kind === "concord_banner") {
+    // the Concord achievement: a banner at your back, quartered in four houses' colours
+    const bx = x - 14, by = y - 34, wave = Math.sin(t * 4);
+    ctx.fillStyle = "#57534e"; ctx.fillRect(bx - 1, by - 4, 2, 44);
+    ctx.fillStyle = "#fde68a"; ctx.beginPath(); ctx.arc(bx, by - 5, 2, 0, Math.PI * 2); ctx.fill();
+    const cols = ["#7c3aed", "#0891b2", "#dc2626", "#ca8a04"];
+    for (let q = 0; q < 4; q++) {
+      const qx = q % 2, qy = q > 1 ? 1 : 0;
+      ctx.fillStyle = cols[q];
+      ctx.beginPath();
+      const x0 = bx + 1 + qx * 8, y0 = by + qy * 9, off = (k) => Math.sin(t * 4 + k * 0.4) * 1.5;
+      ctx.moveTo(x0, y0 + off(qx * 8)); ctx.lineTo(x0 + 8, y0 + off(qx * 8 + 8)); ctx.lineTo(x0 + 8, y0 + 9 + off(qx * 8 + 8)); ctx.lineTo(x0, y0 + 9 + off(qx * 8)); ctx.closePath(); ctx.fill();
+    }
+    ctx.strokeStyle = "#fde68a"; ctx.lineWidth = 1; ctx.strokeRect(bx + 1, by + wave * 0.5, 16, 18);
+    ctx.fillStyle = "#fef3c7"; ctx.beginPath(); ctx.arc(bx + 9, by + 9 + wave * 0.5, 2.2, 0, Math.PI * 2); ctx.fill();
   } else if (kind === "electric") {
     ctx.strokeStyle = "#7dd3fc"; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.9;
     for (let i = 0; i < 3; i++) {
@@ -143,6 +190,28 @@ function drawPet(ctx, x, y, kind, facing) {
     ctx.beginPath(); ctx.moveTo(px + 2, py - 1); ctx.lineTo(px + 6, py - 12 - flap); ctx.lineTo(px + 6, py - 4); ctx.fill();
     ctx.fillStyle = "#f97316"; ctx.beginPath(); ctx.arc(px + 15, py - 5, 2 + Math.sin(t * 9), 0, Math.PI * 2); ctx.fill(); // breath
     ctx.fillStyle = "#0a0a0a"; ctx.fillRect(px + 10, py - 6, 1.5, 1.5);
+  } else if (kind === "wisp") {
+    // Delver 18: an Archive wisp that follows you home
+    const hy = py - 6 + Math.sin(t * 3) * 3;
+    for (let k = 1; k <= 5; k++) { ctx.globalAlpha = 0.5 - k * 0.08; ctx.fillStyle = "#c7d2fe"; ctx.beginPath(); ctx.arc(px - k * 3 * (facing === "left" ? -1 : 1), hy + Math.sin(t * 8 + k) * k * 0.4, 4 - k * 0.5, 0, Math.PI * 2); ctx.fill(); }
+    ctx.globalAlpha = 1;
+    const g = ctx.createRadialGradient(px, hy, 0, px, hy, 12); g.addColorStop(0, "rgba(199,210,254,.8)"); g.addColorStop(1, "rgba(165,180,252,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px, hy, 12, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(px, hy, 3.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#a5b4fc"; ctx.fillRect(px - 0.5, hy - 6, 1, 12); ctx.fillRect(px - 6, hy - 0.5, 12, 1);
+  } else if (kind === "void_kitten") {
+    // Delver 50: a cat cut out of the night sky, stars and all
+    const body = "#1e1b4b";
+    ctx.fillStyle = body;
+    roundRect(ctx, px - 8, py - 2, 16, 9, 3, true, false);
+    ctx.beginPath(); ctx.arc(px + 7, py - 4, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(px + 3, py - 7); ctx.lineTo(px + 5, py - 12); ctx.lineTo(px + 7, py - 7); ctx.moveTo(px + 7, py - 7); ctx.lineTo(px + 9, py - 12); ctx.lineTo(px + 11, py - 7); ctx.fill();
+    ctx.fillRect(px - 6, py + 6, 3, 4); ctx.fillRect(px + 3, py + 6, 3, 4);
+    ctx.strokeStyle = body; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(px - 8, py); ctx.quadraticCurveTo(px - 14, py - 6 + Math.sin(t * 8) * 3, px - 12, py - 9); ctx.stroke();
+    for (let k = 0; k < 5; k++) { ctx.fillStyle = `rgba(233,213,255,${0.5 + 0.5 * Math.sin(t * 3 + k * 1.7)})`; ctx.fillRect(px - 6 + k * 3, py + (k % 2) * 3, 1, 1); }
+    ctx.fillStyle = "#c084fc"; ctx.fillRect(px + 5, py - 5.5, 1.6, 1.6); ctx.fillRect(px + 8.5, py - 5.5, 1.6, 1.6);
+    ctx.globalAlpha = 0.5; ctx.fillStyle = "#a78bfa"; ctx.beginPath(); ctx.arc(px - 12, py - 9, 1.6 + Math.sin(t * 6), 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
   } else if (kind === "robot") {
     ctx.fillStyle = "#94a3b8";
     ctx.fillRect(px - 7, py - 6, 14, 14);
@@ -287,6 +356,41 @@ function drawCharacter(ctx, x, y, appearance, opts = {}) {
       ctx.fillStyle = "#fafaf9";
       ctx.fillRect(x - 8, y - 22, 16, 5);
       ctx.beginPath(); ctx.arc(x - 5, y - 26, 5, 0, Math.PI * 2); ctx.arc(x, y - 28, 6, 0, Math.PI * 2); ctx.arc(x + 5, y - 26, 5, 0, Math.PI * 2); ctx.fill();
+    } else if (a.hat === "drowned_crown_hat") {
+      // THE ARCANE DEPTHS codex hats: one per story tier
+      ctx.fillStyle = "#155e75";
+      ctx.beginPath(); ctx.moveTo(x - 9, y - 18); for (let k = 0; k <= 6; k++) { ctx.lineTo(x - 9 + k * 3, y - (k % 2 ? 22 : 27)); } ctx.lineTo(x + 9, y - 18); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#67e8f9"; ctx.fillRect(x - 9, y - 19, 18, 2);
+      ctx.fillStyle = "rgba(103,232,249,.7)"; ctx.fillRect(x - 6, y - 17, 1, 3 + Math.sin(Date.now() / 300) * 1.5); ctx.fillRect(x + 4, y - 17, 1, 2);
+    } else if (a.hat === "forgemaster_goggles") {
+      ctx.fillStyle = "#78350f"; ctx.fillRect(x - 10, y - 19, 20, 3);
+      for (const s of [-1, 1]) { ctx.fillStyle = "#44403c"; ctx.beginPath(); ctx.arc(x + s * 4.5, y - 19, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = `rgba(251,146,60,${0.75 + 0.25 * Math.sin(Date.now() / 200)})`; ctx.beginPath(); ctx.arc(x + s * 4.5, y - 19, 2.6, 0, Math.PI * 2); ctx.fill(); }
+    } else if (a.hat === "hollow_diadem_hat") {
+      ctx.strokeStyle = "#a16207"; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(x, y - 19, 9, 3, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = "#a16207"; for (const k of [-6, -2, 6]) { ctx.beginPath(); ctx.moveTo(x + k - 2, y - 20); ctx.lineTo(x + k, y - 26); ctx.lineTo(x + k + 2, y - 20); ctx.fill(); }
+      ctx.fillStyle = `rgba(192,132,252,${0.6 + 0.4 * Math.sin(Date.now() / 400)})`; ctx.beginPath(); ctx.arc(x + 2, y - 22, 1.8, 0, Math.PI * 2); ctx.fill();
+    } else if (a.hat === "ember_crown") {
+      ctx.fillStyle = "#e4b959";
+      ctx.beginPath(); ctx.moveTo(x - 9, y - 18); for (let k = -2; k <= 2; k++) { ctx.lineTo(x + k * 4 - 2, y - 21); ctx.lineTo(x + k * 4, y - 27 - (k === 0 ? 3 : 0)); ctx.lineTo(x + k * 4 + 2, y - 21); } ctx.lineTo(x + 9, y - 18); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = `rgba(251,146,60,${0.6 + 0.4 * Math.sin(Date.now() / 150)})`;
+      for (const k of [-8, 0, 8]) { ctx.beginPath(); ctx.ellipse(x + k, y - 29 - (k === 0 ? 3 : 0), 1.4, 2.6, 0, 0, Math.PI * 2); ctx.fill(); }
+    } else if (a.hat === "star_circlet") {
+      ctx.strokeStyle = "#fde68a"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(x, y - 19, 9.5, 3, 0, 0, Math.PI * 2); ctx.stroke();
+      const tw = 0.6 + 0.4 * Math.sin(Date.now() / 250);
+      ctx.fillStyle = `rgba(254,243,199,${tw})`;
+      ctx.beginPath(); for (let k = 0; k < 8; k++) { const a2 = k / 8 * Math.PI * 2, r = k % 2 ? 1.4 : 4; k ? ctx.lineTo(x + Math.cos(a2) * r, y - 23 + Math.sin(a2) * r) : ctx.moveTo(x + r, y - 23); } ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#fde68a"; ctx.fillRect(x - 7, y - 21, 1.5, 1.5); ctx.fillRect(x + 6, y - 21, 1.5, 1.5);
+    } else if (a.hat === "geode_tiara") {
+      ctx.fillStyle = "#6b21a8"; ctx.fillRect(x - 9, y - 19, 18, 2);
+      const cols = ["#22d3ee", "#f0abfc", "#c084fc", "#f0abfc", "#22d3ee"];
+      for (let k = -2; k <= 2; k++) { ctx.fillStyle = cols[k + 2]; const h = 7 - Math.abs(k) * 1.5; ctx.beginPath(); ctx.moveTo(x + k * 3.6 - 1.6, y - 19); ctx.lineTo(x + k * 3.6, y - 19 - h); ctx.lineTo(x + k * 3.6 + 1.6, y - 19); ctx.closePath(); ctx.fill(); }
+      ctx.fillStyle = `rgba(255,255,255,${0.5 + 0.5 * Math.sin(Date.now() / 220)})`; ctx.fillRect(x - 0.5, y - 25, 1, 2);
+    } else if (a.hat === "rime_crown") {
+      ctx.fillStyle = "rgba(224,242,254,.95)";
+      ctx.fillRect(x - 9, y - 19, 18, 2);
+      for (let k = -4; k <= 4; k++) { const h = 3 + (k % 2 ? 2 : 5) - Math.abs(k) * 0.3; ctx.beginPath(); ctx.moveTo(x + k * 2 - 1, y - 19); ctx.lineTo(x + k * 2, y - 19 - h); ctx.lineTo(x + k * 2 + 1, y - 19); ctx.fill(); }
+      ctx.fillStyle = "rgba(94,234,212,.9)"; ctx.beginPath(); ctx.arc(x, y - 21, 1.4, 0, Math.PI * 2); ctx.fill();
     } else if (a.hat === "pirate") {
       ctx.fillStyle = "#0a0a0a";
       ctx.beginPath(); ctx.moveTo(x - 15, y - 18); ctx.quadraticCurveTo(x, y - 34, x + 15, y - 18); ctx.closePath(); ctx.fill();
@@ -503,6 +607,14 @@ function drawNameAndBubble(ctx, x, y, name, msgs, isYou, appearance, role) {
   const custom = appearance && appearance.nameColor;
   let color = custom || (isYou ? "#fbbf24" : "#fff");
   if (custom === "rainbow") color = `hsl(${(Date.now() / 12) % 360},100%,65%)`;
+  else if (custom === "arcane") {
+    // Delver 30: the Arcane drop's prism, sliding across the letters
+    const P = ["#f472b6", "#a78bfa", "#38bdf8", "#34d399", "#fde047"];
+    const w = Math.max(20, ctx.measureText(name || "").width), sh = (Date.now() / 1400) % 1;
+    const g = ctx.createLinearGradient(x - w, 0, x + w, 0);
+    for (let i = 0; i <= 8; i++) { const u = i / 8; g.addColorStop(u, P[Math.floor((u * 4 + sh * 5)) % 5]); }
+    color = g;
+  }
   ctx.fillStyle = color;
   ctx.strokeStyle = "#000";
   ctx.lineWidth = 3;

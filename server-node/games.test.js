@@ -55,7 +55,7 @@ console.log('paytables');
     const d2 = G.diceRoll(10, 'over', seq([0.5, 0.34])); // 4 + 3 = 7 push
     ok(d2.total === 7 && d2.push && d2.payout === 10, 'dice: 7 pushes over/under');
     const d3 = G.diceRoll(10, 'under', seq([0.01, 0.01]));
-    ok(d3.total === 2 && d3.payout === 20, 'dice: under 7 pays 2x');
+    ok(d3.total === 2 && d3.payout === 19, 'dice: under 7 pays 1.95x (the break-even 2x is retired, QA-ECONOMY P2)');
     ok(G.KENO_PAYTABLES[8][8] === 25000 && G.KENO_PAYTABLES[1][1] === 3.7, 'keno paytable intact');
     ok(G.handScore([{ r: 'A' }, { r: 'K' }]) === 21 && G.handScore([{ r: 'A' }, { r: 'A' }, { r: '9' }]) === 21 && G.handScore([{ r: 'K' }, { r: 'Q' }, { r: '5' }]) === 25, 'blackjack hand scoring with soft aces');
     ok(G.bacTotal([{ r: 'K' }, { r: '9' }]) === 9 && G.bacTotal([{ r: '7' }, { r: '8' }]) === 5, 'baccarat totals mod 10');
@@ -133,6 +133,18 @@ console.log('round flow');
     assert.throws(() => G.play(u, 'jackpot', 'spin', { bet: 100 }, 1000), /Minimum bet/);
     assert.throws(() => G.play(u, 'plinko', 'drop', { bet: 100, risk: 'high', balls: 20 }, 1000), /Not enough/);
     ok(true, 'bet validation: over balance, zero, fractional, min bet, balls x bet all rejected');
+    assert.throws(() => G.play(u, 'coinflip', 'flip', { bet: G.CASINO_MAX_BET + 1, call: 'heads' }, 1e12), /table limit/);
+    assert.throws(() => G.play(u, 'roulette', 'spin', { bets: [{ type: 'red', amount: 30000 }, { type: 'black', amount: 30000 }] }, 1e12), /table limit/);
+    assert.throws(() => G.play(u, 'plinko', 'drop', { bet: 5000, risk: 'low', balls: 11 }, 1e12), /table limit/);
+    assert.throws(() => G.play(u, 'blackjack', 'deal', { bet: G.CASINO_MAX_BET + 1 }, 1e12), /table limit/);
+    ok(G.play(u, 'coinflip', 'flip', { bet: G.CASINO_MAX_BET, call: 'heads' }, 1e12, 0, () => 0.1).data.bet === G.CASINO_MAX_BET, 'a bet AT the table limit is fine');
+    ok(true, 'table limit: single bets, roulette chip totals, plinko bet x balls and card tables all capped at $' + G.CASINO_MAX_BET);
+    // luck bonus: <= 2% of profit, capped at one stake; thin-edge tables exempt
+    ok(G.luckBonus('coinflip', { delta: 95, data: { bet: 100 } }, null, 0.02) === 1, 'luck: 2% of a 95 profit');
+    ok(G.luckBonus('roulette', { delta: 3500, data: { total: 100 } }, null, 0.02) === 2, 'luck: a straight-up hit is capped at one stake of profit');
+    ok(G.luckBonus('dice', { delta: 95, data: { bet: 100 } }, null, 0.30) === 1, 'luck: rate itself capped at 2%');
+    ok(G.luckBonus('baccarat', { delta: 95, data: { bet: 100 } }, null, 0.02) === 0 && G.luckBonus('horses', { delta: 900, data: { bet: 100 } }, null, 0.02) === 0, 'luck: exempt tables pay nothing');
+    ok(G.luckBonus('highlow', { delta: 150, data: {} }, { bet: 100 }, 0.02) === 1 && G.luckBonus('highlow', { delta: 80, data: {} }, { bet: 100 }, 0.02) === 0, 'luck: multi-step rounds only on profit above the stake');
     G.clearUser(u);
 }
 
@@ -216,5 +228,51 @@ rtp('highlow (optimal 1 call, bank)', 20000, (rand) => {
 // (The original 33.5x layout was a 279% money printer.) Pinned so the
 // server and the wedges the client draws stay in step.
 rtp('wheel', 20000, one('wheel', 'spin', { bet: 10 }, 10), 0.88, 0.99);
+
+// With the strongest Luck (6) every table must still keep a house edge of at
+// least 1% (QA-ECONOMY P2). The bonus is paid exactly as the server does
+// (GAMES.luckBonus with ECON.luckEffects(6).casinoBonus).
+console.log('RTP at Luck 6');
+{
+    const RATE = require('../js/shared/economy.js').luckEffects(6).casinoBonus;
+    const lucky = (game, action, args, bet) => (rand) => { const r = G.play(U, game, action, args, BAL, 0, rand); return [bet, bet + r.delta + G.luckBonus(game, r, null, RATE)]; };
+    const MAX = 0.99;
+    rtp('luck6 slots', 300000, lucky('slots', 'spin', { bet: 10 }, 10), 0.5, MAX);
+    rtp('luck6 jackpot', 100000, lucky('jackpot', 'spin', { bet: 250 }, 250), 0.5, MAX);
+    rtp('luck6 coinflip', 300000, lucky('coinflip', 'flip', { bet: 100, call: 'heads' }, 100), 0.9, MAX);
+    rtp('luck6 scratch', 300000, lucky('scratch', 'buy', { bet: 100 }, 100), 0.5, MAX);
+    rtp('luck6 roulette red', 300000, lucky('roulette', 'spin', { bets: [{ type: 'red', amount: 100 }] }, 100), 0.9, MAX);
+    rtp('luck6 roulette straight', 600000, lucky('roulette', 'spin', { bets: [{ type: 'num', value: 17, amount: 100 }] }, 100), 0.5, MAX);
+    rtp('luck6 dice over', 300000, lucky('dice', 'roll', { bet: 100, call: 'over' }, 100), 0.9, MAX);
+    rtp('luck6 dice seven', 300000, lucky('dice', 'roll', { bet: 100, call: 'seven' }, 100), 0.5, MAX);
+    rtp('luck6 keno 1', 300000, lucky('keno', 'draw', { bet: 100, picks: [7] }, 100), 0.5, MAX);
+    rtp('luck6 keno 5', 300000, lucky('keno', 'draw', { bet: 100, picks: [1, 2, 3, 4, 5] }, 100), 0.5, MAX);
+    rtp('luck6 plinko low', 200000, lucky('plinko', 'drop', { bet: 100, risk: 'low', balls: 1 }, 100), 0.5, MAX);
+    rtp('luck6 plinko high', 300000, lucky('plinko', 'drop', { bet: 100, risk: 'high', balls: 1 }, 100), 0.5, MAX);
+    rtp('luck6 wheel', 300000, lucky('wheel', 'spin', { bet: 100 }, 100), 0.5, MAX);
+    rtp('luck6 crash 2x', 200000, (rand) => {
+        G.play(U, 'crash', 'start', { bet: 100 }, BAL, 0, rand);
+        const before = G.getRound(U, 'crash');
+        const r = G.play(U, 'crash', 'cashout', {}, BAL, Math.log(2) / 0.42 * 1000 + 1, rand);
+        return [100, r.data.payout + G.luckBonus('crash', r, before, RATE)];
+    }, 0.5, MAX);
+    rtp('luck6 mines (1 mine, 1 pick)', 200000, (rand) => {
+        G.play(U, 'mines', 'start', { bet: 100, mines: 1 }, BAL, 0, rand);
+        let r = G.play(U, 'mines', 'pick', { cell: 0 }, BAL, 0, rand);
+        if (r.data.status !== 'playing') return [100, r.data.payout || 0];
+        const before = G.getRound(U, 'mines');
+        r = G.play(U, 'mines', 'cashout', {}, BAL, 0, rand);
+        return [100, r.data.payout + G.luckBonus('mines', r, before, RATE)];
+    }, 0.5, MAX);
+    rtp('luck6 highlow (1 call)', 200000, (rand) => {
+        let r = G.play(U, 'highlow', 'start', { bet: 100 }, BAL, 0, rand);
+        const ri = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'].indexOf(r.data.cards[0].r);
+        r = G.play(U, 'highlow', 'guess', { dir: ri <= 6 ? 'higher' : 'lower' }, BAL, 0, rand);
+        if (r.data.status !== 'playing') return [100, r.data.payout || 0];
+        const before = G.getRound(U, 'highlow');
+        r = G.play(U, 'highlow', 'bank', {}, BAL, 0, rand);
+        return [100, r.data.payout + G.luckBonus('highlow', r, before, RATE)];
+    }, 0.5, MAX);
+}
 
 console.log(`\nALL ${passed} CHECKS PASSED`);

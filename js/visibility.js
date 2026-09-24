@@ -15,6 +15,8 @@
   }
   const TAU = Math.PI * 2;
   function polygon(x, y, walls, radius) {
+    // only walls the light can reach take part in the ray casts
+    walls = (walls || []).filter(w => !(w.x > x + radius || w.y > y + radius || w.x + w.w < x - radius || w.y + w.h < y - radius));
     const angles = [];
     for (let i = 0; i < 192; i++) angles.push(i * TAU / 192);
     for (const w of walls || []) {
@@ -32,25 +34,29 @@
       return { x: x + dx * r, y: y + dy * r, angle: a };
     });
   }
+  // The darkness is soft everywhere but the wall shadows, so the mask is painted at half
+  // resolution and stretched: a quarter of the pixels to fill, clear and upload every frame.
+  const MASK_SCALE = 0.5;
   let mask, mc;
   function draw(ctx, x, y, walls, width, height, bounds, fullRoom) {
     const radius = (root.DungeonScenes && root.DungeonScenes.visibilityRadius) || 380;
-    const v = bounds || { x: 0, y: 0, w: width, h: height };
+    const v = bounds || { x: 0, y: 0, w: width, h: height }, S = MASK_SCALE;
     if (!mask) { mask = document.createElement('canvas'); mc = mask.getContext('2d'); }
-    if (mask.width !== Math.ceil(v.w) || mask.height !== Math.ceil(v.h)) { mask.width = Math.ceil(v.w); mask.height = Math.ceil(v.h); }
+    const mw = Math.ceil(v.w * S), mh = Math.ceil(v.h * S);
+    if (mask.width !== mw || mask.height !== mh) { mask.width = mw; mask.height = mh; }
     mc.setTransform(1, 0, 0, 1, 0, 0); mc.globalCompositeOperation = 'source-over';
     mc.fillStyle = '#000'; mc.fillRect(0, 0, mask.width, mask.height);
-    mc.save(); mc.translate(-v.x, -v.y); mc.beginPath();
+    mc.save(); mc.scale(S, S); mc.translate(-v.x, -v.y); mc.beginPath();
     polygon(x, y, walls, radius).forEach((p, i) => i ? mc.lineTo(p.x, p.y) : mc.moveTo(p.x, p.y));
     mc.closePath(); mc.clip(); mc.globalCompositeOperation = 'destination-out';
     const light = mc.createRadialGradient(x, y, radius * 0.48, x, y, radius);
     light.addColorStop(0, 'rgba(0,0,0,1)'); light.addColorStop(0.45, 'rgba(0,0,0,.85)'); light.addColorStop(1, 'rgba(0,0,0,0)');
     mc.fillStyle = light; mc.fillRect(v.x, v.y, v.w, v.h); mc.restore();
     if (fullRoom) {
-      mc.save(); mc.globalCompositeOperation='destination-out'; mc.fillStyle='#000';
+      mc.save(); mc.scale(S, S); mc.globalCompositeOperation='destination-out'; mc.fillStyle='#000';
       mc.fillRect(fullRoom.x-v.x-14,fullRoom.y-v.y-14,fullRoom.w+28,fullRoom.h+28); mc.restore();
     }
-    ctx.drawImage(mask, v.x, v.y);
+    ctx.drawImage(mask, v.x, v.y, mw / S, mh / S);
   }
   const api = { distance, polygon, draw };
   if (typeof module !== 'undefined') module.exports = api; else root.DungeonSight = api;

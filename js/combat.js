@@ -10,13 +10,17 @@ const QUEST_TIERS = {
 // never disagree about how long a run is or which boss waits at the end. They
 // are flagged `guild` so the run plumbing (server-side boss, tithed payout)
 // only kicks in for them.
-for (const id of ECON.GUILD_DUNGEON_ORDER) {
+// Every entry of the table, not just the seven-tier ladder: the raid-only
+// Nexus and the endless Arcane Depths are guild runs too (MASTER-PLAN D27).
+for (const id of Object.keys(ECON.GUILD_DUNGEONS)) {
   const g = ECON.GUILD_DUNGEONS[id];
   QUEST_TIERS[id] = {
     tier: id,
     floors: g.floors, enemyMin: g.enemyMin, enemyMax: g.enemyMax,
     hpMult: g.hpMult, speedMult: g.speedMult, reward: g.reward,
     name: g.name, guild: true, boss: g.boss, mini: g.mini, blurb: g.blurb,
+    theme: g.theme || null, mode: g.mode || "story", roster: g.roster, dmgMult: g.dmgMult || 1,
+    continuousOnly: !!g.continuousOnly, raidable: !!g.raidable,
   };
 }
 
@@ -51,13 +55,17 @@ function partyPairKey() {
 // run (a guildmate opened it and named us). Calling `start` again in that case
 // would open a second run and tear down the leader's, so followers take this
 // path and only rebuild the maze locally.
-async function startDungeon(tier, party, joining) {
+// `opts` = { delve, weekly, raid } (MASTER-PLAN §6.7): forwarded to `start`
+// for a solo entry; a party/raid start already carried them to the server.
+async function startDungeon(tier, party, joining, opts) {
   const cfg = QUEST_TIERS[tier];
   if (!cfg) return;
+  opts = opts || {};
   // A guild run is opened on the server first: it owns the party list, the
   // boss and the payout, and it hands back the seed every member's maze is
   // built from so a party sees the same floors.
   let runId = null, seedBase = partyPairKey() + "|" + tier + "|" + Array.from(crypto.getRandomValues(new Uint32Array(4))).join('-'), plan = null;
+  let meta = joining || {};
   if (cfg.guild && joining) {
     runId = joining.runId;
     seedBase = "guildrun|" + joining.seed;
@@ -67,11 +75,15 @@ async function startDungeon(tier, party, joining) {
     try {
       // Solo entry. A party goes through the lobby (gameGuild.startParty),
       // which calls party_start and arrives here as `joining`.
-      const res = await netGuildDungeon({ action: "start", tier, layout: "continuous" });
+      const req = { action: "start", tier, layout: "continuous" };
+      if (opts.delve) req.delve = opts.delve | 0;
+      if (opts.weekly) req.weekly = true;
+      const res = await netGuildDungeon(req);
+      meta = res;
       runId = res.runId;
       seedBase = "guildrun|" + res.seed;
       plan = withServerHp(res.state);
-    } catch (e) { toast(e.message); return; }
+    } catch (e) { toast(escapeHtml(e.message)); return; }
   }
   state.area = "dungeon";
   state.dungeon = {
@@ -85,16 +97,37 @@ async function startDungeon(tier, party, joining) {
     seedBase, plan,
     // The chest at the end, and whether this player has spent their one tome.
     chest: null, tomeUsed: false,
+    // ---- Arcane Depths run state (all optional; an old server sends none) ----
+    delve: meta.delve != null ? meta.delve | 0 : (opts.delve | 0),
+    affixes: meta.affixes || (plan && plan.affixes) || [],
+    kind: meta.kind || (opts.raid ? "raid" : null),
+    theme: meta.theme || (plan && plan.theme) || cfg.theme,
+    guilds: meta.guilds || null,
+    endless: cfg.mode === "endless",
+    depth: plan && plan.depth ? plan.depth : (cfg.mode === "endless" ? 1 : 0),
+    weekly: !!(meta.weekly || opts.weekly),
+    // New-delver scaling the server applied at start ({active, hpMult, dmgMult}).
+    initiate: meta.initiate && meta.initiate.active ? meta.initiate : null,
+    startedAt: Date.now(),
+    arenaEnemies: [],
   };
   state.buffs = {};
   state.tomeCine = null;
-  state.maxHp = window.gameGear ? gameGear.maxHp() : 100;
+  cancelDash(); _dashReadyAt = 0;
+  resetRunLocals();
+  if (window.gameDepths) gameDepths.reset(state.dungeon);
+  state.maxHp = playerMaxHp();
   state.hp = state.maxHp;
   state.questReward = cfg.reward;
   state.swingT = 0;
   setupFloor();
   closeMenu();
-  toast(`Entered ${cfg.name} — explore the passages to find its guardian.`);
+  // The town tutorial card must not sit over a dungeon run (QA UX-16).
+  { const tut = document.getElementById("tutorial"); if (tut) tut.classList.add("hidden"); }
+  const d = state.dungeon;
+  if (cfg.guild && window.gameDepths) gameDepths.refreshStatus();
+  toast(d.endless ? `The Arcane Depths open beneath you${d.weekly ? " (this week's descent)" : ""}. There is no bottom.`
+    : `Entered ${cfg.name}${d.delve ? ` at Delve ${d.delve}` : ""} — explore the passages to find its guardian.`, 4500);
   updateHUD();
 }
 
@@ -119,13 +152,22 @@ async function resumeGuildRunIfAny() {
     maze: null, walls: null, doorCell: null, keyCell: null,
     bossRoom: false, boss: null, bossAttacks: [],
     seedBase: "guildrun|" + run.seed, plan: null,
+    delve: run.delve | 0, affixes: run.affixes || [], kind: run.kind || null, theme: run.theme || cfg.theme,
+    guilds: run.guilds || null, memberGuild: run.memberGuild || null, members: run.members || null,
+    endless: cfg.mode === "endless", depth: cfg.mode === "endless" ? (run.floor || 1) : 0,
+    initiate: run.initiate && run.initiate.active ? run.initiate : null,
+    startedAt: run.startedAt || Date.now(), arenaEnemies: [],
   };
-  state.maxHp = window.gameGear ? gameGear.maxHp() : 100;
+  cancelDash(); _dashReadyAt = 0;
+  resetRunLocals();
+  if (window.gameDepths) gameDepths.reset(state.dungeon);
+  state.maxHp = playerMaxHp();
   state.hp = state.maxHp;
   state.questReward = cfg.reward;
   state.swingT = 0;
   if (run.continuous) {
     state.dungeon.plan = withServerHp(res.state);
+    if (window.gameDepths) gameDepths.applyStatus(res);
     state.dungeon.miniDone = run.miniDone;
     setupFloor();
     if (res.boss && run.encounter) gameExpedition.apply({runId:run.id,encounter:run.encounter,boss:res.boss});
@@ -169,6 +211,7 @@ function withServerHp(st) {
 
 function setupFloor() {
   const d = state.dungeon;
+  cancelDash();
   if (!d.cfg.guild || (d.plan && d.plan.continuous)) {
     gameExpedition.setup(d.plan && d.plan.continuous ? d.plan : DUNGEON.buildExpedition(d.seedBase, d.cfg));
     return;
@@ -279,28 +322,73 @@ function refreshFlow() {
 // Turn the plan's roster (id, type, position, HP) into the objects the local
 // AI and renderer work with. Behaviour is looked up from the shared table, so
 // the server never has to ship it.
+function makeEnemy(row) {
+  const t = ENEMY_TYPES[row.type];
+  if (!t) return null;
+  const aff = Array.isArray(row.affixes) ? row.affixes.slice() : [];
+  const frenzied = aff.includes("frenzied");
+  const e = {
+    id: row.id, type: row.type, x: row.x, y: row.y, vx: 0, vy: 0,
+    hp: row.hp, maxHp: row.maxHp || row.hp, speed: (row.speed != null ? row.speed : t.speed) * (frenzied ? 1.5 : 1),
+    // A v3 row carries its own damage (tier, delve, affix and elite scaling
+    // baked in server-side); a legacy row falls back to the table.
+    color: t.color, size: row.size || t.size, dmg: row.dmg != null ? row.dmg : t.dmg,
+    ai: t.ai, name: row.name || t.name, sight: t.sight || 320,
+    shootCd: 30, kbX: 0, kbY: 0, hitFlash: 0,
+    // Enemies start unaware and wake when you come into sight — a corridor
+    // you haven't reached yet isn't already sprinting at you.
+    awake: false, wander: Math.random() * Math.PI * 2, wanderT: 0,
+    fuse: 0, healCd: Math.floor(Math.random() * 90), lurking: row.type === "stalker",
+    isBoss: row.type === "boss",
+    elite: row.elite | 0, affixes: aff, carries: row.carries || null, frenzied,
+    leash: row.leash || 0, sx: row.sx != null ? row.sx : row.x, sy: row.sy != null ? row.sy : row.y,
+    treasure: !!row.treasure, trial: row.trial || null, arena: !!row.arena, chest: row.chest || null,
+    // per-AI clocks, staggered so a room does not act in lockstep
+    dashT: 60 + Math.floor(Math.random() * (t.dashCd || 110)), blinkT: 80 + Math.floor(Math.random() * (t.blinkCd || 200)),
+    buffT: Math.floor(Math.random() * (t.buffCd || 200)), lureT: 60 + Math.floor(Math.random() * (t.lureCd || 200)),
+    arcT: Math.floor(Math.random() * 240), blink2T: 150 + Math.floor(Math.random() * 150), lungeT: 0, trailT: 0,
+  };
+  if (aff.includes("shielded")) { e.shieldMax = Math.round(e.maxHp * 0.4); e.shield = row.shield != null ? row.shield : e.shieldMax; }
+  if (row.shield != null) { e.shield = row.shield; e.shieldMax = row.shieldMax || Math.max(e.shieldMax || 0, row.shield); }
+  return e;
+}
 function adoptEnemies(roster) {
   state.enemies = [];
   for (const row of (roster || [])) {
     if (!(row.hp > 0)) continue;          // already dead when we arrived
-    const t = ENEMY_TYPES[row.type];
-    if (!t) continue;
-    state.enemies.push({
-      id: row.id, type: row.type, x: row.x, y: row.y, vx: 0, vy: 0,
-      hp: row.hp, maxHp: row.maxHp, speed: row.speed,
-      color: t.color, size: t.size, dmg: t.dmg,
-      ai: t.ai, name: t.name, sight: t.sight || 320,
-      shootCd: 30, kbX: 0, kbY: 0, hitFlash: 0,
-      // Enemies start unaware and wake when you come into sight — a corridor
-      // you haven't reached yet isn't already sprinting at you.
-      awake: false, wander: Math.random() * Math.PI * 2, wanderT: 0,
-      fuse: 0, healCd: Math.floor(Math.random() * 90), lurking: row.type === "stalker",
-      isBoss: row.type === "boss",
-    });
+    const e = makeEnemy(row);
+    if (e) state.enemies.push(e);
   }
   // A floor that spawned with nothing on it (or everything already dead) still
   // needs its key.
   state.dungeon.spawnedCount = (roster || []).length;
+}
+// Rows the server created mid-run: split children, trial waves, rift and
+// leyline spawns, the Vault Keeper, arena adds. Each id is adopted once.
+function adoptSpawned(rows, o) {
+  const d = state.dungeon;
+  if (!d || !Array.isArray(rows)) return;
+  o = o || {};
+  for (const row of rows) {
+    if (!row || !(row.hp > 0) || !row.id) continue;
+    const arena = !!row.arena;
+    const list = arena ? (d.arenaEnemies = d.arenaEnemies || []) : (d.bossRoom && d.continuous ? (d.worldEnemies = d.worldEnemies || []) : state.enemies);
+    if (list.some(e => e.id === row.id)) continue;
+    if (window.gameDepths && gameDepths.markSeen(row.id) && !o.force) continue;
+    const e = makeEnemy(row);
+    if (!e) continue;
+    // A split child appears where its parent last stood on THIS screen.
+    const m = /^(.*)\.([ab])$/.exec(row.id);
+    const lp = m && window.gameDepths ? gameDepths.lastPos(m[1]) : null;
+    if (lp) { e.x = lp.x + (m[2] === "a" ? -14 : 14); e.y = lp.y + (m[2] === "a" ? -6 : 6); }
+    if (o.wake !== false || lp) e.awake = true;
+    e.lurking = false;
+    list.push(e);
+    if (window.gameDepths && (o.portal || arena)) {
+      gameDepths.burst(e.x, e.y, ["#8b5cf6", "#f0abfc", "#1e1b4b"], 18, { speed: 3.5, life: 36 });
+      gameDepths.ring(e.x, e.y, 46, "#a78bfa");
+    }
+  }
 }
 
 
@@ -337,21 +425,103 @@ function hasLineOfSight(x0, y0, x1, y1) {
 
 // One funnel for everything that hurts the player, so armour/immunity frames
 // (and the hit feedback) only have to live in one place.
-function takePlayerDamage(amount) {
+// `sourceId` is the enemy that did it, when there is one — Thorns answers it.
+function takePlayerDamage(amount, sourceId) {
   amount = Math.max(0, +amount || 0);
+  const G = window.gameDepths;
+  // A ghost cannot be hurt, and neither can a dash in its i-frames.
+  if (G && G.isDowned()) return;
+  if (state.iframesUntil && Date.now() < state.iframesUntil && state.area === "dungeon") {
+    if (G && amount > 0 && Math.random() < 0.3) G.floatText(state.pos.x, state.pos.y - 26, "DODGE", "#a5f3fc", { size: 12, dur: 600 });
+    return;
+  }
   // Armour is applied here, once, rather than at each of the dozen places that
   // can hurt you — so a new hazard is protected against for free.
   if (window.gameGear) amount *= (1 - gameGear.mitigation());
   // A ward (Tome of Protection) applies after armour, so the two stack the way
   // a player expects: armour eats its fraction, the ward eats most of the rest.
+  // The Warding shrine and gear `takenMult` stack on top, multiplicatively.
   amount *= buffTakenMult();
+  const fx = playerFx();
+  if (state.area === "dungeon") {
+    if (fx.takenMult > 0 && fx.takenMult < 1) amount *= Math.max(0.6, fx.takenMult);
+    if (fx.lowHpTaken && state.hp / (state.maxHp || 100) < (fx.lowHpTaken.below || 0.3)) amount *= fx.lowHpTaken.mult || 1;
+  }
   if (amount <= 0) return;
   state.hp -= amount;
+  state.hurtAt = Date.now();
   addParticles(state.pos.x, state.pos.y, "#ef4444", 10);
+  if (G && amount >= 1) G.floatText(state.pos.x, state.pos.y - 30, "-" + Math.round(amount), "#f87171", { size: 12, dur: 700 });
   // Being hit is enough to give your position away to the whole room.
   for (const e of state.enemies) {
     if (!e.awake && Math.hypot(e.x - state.pos.x, e.y - state.pos.y) < 260) e.awake = true;
   }
+  if (sourceId && fx.thorns > 0) thornsAt(sourceId);
+}
+
+// ---------- gear effects (the Fx in use) ----------
+let _fxCache = null, _fxAt = 0;
+function playerFx() {
+  const now = Date.now();
+  if (_fxCache && now - _fxAt < 1000) return _fxCache;
+  let fx = null;
+  try {
+    if (window.gameGear && typeof gameGear.fx === "function") fx = gameGear.fx();
+    else if (window.gameGear && gameGear.equippedItem && ECON.gearFx) {
+      const slots = (ECON.GEAR_SLOTS || ["weapon", "helmet", "chest", "legs", "ring"]).filter(s => s !== ECON.TOME_SLOT);
+      fx = ECON.gearFx(slots.map(s => gameGear.equippedItem(s)).filter(Boolean));
+    }
+  } catch (e) { fx = null; }
+  _fxCache = Object.assign(ECON.emptyFx ? ECON.emptyFx() : {}, fx || {});
+  _fxAt = now;
+  return _fxCache;
+}
+// Max HP with gear `maxHpPct` and, in a guild run, the Rally research.
+function playerMaxHp() {
+  const base = window.gameGear ? gameGear.maxHp() : 100;
+  let pct = playerFx().maxHpPct || 0;
+  const d = state.dungeon;
+  if (d && d.cfg && d.cfg.guild && window.gameGuild && gameGuild.myGuild && ECON.researchBonus) {
+    const g = gameGuild.myGuild();
+    if (g && g.research) { try { pct += ECON.researchBonus(g.research).rallyHpPct || 0; } catch (e) {} }
+  }
+  return Math.floor(base * (1 + pct));
+}
+// Everything that can take the last of your HP ends up here. In a guild run
+// with a living ally you go DOWN instead of out; a ghost keeps watching.
+function playerDead() {
+  if (state.hp > 0) return false;
+  const G = window.gameDepths;
+  if (G && G.isDowned()) return false;
+  if (G && G.tryDown && G.tryDown()) return false;
+  endDungeon(false);
+  return true;
+}
+// Thorns: a hit taken sends one back, server-rolled, at most every 350ms.
+let _thornsAt = 0;
+function thornsAt(id) {
+  const d = state.dungeon, now = Date.now();
+  if (!d || now - _thornsAt < 360) return;
+  _thornsAt = now;
+  const e = state.enemies.concat(d.arenaEnemies || []).find(x => x.id === id);
+  if (e && window.gameDepths) gameDepths.procArcs(state.pos, [e], "#86efac");
+  if (d.cfg.guild) sendSpecialHit("thorns", [id]);
+  else if (e) {
+    const fx = playerFx(), t = ENEMY_TYPES[e.type] || {};
+    const dmg = Math.round(fx.thorns * (t.dmg || 8) * (d.cfg.hpMult || 1) * 3);
+    e.hp -= dmg; e.hitFlash = 6;
+    if (window.gameDepths) gameDepths.floatText(e.x, e.y - 20, dmg, "#86efac", { size: 11 });
+  }
+}
+// Hits that are not a swing (thorns, the dash burst): fire and forget, each
+// weapon on its own clock so they never collide with the swing queue.
+async function sendSpecialHit(weapon, ids, extra) {
+  const d = state.dungeon;
+  if (!d || !d.cfg.guild || !ids.length) return;
+  try {
+    const res = await netGuildDungeon(Object.assign({ action: "enemy_hit", weapon, enemies: ids.slice(0, ECON.DUNGEON_HIT_MAX_TARGETS) }, extra || {}));
+    handleHitReply(res, weapon);
+  } catch (e) { /* a missed proc is not worth a toast */ }
 }
 
 // The key only drops when the floor is empty. In a guild run "empty" means
@@ -385,7 +555,10 @@ function updateDungeon() {
     if (Date.now() - active.victoryCine.t0 < active.victoryCine.dur) return;
     active.victoryCine = null;
   }
+  if (_dungeonShake > 0) _dungeonShake *= 0.88;
   tickBuffs();
+  const G = window.gameDepths;
+  const downed = !!(G && G.isDowned());
   // movement
   let dx = 0, dy = 0;
   if (keys["w"])    dy -= 1;
@@ -394,8 +567,14 @@ function updateDungeon() {
   if (keys["d"]) dx += 1;
   if(window.FirstPerson) ({dx,dy}=FirstPerson.movement(dx,dy));
     const m = Math.hypot(dx, dy) || 1;
-  if (dx || dy) {
-    const speed = WALK_SPEED * buffSpeedMult(); // Rage is what makes this fast
+  // The dash: Shift (or the touch button). Edge-triggered so holding it
+  // does not chain dashes.
+  const shift = !!keys["shift"];
+  if (shift && !_shiftHeld) tryDash(dx, dy);
+  _shiftHeld = shift;
+  if (state.dash) stepDash();
+  else if ((dx || dy) && !(downed && !(G && G.isSpectator()))) {
+    const speed = downed ? WALK_SPEED * 0.9 : WALK_SPEED * playerSpeedMult(); // Rage is what makes this fast
     const nx = state.pos.x + (dx/m) * speed;
     const ny = state.pos.y + (dy/m) * speed;
     moveWithWalls(state.pos, nx, ny, 12);
@@ -412,21 +591,29 @@ function updateDungeon() {
   refreshFlow();
 
   // The boss room has no maze and no minions — just the telegraphed attacks
-  // the server is calling, resolved against where you're standing.
+  // the server is calling, resolved against where you're standing (and, for
+  // the new bosses, whatever it summoned).
   if (state.dungeon.bossRoom) {
     const d = state.dungeon;
-    if (_dungeonShake > 0) _dungeonShake *= 0.88;
     // The entrance cinematic runs itself out; nothing can hit you during it.
     if (d.cine && Date.now() - d.cine.t0 >= d.cine.dur) d.cine = null;
     if (d.phaseCine && Date.now() - d.phaseCine.t0 >= d.phaseCine.dur) d.phaseCine = null;
     // Varkaal getting back up holds the room exactly the way the entrance does.
     const held = d.cine || d.phaseCine || (d.boss && d.boss.status === "reviving");
     if (!held) updateBossAttacks();
-    if (state.hp <= 0) return;
+    if (!state.dungeon) return;
+    // Summoned adds run the same brain as the maze, homing in directly.
+    const adds = d.arenaEnemies || [];
+    for (const e of adds) if (stepEnemy(e, adds, true) === false) return;
+    if (stepEnemyBullets() === false) return;
+    reapDead(adds, true);
+    if (G) G.tick();
+    if (!state.dungeon) return;
+    if (state.hp <= 0 && !(G && G.isDowned())) { if (playerDead()) return; }
     updateChest();
     if (d.exitReady && keys['e'] && Math.hypot(state.pos.x - DUNGEON_W / 2, state.pos.y - (BOSS_ROOM.y + 30)) < 44) { endDungeon(true, true); return; }
-    // Once a mini is down its floor has an exit again: walk to the far door.
-    if (d.isMini && (!d.boss || d.boss.status === "dead")) {
+    // Once a mini (or a Depths Heart) is down its floor has an exit again: walk to the far door.
+    if ((d.isMini || d.endless) && (!d.boss || d.boss.status === "dead")) {
       const ex = { x: DUNGEON_W / 2, y: BOSS_ROOM.y + 30 };
       if (Math.hypot(state.pos.x - ex.x, state.pos.y - ex.y) < 34) { if (d.continuous) gameExpedition.leave(); else advanceGuildFloor(); }
     }
@@ -440,140 +627,22 @@ function updateDungeon() {
   }
 
   // Enemies AI
-  for (const e of state.enemies) {
-    if (e.hitFlash > 0) e.hitFlash--;
-    // knockback
-    if (Math.hypot(e.kbX, e.kbY) > 0.1) {
-      moveWithWalls(e, e.x + e.kbX, e.y + e.kbY, e.size);
-      e.kbX *= 0.7; e.kbY *= 0.7;
-    }
-    const ex = state.pos.x - e.x, ey = state.pos.y - e.y;
-    const d = Math.hypot(ex, ey) || 1;
-    // Wake on sight (or on being shot — takeDamage sets awake). Bosses are
-    // always awake; everything else has to notice you first.
-    if (!e.awake && (e.isBoss || (d < e.sight && hasLineOfSight(e.x, e.y, state.pos.x, state.pos.y)))) e.awake = true;
-
-    // Route toward the player around walls instead of into them.
-    const hop = flowTarget(e.x, e.y);
-    const goal = hop || { x: state.pos.x, y: state.pos.y };
-    const gx = goal.x - e.x, gy = goal.y - e.y;
-    const gd = Math.hypot(gx, gy) || 1;
-
-    if (!e.awake) {
-      // Idle drift so a room doesn't read as a set of statues.
-      if (--e.wanderT <= 0) { e.wander = Math.random() * Math.PI * 2; e.wanderT = 40 + Math.floor(Math.random() * 70); }
-      moveWithWalls(e, e.x + Math.cos(e.wander) * e.speed * 0.25, e.y + Math.sin(e.wander) * e.speed * 0.25, e.size);
-    } else if (e.ai === "chase" || e.ai === "boss") {
-      const targetD = e.ai === "boss" ? 80 : 0;
-      if (!hop || d > targetD) {
-        moveWithWalls(e, e.x + (gx / gd) * e.speed, e.y + (gy / gd) * e.speed, e.size);
-      }
-      if (d < e.size + 14 && e.shootCd <= 0) {
-        takePlayerDamage(e.dmg);
-        e.shootCd = 40;
-        if (state.hp <= 0) { endDungeon(false); return; }
-      }
-    } else if (e.ai === "ranged") {
-      // Hold at `ideal` range, but only once there's a clear shot — otherwise
-      // close the distance along the path like everyone else.
-      const ideal = ENEMY_TYPES[e.type].ideal || 180;
-      const clear = hasLineOfSight(e.x, e.y, state.pos.x, state.pos.y);
-      if (!clear) {
-        // No shot from here — walk the path until there is one.
-        moveWithWalls(e, e.x + (gx / gd) * e.speed * 0.9, e.y + (gy / gd) * e.speed * 0.9, e.size);
-      } else if (d < ideal - 30) {
-        moveWithWalls(e, e.x - (ex / d) * e.speed, e.y - (ey / d) * e.speed, e.size);
-      } else if (d > ideal + 30) {
-        moveWithWalls(e, e.x + (ex / d) * e.speed * 0.7, e.y + (ey / d) * e.speed * 0.7, e.size);
-      }
-    } else if (e.ai === "bomber") {
-      // Sprints the path, then lights itself and detonates in a radius. The
-      // fuse is the tell — back off and it kills its own friends instead.
-      if (e.fuse > 0) {
-        e.fuse--;
-        if (e.fuse <= 0) {
-          addParticles(e.x, e.y, "#f97316", 34);
-          const blast = ENEMY_TYPES.bomber.blast;
-          if (Math.hypot(state.pos.x - e.x, state.pos.y - e.y) < blast) {
-            takePlayerDamage(e.dmg);
-            if (state.hp <= 0) { endDungeon(false); return; }
-          }
-          const killed = [e.id];
-          for (const o of state.enemies) {
-            if (o === e) continue;
-            if (Math.hypot(o.x - e.x, o.y - e.y) < blast) {
-              o.hp -= e.dmg * 1.5; o.hitFlash = 6; o.awake = true;
-              if (o.hp <= 0) killed.push(o.id);
-            }
-          }
-          e.hp = 0;
-          // This is a death nobody swung for — report it or the server never
-          // hears about it and the floor stays "not cleared" forever.
-          reportEnemyKill(killed);
-        }
-      } else {
-        moveWithWalls(e, e.x + (gx / gd) * e.speed, e.y + (gy / gd) * e.speed, e.size);
-        if (d < 52) { e.fuse = ENEMY_TYPES.bomber.fuse; }
-      }
-    } else if (e.ai === "healer") {
-      // Hangs back and patches up whatever is still fighting. Kill it first.
-      const cfgH = ENEMY_TYPES.shaman;
-      if (d < 200) moveWithWalls(e, e.x - (ex / d) * e.speed, e.y - (ey / d) * e.speed, e.size);
-      else if (d > 340) moveWithWalls(e, e.x + (gx / gd) * e.speed * 0.7, e.y + (gy / gd) * e.speed * 0.7, e.size);
-      if (e.healCd <= 0) {
-        let best = null, bestFrac = 1;
-        for (const o of state.enemies) {
-          if (o === e || o.hp <= 0 || o.hp >= o.maxHp) continue;
-          if (Math.hypot(o.x - e.x, o.y - e.y) > cfgH.healRange) continue;
-          const f = o.hp / o.maxHp;
-          if (f < bestFrac) { bestFrac = f; best = o; }
-        }
-        if (best) {
-          best.hp = Math.min(best.maxHp, best.hp + cfgH.healAmt);
-          addParticles(best.x, best.y, "#5eead4", 8);
-          e.healCd = cfgH.healCd;
-        }
-      }
-      if (e.healCd > 0) e.healCd--;
-    } else if (e.ai === "stalker") {
-      // Sits still until you're close enough, then closes fast.
-      if (e.lurking) {
-        if (d < ENEMY_TYPES.stalker.lurk) { e.lurking = false; addParticles(e.x, e.y, "#a78bfa", 12); }
-      } else {
-        moveWithWalls(e, e.x + (gx / gd) * e.speed, e.y + (gy / gd) * e.speed, e.size);
-        if (d < e.size + 14 && e.shootCd <= 0) {
-          takePlayerDamage(e.dmg);
-          e.shootCd = 55;
-          if (state.hp <= 0) { endDungeon(false); return; }
-        }
-      }
-    }
-
-    // Ranged shooting — never through a wall.
-    const t = ENEMY_TYPES[e.type];
-    if (e.awake && (e.ai === "ranged" || e.ai === "boss") && d < e.sight && e.shootCd <= 0
-        && hasLineOfSight(e.x, e.y, state.pos.x, state.pos.y)) {
-      const v = t.projSpeed;
-      state.enemyBullets.push({
-        x: e.x, y: e.y,
-        vx: (ex/d) * v, vy: (ey/d) * v,
-        life: 120, dmg: e.dmg * 0.8, color: e.color,
-      });
-      e.shootCd = t.shootCd;
-    }
-    if (e.shootCd > 0) e.shootCd--;
-  }
+  for (const e of state.enemies) if (stepEnemy(e, state.enemies, false) === false) return;
   // Player bullets
   for (const b of state.bullets) {
     const nx = b.x + b.vx, ny = b.y + b.vy;
     if (collidesWalls(nx, ny, 3)) { b.life = 0; continue; }
     b.x = nx; b.y = ny; b.life--;
     for (const e of state.enemies) {
+      if (e.gone || (e.ai === "mimic" && !e.awake)) continue;
       if (Math.hypot(b.x - e.x, b.y - e.y) < e.size + 4) {
-        e.hp -= b.dmg;
+        const isGuild = !!state.dungeon.cfg.guild;
+        const dmg = isGuild ? b.dmg : localHitDamage(b.dmg, e);
+        if (!isGuild || !e.shield) e.hp -= dmg;
         reportEnemyHits([e.id], "pistol");
+        onLocalHit(e, dmg, !isGuild);
         e.hitFlash = 6;
-        e.awake = true; e.lurking = false;
+        wakeEnemy(e); e.lurking = false;
         const k = 1.5;
         e.kbX += (b.vx / Math.hypot(b.vx, b.vy)) * k;
         e.kbY += (b.vy / Math.hypot(b.vx, b.vy)) * k;
@@ -584,18 +653,7 @@ function updateDungeon() {
     }
   }
   state.bullets = state.bullets.filter(b => b.life > 0);
-  // Enemy bullets vs walls + player
-  for (const b of state.enemyBullets) {
-    const nx = b.x + b.vx, ny = b.y + b.vy;
-    if (collidesWalls(nx, ny, 3)) { b.life = 0; continue; }
-    b.x = nx; b.y = ny; b.life--;
-    if (Math.hypot(b.x - state.pos.x, b.y - state.pos.y) < 14) {
-      b.life = 0;
-      takePlayerDamage(b.dmg);
-      if (state.hp <= 0) { endDungeon(false); return; }
-    }
-  }
-  state.enemyBullets = state.enemyBullets.filter(b => b.life > 0);
+  if (stepEnemyBullets() === false) return;
 
   // Particles
   state.particles = state.particles.filter(p => p.life > 0);
@@ -604,15 +662,12 @@ function updateDungeon() {
   updateChest();
 
   // Death cleanup
-  const alive = [];
-  for (const e of state.enemies) {
-    if (e.hp <= 0) addParticles(e.x, e.y, e.color, 16);
-    else alive.push(e);
-  }
-  const died = alive.length !== state.enemies.length;
-  state.enemies = alive;
+  const died = reapDead(state.enemies, false);
   if (died) checkFloorCleared();
 
+  if (G) G.tick();
+  if (!state.dungeon) return;
+  if (state.hp <= 0 && !(G && G.isDowned())) { if (playerDead()) return; }
   if (state.dungeon.continuous) { gameExpedition.tick(); return; }
 
   // Pickup key
@@ -645,6 +700,506 @@ function updateDungeon() {
       else { setupFloor(); toast(`Floor ${state.dungeon.floor + 1}`); }
     }
   }
+}
+
+// Remove the dead from `list`, playing each death once. Returns whether
+// anything died.
+function reapDead(list, arena) {
+  let died = false;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const e = list[i];
+    if (e.gone) { list.splice(i, 1); continue; }
+    if (e.hp > 0) continue;
+    onEnemyDeath(e);
+    list.splice(i, 1);
+    died = true;
+  }
+  return died;
+}
+function onEnemyDeath(e) {
+  if (e._deathFx) return;
+  addParticles(e.x, e.y, e.color, 16);
+  if (window.gameDepths) gameDepths.onEnemyDeath(e);
+  e._deathFx = true;
+}
+
+// Enemy projectiles vs walls and you.
+function stepEnemyBullets() {
+  for (const b of state.enemyBullets) {
+    const nx = b.x + b.vx, ny = b.y + b.vy;
+    if (collidesWalls(nx, ny, 3)) { b.life = 0; continue; }
+    b.x = nx; b.y = ny; b.life--;
+    if (Math.hypot(b.x - state.pos.x, b.y - state.pos.y) < 14) {
+      b.life = 0;
+      takePlayerDamage(b.dmg, b.src);
+      if (b.bleed && window.gameDepths) gameDepths.bleed(3, 4000);
+      if (playerDead()) return false;
+    }
+  }
+  state.enemyBullets = state.enemyBullets.filter(b => b.life > 0);
+  return true;
+}
+
+// ---------- the enemy brain ----------
+// One frame of one enemy. `list` is the population it belongs to (the maze or
+// the arena's adds); `arena` = no maze routing, home straight in. Returns
+// false when the player died and the caller must stop.
+const _PROTECTED = /^(m\d|g0|vk|t\d|add|ls|r\d)/;
+function isProtectedEnemy(e) { return !!(e.elite || e.treasure || e.trial || e.arena || _PROTECTED.test(String(e.id))); }
+function wakeEnemy(e) {
+  if (e.awake) return;
+  e.awake = true;
+  if (e.ai === "flee") { e.wokeAt = Date.now(); if (window.gameDepths) gameDepths.noteGoblinSeen(); }
+}
+function enemyDmg(e) {
+  let m = 1;
+  if (e.empowered > 0) m *= (ENEMY_TYPES.scribe && ENEMY_TYPES.scribe.buffDmg) || 1.35;
+  if (window.gameDepths) m *= gameDepths.enemyDmgMult(e);
+  return e.dmg * m;
+}
+function hitPlayer(e, dmg) {
+  takePlayerDamage(dmg, e.id);
+  const aff = e.affixes || [];
+  if (aff.includes("vampiric") && window.gameDepths) gameDepths.bleed(3, 4000);
+  const t = ENEMY_TYPES[e.type] || {};
+  if (t.frostHit && window.gameDepths) gameDepths.addSlow("frost:" + e.id, t.frostHit, (t.frostFrames || 90) * 16);
+  shakeDungeon(3);
+}
+// Somewhere open near (x,y) for a blink to land: a floor tile, clear of walls.
+function openSpotNear(x, y, r, size) {
+  const d = state.dungeon, p = d && d.world;
+  for (let i = 0; i < 10; i++) {
+    const a = Math.random() * Math.PI * 2, k = Math.random() * r;
+    const tx = x + Math.cos(a) * k, ty = y + Math.sin(a) * k;
+    if (d.bossRoom) {
+      if (tx < BOSS_ROOM.x + 30 || ty < BOSS_ROOM.y + 30 || tx > BOSS_ROOM.x + BOSS_ROOM.w - 30 || ty > BOSS_ROOM.y + BOSS_ROOM.h - 30) continue;
+    } else if (p && p.cells) {
+      const row = p.cells[Math.floor(ty / p.tile)];
+      if (!row || !row[Math.floor(tx / p.tile)]) continue;
+    }
+    if (!collidesWalls(tx, ty, size || 12)) return { x: tx, y: ty };
+  }
+  return null;
+}
+function stepEnemy(e, list, arena) {
+  const G = window.gameDepths;
+  const now = Date.now();
+  if (e.hitFlash > 0) e.hitFlash--;
+  if (e.gone || e.hp <= 0) return true;
+  // knockback
+  if (Math.hypot(e.kbX, e.kbY) > 0.1) {
+    moveWithWalls(e, e.x + e.kbX, e.y + e.kbY, e.size);
+    e.kbX *= 0.7; e.kbY *= 0.7;
+  }
+  const T = ENEMY_TYPES[e.type] || {};
+  const ghost = !!(G && G.isDowned());
+  const px = state.pos.x, py = state.pos.y;
+  const ex = px - e.x, ey = py - e.y;
+  const d = Math.hypot(ex, ey) || 1;
+  const frz = e.frenzied ? 0.7 : 1;
+  let spd = e.speed * (G ? G.enemySpeedMult(e) : 1);
+  if (e.empowered > 0) { spd *= T.buffSpeed || (ENEMY_TYPES.scribe && ENEMY_TYPES.scribe.buffSpeed) || 1.3; e.empowered--; }
+  if (e.slowUntil > now) spd *= e.slowMult || 0.7;
+  if (e.halfBoost) spd *= 1.15;
+
+  // Leash: a chase that runs 900px from home gives up and walks back.
+  if (!arena && e.leash > 0 && !e.isBoss && e.ai !== "flee") {
+    const home = Math.hypot(e.x - e.sx, e.y - e.sy);
+    if (!e.leashing && home > e.leash) { e.leashing = true; e.awake = false; e.leashT = 0; }
+    if (e.leashing) {
+      const hx = e.sx - e.x, hy = e.sy - e.y, hd = Math.hypot(hx, hy) || 1;
+      const bx = e.x, by = e.y;
+      moveWithWalls(e, e.x + hx / hd * e.speed * 1.2, e.y + hy / hd * e.speed * 1.2, e.size);
+      if (Math.hypot(e.x - bx, e.y - by) < 0.2) e.leashT++;
+      if (hd < 24 || e.leashT > 90) { if (hd >= 24) { e.x = e.sx; e.y = e.sy; } e.leashing = false; }
+      return true;
+    }
+  }
+  // Wake on sight (or on being shot — takeDamage sets awake). Bosses and
+  // arena adds are always awake; everything else has to notice you first. A
+  // downed player is invisible, so the room loses interest.
+  if (ghost) { if (e.ai !== "mimic") e.awake = false; }
+  else if (!e.awake && e.ai !== "mimic" && (e.isBoss || arena || (d < e.sight && hasLineOfSight(e.x, e.y, px, py)))) wakeEnemy(e);
+  else if (!e.awake && e.ai === "mimic" && d < (T.sight || 70)) { e.awake = true; if (G) { G.floatText(e.x, e.y - 40, "IT'S A MIMIC!", "#f97316", { size: 20, dur: 1500 }); G.burst(e.x, e.y, ["#b45309", "#fde68a"], 30, { speed: 5 }); } shakeDungeon(12); }
+
+  // Route toward the player around walls instead of into them.
+  const hop = arena ? null : flowTarget(e.x, e.y);
+  const goal = hop || { x: px, y: py };
+  const gx = goal.x - e.x, gy = goal.y - e.y;
+  const gd = Math.hypot(gx, gy) || 1;
+  const walkPath = (k) => moveWithWalls(e, e.x + (gx / gd) * spd * k, e.y + (gy / gd) * spd * k, e.size);
+  const contact = (cd) => {
+    if (d < e.size + 14 && e.shootCd <= 0) {
+      hitPlayer(e, enemyDmg(e));
+      e.shootCd = Math.round(cd * frz);
+      return playerDead() ? false : true;
+    }
+    return true;
+  };
+  const fan = (n, arc, speed, dmgK, color) => {
+    const base = Math.atan2(ey, ex);
+    for (let i = 0; i < n; i++) {
+      const a = base + (n > 1 ? (i / (n - 1) - 0.5) * arc : 0);
+      state.enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, life: 130, dmg: enemyDmg(e) * dmgK, color: color || e.color, src: e.id, bleed: (e.affixes || []).includes("vampiric") });
+    }
+  };
+  const LOS = () => hasLineOfSight(e.x, e.y, px, py);
+
+  if (!e.awake) {
+    // A sleeping mimic is a chest; it does not stroll about.
+    if (e.ai !== "mimic") {
+      // Idle drift so a room doesn't read as a set of statues.
+      if (--e.wanderT <= 0) { e.wander = Math.random() * Math.PI * 2; e.wanderT = 40 + Math.floor(Math.random() * 70); }
+      moveWithWalls(e, e.x + Math.cos(e.wander) * e.speed * 0.25, e.y + Math.sin(e.wander) * e.speed * 0.25, e.size);
+    }
+  } else if (e.ai === "chase" || e.ai === "boss" || e.ai === "chill") {
+    const targetD = e.ai === "boss" ? 80 : 0;
+    if (!hop || d > targetD) walkPath(1);
+    if (e.ai === "chill" && d < (T.auraR || 115) && G) G.addSlow("chill:" + e.id, T.slow || 0.55, 250);
+    if (contact(40) === false) return false;
+  } else if (e.ai === "ranged" || e.ai === "volley" || e.ai === "lure") {
+    // Hold at `ideal` range, but only once there's a clear shot — otherwise
+    // close the distance along the path like everyone else.
+    const ideal = e.ai === "lure" ? 240 : (T.ideal || 180);
+    const clear = LOS();
+    if (e.pulling > 0) {
+      // the hook is in: drag the player in, the whirlpool way
+      e.pulling--;
+      if (!ghost) moveWithWalls(state.pos, px - ex / d * (T.lurePull || 2.4), py - ey / d * (T.lurePull || 2.4), 12);
+    } else if (!clear) {
+      walkPath(0.9);
+    } else if (d < ideal - 30) {
+      moveWithWalls(e, e.x - (ex / d) * spd, e.y - (ey / d) * spd, e.size);
+    } else if (d > ideal + 30) {
+      moveWithWalls(e, e.x + (ex / d) * spd * 0.7, e.y + (ey / d) * spd * 0.7, e.size);
+    }
+    if (e.ai === "lure") {
+      if (e.lureWarn > 0) {
+        if (--e.lureWarn === 0) {
+          if (!ghost && inBeam(px, py, e, e.lureAng, T.lureRange || 300, 28)) {
+            hitPlayer(e, enemyDmg(e) * 0.5);
+            e.pulling = T.lureFrames || 50;
+            if (G) G.floatText(px, py - 30, "HOOKED", "#67e8f9", { size: 14 });
+            if (playerDead()) return false;
+          }
+        }
+      } else if (--e.lureT <= 0 && clear && d < (T.lureRange || 300) && !ghost) {
+        e.lureT = Math.round((T.lureCd || 210) * frz);
+        e.lureWarn = T.lureWarn || 45;
+        e.lureAng = Math.atan2(ey, ex);
+      }
+    }
+  } else if (e.ai === "bomber") {
+    // Sprints the path, then lights itself and detonates in a radius. The
+    // fuse is the tell — back off and it kills its own friends instead.
+    if (e.fuse > 0) {
+      e.fuse--;
+      if (e.fuse <= 0) {
+        addParticles(e.x, e.y, "#f97316", 34);
+        if (window.gameDepths) { gameDepths.burst(e.x, e.y, ["#f97316", "#fde047", "#7c2d12"], 30, { speed: 6, life: 40 }); gameDepths.ring(e.x, e.y, ENEMY_TYPES.bomber.blast, "#f97316"); }
+        shakeDungeon(6);
+        const blast = ENEMY_TYPES.bomber.blast;
+        if (Math.hypot(state.pos.x - e.x, state.pos.y - e.y) < blast) {
+          takePlayerDamage(enemyDmg(e), e.id);
+          if (playerDead()) return false;
+        }
+        const killed = [e.id];
+        for (const o of list) {
+          if (o === e) continue;
+          if (Math.hypot(o.x - e.x, o.y - e.y) < blast) {
+            // The server refuses blast kills on anything that must be struck
+            // (elites, the goblin, trial rows...), so those only get singed.
+            const floor = state.dungeon.cfg.guild && isProtectedEnemy(o) ? 1 : -Infinity;
+            o.hp = Math.max(floor, o.hp - e.dmg * 1.5); o.hitFlash = 6; wakeEnemy(o);
+            if (o.hp <= 0) killed.push(o.id);
+          }
+        }
+        e.hp = 0;
+        // This is a death nobody swung for — report it or the server never
+        // hears about it and the floor stays "not cleared" forever.
+        reportEnemyKill(killed);
+      }
+    } else {
+      walkPath(1);
+      if (d < 52) { e.fuse = ENEMY_TYPES.bomber.fuse; }
+    }
+  } else if (e.ai === "healer" || e.ai === "empower") {
+    // Hangs back and patches up (or, for a scribe, empowers) whatever is still fighting. Kill it first.
+    if (d < 200) moveWithWalls(e, e.x - (ex / d) * spd, e.y - (ey / d) * spd, e.size);
+    else if (d > 340) walkPath(0.7);
+    if (e.ai === "healer") {
+      const cfgH = ENEMY_TYPES.shaman;
+      if (e.healCd <= 0) {
+        let best = null, bestFrac = 1;
+        for (const o of list) {
+          if (o === e || o.hp <= 0 || o.hp >= o.maxHp) continue;
+          if (Math.hypot(o.x - e.x, o.y - e.y) > cfgH.healRange) continue;
+          const f = o.hp / o.maxHp;
+          if (f < bestFrac) { bestFrac = f; best = o; }
+        }
+        if (best) {
+          best.hp = Math.min(best.maxHp, best.hp + cfgH.healAmt);
+          addParticles(best.x, best.y, "#5eead4", 8);
+          e.healCd = cfgH.healCd;
+        }
+      }
+      if (e.healCd > 0) e.healCd--;
+    } else if (--e.buffT <= 0) {
+      // Client-only and HP-free: the chosen ally hits harder and moves faster.
+      e.buffT = Math.round((T.buffCd || 220) * frz);
+      let best = null, bd = Infinity;
+      for (const o of list) {
+        if (o === e || o.hp <= 0 || o.ai === "empower") continue;
+        if (Math.hypot(o.x - e.x, o.y - e.y) > (T.buffRange || 210)) continue;
+        const od = Math.hypot(o.x - px, o.y - py);
+        if (od < bd) { bd = od; best = o; }
+      }
+      if (best) {
+        best.empowered = T.buffFrames || 180;
+        if (G) { G.procArcs(e, [best], "#fde68a"); G.burst(best.x, best.y, "#fde68a", 12, { speed: 2.5, up: 1 }); }
+      }
+    }
+  } else if (e.ai === "stalker") {
+    // Sits still until you're close enough, then closes fast.
+    if (e.lurking) {
+      if (d < ENEMY_TYPES.stalker.lurk) { e.lurking = false; addParticles(e.x, e.y, "#a78bfa", 12); }
+    } else {
+      walkPath(1);
+      if (contact(55) === false) return false;
+    }
+  } else if (e.ai === "orbiter") {
+    // Circles you at orbitR, then glows and dashes straight through you.
+    if (e.dashing > 0) {
+      e.dashing--;
+      moveWithWalls(e, e.x + e.dvx, e.y + e.dvy, e.size);
+      if (!e.dashHit && d < e.size + 14) { e.dashHit = true; hitPlayer(e, enemyDmg(e)); if (playerDead()) return false; }
+      if (G && Math.random() < 0.7) G.burst(e.x, e.y, e.color, 1, { speed: 0.6, life: 20 });
+    } else if (e.tele > 0) {
+      if (--e.tele === 0) {
+        e.dvx = ex / d * (T.dashSpeed || 7.5); e.dvy = ey / d * (T.dashSpeed || 7.5);
+        e.dashing = T.dashFrames || 16; e.dashHit = false;
+      }
+    } else {
+      const clear = LOS();
+      if (!clear || d > (T.orbitR || 96) * 2.5) walkPath(1);
+      else {
+        e.orbA = (e.orbA == null ? Math.atan2(-ey, -ex) : e.orbA) + spd / (T.orbitR || 96);
+        const tx = px + Math.cos(e.orbA) * (T.orbitR || 96), ty = py + Math.sin(e.orbA) * (T.orbitR || 96);
+        const ox = tx - e.x, oy = ty - e.y, od = Math.hypot(ox, oy) || 1;
+        moveWithWalls(e, e.x + ox / od * Math.min(od, spd * 1.3), e.y + oy / od * Math.min(od, spd * 1.3), e.size);
+      }
+      if (--e.dashT <= 0 && clear && !ghost) { e.tele = 20; e.dashT = Math.round((T.dashCd || 110) * frz); }
+    }
+  } else if (e.ai === "blinker") {
+    // A slow walker that folds space: a warning circle, then it is there.
+    if (e.blinkWarn > 0) {
+      if (--e.blinkWarn === 0 && e.blinkTo) {
+        if (G) G.burst(e.x, e.y, ["#94a3b8", "#c4b5fd"], 16, { speed: 3 });
+        e.x = e.blinkTo.x; e.y = e.blinkTo.y;
+        if (G) { G.burst(e.x, e.y, ["#e2e8f0", "#c4b5fd"], 22, { speed: 4 }); G.ring(e.x, e.y, 40, "#c4b5fd"); }
+        if (Math.hypot(px - e.x, py - e.y) < 40) { hitPlayer(e, enemyDmg(e)); if (playerDead()) return false; }
+        e.blinkTo = null;
+      }
+    } else {
+      walkPath(1);
+      if (contact(50) === false) return false;
+      if (--e.blinkT <= 0) {
+        e.blinkT = Math.round((T.blinkCd || 260) * frz);
+        if (!ghost && d > 160 && LOS()) {
+          const to = openSpotNear(px, py, T.blinkR || 90, e.size);
+          if (to) { e.blinkTo = to; e.blinkWarn = T.blinkWarn || 42; }
+        }
+      }
+    }
+  } else if (e.ai === "turret") {
+    // Rooted. It lines you up (the aim lines are the tell), then fans out.
+    if (e.aim > 0) {
+      e.aim++;
+      if (e.aim >= (T.aimWarn || 36)) {
+        e.aim = 0;
+        const n = T.spread || 3, arc = T.arc || 0.9, sp = T.projSpeed || 5.2;
+        for (let i = 0; i < n; i++) {
+          const a = e.aimAng + (n > 1 ? (i / (n - 1) - 0.5) * arc : 0);
+          state.enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 140, dmg: enemyDmg(e) * 0.8, color: e.color, src: e.id });
+        }
+        e.shootCd = Math.round((T.shootCd || 95) * frz);
+      }
+    } else if (e.shootCd <= 0 && d < e.sight && !ghost && LOS()) { e.aim = 1; e.aimAng = Math.atan2(ey, ex); }
+  } else if (e.ai === "mimic") {
+    // A chase with a lunge: +80% speed for 30 frames out of every 150.
+    e.lungeT = (e.lungeT + 1) % 150;
+    walkPath(e.lungeT < 30 ? 1.8 : 1);
+    if (contact(40) === false) return false;
+  } else if (e.ai === "flee") {
+    // The Glimmerthief never fights. It runs, erratically, and after
+    // escapeMs it opens a portal and is gone.
+    if (!e.wokeAt) e.wokeAt = now;
+    if (!e.halfBoost && e.hp <= e.maxHp * 0.5) {
+      e.halfBoost = true;
+      if (G) { G.burst(e.x, e.y, ["#facc15", "#fde68a"], 30, { speed: 5, up: 2, g: 0.15 }); G.floatText(e.x, e.y - 30, "COINS!", "#facc15", { size: 14 }); }
+    }
+    if (e.escaping) {
+      if (now - e.escaping > 1200) { e.gone = true; if (G) G.banner("IT SLIPPED AWAY", "The Glimmerthief took its hoard with it", "#94a3b8", 2200); }
+    } else if (now - e.wokeAt > (T.escapeMs || 22000)) {
+      e.escaping = now;
+    } else {
+      const p = state.dungeon.world;
+      if (--e.fleeT <= 0 || !e.fleeTo) {
+        e.fleeT = 30;
+        e.fleeTo = (!arena && p && p.cells && window.DepthsCore) ? DepthsCore.fleeStep(p.cells, p.tile, e.x, e.y, px, py, Math.random() < 0.2) : { x: e.x - ex / d * 60, y: e.y - ey / d * 60 };
+      }
+      if (e.fleeTo) {
+        const fx = e.fleeTo.x - e.x, fy = e.fleeTo.y - e.y, fd = Math.hypot(fx, fy) || 1;
+        moveWithWalls(e, e.x + fx / fd * spd, e.y + fy / fd * spd, e.size);
+      }
+      if (G && d < 500) G.noteGoblinSeen();
+    }
+  }
+
+  // ---- elite affixes (client side; see MASTER-PLAN §3.4) ----
+  const aff = e.affixes;
+  if (aff && aff.length && e.awake && !ghost) {
+    if (aff.includes("arcane")) {
+      e.arcT++;
+      e.arcGlow = e.arcT > 200 ? (e.arcT - 200) / 40 : 0;
+      if (e.arcT >= 240) {
+        e.arcT = 0; e.arcGlow = 0;
+        if (G) { G.ring(e.x, e.y, 110, "#a78bfa", { width: 6 }); G.burst(e.x, e.y, "#c4b5fd", 14, { speed: 4 }); }
+        if (d < 110) { hitPlayer(e, enemyDmg(e) * 0.6); if (playerDead()) return false; }
+      }
+    }
+    if (aff.includes("frozen") && d < 120 && G) G.addSlow("frozen:" + e.id, 0.7, 250);
+    if (aff.includes("blinking")) {
+      if (e.blink2Warn > 0) {
+        if (--e.blink2Warn === 0 && e.blink2To) {
+          if (G) G.burst(e.x, e.y, "#c084fc", 14, { speed: 3 });
+          e.x = e.blink2To.x; e.y = e.blink2To.y; e.blink2To = null; e.blinkTo = null;
+          if (G) G.burst(e.x, e.y, "#e9d5ff", 18, { speed: 4 });
+        }
+      } else if (--e.blink2T <= 0) {
+        e.blink2T = 300;
+        // behind you, from where it stands
+        const to = openSpotNear(px + ex / d * 70, py + ey / d * 70, 24, e.size);
+        if (to) { e.blink2To = to; e.blinkTo = to; e.blink2Warn = 30; e.blinkWarn = 30; }
+      }
+    }
+    if (aff.includes("molten") && G && ++e.trailT >= 10) {
+      e.trailT = 0;
+      G.addPool({ x: e.x, y: e.y, r: 18, until: now + 2500, dps: 8, kind: "fire" });
+    }
+    if (e.frenzied && G && Math.random() < 0.25) G.burst(e.x, e.y + e.size * 0.5, "#ef4444", 1, { speed: 0.4, life: 18 });
+    if (aff.includes("vampiric") && G && Math.random() < 0.08) G.burst(e.x, e.y, "#dc2626", 1, { speed: 0.8, up: 0.8, life: 24 });
+  }
+
+  // Ranged shooting — never through a wall.
+  if (e.awake && !ghost && (e.ai === "ranged" || e.ai === "boss" || e.ai === "volley") && d < e.sight && e.shootCd <= 0
+      && LOS()) {
+    const v = T.projSpeed || 4;
+    if (e.ai === "volley") fan(T.spread || 3, T.arc || 0.5, v, 0.8);
+    else fan(1, 0, v, 0.8);
+    e.shootCd = Math.round((T.shootCd || 60) * frz);
+  }
+  if (e.shootCd > 0) e.shootCd--;
+  return true;
+}
+
+// ---------- the dash (MASTER-PLAN D21) ----------
+const DASH = { dist: 150, ms: 160, iframes: 200, cd: 2400 };
+let _dashReadyAt = 0, _shiftHeld = false, _lastDashAt = 0;
+function dashCooldownMs() { return Math.round(DASH.cd * (1 - Math.min(0.6, playerFx().dashCd || 0))); }
+function dashReady() {
+  const G = window.gameDepths;
+  return !!(state.dungeon && state.area === "dungeon" && !state.dash && Date.now() >= _dashReadyAt && !(G && G.isDowned())
+    && !state.tomeCine && !(state.dungeon.cine || state.dungeon.phaseCine || state.dungeon.victoryCine));
+}
+function dashState() {
+  const cd = dashCooldownMs(), left = Math.max(0, _dashReadyAt - Date.now());
+  return { ready: dashReady(), k: cd ? 1 - left / cd : 1, cdMs: cd };
+}
+function tryDash(dx, dy) {
+  if (!dashReady()) return false;
+  if (!dx && !dy) { dx = state.mouse.x - state.pos.x; dy = state.mouse.y - state.pos.y; }
+  if (!dx && !dy) return false;
+  const fx = playerFx();
+  const dist = DASH.dist * (1 + (fx.dashDist || 0));
+  const end = DepthsCore.dashEnd(state.pos.x, state.pos.y, dx, dy, dist, collidesWalls, 12, 6);
+  const now = Date.now();
+  state.dash = { x0: state.pos.x, y0: state.pos.y, x1: end.x, y1: end.y, t0: now, dur: DASH.ms, trail: [] };
+  state.iframesUntil = now + DASH.iframes;
+  _dashReadyAt = now + dashCooldownMs();
+  _lastDashAt = now;
+  state.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
+  if (window.gameDepths) gameDepths.burst(state.pos.x, state.pos.y, ["#a5f3fc", "#e0f2fe", "#818cf8"], 16, { speed: 3, life: 24, ang: Math.atan2(-dy, -dx), spread: 1.2 });
+  const d = state.dungeon;
+  if (d && d.cfg.guild && typeof netGuildDungeon === "function") netGuildDungeon({ action: "dash" }).catch(() => {});
+  return true;
+}
+// A dash lerps between ABSOLUTE points. Any teleport (arena entry, chamber
+// exit, a Depths floor change, a floor advance) must end it, or it finishes in
+// the old coordinate space and strands you outside the arena (QA H-2).
+function cancelDash() {
+  state.dash = null; state._dashTrail = null;
+}
+// Per-run locals that used to leak from one run into the next (QA L-9).
+function resetRunLocals() {
+  _localCounter = undefined; _thornsAt = 0; _regenAt = 0;
+  state.enemyBullets = [];
+}
+function stepDash() {
+  const s = state.dash, now = Date.now();
+  const k = Math.min(1, (now - s.t0) / s.dur);
+  const e = 1 - (1 - k) * (1 - k);
+  s.trail.push({ x: state.pos.x, y: state.pos.y, t: now });
+  if (s.trail.length > 6) s.trail.shift();
+  state.pos.x = s.x0 + (s.x1 - s.x0) * e;
+  state.pos.y = s.y0 + (s.y1 - s.y0) * e;
+  if (window.gameDepths && Math.random() < 0.8) gameDepths.burst(state.pos.x, state.pos.y, "#a5f3fc", 1, { speed: 0.5, life: 18 });
+  if (k >= 1) { state.dash = null; state._dashTrail = { pts: s.trail, t: now }; onDashEnd(); }
+}
+// Gear that fires when a dash ends: a burst around you (onDashBurst).
+function onDashEnd() {
+  const fx = playerFx(), d = state.dungeon;
+  if (!d || !fx.onDashBurst) return;
+  const r = fx.onDashBurst.r || 90;
+  if (window.gameDepths) { gameDepths.ring(state.pos.x, state.pos.y, r, "#a5f3fc", { width: 6 }); gameDepths.burst(state.pos.x, state.pos.y, ["#a5f3fc", "#fff"], 20, { speed: 5 }); }
+  const list = d.bossRoom ? (d.arenaEnemies || []) : state.enemies;
+  const ids = list.filter(e => e.hp > 0 && !e.gone && Math.hypot(e.x - state.pos.x, e.y - state.pos.y) < r + e.size).map(e => e.id);
+  if (!ids.length) return;
+  if (d.cfg.guild) sendSpecialHit("burst", ids);
+  else for (const e of list) if (ids.includes(e.id)) { const dmg = 55 * combatDamageMult() * (fx.onDashBurst.frac || 0.5); e.hp -= dmg; e.hitFlash = 6; wakeEnemy(e); onLocalHit(e, dmg, true); }
+}
+function afterDashActive() {
+  const fx = playerFx();
+  return !!(fx.afterDashHit && Date.now() - _lastDashAt < (fx.afterDashHit.ms || 1500));
+}
+function playerSpeedMult() {
+  const fx = playerFx();
+  let m = buffSpeedMult() * (1 + Math.min(0.3, fx.moveSpeed || 0));
+  if (window.gameDepths) m *= gameDepths.speedMult();
+  return m;
+}
+// Draw you: the ghost when down, the dash's afterimages when dashing.
+function drawSelf(ctx) {
+  const G = window.gameDepths, now = Date.now();
+  const tr = state.dash ? state.dash.trail : (state._dashTrail && now - state._dashTrail.t < 220 ? state._dashTrail.pts : null);
+  if (tr) {
+    const fade = state.dash ? 1 : 1 - (now - state._dashTrail.t) / 220;
+    tr.forEach((p, i) => {
+      ctx.globalAlpha = 0.12 + 0.28 * (i / tr.length) * fade;
+      GFX.drawCharacter(ctx, p.x, p.y, state.appearance, { facing: state.facing, walking: state.walking });
+    });
+    ctx.globalAlpha = 1;
+  }
+  if (G && G.isDowned()) {
+    ctx.globalAlpha = 0.38;
+    GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance, { facing: state.facing, walking: 0 });
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if (state.iframesUntil && now < state.iframesUntil) {
+    ctx.fillStyle = "rgba(165,243,252,.25)"; ctx.beginPath(); ctx.arc(state.pos.x, state.pos.y - 6, 22, 0, Math.PI * 2); ctx.fill();
+  }
+  GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance, { facing: state.facing, walking: state.walking });
 }
 
 // ---------- BOSS ROOM (guild dungeons) ----------
@@ -681,15 +1236,19 @@ function setArenaOpen(open) {
 // unsent, it's just sent right after the in-flight call resolves.
 let _swingPending = false;
 let _queuedIds = null, _queuedWeapon = null;
+let _queuedAfterDash = false;
 async function reportEnemyHits(ids, weapon) {
   const d = state.dungeon;
   if (!d || !d.cfg.guild || !ids.length) return;
+  const afterDash = afterDashActive() || _queuedAfterDash;
   if (_swingPending) {
     _queuedIds = (_queuedIds || []).concat(ids);
     _queuedWeapon = _queuedWeapon || weapon;
+    _queuedAfterDash = _queuedAfterDash || afterDash;
     return;
   }
   _swingPending = true;
+  _queuedAfterDash = false;
   // A queued retry firing the moment the in-flight call resolves almost
   // always lands back inside the server's per-swing rate limit (a network
   // round trip is rarely as long as DUNGEON_HIT_MIN_MS) and got "Too fast" —
@@ -697,14 +1256,17 @@ async function reportEnemyHits(ids, weapon) {
   // forever instead of retrying once the window actually clears.
   let retryDelay = 0;
   try {
-    const res = await netGuildDungeon({ action: "enemy_hit", enemies: ids, weapon });
-    applyEnemyChanges(res.changed);
+    // `near` = who a chain proc may hop to; the server re-checks all of it.
+    const req = { action: "enemy_hit", enemies: ids, weapon, near: nearIds(ids) };
+    if (afterDash) req.afterDash = true;
+    const res = await netGuildDungeon(req);
+    handleHitReply(res, weapon, ids);
   } catch (e) {
     if (/Too fast/.test(e.message)) {
       _queuedIds = (_queuedIds || []).concat(ids);
       _queuedWeapon = _queuedWeapon || weapon;
       retryDelay = (ECON.DUNGEON_HIT_MIN_MS[weapon] || 150) + 20;
-    } else toast(e.message, 1200);
+    } else toast(escapeHtml(e.message), 1200);
   }
   _swingPending = false;
   if (_queuedIds && _queuedIds.length) {
@@ -713,6 +1275,109 @@ async function reportEnemyHits(ids, weapon) {
     if (retryDelay) setTimeout(() => reportEnemyHits(nextIds, nextWeapon), retryDelay);
     else reportEnemyHits(nextIds, nextWeapon);
   }
+}
+// Living enemies near the ones struck, for chain/nova procs to land on.
+function nearIds(ids) {
+  const list = allEnemies();
+  const hit = list.filter(e => ids.includes(e.id));
+  if (!hit.length) return [];
+  const out = [];
+  for (const e of list) {
+    if (ids.includes(e.id) || e.hp <= 0 || e.gone) continue;
+    if (hit.some(h => Math.hypot(h.x - e.x, h.y - e.y) < 240)) out.push(e.id);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+function allEnemies() {
+  const d = state.dungeon;
+  if (!d) return [];
+  return d.bossRoom ? (d.arenaEnemies || []).concat(d.continuous ? [] : state.enemies) : state.enemies;
+}
+function findEnemy(id) {
+  const d = state.dungeon;
+  if (!d) return null;
+  return state.enemies.find(x => x.id === id) || (d.arenaEnemies || []).find(x => x.id === id)
+    || (d.continuous && d.bossRoom ? (d.worldEnemies || []).find(x => x.id === id) : null) || null;
+}
+// The server's answer to a swing: authoritative HP, crits and procs to show,
+// lifesteal to take, and whatever the hit set loose (split children, drops,
+// trial waves).
+function handleHitReply(res, weapon) {
+  if (!res) return;
+  const G = window.gameDepths;
+  const fx = playerFx();
+  const changed = res.changed || [];
+  const before = {};
+  for (const c of changed) { const e = findEnemy(c.id); if (e) before[c.id] = { x: e.x, y: e.y, e }; }
+  applyEnemyChanges(changed);
+  if (G) {
+    for (const c of changed) {
+      const b = before[c.id];
+      if (!b) continue;
+      if (res.dmg > 0) G.floatText(b.x, b.y - 22, (res.crit ? "✦" : "") + Math.round(res.dmg), res.crit ? "#fde047" : "#ffffff", { size: res.crit ? 19 : 12, crit: !!res.crit, dur: res.crit ? 1100 : 800 });
+      if (c.shield != null && c.shield > 0) G.burst(b.x, b.y, "#60a5fa", 5, { speed: 2.5 });
+      if (res.crit && fx.onCritSlow) { b.e.slowUntil = Date.now() + (fx.onCritSlow.ms || 1500); b.e.slowMult = 1 - (fx.onCritSlow.pct || 0.5); }
+      if (fx.onHitSlow && Math.random() < (fx.onHitSlow.chance || 0)) { b.e.slowUntil = Date.now() + (fx.onHitSlow.ms || 1500); b.e.slowMult = 1 - (fx.onHitSlow.pct || 0.3); G.burst(b.x, b.y, "#bae6fd", 6, { speed: 2 }); }
+    }
+    if (res.crit) shakeDungeon(4);
+  }
+  // Lifesteal heals off the damage the server says actually landed.
+  if (fx.lifesteal > 0 && res.dmg > 0 && weapon !== "thorns" && !(G && G.isDowned())) {
+    const heal = fx.lifesteal * res.dmg * Math.max(1, changed.length);
+    if (heal >= 0.5) {
+      state.hp = Math.min(state.maxHp, state.hp + heal);
+      if (G && Math.random() < 0.6) G.floatText(state.pos.x, state.pos.y - 36, "+" + Math.round(heal), "#4ade80", { size: 11, dur: 700 });
+    }
+  }
+  if (res.procs) showProcs(res.procs);
+  if (res.spawned && res.spawned.length) adoptSpawned(res.spawned, {});
+  if (G && res.drops) G.addDrops(res.drops);
+  if (res.refused && res.refused.length && G) {
+    for (const r of res.refused) {
+      const e = findEnemy(r.id);
+      if (!e || !r.why || r.why === "must be struck") continue;
+      // The leash (QA-SECURITY #3): the server has no fresh position for us
+      // yet (a teleport, a floor change) — send one now; the next swing lands.
+      if (r.why === "no position") { if (typeof pushPresence === "function") pushPresence(); continue; }
+      G.floatText(e.x, e.y - 30, r.why === "too far" ? "out of reach" : r.why, "#94a3b8", { size: 11 });
+      if (/slipped/i.test(r.why)) e.gone = true;
+    }
+  }
+}
+// Chain arcs from the target to where each proc landed.
+function showProcs(procs) {
+  const G = window.gameDepths;
+  if (!G || !Array.isArray(procs)) return;
+  for (const p of procs) {
+    const tg = (p.targets || []).map(findEnemy).filter(Boolean);
+    if (!tg.length) continue;
+    const col = /frost|shatter/.test(p.id) ? "#bae6fd" : /star|ley/.test(p.id) ? "#c4b5fd" : /knell/.test(p.id) ? "#fca5a5" : "#93c5fd";
+    G.procArcs(state.dungeon && state.dungeon.bossRoom ? bossHeadScreenPos() : tg[0], tg, col);
+    for (const e of tg) { G.burst(e.x, e.y, col, 8, { speed: 3 }); if (p.dmg) G.floatText(e.x, e.y - 24, Math.round(p.dmg), col, { size: 11 }); }
+  }
+}
+// Quest-board runs have no server: the same pipeline, rolled locally.
+let _localCounter = undefined;
+function localHitDamage(base, e) {
+  const fx = playerFx();
+  const r = ECON.rollHitDamage ? ECON.rollHitDamage(base, fx, { kind: e.elite ? "elite" : "enemy", hpFrac: e.maxHp ? e.hp / e.maxHp : 1 }, Math.random, _localCounter) : { dmg: base, crit: false };
+  if (r.counterState) _localCounter = r.counterState;
+  e._lastCrit = !!r.crit;
+  return r.dmg;
+}
+// Local feedback for a hit you just made (the number waits for the server in
+// a guild run, so only quest-board hits show it here).
+function onLocalHit(e, dmg, showNumber) {
+  const G = window.gameDepths;
+  if (!G) return;
+  if (showNumber) {
+    G.floatText(e.x, e.y - 22, (e._lastCrit ? "✦" : "") + Math.round(dmg), e._lastCrit ? "#fde047" : "#fff", { size: e._lastCrit ? 19 : 12, crit: !!e._lastCrit });
+    const fx = playerFx();
+    if (fx.lifesteal > 0) state.hp = Math.min(state.maxHp, state.hp + fx.lifesteal * dmg);
+    if (fx.onHitSlow && Math.random() < (fx.onHitSlow.chance || 0)) { e.slowUntil = Date.now() + (fx.onHitSlow.ms || 1500); e.slowMult = 1 - (fx.onHitSlow.pct || 0.3); }
+  }
+  G.burst(e.x, e.y, [e.color || "#fff", "#fde68a"], 5, { speed: 2.6, life: 20 });
 }
 // A bomber's detonation (and whatever it catches in the blast) kills without
 // any weapon swing behind it, so it needs its own report — see enemy_kill on
@@ -738,9 +1403,20 @@ async function reportEnemyKill(ids) {
   try {
     const res = await netGuildDungeon({ action: "enemy_kill", enemies: batch });
     applyEnemyChanges(res.changed);
+    // Refused for want of a position (a kill reported in the same tick as a
+    // teleport): send our position and report those ids once more.
+    const noPos = (res.refused || []).filter(r => r && r.why === "no position").map(r => r.id);
+    if (noPos.length && !reportEnemyKill._retried) {
+      reportEnemyKill._retried = true;
+      if (typeof pushPresence === "function") pushPresence();
+      _queuedKillIds = noPos.concat(_queuedKillIds || []);
+    } else reportEnemyKill._retried = false;
+    // The `enemies` push skips the actor, so adopt split children / drops from the reply.
+    if (res.spawned && res.spawned.length) adoptSpawned(res.spawned, {});
+    if (window.gameDepths && res.drops && gameDepths.addDrops) gameDepths.addDrops(res.drops);
   } catch (e) {
     if (/Too fast/.test(e.message)) failed = true;   // retry below, don't drop it
-    else toast(e.message, 1200);
+    else toast(escapeHtml(e.message), 1200);
   }
   // A failed batch goes back in FRONT of the queue — it's the death that's
   // actually due; overflow can wait one more round.
@@ -758,14 +1434,16 @@ function applyEnemyChanges(changed) {
   const d = state.dungeon;
   if (!d || !Array.isArray(changed)) return;
   for (const c of changed) {
-    const e = (d.continuous && d.bossRoom ? d.worldEnemies || [] : state.enemies).find(x => x.id === c.id);
+    const e = findEnemy(c.id);
     if (!e) continue;
     e.hp = c.hp;
+    if (c.shield != null) { e.shield = c.shield; e.shieldMax = Math.max(e.shieldMax || 0, c.shield); }
     e.hitFlash = 6;
-    e.awake = true; e.lurking = false;
-    if (c.dead) addParticles(e.x, e.y, e.color, 16);
+    wakeEnemy(e); e.lurking = false;
+    if (c.dead || e.hp <= 0) { e.hp = 0; onEnemyDeath(e); }
   }
   state.enemies = state.enemies.filter(e => e.hp > 0);
+  if (d.arenaEnemies) d.arenaEnemies = d.arenaEnemies.filter(e => e.hp > 0);
   if (d.continuous && d.bossRoom) d.worldEnemies = (d.worldEnemies || []).filter(e => e.hp > 0);
   checkFloorCleared();
 }
@@ -806,8 +1484,12 @@ function enterArena(boss) {
   d.walls = bossRoomWalls();
   d.maze = null; d.flow = null; d.flowCell = null;
   d.cleared = false; d.keyPickedUp = false;
+  cancelDash();
   state.enemies = []; state.bullets = []; state.enemyBullets = []; state.particles = [];
   d.bossAttacks = [];
+  // Summoned adds live here; the maze's own roster waits in worldEnemies.
+  d.arenaEnemies = [];
+  d.darkArena = false; d.wardUntil = 0; d.wardFrom = 0; d.phaseShift = null; d.enrageShown = false;
   state.pos.x = DUNGEON_W / 2;
   state.pos.y = BOSS_ROOM.y + BOSS_ROOM.h - 70;
   state.facing = "up";
@@ -816,7 +1498,7 @@ function enterArena(boss) {
 }
 // Keep the local copy of the boss in step with the server's, and stamp the two
 // timestamps the renderer animates from.
-function adoptBoss(view) {
+function adoptBoss(view, summonIds) {
   const d = state.dungeon;
   if (!d) return;
   if (!view) { d.boss = null; return; }
@@ -827,6 +1509,43 @@ function adoptBoss(view) {
     ? (prev && prev._deadAt ? prev._deadAt : Date.now() - (view.deadFor || 0))
     : 0;
   d.bossT0 = d.boss._t0;
+  if (view.enrageIn != null) d.boss._enrageAt = Date.now() + view.enrageIn;
+  // The ward clock (M-9): `wardLeft` / `wardIn` are relative to the server's
+  // own `now`, so a client whose wall clock is off still sees the ward for its
+  // real length. The absolute `wardUntil` is only the fallback for an older server.
+  if (view.wardLeft != null) {
+    if (view.wardLeft > 0) { d.wardUntil = Date.now() + view.wardLeft; d.wardFrom = Date.now() + (view.wardIn || 0); }
+    else if (view.wardUntil) d.wardUntil = 0;
+  } else if (view.wardUntil) d.wardUntil = view.wardUntil;
+  // Look fields of the current phase (dark arena, open field).
+  const look = ECON.bossLook ? ECON.bossLook(view.id, view.phase || 1) : null;
+  if (look) {
+    if (look.dark) d.darkArena = true;
+    if (look.open && !d.openField && view.status === "alive") setArenaOpen(true);
+  }
+  // Adds the server lists that we have not placed yet (a rejoin mid-fight).
+  if (Array.isArray(view.adds) && view.adds.length) {
+    const have = new Set((d.arenaEnemies || []).map(e => e.id));
+    // Adds this very push is summoning arrive through the attack's portal wind-up,
+    // not pre-placed and awake here (QA M-5).
+    const rows = view.adds.filter(a => a && a.hp > 0 && !have.has(a.id) && !(summonIds && summonIds.has(a.id))).map((a, i) => Object.assign({
+      x: DUNGEON_W / 2 + Math.cos(i * 2.1) * 220, y: DUNGEON_H * 0.46 + Math.sin(i * 2.1) * 120, arena: true,
+    }, a, { arena: true }));
+    const summoning = (d.bossAttacks || []).some(a => a.type === "summon" && !a.spawned);
+    if (rows.length && !summoning) adoptSpawned(rows, {});
+    const live = new Set(view.adds.filter(a => a.hp > 0).map(a => a.id));
+    for (const e of d.arenaEnemies || []) if (!live.has(e.id) && view.adds.some(a => a.id === e.id)) e.hp = 0;
+  }
+  if (view.status === "dead" && d.arenaEnemies) for (const e of d.arenaEnemies) e.hp = 0;
+}
+// How many of the boss's parts are real weak points (pylons sit after them).
+function bossPartCount(b) {
+  const def = b && ECON.GUILD_BOSSES[b.id];
+  if (def && def.parts != null) return def.parts;
+  return b ? b.parts.filter(p => !p.pylon).length : 0;
+}
+function pylonScreenPos(i) {
+  return ECON.guildBossPylonPos ? ECON.guildBossPylonPos(i, DUNGEON_W, DUNGEON_H) : { x: 90 + (i % 2) * (DUNGEON_W - 180), y: 90 + (i >> 1) * (DUNGEON_H - 180) };
 }
 
 // Ask the server to move the party down a floor. It refuses if the floor was
@@ -874,10 +1593,10 @@ async function advanceGuildFloor(reconcileTries = 0) {
       const repaired = await reconcileFloorKills();
       _advancing = false;
       if (repaired) return advanceGuildFloor(reconcileTries + 1);
-      toast(e.message, 2600);
+      toast(escapeHtml(e.message), 2600);
       return;
     }
-    toast(e.message, 2600);
+    toast(escapeHtml(e.message), 2600);
   }
   _advancing = false;
 }
@@ -911,7 +1630,7 @@ async function enterBossRoom() {
     const res = await netGuildDungeon({ action: "boss_spawn" });
     adoptBoss(res.boss);
     if (res.boss) state.dungeon.cine = gameBosses.startCinematic(res.boss);
-  } catch (e) { toast(e.message, 4000); }
+  } catch (e) { toast(escapeHtml(e.message), 4000); }
 }
 
 // The server owns the boss; these events keep the local copy honest.
@@ -926,9 +1645,14 @@ if (window.NET) NET.on("guild_dungeon", (m) => {
 if (window.NET) NET.on("guild_boss", (m) => {
   const d = state.dungeon;
   if (!d || !d.bossRoom) return;
-  if (m.boss) adoptBoss(m.boss);
+  const summonIds = m.kind === "attack" && m.attack && Array.isArray(m.attack.adds) ? new Set(m.attack.adds.map(a => a && a.id)) : null;
+  if (m.boss) adoptBoss(m.boss, summonIds);
+  const G = window.gameDepths;
   if (m.kind === "attack" && m.attack) queueBossAttack(m.attack);
-  else if (m.kind === "part_down") { toast("A weak point collapses!", 1200); shakeDungeon(7); }
+  else if (m.kind === "part_down") {
+    toast("A weak point collapses!", 1200); shakeDungeon(7);
+    if (G && d.boss && m.part != null) { const p = bossPartScreenPos(m.part, bossPartCount(d.boss)); G.burst(p.x, p.y, ["#fde68a", "#fff"], 30, { speed: 6, life: 40 }); }
+  }
   else if (m.kind === "alive") { d.cine = null; d.phaseCine = null; toast("It's fully up. GO.", 1500); }
   else if (m.kind === "phase2") {
     // Varkaal's head went down, and it did not stay down.
@@ -942,10 +1666,95 @@ if (window.NET) NET.on("guild_boss", (m) => {
       if (state.dungeon && state.dungeon.bossRoom) { setArenaOpen(true); shakeDungeon(22); }
     }, Math.round(ECON.DRAGON_PHASE2.CINE_MS * 0.80));
   }
+  else if (m.kind === "phase") onBossPhase(m);
+  else if (m.kind === "enrage") {
+    d.hardEnraged = true;
+    if (d.boss) d.boss.hardEnraged = true;
+    if (G) G.banner("ENRAGED", "It stops holding back. Finish it.", "#ef4444", 2600);
+    shakeDungeon(18);
+  }
+  else if (m.kind === "adds") {
+    if (Array.isArray(m.adds)) adoptSpawned(m.adds.map(a => Object.assign({}, a, { arena: true })), { portal: true });
+  }
+  else if (m.kind === "ward") {
+    d.wardUntil = m.until || (Date.now() + 3000); d.wardReflect = m.reflect;
+    if (G) G.floatText(bossHeadScreenPos().x, bossHeadScreenPos().y - 90, "WARDED — STOP ATTACKING", "#e9d5ff", { size: 16, dur: 1600 });
+  }
+  else if (m.kind === "pylon") onPylon(m);
+  else if (m.kind === "backlash") {
+    takePlayerDamage(m.dmg || 40);
+    d.backlashAt = Date.now();
+    if (G) { G.banner("BACKLASH", "Not enough of you shared the burden", "#f0abfc", 1800); G.burst(state.pos.x, state.pos.y, ["#f0abfc", "#7c3aed"], 30, { speed: 6 }); }
+    shakeDungeon(16);
+    playerDead();
+  }
+  else if (m.kind === "stage") {
+    const look = m.bossId && ECON.bossLook ? ECON.bossLook(m.bossId, 1) : null;
+    if (G) G.banner((look && look.name) || "THE NEXT WARDEN", "Warden " + (m.stage || 1) + " of " + (m.stages || 3), (look && look.accent) || "#c4b5fd", 3000);
+    d.bossAttacks = [];
+    if (m.boss && gameBosses.startCinematic) d.cine = gameBosses.startCinematic(m.boss);
+    shakeDungeon(12);
+  }
   else if (m.kind === "dead") onBossDead();
   else if (m.kind === "mini_fled" || m.kind === "mini_cleared") { d.boss = null; }
   else if (m.kind === "timeout") { toast("It sank back into the dark. The run is over."); endDungeon(false); }
 });
+
+// A threshold phase: a short name card (or, for a revive phase, the full
+// cutscene), then new moves and maybe a new room.
+function onBossPhase(m) {
+  const d = state.dungeon, b = d.boss;
+  if (!b) return;
+  if (b.id === "dragon") return;                 // `phase2` above plays Varkaal's
+  const look = m.look || (ECON.bossLook ? ECON.bossLook(b.id, m.phase || b.phase || 2) : {});
+  const G = window.gameDepths;
+  d.bossAttacks = [];
+  shakeDungeon(14);
+  if (m.cinematic && gameBosses.startPhaseCinematic) {
+    d.phaseCine = gameBosses.startPhaseCinematic(b);
+  } else {
+    const dur = m.shiftMs || 3200;
+    d.phaseShift = { t0: Date.now(), dur, look, phase: m.phase || b.phase, count: m.phaseCount || b.phaseCount };
+    if (gameBosses.startPhaseShift) {
+      try { d.phaseShift.b3 = gameBosses.startPhaseShift(b); } catch (e) { d.phaseShift.b3 = null; }
+    }
+    if (G) {
+      const h = bossHeadScreenPos();
+      G.burst(h.x, h.y, [look.accent || "#fff", look.color || "#888", "#ffffff"], 70, { speed: 8, life: 60, size: 3.2 });
+      G.ring(h.x, h.y, 300, look.accent || "#fff", { width: 10, dur: 900 });
+      G.ring(h.x, h.y, 520, look.accent || "#fff", { width: 6, dur: 1200, delay: 180 });
+    }
+  }
+  d.darkArena = !!look.dark;
+  if (look.open) {
+    clearTimeout(_openFieldT);
+    _openFieldT = setTimeout(() => { if (state.dungeon === d && d.bossRoom) { setArenaOpen(true); shakeDungeon(20); } }, Math.round((m.shiftMs || 3200) * 0.6));
+  }
+}
+function onPylon(m) {
+  const d = state.dungeon, b = d.boss, G = window.gameDepths;
+  if (!b) return;
+  const n = bossPartCount(b);
+  // The server may send absolute part indices (pylons sit after the weak
+  // points): normalise to a pylon index so the effects land on the pylon (QA L-7).
+  const pyl = (i) => (i | 0) >= n ? (i | 0) - n : (i | 0);
+  if (m.i != null && b.parts[n + pyl(m.i)]) b.parts[n + pyl(m.i)].hp = m.hp;
+  if (m.broken) {
+    b.pylonsBroken = true;
+    if (G) G.banner("THE PYLONS SHATTER", "The leyline shield is down — strike now", "#c4b5fd", 2600);
+    for (let i = 0; i < 4; i++) { const p = pylonScreenPos(i); if (G) G.burst(p.x, p.y - 20, ["#c4b5fd", "#fff"], 40, { speed: 7, life: 50 }); }
+    shakeDungeon(20);
+  }
+  if (Array.isArray(m.regrew) && m.regrew.length) {
+    for (const i0 of m.regrew) {
+      const i = pyl(i0);
+      if (b.parts[n + i]) b.parts[n + i].hp = b.parts[n + i].maxHp;
+      const p = pylonScreenPos(i);
+      if (G) { G.burst(p.x, p.y - 20, "#a78bfa", 20, { speed: 3 }); G.floatText(p.x, p.y - 70, "REGROWN", "#c4b5fd", { size: 13 }); }
+    }
+    if (G) G.banner("TOO SLOW", "The pylons must fall within four seconds of each other", "#a78bfa", 2000);
+  }
+}
 
 let _dungeonShake = 0;
 let _openFieldT = null;
@@ -1002,6 +1811,13 @@ function queueBossAttack(a) {
     // An expanding annulus out of the boss. The gap is a RADIUS: you beat it
     // by being somewhere the front has already passed, or has not reached.
     shot.band = a.band || 50;
+    // count/gapMs: several fronts, one after another — each its own shot, so
+    // the renderer draws every front with the ring it already knows.
+    const fronts = DepthsCore.ringFronts(shot.fireAt, a.count, a.gapMs);
+    if (fronts.length > 1) {
+      fronts.forEach((fa, i) => d.bossAttacks.push(Object.assign({}, shot, { fireAt: fa, warnMs: a.warnMs + i * (a.gapMs || 450), tell: i ? null : a.tell, dodge: i ? null : a.dodge, _front: i })));
+      return;
+    }
   }
   if (a.type === "cross") {
     // Fixed beams radiating from the boss, at a rotation picked per cast so
@@ -1078,6 +1894,74 @@ function queueBossAttack(a) {
       });
     }
   }
+  // ---- the Arcane Depths shapes (MASTER-PLAN §3.6 / CD §2.5.3) ----
+  const room = BOSS_ROOM;
+  const clampPt = (p, m) => ({ x: Math.max(room.x + m, Math.min(room.x + room.w - m, p.x)), y: Math.max(room.y + m, Math.min(room.y + room.h - m, p.y)) });
+  if (a.type === "constellation") {
+    // Stars: the first two near you, the rest scattered; the lines between
+    // them are what burns.
+    const n = Math.max(3, a.stars || 6);
+    shot.stars = [];
+    for (let i = 0; i < n; i++) {
+      shot.stars.push(i < 2 ? clampPt({ x: state.pos.x + jitter(160), y: state.pos.y + jitter(120) }, 40)
+        : { x: room.x + 50 + rng() * (room.w - 100), y: room.y + 50 + rng() * (room.h - 100) });
+    }
+    shot.points = shot.stars;
+  }
+  if (a.type === "lance") {
+    // A beam from the head that starts 0.6 rad off you and turns to follow.
+    const toMe = Math.atan2(state.pos.y - head.y, state.pos.x - head.x);
+    shot.ang = toMe + (rng() < 0.5 ? 0.6 : -0.6);
+    shot.beams = Math.max(1, a.beams | 0 || 1);
+    shot.points = [{ x: head.x + Math.cos(shot.ang) * 200, y: head.y + Math.sin(shot.ang) * 200 }];
+  }
+  if (a.type === "sigils") {
+    // `g` is the glyph index js/bosses.js reads (it matches `i`, the one the
+    // hit test uses); `r` is pinned so the drawing and sigilSafe agree.
+    shot.circles = DepthsCore.sigilLayout(a.n || 4, room, !!a.perQuadrant).map(c => Object.assign(c, { g: c.i }));
+    shot.points = shot.circles;
+    shot.r = a.r || 64;
+    shot.glyphs = DepthsCore.GLYPHS;
+  }
+  if (a.type === "spiral") {
+    shot.spiral = DepthsCore.spiralPoints({ cx: head.x, cy: head.y, arms: a.arms, points: a.points, turns: a.turns, rMin: 50, rMax: Math.max(room.w, room.h) * 0.62, rot: rng() * Math.PI * 2, fireAt: shot.fireAt, durMs: a.durMs || 2200 })
+      .filter(p => p.x > room.x + 10 && p.x < room.x + room.w - 10 && p.y > room.y + 10 && p.y < room.y + room.h - 10);
+    shot.points = shot.spiral;
+  }
+  if (a.type === "hazard") {
+    shot.pools = [];
+    const n = Math.max(1, a.targets || 3);
+    for (let i = 0; i < n; i++) shot.pools.push(clampPt({ x: state.pos.x + (i ? jitter(260) : jitter(80)), y: state.pos.y + (i ? jitter(200) : jitter(60)) }, (a.r || 70) * 0.5));
+    shot.points = shot.pools;
+    shot.lingerMs = a.lingerMs || 6000;
+    shot.keepMs = shot.lingerMs;
+  }
+  if (a.type === "collapse") {
+    shot.center = { x: room.x + room.w / 2, y: room.y + room.h / 2 };
+    shot.points = [shot.center];
+    // Pinned so the resolver (DepthsCore.collapseRadius) and both drawings
+    // use the same numbers when the deck leaves one out.
+    shot.rStart = a.rStart || 520; shot.rEnd = a.rEnd || 150; shot.durMs = a.durMs || 4000;
+  }
+  if (a.type === "summon") {
+    const adds = Array.isArray(a.adds) ? a.adds : [];
+    shot.portals = adds.length ? adds.map(r => ({ x: r.x, y: r.y })) : [0, 1, 2].map(i => ({ x: head.x + Math.cos(i * 2.1 + 0.5) * 240, y: Math.min(room.y + room.h - 60, head.y + 120 + Math.sin(i * 2.1 + 0.5) * 90) }));
+    shot.points = shot.portals;
+  }
+  if (a.type === "ward") {
+    shot.points = [head];
+    shot.durMs = a.durMs || 3000;
+    d.wardUntil = Math.max(d.wardUntil || 0, shot.fireAt + shot.durMs);
+    d.wardReflect = a.reflect;
+  }
+  if (a.type === "soak") {
+    shot.sx = a.x != null ? a.x : room.x + room.w / 2;
+    shot.sy = a.y != null ? a.y : room.y + room.h * 0.62;
+    shot.spot = { x: shot.sx, y: shot.sy };        // room coords, for js/bosses.js
+    shot.points = [shot.spot];
+    shot.need = a.need || 1;
+    shot.inside = soakCount(shot);                // a live count, see syncAttackFields
+  }
   d.bossAttacks.push(shot);
 }
 
@@ -1090,16 +1974,39 @@ function inBeam(px, py, from, ang, len, w) {
   return rel > -20 && rel < len && Math.abs(off) < w / 2;
 }
 
+// How many of the party are standing in a soak circle, you included.
+function soakCount(a) {
+  let n = Math.hypot(state.pos.x - a.sx, state.pos.y - a.sy) < (a.r || 110) && !(window.gameDepths && gameDepths.isDowned()) ? 1 : 0;
+  const d = state.dungeon;
+  if (d && d.runId && state.others) {
+    for (const o of Object.values(state.others)) {
+      if (!o || o.area !== "dungeon" || o.run !== d.runId) continue;
+      const x = o.dx == null ? o.x : o.dx, y = o.dy == null ? o.y : o.dy;
+      if (Math.hypot(x - a.sx, y - a.sy) < (a.r || 110)) n++;
+    }
+  }
+  return n;
+}
+
 function updateBossAttacks() {
   const d = state.dungeon;
   const now = Date.now();
+  const G = window.gameDepths;
+  const ghost = !!(G && G.isDowned());
+  const burn = (a, dmg, gapMs) => {
+    if (ghost || now - (a._lastBurn || 0) <= gapMs) return false;
+    a._lastBurn = now;
+    takePlayerDamage(dmg); shakeDungeon(5);
+    return playerDead();
+  };
   for (const a of d.bossAttacks) {
     const px = state.pos.x, py = state.pos.y;
-    // A whirlpool pulls the whole time it is open rather than hitting once.
-    if (a.type === "whirlpool" && now >= a.fireAt && now < a.fireAt + (a.durMs || 0)) {
+    // A whirlpool pulls the whole time it is open rather than hitting once. A
+    // negative pull pushes you out instead.
+    if (a.type === "whirlpool" && now >= a.fireAt && now < a.fireAt + (a.durMs || 0) && !ghost) {
       const dx = a.head.x - px, dy = a.head.y - py, dist = Math.hypot(dx, dy) || 1;
-      state.pos.x += (dx / dist) * (a.pull || 1.2);
-      state.pos.y += (dy / dist) * (a.pull || 1.2);
+      const pull = a.pull == null ? 1.2 : a.pull;
+      moveWithWalls(state.pos, px + (dx / dist) * pull, py + (dy / dist) * pull, 12);
     }
     // A breath cone burns for its whole duration, checked as it sweeps.
     if (a.type === "breath" && now >= a.fireAt && now < a.fireAt + (a.durMs || 0)) {
@@ -1107,12 +2014,7 @@ function updateBossAttacks() {
       const ang = a.angle + a.sweep * k;
       const rel = (px - a.head.x) * Math.cos(ang) + (py - a.head.y) * Math.sin(ang);
       const off = -(px - a.head.x) * Math.sin(ang) + (py - a.head.y) * Math.cos(ang);
-      if (rel > 0 && rel < a.len && Math.abs(off) < a.w / 2 && now - (a._lastBurn || 0) > 320) {
-        a._lastBurn = now;
-        takePlayerDamage(a.dmg * 0.45);
-        shakeDungeon(4);
-        if (state.hp <= 0) { endDungeon(false); return; }
-      }
+      if (rel > 0 && rel < a.len && Math.abs(off) < a.w / 2 && burn(a, a.dmg * 0.45, 320)) return;
     }
     // ---- the continuous shapes, checked every frame they are open ----
     const open = now >= a.fireAt && now < a.fireAt + (a.durMs || 0);
@@ -1122,33 +2024,83 @@ function updateBossAttacks() {
       const k = (now - a.fireAt) / Math.max(1, a.durMs);
       const front = (a.r || 400) * k;
       const dist = Math.hypot(px - a.head.x, py - a.head.y);
-      if (Math.abs(dist - front) < (a.band || 50) / 2 && now - (a._lastBurn || 0) > 400) {
-        a._lastBurn = now;
-        takePlayerDamage(a.dmg); shakeDungeon(6);
-        if (state.hp <= 0) { endDungeon(false); return; }
-      }
+      if (Math.abs(dist - front) < (a.band || 50) / 2 && burn(a, a.dmg, 400)) return;
     }
     if (a.type === "orbit" && open) {
       const k = (now - a.fireAt) / Math.max(1, a.durMs);
       const ang = a.angle + (a.sweep || 4.2) * k;
-      if (inBeam(px, py, a.head, ang, a.len || 470, a.w || 58) && now - (a._lastBurn || 0) > 380) {
-        a._lastBurn = now;
-        takePlayerDamage(a.dmg * 0.6); shakeDungeon(5);
-        if (state.hp <= 0) { endDungeon(false); return; }
-      }
+      if (inBeam(px, py, a.head, ang, a.len || 470, a.w || 58) && burn(a, a.dmg * 0.6, 380)) return;
     }
-    if (a.type === "meteor") {
+    if (a.type === "meteor" || a.type === "spiral") {
       // Each impact is its own little slam on its own clock.
-      for (const pt of a.points) {
+      const list = a.type === "spiral" ? a.spiral : a.points;
+      for (const pt of list) {
         if (pt.done || now < pt.at) continue;
         pt.done = true;
-        addParticles(pt.x, pt.y, "#f97316", 14);
-        if (Math.hypot(px - pt.x, py - pt.y) < (a.r || 46)) {
+        addParticles(pt.x, pt.y, a.type === "spiral" ? "#c4b5fd" : "#f97316", 14);
+        if (G && a.type === "spiral") G.burst(pt.x, pt.y, ["#e9d5ff", "#a78bfa"], 6, { speed: 3, life: 22 });
+        if (!ghost && Math.hypot(px - pt.x, py - pt.y) < (a.r || 46)) {
           takePlayerDamage(a.dmg); shakeDungeon(5);
-          if (state.hp <= 0) { endDungeon(false); return; }
+          if (playerDead()) return;
         }
       }
       if (now > a.fireAt + (a.durMs || 0) + 400) a.resolved = true;
+      continue;
+    }
+    if (a.type === "lance") {
+      if (now < a.fireAt) continue;
+      if (!open) { a.resolved = true; continue; }
+      const dt = Math.min(0.1, (now - (a._lt || now)) / 1000);
+      a._lt = now;
+      const want = Math.atan2(py - a.head.y, px - a.head.x);
+      // With twin beams, chase you with whichever beam is closer.
+      let target = want;
+      if (a.beams > 1 && Math.abs(DepthsCore.angleDiff(a.ang + Math.PI, want)) < Math.abs(DepthsCore.angleDiff(a.ang, want))) target = want - Math.PI;
+      a.ang = DepthsCore.turnToward(a.ang, target, (a.turn || 1) * dt);
+      for (let i = 0; i < (a.beams || 1); i++) {
+        if (inBeam(px, py, a.head, a.ang + i * Math.PI, a.len || 900, a.w || 50) && burn(a, a.dmg, 300)) return;
+      }
+      continue;
+    }
+    if (a.type === "hazard") {
+      if (now < a.fireAt) continue;
+      if (!a._landed) { a._landed = true; for (const p of a.pools) { addParticles(p.x, p.y, "#bae6fd", 12); if (G) G.burst(p.x, p.y, ["#bae6fd", "#e0f2fe"], 10, { speed: 3 }); } shakeDungeon(4); }
+      if (now > a.fireAt + (a.lingerMs || 6000)) { a.resolved = true; continue; }
+      const inP = a.pools.some(p => Math.hypot(px - p.x, py - p.y) < (a.r || 70));
+      if (inP) {
+        if (G && a.slow) G.addSlow("hazard", a.slow, 300);
+        if (burn(a, a.dmg, 500)) return;
+      }
+      continue;
+    }
+    if (a.type === "collapse") {
+      if (!open) { if (now >= a.fireAt + (a.durMs || 0)) a.resolved = true; continue; }
+      const rad = DepthsCore.collapseRadius(a.rStart, a.rEnd, now - a.fireAt, a.durMs);
+      if (Math.hypot(px - a.center.x, py - a.center.y) > rad && burn(a, a.dmg, 400)) return;
+      continue;
+    }
+    if (a.type === "summon") {
+      if (!a.spawned && now >= a.fireAt) {
+        a.spawned = true; a.resolved = true;
+        if (Array.isArray(a.adds) && a.adds.length) adoptSpawned(a.adds.map(r => Object.assign({}, r, { arena: true })), { portal: true });
+        shakeDungeon(6);
+      }
+      continue;
+    }
+    if (a.type === "ward") { if (now >= a.fireAt) a.resolved = true; continue; }
+    if (a.type === "soak") {
+      if (a.reported || now < a.fireAt) continue;
+      a.reported = true; a.resolved = true;
+      const inside = !ghost && Math.hypot(px - a.sx, py - a.sy) < (a.r || 110);
+      a.finalCount = soakCount(a);
+      a.inside = a.finalCount;
+      if (inside) {
+        netGuildDungeon({ action: "soak", seq: a.seq, inside: true }).catch(() => {});
+        // The burden is shared: each soaker takes a slice of it.
+        takePlayerDamage(a.dmg || 20); shakeDungeon(6);
+        if (G) G.burst(a.sx, a.sy, ["#f0abfc", "#fff"], 24, { speed: 5 });
+        if (playerDead()) return;
+      }
       continue;
     }
     if (a.resolved || now < a.fireAt) continue;
@@ -1192,36 +2144,58 @@ function updateBossAttacks() {
       for (let i = 0; i < 24; i++) {
         addParticles(BOSS_ROOM.x + Math.random() * BOSS_ROOM.w, BOSS_ROOM.y + Math.random() * BOSS_ROOM.h, "#fbbf24", 1);
       }
+    } else if (a.type === "constellation") {
+      if (DepthsCore.constellationHit(px, py, a.stars, a.w)) hit = true;
+      if (G) for (const s of a.stars) G.burst(s.x, s.y, ["#fff", "#c7d2fe"], 5, { speed: 3, life: 24 });
+      shakeDungeon(6);
+    } else if (a.type === "sigils") {
+      if (!DepthsCore.sigilSafe(px, py, a.circles, a, BOSS_ROOM)) hit = true;
+      if (G) G.ring(a.head.x, a.head.y, 600, "#e9d5ff", { width: 12, dur: 700 });
+      shakeDungeon(10);
     }
-    if (hit) {
+    if (hit && !ghost) {
       takePlayerDamage(a.dmg);
       shakeDungeon(7);
-      if (state.hp <= 0) { endDungeon(false); return; }
+      if (playerDead()) return;
     }
   }
   // Drop anything long resolved so the list can't grow without bound.
-  d.bossAttacks = d.bossAttacks.filter(a => now - a.fireAt < (a.durMs || 0) + 700);
+  d.bossAttacks = d.bossAttacks.filter(a => now - a.fireAt < Math.max(a.durMs || 0, a.keepMs || 0) + 700);
 }
 
 // Clicking near a weak point (or the head once the guard is down) sends a hit.
+// Adds and pylons come first: what is in your face is what you swing at.
 let _bossHitPending = false;
 async function bossAttackAt(mx, my) {
   const d = state.dungeon;
   const b = d && d.boss;
+  if (window.gameDepths && gameDepths.isDowned()) return;
+  if (d && hitArenaAdds(mx, my)) return;
   if (!b || b.status !== "alive" || _bossHitPending) return;
   if (d.cine || d.phaseCine || d.victoryCine || state.tomeCine) return;
   const reach = ECON.GUILD_BOSS.REACH[state.weapon === "pistol" ? "pistol" : "sword"];
   const PR = ECON.GUILD_BOSS.PART_HIT_R, HR = ECON.GUILD_BOSS.HEAD_HIT_R;
+  const nParts = bossPartCount(b);
   // A weak point is a DISC, not a point, and both checks measure to the EDGE of
   // that disc rather than to its centre. Measuring to the centre is what made a
   // limb you were plainly standing under unhittable from one side and fine from
   // the other: the art is drawn 1.2-1.3x around the anchor, so the anchor is
   // never where the thing looks like it is.
-  const guardUp = b.parts.some(p => p.hp > 0);
+  const guardUp = b.parts.some((p, i) => i < nParts && p.hp > 0);
   let part = null, best = Infinity;
-  b.parts.forEach((p, i) => {
-    if (p.hp <= 0) return;
-    const pos = bossPartScreenPos(i, b.parts.length);
+  // The leyline pylons, while the shield is up, are targets of their own.
+  if (b.pylonShield && !b.pylonsBroken) {
+    b.parts.forEach((p, i) => {
+      if (i < nParts || p.hp <= 0) return;
+      const pos = pylonScreenPos(i - nParts);
+      const dp = Math.max(0, Math.hypot(state.pos.x - pos.x, state.pos.y - (pos.y - 20)) - PR);
+      const dm = Math.hypot(mx - pos.x, my - (pos.y - 20));
+      if (dp < reach && dm < PR * 1.6 + 30 && dp < best) { best = dp; part = i; }
+    });
+  }
+  if (part === null) b.parts.forEach((p, i) => {
+    if (i >= nParts || p.hp <= 0) return;
+    const pos = bossPartScreenPos(i, nParts);
     const dm = Math.hypot(mx - pos.x, my - pos.y);
     const dp = Math.max(0, Math.hypot(state.pos.x - pos.x, state.pos.y - pos.y) - PR);
     if (dm < PR && dp < reach && dp < best) { best = dp; part = i; }
@@ -1231,8 +2205,8 @@ async function bossAttackAt(mx, my) {
   // whether the swing counts at all.
   if (part === null && guardUp) {
     b.parts.forEach((p, i) => {
-      if (p.hp <= 0) return;
-      const pos = bossPartScreenPos(i, b.parts.length);
+      if (i >= nParts || p.hp <= 0) return;
+      const pos = bossPartScreenPos(i, nParts);
       const dp = Math.max(0, Math.hypot(state.pos.x - pos.x, state.pos.y - pos.y) - PR);
       const aim = Math.hypot(mx - pos.x, my - pos.y);
       if (dp < reach && aim < best) { best = aim; part = i; }
@@ -1246,15 +2220,59 @@ async function bossAttackAt(mx, my) {
   if (part === null) return;
   _bossHitPending = true;
   try {
-    const res = await netGuildDungeon({ action: "boss_hit", part, weapon: state.weapon === "pistol" ? "pistol" : "sword" });
-    const pos = part === "head" ? bossHeadScreenPos() : bossPartScreenPos(part, b.parts.length);
+    const req = { action: "boss_hit", part, weapon: state.weapon === "pistol" ? "pistol" : "sword" };
+    if (afterDashActive()) req.afterDash = true;
+    const res = await netGuildDungeon(req);
+    const pos = part === "head" ? bossHeadScreenPos() : part >= nParts ? pylonScreenPos(part - nParts) : bossPartScreenPos(part, nParts);
     addParticles(pos.x, pos.y, "#fcd34d", 10);
     gameBosses.flashPart(part === "head" ? 6 : part);
-    if (part === "head") b.head.hp = res.hp; else b.parts[part].hp = res.hp;
+    const tgt = part === "head" ? b.head : b.parts[part];
+    const before = tgt ? tgt.hp : 0;
+    if (tgt && res.hp != null) tgt.hp = res.hp;
+    if (res.pylon && b.parts[nParts + res.pylon.i]) b.parts[nParts + res.pylon.i].hp = res.pylon.hp;
+    const G = window.gameDepths;
+    const dealt = res.dmg != null ? res.dmg : Math.max(0, before - (res.hp != null ? res.hp : before));
+    if (G && dealt > 0) G.floatText(pos.x + (Math.random() - 0.5) * 30, pos.y - 30, (res.crit ? "✦" : "") + Math.round(dealt), res.crit ? "#fde047" : "#fff", { size: res.crit ? 22 : 14, crit: !!res.crit, dur: 1000 });
+    if (G) G.burst(pos.x, pos.y, res.crit ? ["#fde047", "#fff"] : ["#fcd34d"], res.crit ? 16 : 6, { speed: res.crit ? 5 : 3 });
+    if (res.crit) shakeDungeon(5);
+    if (res.procs) showProcs(res.procs);
+    // Striking into a ward bounces it back.
+    if (res.reflected > 0) {
+      takePlayerDamage(res.reflected);
+      if (G) { G.floatText(state.pos.x, state.pos.y - 40, "WARDED  -" + Math.round(res.reflected), "#e9d5ff", { size: 15 }); G.procArcs(pos, [state.pos], "#e9d5ff"); }
+      shakeDungeon(6);
+      playerDead();
+    }
+    const fx = playerFx();
+    if (fx.lifesteal > 0 && dealt > 0 && !(G && G.isDowned())) state.hp = Math.min(state.maxHp, state.hp + fx.lifesteal * dealt);
   } catch (e) {
-    if (!/Too fast/.test(e.message)) toast(e.message, 1200);
+    if (!/Too fast/.test(e.message)) toast(escapeHtml(e.message), 1200);
   }
   _bossHitPending = false;
+}
+// A swing in the arena that lands on summoned adds instead of the boss.
+function hitArenaAdds(mx, my) {
+  const d = state.dungeon, adds = (d.arenaEnemies || []).filter(e => e.hp > 0);
+  if (!adds.length) return false;
+  const pistol = state.weapon === "pistol";
+  const ang = Math.atan2(my - state.pos.y, mx - state.pos.x);
+  const hits = [];
+  for (const e of adds) {
+    const ex = e.x - state.pos.x, ey = e.y - state.pos.y, dist = Math.hypot(ex, ey);
+    const diff = Math.abs(DepthsCore.angleDiff(ang, Math.atan2(ey, ex)));
+    if (pistol ? (dist < ECON.GUILD_BOSS.REACH.pistol && Math.hypot(mx - e.x, my - e.y) < e.size + 30) : (dist < 70 + e.size && diff < Math.PI / 1.6)) hits.push(e);
+  }
+  if (!hits.length) return false;
+  const take = hits.slice(0, pistol ? 1 : ECON.DUNGEON_HIT_MAX_TARGETS);
+  for (const e of take) {
+    e.hitFlash = 6;
+    const m = Math.hypot(e.x - state.pos.x, e.y - state.pos.y) || 1;
+    e.kbX += (e.x - state.pos.x) / m * 4; e.kbY += (e.y - state.pos.y) / m * 4;
+    addParticles(e.x, e.y, "#fcd34d", 6);
+    if (window.gameDepths) gameDepths.burst(e.x, e.y, [e.color, "#fff"], 6, { speed: 3 });
+  }
+  reportEnemyHits(take.map(e => e.id), pistol ? "pistol" : "sword");
+  return true;
 }
 
 let _bossPaying = false;
@@ -1262,14 +2280,20 @@ async function onBossDead() {
   const d = state.dungeon;
   if (!d) return;
   shakeDungeon(12);
+  for (const e of d.arenaEnemies || []) e.hp = 0;
+  const G = window.gameDepths;
+  if (G && d.boss) { const h = bossHeadScreenPos(); G.burst(h.x, h.y, ["#fde68a", "#fff", (ECON.GUILD_BOSSES[d.boss.id] || {}).accent || "#c084fc"], 90, { speed: 9, life: 70, size: 3.4 }); }
   // A mini is an obstacle, not the end of the run: the stair opens and the
   // party walks on. Its bounty is held by the server until the run is cleared.
-  if (d.isMini) {
-    toast("It goes down. The way is open.", 3000);
+  // The Heart of the Depths is the same: the sanctuary is behind it.
+  if (d.isMini || d.endless) {
+    if (d.endless && !d.isMini) d.finalDone = true;
+    toast(d.endless && !d.isMini ? "THE HEART BREAKS. The sanctuary is open." : "It goes down. The way is open.", 3000);
     return;
   }
   if (_bossPaying || d.victoryCine || d.chest) return;
   _bossPaying = true;
+  d.clearMs = Date.now() - (d.startedAt || Date.now());
   toast("IT FALLS.", 2500);
   // What it was guarding is left behind, where it stood. `complete` is claimed
   // from the chest (see claimChest) rather than from the kill, so the money and
@@ -1280,6 +2304,12 @@ async function onBossDead() {
     if (state.area !== "dungeon" || state.dungeon !== d) return;
     d.exitRevealed = true;
     spawnChest(DUNGEON_W / 2, hd.y + 200, "guild");
+    if (d.chest && window.DepthsCore) {
+      d.chest.predictedTier = DepthsCore.predictChestTier({
+        clearMs: d.clearMs, parMs: ECON.DUNGEON_LOOT && ECON.DUNGEON_LOOT[d.tier] ? ECON.DUNGEON_LOOT[d.tier].parMs : 0,
+        downs: G ? G.downs() : 0, startSize: d.startSize || 1, endSize: d.members ? d.members.length : (d.startSize || 1), delve: d.delve,
+      });
+    }
     shakeDungeon(6);
     toast("Something heavy settles where it stood. Stand by it and press E.", 7000);
   }, DungeonScenes.victoryMs);
@@ -1305,7 +2335,12 @@ async function endDungeon(victory, alreadyPaid) {
   if (isGuild && !alreadyPaid) {
     // Walking out of a guild run (death or ESC) releases the server-side run
     // so the party isn't stuck holding a boss nobody is fighting.
-    try { await netGuildDungeon({ action: "abandon" }); } catch (e) {}
+    try {
+      const r = await netGuildDungeon({ action: "abandon" });
+      // Walking out after the final boss fell opens the chest for the whole
+      // party on the way out; the loot arrives on the `reward` push.
+      if (r && r.settled) toast("You left the chest behind — it was opened for the party. Your share is in your pack.", 6000);
+    } catch (e) {}
   }
   // `alreadyPaid` now covers quest runs too: the chest claims the reward when
   // its lid comes off (claimChest), so by the time we get here it is spent.
@@ -1318,10 +2353,14 @@ async function endDungeon(victory, alreadyPaid) {
       toast(`Quest complete! +$${data.gained}`);
       if (window.gameGear) gameGear.announceLoot(data.loot, data.gear);
       if (data.packFull) toast("Something else dropped, but your pack is full — sell some of it at the Armory.", 6000);
-    } catch (e) { toast(e.message); }
+    } catch (e) { toast(escapeHtml(e.message)); }
   } else if (!victory) {
     toast("Defeated! Returning to town.");
   }
+  clearTimeout(_openFieldT); _openFieldT = null;
+  Object.assign(BOSS_ROOM, ARENA_ROOM);
+  state.dash = null; state.iframesUntil = 0;
+  if (window.gameDepths) gameDepths.teardown();
   state.maxHp = window.gameGear ? gameGear.maxHp() : 100;
   state.hp = state.maxHp;
   state.dungeon = null;
@@ -1337,6 +2376,7 @@ async function endDungeon(victory, alreadyPaid) {
 
 function doAttack() {
   if (state.attackCooldown > 0) return;
+  if (window.gameDepths && gameDepths.isDowned && gameDepths.isDowned()) return;
   // In the boss room the swing is a request to the server, which owns the
   // boss's HP — the local animation still plays either way.
   if (state.dungeon && state.dungeon.bossRoom) {
@@ -1344,7 +2384,7 @@ function doAttack() {
     // Every cutscene holds the room: the entrance, Varkaal's transformation,
     // and a tome being read. None of them may be swung through.
     if (d.cine || d.phaseCine || d.victoryCine || state.tomeCine) return;
-    if (d.boss && d.boss.status !== "alive") return;
+    if (d.boss && d.boss.status !== "alive" && !(d.arenaEnemies && d.arenaEnemies.length)) return;
     const dx = state.mouse.x - state.pos.x, dy = state.mouse.y - state.pos.y;
     const m = Math.hypot(dx, dy) || 1;
     if (state.weapon === "pistol") {
@@ -1393,7 +2433,10 @@ function doAttack() {
         let diff = Math.abs(a2 - ang); if (diff > Math.PI) diff = 2*Math.PI - diff;
         if (diff < Math.PI / 1.6) { // ~112° arc
           if (swept.length >= cap) continue;
-          e.hp -= 55 * combatDamageMult();
+          if (e.ai === "mimic" && !e.awake) { e.awake = true; }
+          const dmg = isGuild ? 55 * combatDamageMult() : localHitDamage(55 * combatDamageMult(), e);
+          if (!isGuild || !e.shield) e.hp -= dmg;
+          onLocalHit(e, dmg, !isGuild);
           swept.push(e.id);
           e.hitFlash = 6;
           e.awake = true; e.lurking = false;
@@ -1409,6 +2452,8 @@ function doAttack() {
     state.swingT = 14;
     state.swingAng = ang;
     reportEnemyHits(swept, "sword");
+    // A swing against a cracked wall is how a secret is found.
+    if (window.gameDepths && gameDepths.onSwing) gameDepths.onSwing(state.pos.x + Math.cos(ang) * 40, state.pos.y + Math.sin(ang) * 40);
     if (hit > 1) toast(`Multi-hit x${hit}!`, 800);
   } else {
     // Pistol: slower fire, ranged, less damage per shot
@@ -1436,17 +2481,419 @@ function drawPartyMembers(t) {
     if (!o || o.area !== "dungeon" || o.run !== d.runId) continue;
     // Followers on another floor are somewhere else entirely.
     if ((o.dfloor | 0) !== (dungeonPresence().dfloor | 0)) continue;
-    GFX.drawCharacter(ctx, o.dx == null ? o.x : o.dx, o.dy == null ? o.y : o.dy, o.appearance, {
-      facing: o.facing, walking: o.walking, name,
+    const ox = o.dx == null ? o.x : o.dx, oy = o.dy == null ? o.y : o.dy;
+    const G = window.gameDepths;
+    const down = !!(G && G.drawDownedAlly(ctx, name, ox, oy, t));
+    if (down) ctx.globalAlpha = 0.4;
+    GFX.drawCharacter(ctx, ox, oy, o.appearance, {
+      facing: o.facing, walking: down ? 0 : o.walking, name,
     });
-    ctx.fillStyle = "rgba(226,232,240,.85)";
+    ctx.globalAlpha = 1;
+    // In a raid every name carries its guild's tag, in that guild's colour.
+    const gid = d.memberGuild && d.memberGuild[name];
+    const tag = gid && d.guilds && d.guilds[gid] ? d.guilds[gid].tag : null;
     ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center";
-    ctx.fillText(name, o.dx == null ? o.x : o.dx, (o.dy == null ? o.y : o.dy) - 30);
+    if (tag && d.kind === "raid") {
+      ctx.fillStyle = guildTagColor(gid);
+      ctx.fillText("[" + tag + "] " + name, ox, oy - 30);
+    } else {
+      ctx.fillStyle = "rgba(226,232,240,.85)";
+      ctx.fillText(name, ox, oy - 30);
+    }
   }
+}
+
+function guildTagColor(gid) {
+  let h = 0;
+  for (const ch of String(gid)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return "hsl(" + (h % 360) + ",80%,72%)";
 }
 
 // The arena. The boss itself, its attacks and its entrance cinematic are all
 // drawn by js/bosses.js so the guild bosses hold to the same standard as the
+
+// ---------- Arcane Depths arena layers ----------
+// The new attack shapes, drawn here until js/bosses.js says it draws them
+// itself (gameBosses.drawsAttack(type) -> true). The name/dodge label is
+// already printed by gameBosses.drawAttacks for every shape with `points`.
+const NEW_SHAPES = new Set(["constellation", "lance", "sigils", "spiral", "hazard", "collapse", "summon", "ward", "soak"]);
+// Per-frame fields the drawings read (see the field contract above
+// ARCANE_SHAPES in js/bosses.js): a soak's `inside` is how many of the party
+// are standing in it right now, frozen at the count it resolved with.
+function syncAttackFields(attacks, t) {
+  for (const a of attacks || []) {
+    if (a.type !== "soak") continue;
+    if (!a.spot) a.spot = { x: a.sx, y: a.sy };
+    a.inside = a.finalCount != null ? a.finalCount : soakCount(a);
+  }
+}
+// Is js/bosses.js drawing the ward shell for a live ward attack right now?
+function b3DrawsWard(t) {
+  const d = state.dungeon;
+  if (!(window.gameBosses && typeof gameBosses.drawsAttack === "function" && gameBosses.drawsAttack("ward"))) return false;
+  return (d.bossAttacks || []).some(a => a.type === "ward" && t < a.fireAt + (a.durMs || 3000));
+}
+function drawAttackFallbacks(ctx, attacks, t, look) {
+  const acc = (look && look.accent) || "#c4b5fd";
+  const B3 = window.gameBosses && typeof gameBosses.drawsAttack === "function" ? gameBosses : null;
+  const TAU = Math.PI * 2;
+  for (const a of attacks) {
+    if (!NEW_SHAPES.has(a.type) || (B3 && B3.drawsAttack(a.type))) continue;
+    const left = a.fireAt - t, winding = left > 0;
+    const warn = Math.max(0, Math.min(1, 1 - left / Math.max(1, a.warnMs)));
+    const after = -left;
+    if (a.type === "constellation") {
+      const n = a.stars.length, shown = winding ? Math.max(1, Math.ceil(n * Math.min(1, warn * 1.6))) : n;
+      const segs = DepthsCore.constellationSegments(a.stars);
+      if (!winding && after > (a.durMs || 900) + 300) continue;
+      const fire = !winding && after < (a.durMs || 900);
+      ctx.lineCap = "round";
+      segs.forEach(([p, q], i) => {
+        if (i + 1 >= shown && winding) return;
+        const k = winding ? Math.min(1, warn * 1.6 - i / n) : 1;
+        if (k <= 0) return;
+        const ex = p.x + (q.x - p.x) * Math.min(1, k), ey = p.y + (q.y - p.y) * Math.min(1, k);
+        if (fire) {
+          ctx.strokeStyle = "rgba(199,210,254,.35)"; ctx.lineWidth = a.w || 34;
+          ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+          ctx.strokeStyle = "#ffffff"; ctx.lineWidth = (a.w || 34) * 0.35;
+          ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+        } else {
+          ctx.strokeStyle = "rgba(165,180,252," + (0.25 + 0.5 * warn) + ")"; ctx.lineWidth = 2; ctx.setLineDash([8, 6]);
+          ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(ex, ey); ctx.stroke(); ctx.setLineDash([]);
+          ctx.fillStyle = "rgba(165,180,252," + (0.06 + 0.1 * warn) + ")"; ctx.lineWidth = a.w || 34;
+          ctx.strokeStyle = "rgba(239,68,68," + (0.08 + 0.12 * warn) + ")";
+          ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(ex, ey); ctx.stroke();
+        }
+      });
+      ctx.lineCap = "butt";
+      a.stars.forEach((s, i) => {
+        if (winding && i >= shown) return;
+        const tw = 0.6 + 0.4 * Math.sin(t / 90 + i);
+        const g = ctx.createRadialGradient(s.x, s.y, 1, s.x, s.y, 22);
+        g.addColorStop(0, "rgba(255,255,255," + tw + ")"); g.addColorStop(1, "rgba(165,180,252,0)");
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(s.x, s.y, 22, 0, TAU); ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(s.x, s.y, 3.5, 0, TAU); ctx.fill();
+      });
+    } else if (a.type === "lance") {
+      if (!winding && after > (a.durMs || 3400)) continue;
+      for (let i = 0; i < (a.beams || 1); i++) {
+        const ang = a.ang + i * Math.PI, len = a.len || 900;
+        const x2 = a.head.x + Math.cos(ang) * len, y2 = a.head.y + Math.sin(ang) * len;
+        if (winding) {
+          ctx.strokeStyle = "rgba(248,113,113," + (0.3 + 0.5 * warn) + ")"; ctx.lineWidth = 2 + warn * 2;
+          ctx.beginPath(); ctx.moveTo(a.head.x, a.head.y); ctx.lineTo(x2, y2); ctx.stroke();
+        } else {
+          const w = a.w || 50, fl = 0.85 + 0.15 * Math.sin(t / 40);
+          ctx.strokeStyle = "rgba(" + gameBosses.hexToRgb(acc) + ",.35)"; ctx.lineWidth = w * 1.6 * fl;
+          ctx.beginPath(); ctx.moveTo(a.head.x, a.head.y); ctx.lineTo(x2, y2); ctx.stroke();
+          ctx.strokeStyle = acc; ctx.lineWidth = w * fl;
+          ctx.beginPath(); ctx.moveTo(a.head.x, a.head.y); ctx.lineTo(x2, y2); ctx.stroke();
+          ctx.strokeStyle = "#ffffff"; ctx.lineWidth = w * 0.3;
+          ctx.beginPath(); ctx.moveTo(a.head.x, a.head.y); ctx.lineTo(x2, y2); ctx.stroke();
+          if (window.gameDepths && Math.random() < 0.5) {
+            const k = Math.random() * 600;
+            gameDepths.burst(a.head.x + Math.cos(ang) * k, a.head.y + Math.sin(ang) * k, [acc, "#fff"], 1, { speed: 2, life: 18 });
+          }
+        }
+      }
+    } else if (a.type === "sigils") {
+      if (!winding && after > 700) continue;
+      const glyphs = DepthsCore.GLYPHS;
+      const safeIdx = (c) => a.perQuadrant ? (Array.isArray(a.answers) && a.answers[c.q] === c.i) : c.i === (a.answer | 0);
+      for (const c of a.circles) {
+        const ok = safeIdx(c);
+        ctx.fillStyle = winding ? "rgba(233,213,255," + (0.08 + 0.1 * warn) + ")" : ok ? "rgba(134,239,172,.35)" : "rgba(0,0,0,0)";
+        ctx.beginPath(); ctx.arc(c.x, c.y, a.r || 64, 0, TAU); ctx.fill();
+        ctx.strokeStyle = winding ? "rgba(233,213,255,.7)" : ok ? "#86efac" : "rgba(233,213,255,.3)"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(c.x, c.y, a.r || 64, 0, TAU); ctx.stroke();
+        ctx.fillStyle = "#f5f3ff"; ctx.font = "bold 28px serif"; ctx.textAlign = "center";
+        ctx.fillText(glyphs[c.i % glyphs.length], c.x, c.y + 10);
+      }
+      // The answer is written on the boss itself, for the whole wind-up.
+      if (winding) {
+        ctx.save(); ctx.textAlign = "center"; ctx.shadowColor = acc; ctx.shadowBlur = 20; ctx.fillStyle = "#ffffff";
+        if (a.perQuadrant && Array.isArray(a.answers)) {
+          ctx.font = "bold 24px serif";
+          a.answers.forEach((ans, q) => ctx.fillText(glyphs[ans % glyphs.length], a.head.x + (q % 2 ? 22 : -22), a.head.y - 128 + (q < 2 ? 0 : 30)));
+        } else {
+          ctx.font = "bold 46px serif";
+          ctx.fillText(glyphs[(a.answer | 0) % glyphs.length], a.head.x, a.head.y - 110);
+        }
+        ctx.restore();
+      } else {
+        // everything but the safe sigils burns
+        ctx.fillStyle = "rgba(233,213,255," + (0.35 * (1 - after / 700)) + ")";
+        ctx.fillRect(BOSS_ROOM.x, BOSS_ROOM.y, BOSS_ROOM.w, BOSS_ROOM.h);
+      }
+    } else if (a.type === "spiral") {
+      for (const p of a.spiral) {
+        const until = p.at - t;
+        if (p.done && t - p.at > 300) continue;
+        if (until > 0) {
+          const k = Math.max(0, Math.min(1, 1 - until / Math.max(1, p.at - a.at)));
+          ctx.fillStyle = "rgba(196,181,253," + (0.08 + 0.22 * k) + ")";
+          ctx.beginPath(); ctx.arc(p.x, p.y, (a.r || 42) * (0.4 + 0.6 * k), 0, TAU); ctx.fill();
+          ctx.strokeStyle = "rgba(233,213,255," + (0.3 + 0.4 * k) + ")"; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(p.x, p.y, a.r || 42, 0, TAU); ctx.stroke();
+        } else {
+          const k = Math.min(1, (t - p.at) / 300);
+          ctx.fillStyle = "rgba(255,255,255," + (0.7 * (1 - k)) + ")";
+          ctx.beginPath(); ctx.arc(p.x, p.y, (a.r || 42) * (1 + k * 0.4), 0, TAU); ctx.fill();
+        }
+      }
+    } else if (a.type === "hazard") {
+      const lingerLeft = a.fireAt + (a.lingerMs || 6000) - t;
+      if (lingerLeft < 0) continue;
+      for (const p of a.pools) {
+        const r = a.r || 70;
+        if (winding) {
+          ctx.strokeStyle = "rgba(186,230,253," + (0.4 + 0.4 * warn) + ")"; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(p.x, p.y, r * warn, 0, TAU); ctx.stroke();
+          ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, TAU); ctx.stroke();
+        } else {
+          const fade = Math.min(1, lingerLeft / 600);
+          const g = ctx.createRadialGradient(p.x, p.y, 4, p.x, p.y, r);
+          g.addColorStop(0, "rgba(224,242,254," + (0.55 * fade) + ")"); g.addColorStop(0.7, "rgba(125,211,252," + (0.35 * fade) + ")"); g.addColorStop(1, "rgba(14,116,144,0)");
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, TAU); ctx.fill();
+          ctx.strokeStyle = "rgba(186,230,253," + (0.6 * fade) + ")"; ctx.lineWidth = 2;
+          for (let i = 0; i < 6; i++) { const aa = i * TAU / 6 + p.x; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + Math.cos(aa) * r * 0.8, p.y + Math.sin(aa) * r * 0.8); ctx.stroke(); }
+        }
+      }
+    } else if (a.type === "collapse") {
+      if (!winding && after > (a.durMs || 4000)) continue;
+      const rad = winding ? (a.rStart || 520) : DepthsCore.collapseRadius(a.rStart, a.rEnd, after, a.durMs);
+      const c = a.center;
+      if (!winding) {
+        ctx.save();
+        ctx.beginPath(); ctx.rect(BOSS_ROOM.x, BOSS_ROOM.y, BOSS_ROOM.w, BOSS_ROOM.h); ctx.arc(c.x, c.y, rad, 0, TAU, true);
+        ctx.fillStyle = "rgba(8,4,20,.72)"; ctx.fill();
+        ctx.restore();
+      }
+      ctx.strokeStyle = winding ? "rgba(248,113,113," + (0.3 + 0.5 * warn) + ")" : acc; ctx.lineWidth = winding ? 3 : 6;
+      if (winding) ctx.setLineDash([12, 8]);
+      ctx.beginPath(); ctx.arc(c.x, c.y, rad, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+      if (winding) { ctx.strokeStyle = "rgba(248,113,113,.35)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(c.x, c.y, a.rEnd || 150, 0, TAU); ctx.stroke(); }
+      else { ctx.strokeStyle = "rgba(255,255,255,.5)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(c.x, c.y, rad - 6, 0, TAU); ctx.stroke(); }
+    } else if (a.type === "summon") {
+      if (!winding && after > 500) continue;
+      for (const p of a.portals) {
+        const k = winding ? warn : 1 - after / 500;
+        ctx.save(); ctx.translate(p.x, p.y);
+        for (let i = 0; i < 3; i++) {
+          ctx.strokeStyle = "rgba(167,139,250," + (0.3 + 0.2 * i) * k + ")"; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.ellipse(0, 0, (14 + i * 10) * k, (8 + i * 5) * k, 0, t / (300 - i * 60), t / (300 - i * 60) + 4.5); ctx.stroke();
+        }
+        ctx.fillStyle = "rgba(30,27,75," + (0.7 * k) + ")"; ctx.beginPath(); ctx.ellipse(0, 0, 12 * k, 6 * k, 0, 0, TAU); ctx.fill();
+        ctx.restore();
+      }
+    } else if (a.type === "ward") {
+      // drawn with the boss (see drawWardShell)
+    } else if (a.type === "soak") {
+      if (!winding && after > 600) continue;
+      const r = a.r || 110, n = typeof a.inside === "number" ? a.inside : winding ? soakCount(a) : (a.finalCount || 0), need = a.need || 1;
+      const sx = a.spot ? a.spot.x : a.sx, sy = a.spot ? a.spot.y : a.sy;
+      const ok = n >= need;
+      const pulse = 0.5 + 0.5 * Math.sin(t / 150);
+      ctx.fillStyle = ok ? "rgba(134,239,172," + (0.14 + 0.1 * pulse) + ")" : "rgba(240,171,252," + (0.12 + 0.12 * pulse) + ")";
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.fill();
+      ctx.strokeStyle = ok ? "#86efac" : "#f0abfc"; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(sx, sy, r, -Math.PI / 2, -Math.PI / 2 + TAU * (winding ? warn : 1)); ctx.stroke();
+      ctx.fillStyle = "#fff"; ctx.font = "bold 22px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText(n + " / " + need, sx, sy + 8);
+    }
+  }
+}
+// A prismatic shell while the boss is warded: striking it bounces back.
+function drawWardShell(ctx, t) {
+  const d = state.dungeon;
+  if (!d || !(d.wardUntil > t)) return;
+  if (b3DrawsWard(t)) return;   // js/bosses.js paints the shell with the attack
+  const h = bossHeadScreenPos(), TAU = Math.PI * 2;
+  const prism = ["#f472b6", "#a78bfa", "#38bdf8", "#34d399", "#fde047"];
+  for (let i = 0; i < 5; i++) {
+    ctx.strokeStyle = prism[(i + Math.floor(t / 120)) % 5]; ctx.globalAlpha = 0.45; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(h.x, h.y, 120 + i * 5 + Math.sin(t / 150 + i) * 3, 0, TAU); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "rgba(233,213,255,.9)"; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("WARDED — STOP ATTACKING", h.x, h.y - 138);
+}
+// The leyline pylons (Concordant, raid khyra/iskarra) and the shields the
+// boss is hiding behind.
+function drawArenaGuards(ctx, t, b) {
+  if (!b) return;
+  const TAU = Math.PI * 2, h = bossHeadScreenPos(), n = bossPartCount(b);
+  if (b.pylonShield) {
+    for (let i = n; i < b.parts.length; i++) {
+      const p = b.parts[i], pos = pylonScreenPos(i - n);
+      if (window.gameDepths) gameDepths.feature(ctx, "pylon", pos.x, pos.y, t, { hp: p.hp, maxHp: p.maxHp, broken: !!b.pylonsBroken });
+      if (!b.pylonsBroken && p.hp > 0) {
+        ctx.strokeStyle = "rgba(167,139,250," + (0.2 + 0.15 * Math.sin(t / 200 + i)) + ")"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(pos.x, pos.y - 30); ctx.lineTo(h.x, h.y); ctx.stroke();
+      }
+    }
+    if (!b.pylonsBroken) {
+      ctx.strokeStyle = "rgba(196,181,253,.55)"; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(h.x, h.y, 150 + Math.sin(t / 300) * 4, 0, TAU); ctx.stroke();
+    }
+  }
+  const d = state.dungeon;
+  if (b.addsShield && (d.arenaEnemies || []).some(e => e.hp > 0)) {
+    ctx.fillStyle = "rgba(34,211,238,.10)"; ctx.beginPath(); ctx.arc(h.x, h.y, 140, 0, TAU); ctx.fill();
+    ctx.strokeStyle = "rgba(34,211,238,.6)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(h.x, h.y, 140, 0, TAU); ctx.stroke();
+    for (const e of d.arenaEnemies) if (e.hp > 0) { ctx.strokeStyle = "rgba(34,211,238,.25)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(h.x, h.y); ctx.stroke(); }
+  }
+}
+// "LET US SEE HOW YOU FIGHT IN THE DARK": only what you (and your allies)
+// carry light for can be seen.
+function drawDarkMask(ctx, t) {
+  const d = state.dungeon;
+  if (!d || !d.darkArena) return;
+  const fx = playerFx();
+  const r = 170 * (fx.darkSight ? 1.45 : 1);
+  const lights = [{ x: state.pos.x, y: state.pos.y, r }];
+  if (d.runId && state.others) for (const o of Object.values(state.others)) {
+    if (o && o.area === "dungeon" && o.run === d.runId) lights.push({ x: o.dx == null ? o.x : o.dx, y: o.dy == null ? o.y : o.dy, r: 120 });
+  }
+  const h = bossHeadScreenPos();
+  lights.push({ x: h.x, y: h.y, r: 90 });
+  ctx.save();
+  ctx.beginPath(); ctx.rect(-50, -50, DUNGEON_W + 100, DUNGEON_H + 100);
+  for (const l of lights) { ctx.moveTo(l.x + l.r, l.y); ctx.arc(l.x, l.y, l.r, 0, Math.PI * 2, true); }
+  ctx.fillStyle = "rgba(2,2,8,.93)"; ctx.fill();
+  for (const l of lights) {
+    const g = ctx.createRadialGradient(l.x, l.y, l.r * 0.55, l.x, l.y, l.r);
+    g.addColorStop(0, "rgba(2,2,8,0)"); g.addColorStop(1, "rgba(2,2,8,.9)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(l.x, l.y, l.r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+// A phase shift's name card, when js/bosses.js does not draw its own.
+function drawPhaseShiftCard(ctx, t) {
+  const d = state.dungeon, s = d && d.phaseShift;
+  if (!s) return;
+  const k = (t - s.t0) / s.dur;
+  if (k >= 1) { d.phaseShift = null; return; }
+  if (s.b3 && window.gameBosses && typeof gameBosses.drawPhaseShift === "function") { gameBosses.drawPhaseShift(ctx, s.b3, d.boss, t); return; }
+  const look = s.look || {};
+  const a = k < 0.12 ? k / 0.12 : k > 0.82 ? (1 - k) / 0.18 : 1;
+  const cx = canvas.width / 2, cy = canvas.height * 0.44;
+  ctx.save();
+  ctx.globalAlpha = a;
+  if (k < 0.08) { ctx.fillStyle = "rgba(255,255,255," + (0.5 * (1 - k / 0.08)) + ")"; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+  const g = ctx.createLinearGradient(0, cy - 70, 0, cy + 70);
+  g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(0.5, "rgba(0,0,0,.78)"); g.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = g; ctx.fillRect(0, cy - 70, canvas.width, 140);
+  ctx.textAlign = "center";
+  ctx.fillStyle = look.accent || "#e9d5ff"; ctx.font = "bold 12px sans-serif";
+  ctx.fillText((look.title || "PHASE " + (s.phase || 2)).toUpperCase(), cx, cy - 34);
+  ctx.shadowColor = look.accent || "#fff"; ctx.shadowBlur = 24;
+  ctx.fillStyle = "#ffffff"; ctx.font = "bold " + Math.round(34 + 6 * Math.min(1, k * 5)) + "px Georgia";
+  ctx.fillText(look.name || "", cx, cy + 6);
+  ctx.shadowBlur = 0;
+  if (look.cry) { ctx.fillStyle = "#e2e8f0"; ctx.font = "italic 15px Georgia"; ctx.fillText("“" + look.cry + "”", cx, cy + 36); }
+  ctx.restore();
+}
+// Phase pips, the enrage clock and what is shielding it — under the HP bar.
+function drawBossStatusHud(ctx, b, t, x0, w, accent) {
+  if (!b) return;
+  const count = b.phaseCount || (ECON.bossPhaseCount ? ECON.bossPhaseCount(b.id) : 1);
+  let y = 96;
+  if (count > 1) {
+    const ph = b.phase || 1;
+    for (let i = 0; i < count; i++) {
+      const px = canvas.width / 2 - (count - 1) * 9 + i * 18;
+      ctx.fillStyle = i < ph ? accent : "rgba(255,255,255,.18)";
+      ctx.beginPath(); ctx.moveTo(px, 20); ctx.lineTo(px + 5, 25); ctx.lineTo(px, 30); ctx.lineTo(px - 5, 25); ctx.closePath(); ctx.fill();
+    }
+  }
+  const notes = [];
+  if (b._enrageAt && !b.hardEnraged) {
+    const left = b._enrageAt - t;
+    if (left > 0 && left < 90000) notes.push({ txt: "ENRAGE IN " + DepthsCore.fmtClock(left), col: left < 30000 ? "#f87171" : "#fca5a5" });
+  }
+  if (b.hardEnraged || (state.dungeon && state.dungeon.hardEnraged)) notes.push({ txt: "HARD ENRAGED", col: "#ef4444" });
+  const d = state.dungeon;
+  if (b.addsShield && (d.arenaEnemies || []).some(e => e.hp > 0)) notes.push({ txt: "SHIELDED BY ITS THRALLS — kill the adds", col: "#67e8f9" });
+  if (b.pylonShield && !b.pylonsBroken) notes.push({ txt: "BREAK ALL FOUR PYLONS TOGETHER", col: "#c4b5fd" });
+  if (d.wardUntil > t) notes.push({ txt: "WARDED — hits reflect", col: "#e9d5ff" });
+  if (b.stages > 1) notes.push({ txt: "WARDEN " + (b.stage || 1) + " / " + b.stages, col: "#fde68a" });
+  notes.forEach((n, i) => {
+    ctx.fillStyle = "rgba(0,0,0,.6)";
+    ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
+    const tw = ctx.measureText(n.txt).width + 16;
+    ctx.fillRect(canvas.width / 2 - tw / 2, y + i * 18 - 11, tw, 16);
+    ctx.fillStyle = n.col; ctx.fillText(n.txt, canvas.width / 2, y + i * 18 + 1);
+  });
+}
+// Arena adds, with the same overlays the maze gives its enemies.
+function drawArenaAdds(ctx, t) {
+  const d = state.dungeon, G = window.gameDepths;
+  const adds = (d.arenaEnemies || []).slice().sort((a, b) => a.y - b.y);
+  for (const e of adds) {
+    if (G) G.drawEnemyUnder(ctx, e, t);
+    gameMobs.drawEnemy(ctx, e, t, ENEMY_TYPES);
+    if (G) G.drawEnemyOver(ctx, e, t);
+  }
+  for (const b of (state.enemyBullets || [])) {
+    ctx.fillStyle = b.color || "#a855f7";
+    ctx.beginPath(); ctx.arc(b.x, b.y, 5, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// The words over a run chest: PRESS E (or USE on a phone) while it is shut,
+// what it was guarding, and its tier underneath (QA M-6: every tier, the old
+// four included, lost the prompt when the tiered art went in).
+function drawChestPrompt(ctx, c, t, tier) {
+  ctx.save();
+  ctx.textAlign = "center";
+  if (c.state === "closed" && !c.claimed) {
+    const touch = document.body && (document.body.classList.contains("touch-ui") || document.documentElement.classList.contains("touch-ui"));
+    const pulse = 0.6 + 0.4 * Math.sin(t / 260);
+    ctx.shadowColor = "rgba(0,0,0,.85)"; ctx.shadowBlur = 6;
+    ctx.fillStyle = "rgba(253,224,71," + pulse + ")";
+    ctx.font = "bold 14px sans-serif";
+    ctx.fillText(touch ? "TAP USE" : "PRESS E", c.x, c.y - 66);
+    ctx.fillStyle = "rgba(226,232,240,.75)";
+    ctx.font = "11px sans-serif";
+    ctx.fillText("what it was guarding", c.x, c.y - 50);
+  }
+  if (tier != null && ECON.CHEST_TIERS && ECON.CHEST_TIERS[tier]) {
+    ctx.shadowColor = "rgba(0,0,0,.85)"; ctx.shadowBlur = 4;
+    ctx.fillStyle = ["#d6a36b", "#e2e8f0", "#fde047", "#e9d5ff"][tier] || "#fde68a"; ctx.font = "bold 12px Georgia";
+    ctx.fillText(ECON.CHEST_TIERS[tier].name.toUpperCase() + " CHEST" + (c.tier == null ? " ?" : ""), c.x, c.y + 56);
+  }
+  ctx.restore();
+}
+// The run's final chest, in the look of its tier: Bronze, Silver, Gold or
+// Arcane. Until the server has said, the tier is predicted from the clock.
+function drawRunChest(ctx, c, t) {
+  const tier = c.tier != null ? c.tier : c.predictedTier;
+  const openT = c.state === "closed" ? 0 : t - c.t0;
+  if (tier != null && window.gameBosses && typeof gameBosses.drawChestTier === "function") {
+    let drawn = false;
+    try { gameBosses.drawChestTier(ctx, c.x, c.y, tier, openT); drawn = true; } catch (e) { /* fall back */ }
+    if (drawn) { drawChestPrompt(ctx, c, t, tier); return; }
+  }
+  if (tier != null && tier > 0) {
+    const col = ["#b45309", "#e2e8f0", "#facc15", "#c084fc"][tier] || "#fde68a";
+    const r = 80 + Math.sin(t / 260) * 6;
+    const g = ctx.createRadialGradient(c.x, c.y, 10, c.x, c.y, r * 1.6);
+    g.addColorStop(0, "rgba(" + gameBosses.hexToRgb(col) + ",.35)"); g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(c.x, c.y, r * 1.6, 0, Math.PI * 2); ctx.fill();
+    if (tier === 3) {
+      const prism = ["#f472b6", "#a78bfa", "#38bdf8", "#34d399", "#fde047"];
+      for (let i = 0; i < 5; i++) { ctx.strokeStyle = prism[i]; ctx.globalAlpha = 0.4; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(c.x, c.y + 20, 60 + i * 6, 18 + i * 2, 0, t / 500 + i, t / 500 + i + 3.6); ctx.stroke(); }
+      ctx.globalAlpha = 1;
+    }
+  }
+  gameBosses.drawChest(ctx, c, t);
+  if (tier != null && ECON.CHEST_TIERS && ECON.CHEST_TIERS[tier]) {
+    ctx.fillStyle = ["#d6a36b", "#e2e8f0", "#fde047", "#e9d5ff"][tier]; ctx.font = "bold 12px Georgia"; ctx.textAlign = "center";
+    ctx.fillText(ECON.CHEST_TIERS[tier].name.toUpperCase() + " CHEST" + (c.tier == null ? " ?" : ""), c.x, c.y + 56);
+  }
+}
 
 // What is left when Varkaal takes the roof off: open grass to the edge of the
 // screen, the broken stumps of the pillars it brought down, and a sky lit by
@@ -1516,7 +2963,10 @@ function drawOpenField(t, accent) {
 // lake beasts; this function owns the room around them and the HUD on top.
 function drawBossRoom() {
   const d = state.dungeon, b = d.boss;
-  const def = b ? ECON.GUILD_BOSSES[b.id] : null;
+  const def0 = b ? ECON.GUILD_BOSSES[b.id] : null;
+  // The current phase's look (name, colours) over the base definition.
+  const look = b && ECON.bossLook ? ECON.bossLook(b.id, b.phase || 1) : null;
+  const def = def0 ? Object.assign({}, def0, look || {}) : null;
   const t = Date.now();
   const accent = def ? def.accent : "#c084fc";
 
@@ -1534,6 +2984,10 @@ function drawBossRoom() {
   // ---- the room, or the field it became ----
   if (d.openField) { drawOpenField(t, accent); }
   else {
+  // The Arcane Depths tiers paint their own arena (js/bosses.js); drawArena
+  // returns false for the four old tiers, which keep the flagstone room.
+  const arena = !!(b && window.gameBosses && typeof gameBosses.drawArena === "function" && gameBosses.drawArena(ctx, b.id, t, BOSS_ROOM));
+  if (!arena) {
   ctx.fillStyle = "#140d18";
   ctx.fillRect(BOSS_ROOM.x, BOSS_ROOM.y, BOSS_ROOM.w, BOSS_ROOM.h);
   // flagstones, so the floor has a sense of scale
@@ -1543,6 +2997,7 @@ function drawBossRoom() {
   }
   for (let gy = BOSS_ROOM.y; gy < BOSS_ROOM.y + BOSS_ROOM.h; gy += 56) {
     ctx.beginPath(); ctx.moveTo(BOSS_ROOM.x, gy); ctx.lineTo(BOSS_ROOM.x + BOSS_ROOM.w, gy); ctx.stroke();
+  }
   }
   // a pool of the boss's own colour under it
   const lp = ctx.createRadialGradient(DUNGEON_W / 2, DUNGEON_H * 0.34, 20, DUNGEON_W / 2, DUNGEON_H * 0.34, 380);
@@ -1585,7 +3040,7 @@ function drawBossRoom() {
     ctx.font='10px Georgia';ctx.textAlign='center';ctx.fillText('FAR SEAL · GUARDIAN LIVES',x,y+42);
   }
   // ---- the way on, once a mini is down ----
-  if (d.isMini && (!b || b.status === "dead")) {
+  if ((d.isMini || d.endless) && (!b || b.status === "dead")) {
     const ex = DUNGEON_W / 2, ey = BOSS_ROOM.y + 30;
     const pulse = 0.5 + 0.5 * Math.sin(t / 300);
     ctx.fillStyle = "rgba(74,222,128," + (0.25 + pulse * 0.25) + ")";
@@ -1604,15 +3059,26 @@ function drawBossRoom() {
   }
   // ---- the boss, its attacks, and the player ----
   if (b) gameBosses.drawBoss(ctx, b, t);
-  if (d.chest) gameBosses.drawChest(ctx, d.chest, t);
-  if (!d.cine && d.bossAttacks && d.bossAttacks.length) gameBosses.drawAttacks(ctx, d.bossAttacks, t, def);
+  drawArenaAdds(ctx, t);
+  const G = window.gameDepths;
+  if (G) { G.drawPools(ctx, t); G.drawRings(ctx, t); }
+  drawDarkMask(ctx, t);
+  drawArenaGuards(ctx, t, b);
+  drawWardShell(ctx, t);
+  if (d.chest) drawRunChest(ctx, d.chest, t);
+  if (!d.cine && d.bossAttacks && d.bossAttacks.length) {
+    syncAttackFields(d.bossAttacks, t);
+    gameBosses.drawAttacks(ctx, d.bossAttacks, t, def);
+    drawAttackFallbacks(ctx, d.bossAttacks, t, def);
+  }
 
   for (const p of state.particles) {
     ctx.fillStyle = p.color; ctx.globalAlpha = Math.max(0, p.life / 40);
     ctx.fillRect(p.x - 2, p.y - 2, 4, 4); ctx.globalAlpha = 1;
   }
   drawPartyMembers(t);
-  GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance, { facing: state.facing, walking: state.walking });
+  drawSelf(ctx);
+  if (G) G.drawWorldTop(ctx, t);
   for (const tr of (d.tracers || [])) {
     ctx.fillStyle = "rgba(253,224,71,.4)";
     ctx.beginPath(); ctx.arc(tr.x, tr.y, 8, 0, Math.PI * 2); ctx.fill();
@@ -1675,9 +3141,11 @@ function drawBossRoom() {
       ctx.fillStyle = "#000"; ctx.fillRect(x0 + 20, 46, w - 40, 13);
       ctx.fillStyle = b.enraged ? "#ef4444" : "#22c55e";
       ctx.fillRect(x0 + 20, 46, (w - 40) * Math.max(0, b.hp / b.maxHp), 13);
-      const guard = b.parts.filter(p => p.hp > 0).length;
+      const guard = b.parts.filter((p, i) => i < bossPartCount(b) && p.hp > 0).length;
       ctx.fillStyle = "#fff"; ctx.font = "bold 11px sans-serif";
-      ctx.fillText(guard ? guard + " " + def.partName + (guard === 1 ? "" : "s") + " still guarding the head" : "THE HEAD IS OPEN",
+      const dead = b.status === "dead" || b.hp <= 0;
+      ctx.fillText(dead ? (b.mini ? "DEFEATED · THE SEAL IS BROKEN" : "DEFEATED")
+        : guard ? guard + " " + def.partName + (guard === 1 ? "" : "s") + " still guarding the head" : "THE HEAD IS OPEN",
         canvas.width / 2, 74);
       if (b.hpMult > 1) {
         ctx.fillStyle = "#94a3b8"; ctx.font = "10px sans-serif";
@@ -1688,7 +3156,10 @@ function drawBossRoom() {
       ctx.fillStyle = "#94a3b8"; ctx.font = "9px sans-serif"; ctx.textAlign = "right";
       ctx.fillText("MINI BOSS", x0 + w - 14, 34);
     }
+    if (!rising) drawBossStatusHud(ctx, b, t, x0, w, accent);
   }
+  drawPhaseShiftCard(ctx, t);
+  if (window.gameDepths) gameDepths.drawScreen(ctx, t);
   ctx.fillStyle = "#000"; ctx.fillRect(canvas.width - 232, 12, 220, 22);
   ctx.fillStyle = "#10b981"; ctx.fillRect(canvas.width - 232, 12, 220 * Math.max(0, state.hp / (state.maxHp || 100)), 22);
   ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "bold 13px sans-serif";
@@ -1734,6 +3205,7 @@ function drawTomeHud() {
   if (b.ward) rows.push({ label: "PROTECTED", col: "#60a5fa", until: b.ward.until, dur: ECON.TOMES.protection.durMs });
   if (b.rage) rows.push({ label: "ENRAGED", col: "#f87171", until: b.rage.until, dur: ECON.TOMES.rage.durMs });
   if (b.heal) rows.push({ label: "MENDING", col: "#4ade80", until: b.heal.until, dur: ECON.TOMES.recovery.durMs });
+  if (b.haste) rows.push({ label: "HASTE", col: "#22d3ee", until: b.haste.until, dur: (ECON.TOMES.haste && ECON.TOMES.haste.durMs) || 8000 });
   rows.forEach((r, i) => {
     const y = canvas.height - 84 - i * 22;
     const left = Math.max(0, r.until - Date.now());
@@ -1755,17 +3227,20 @@ function drawDungeon() {
   // Maze/gameplay content is laid out in the original 1024x640 frame; center
   // it in the (possibly bigger) canvas. HUD overlay below stays unshifted.
   ctx.save();
-  ctx.translate(VIEW_OX, VIEW_OY);
+  const shk = _dungeonShake || 0;
+  ctx.translate(VIEW_OX + (Math.random() - 0.5) * shk, VIEW_OY + (Math.random() - 0.5) * shk);
 
   const FX = MAZE_OFFSET_X, FY = MAZE_OFFSET_Y;
   const FW = MAZE_COLS * CELL_W, FH = MAZE_ROWS * CELL_H;
-  gameMobs.drawFloor(ctx, FX, FY, FW, FH);
+  // The tier theme (null for the old tiers: gameMobs then draws what it always did).
+  const th = (state.dungeon && (state.dungeon.theme || (state.dungeon.cfg && state.dungeon.cfg.theme))) || null;
+  gameMobs.drawFloor(ctx, FX, FY, FW, FH, th);
 
   const props = (state.dungeon && state.dungeon.props) || [];
   gameMobs.drawGroundProps(ctx, props, t);
-  gameMobs.drawStandingProps(ctx, props, t);
+  gameMobs.drawStandingProps(ctx, props, t, th);
 
-  if (state.dungeon && state.dungeon.walls) gameMobs.drawWalls(ctx, state.dungeon.walls);
+  if (state.dungeon && state.dungeon.walls) gameMobs.drawWalls(ctx, state.dungeon.walls, th);
 
   // Door
   if (state.dungeon) {
@@ -1836,8 +3311,7 @@ function drawDungeon() {
     ctx.globalAlpha = 1;
   }
   // Player
-  GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance,
-                     { facing: state.facing, walking: state.walking });
+  drawSelf(ctx);
   // Sword swing arc
   if (state.swingT > 0 && state.weapon === "sword") {
     const ang = Math.atan2(state.mouse.y - state.pos.y, state.mouse.x - state.pos.x);
@@ -1869,11 +3343,13 @@ function drawDungeon() {
 
   // Falls off with distance from the player, so the torches are worth
   // something without ever hiding what you need to react to.
+  if (th && typeof gameMobs.drawMotes === "function") gameMobs.drawMotes(ctx, FX, FY, FW, FH, t, th);
   gameMobs.drawDarkness(ctx, state.pos.x, state.pos.y,
-    MAZE_OFFSET_X - 40, MAZE_OFFSET_Y - 40, MAZE_COLS * CELL_W + 80, MAZE_ROWS * CELL_H + 80);
+    MAZE_OFFSET_X - 40, MAZE_OFFSET_Y - 40, MAZE_COLS * CELL_W + 80, MAZE_ROWS * CELL_H + 80, th);
 
   // The chest is drawn AFTER the darkness so its own light is not eaten by it.
-  if (state.dungeon && state.dungeon.chest) gameBosses.drawChest(ctx, state.dungeon.chest, t);
+  if (state.dungeon && state.dungeon.chest) drawRunChest(ctx, state.dungeon.chest, t);
+  if (window.gameDepths) gameDepths.drawWorldTop(ctx, t);
   if (state.tomeCine) gameBosses.drawTomeCinematic(ctx, state.tomeCine, t);
 
   DungeonSight.draw(ctx, state.pos.x, state.pos.y, state.dungeon.walls, DUNGEON_W, DUNGEON_H);
@@ -1918,7 +3394,7 @@ function startDuel(opponent, stake, isChallenger) {
     [`hp_${state.user}`]: 100,
     [`hp_${opponent}`]: 100,
   });
-  toast(`Duel vs ${opponent} for $${stake}!`);
+  toast(`Duel vs ${escapeHtml(opponent)} for $${stake}!`);
   updateHUD();
 }
 function duelId(a, b) { return [a,b].sort().join("__"); }
@@ -2209,7 +3685,15 @@ async function claimChest(c) {
       if (res.mastery) state.mastery = res.mastery;
       const bonus = res.miniPurse ? ` — includes $${res.miniPurse.toLocaleString()} in mini-boss bounties` : "";
       toast(`Guild dungeon cleared! +$${res.gained.toLocaleString()} (guild tithe $${res.tithe.toLocaleString()})${bonus}`, 7000);
-      if (window.gameGear) gameGear.announceLoot(res.loot, res.gear);
+      runRewardFx(c, res);
+      // The reveal: the guild's results overlay when guild.js has it (it runs
+      // the loot reveal and the per-guild payout), else the plain reveal.
+      if (window.gameGuild && typeof gameGuild.showRunResults === "function") {
+        try { gameGuild.showRunResults(res); } catch (e) { if (window.gameGear) gameGear.announceLoot(res.loot, res.gear); }
+      } else if (window.gameLootReveal && typeof gameLootReveal.show === "function") {
+        try { gameLootReveal.show(res, { source: "guild", chestTier: res.chestTier, anchor: { x: c.x + VIEW_OX, y: c.y + VIEW_OY } }); }
+        catch (e) { if (window.gameGear) gameGear.announceLoot(res.loot, res.gear); }
+      } else if (window.gameGear) gameGear.announceLoot(res.loot, res.gear);
       if (window.gameGuild) gameGuild.refresh();
       if (state.dungeon && state.dungeon.chest === c) state.dungeon.exitReady = true;
     } else {
@@ -2217,13 +3701,22 @@ async function claimChest(c) {
       const data = await netEarn({ source: `quest_${tier}`, amount: state.questReward });
       state.data.money = data.money;
       toast(`Quest complete! +$${data.gained}`, 5000);
+      runRewardFx(c, data);
       if (window.gameGear) gameGear.announceLoot(data.loot, data.gear);
       if (data.packFull) toast("Something else was in there, but your pack is full — sell some of it at the Armory.", 6000);
       setTimeout(() => { if (state.area === "dungeon") endDungeon(true, true); }, 2600);
     }
   } catch (e) {
-    toast(e.message, 5000);
-    c.claimed = false; c.state = "closed"; // Allow a failed reward request to be retried.
+    // The chest was already settled for the party (the 10-minute claim window
+    // ran out, or a member walked out after the kill): the loot came with the
+    // `reward` push, so the chest stays open instead of offering PRESS E again.
+    if (c.kind === "guild" && /already paid out|not in a guild dungeon/i.test(e.message || "")) {
+      toast("This chest was already opened for the party — your share came with it.", 5000);
+      if (state.dungeon && state.dungeon.chest === c) state.dungeon.exitReady = true;
+    } else {
+      toast(escapeHtml(e.message), 5000);
+      c.claimed = false; c.state = "closed"; // Allow a failed reward request to be retried.
+    }
   }
   _claiming = false;
 }
@@ -2242,9 +3735,48 @@ function activeBuffs() {
   for (const k of Object.keys(b)) if (b[k].until <= now) delete b[k];
   return b;
 }
-function buffDamageMult() { const b = activeBuffs().rage; return b ? b.dmgMult : 1; }
-function buffTakenMult() { const b = activeBuffs().ward; return b ? b.dmgTakenMult : 1; }
-function buffSpeedMult() { const b = activeBuffs().rage; return b ? b.speedMult : 1; }
+function buffDamageMult() {
+  const b = activeBuffs();
+  let m = b.rage ? b.rage.dmgMult : 1;
+  // Fury and the stars are server-applied; the local number only mirrors them.
+  const G = window.gameDepths && state.dungeon ? gameDepths.buffs() : null;
+  if (G && G.fury && G.fury.until > Date.now()) m *= 1.4;
+  if (G && G.stars && G.stars.until > Date.now()) m *= 1.2;
+  return m;
+}
+function buffTakenMult() {
+  const b = activeBuffs().ward;
+  return (b ? b.dmgTakenMult : 1) * (window.gameDepths && state.dungeon ? gameDepths.takenMult() : 1);
+}
+function buffSpeedMult() {
+  const b = activeBuffs();
+  return (b.rage ? b.rage.speedMult : 1) * (b.haste ? b.haste.speedMult : 1);
+}
+// Beams over the chest, one per piece, coloured by rarity — yours, and in a
+// party every other member's too.
+function runRewardFx(c, res) {
+  const G = window.gameDepths;
+  if (!G || !res) return;
+  const mine = (res.loot || []).filter(Boolean);
+  const tierName = res.chestTier != null && ECON.CHEST_TIERS && ECON.CHEST_TIERS[res.chestTier] ? ECON.CHEST_TIERS[res.chestTier].name.toUpperCase() + " CHEST" : "";
+  mine.forEach((it, i) => G.addBeam(c.x + (i - (mine.length - 1) / 2) * 28, c.y - 4, it.rarity, { delay: 600 + i * 320, label: i === 0 ? tierName : "" }));
+  if (res.party) {
+    let k = 0;
+    for (const [u, row] of Object.entries(res.party)) {
+      if (u === state.user || !row || !Array.isArray(row.loot)) continue;
+      row.loot.forEach((it, i) => {
+        const a = (k * 1.3) + i * 0.4, r = 110 + i * 18;
+        G.addBeam(c.x + Math.cos(a) * r, c.y + Math.sin(a) * r * 0.45, it && it.rarity, { delay: 900 + (k + i) * 200, hold: 6000, label: i === 0 ? u : "" });
+      });
+      k++;
+    }
+  }
+  if (res.chestTier != null) c.tier = res.chestTier;
+  c._fxDone = true;
+  if (res.delve && res.delve.upgrade > 0) G.banner("DELVE +" + res.delve.upgrade, "Your guild may now delve to level " + (res.delve.unlocked || "?"), "#a5f3fc", 3600);
+  else if (res.delve && res.delve.record) G.banner("A NEW GUILD RECORD", "", "#fde68a", 3000);
+  G.burst(c.x, c.y - 20, ["#fde68a", "#fff", "#f0abfc"], 70, { speed: 7, up: 2, g: 0.08, life: 70, size: 3 });
+}
 
 function equippedTome() {
   const it = window.gameGear ? gameGear.equippedItem(ECON.TOME_SLOT) : null;
@@ -2275,7 +3807,7 @@ async function useTome() {
     d.tomeUsed = true;
     startTomeCine(st.def, state.user, true);
   } catch (e) {
-    toast(e.message, 3000);
+    toast(escapeHtml(e.message), 3000);
   }
   _tomePending = false;
 }
@@ -2326,30 +3858,66 @@ function applyTome(def, by, mine) {
       addParticles(state.pos.x + Math.cos(a) * r, state.pos.y + Math.sin(a) * r * 0.6, i % 2 ? "#f97316" : "#fde047", 1);
     }
     shakeDungeon(18);
-    toast(`${who} the ${def.name.replace("Tome of ", "")} — the floor opens.`, 4000);
+    toast(`${escapeHtml(who)} the ${def.name.replace("Tome of ", "")} — the floor opens.`, 4000);
   } else if (def.kind === "heal") {
     b.heal = { until: now + def.durMs, perSec: def.healPerSec, last: now };
-    toast(`${who} the Tome of Recovery — mending for ${Math.round(def.durMs / 1000)}s.`, 4000);
+    toast(`${escapeHtml(who)} the Tome of Recovery — mending for ${Math.round(def.durMs / 1000)}s.`, 4000);
   } else if (def.kind === "ward") {
     b.ward = { until: now + def.durMs, dmgTakenMult: def.dmgTakenMult };
-    toast(`${who} the Tome of Protection — ${Math.round((1 - def.dmgTakenMult) * 100)}% less damage for ${Math.round(def.durMs / 1000)}s.`, 4000);
+    toast(`${escapeHtml(who)} the Tome of Protection — ${Math.round((1 - def.dmgTakenMult) * 100)}% less damage for ${Math.round(def.durMs / 1000)}s.`, 4000);
   } else if (def.kind === "rage") {
     b.rage = { until: now + def.durMs, dmgMult: def.dmgMult, speedMult: def.speedMult };
-    toast(`${who} the Tome of Rage — faster and harder for ${Math.round(def.durMs / 1000)}s.`, 4000);
+    toast(`${escapeHtml(who)} the Tome of Rage — faster and harder for ${Math.round(def.durMs / 1000)}s.`, 4000);
+  } else if (def.kind === "haste") {
+    // HASTE: everyone near moves half again as fast, and the dash is back.
+    b.haste = { until: now + def.durMs, speedMult: def.speedMult || 1.5 };
+    if (def.resetDash) _dashReadyAt = 0;
+    if (window.gameDepths) { gameDepths.ring(state.pos.x, state.pos.y, def.radius || 340, def.color || "#22d3ee", { width: 8, dur: 900 }); gameDepths.burst(state.pos.x, state.pos.y, [def.color || "#22d3ee", "#fff"], 50, { speed: 7 }); }
+    toast(`${escapeHtml(who)} the Tome of Haste — faster, and your dash is ready.`, 4000);
+  } else if (def.kind === "chainburst") {
+    // STORMS: the boss's share is the server's (tome_use); on the maze the
+    // lightning finds the nearest plain enemies.
+    const d = state.dungeon;
+    const G = window.gameDepths;
+    const pool = (d && d.bossRoom ? (d.arenaEnemies || []) : state.enemies)
+      .filter(e => e.hp > 0 && !e.gone && Math.hypot(e.x - state.pos.x, e.y - state.pos.y) < 420)
+      .sort((p, q) => Math.hypot(p.x - state.pos.x, p.y - state.pos.y) - Math.hypot(q.x - state.pos.x, q.y - state.pos.y))
+      .slice(0, def.arcs || 12);
+    const killed = [];
+    let from = state.pos;
+    for (const e of pool) {
+      if (G) { G.procArcs(from, [e], def.color || "#38bdf8"); G.burst(e.x, e.y, ["#e0f2fe", "#38bdf8"], 10, { speed: 4 }); }
+      from = e;
+      if (!isProtectedEnemy(e) && e.hp <= (def.dmg || 180) * combatDamageMult()) { e.hp = 0; killed.push(e.id); }
+      else e.hitFlash = 8;
+    }
+    if (d && d.cfg.guild) for (let i = 0; i < killed.length; i += ECON.DUNGEON_HIT_MAX_TARGETS) reportEnemyKill(killed.slice(i, i + ECON.DUNGEON_HIT_MAX_TARGETS));
+    if (d && d.bossRoom && G) { const h = bossHeadScreenPos(); for (let i = 0; i < 6; i++) G.procArcs({ x: h.x + (Math.random() - 0.5) * 600, y: 0 }, [h], "#e0f2fe"); }
+    shakeDungeon(20);
+    toast(`${escapeHtml(who)} the Tome of Storms — the sky answers.`, 4000);
   }
 }
 // Recovery ticks here rather than on a timer, so it stops the moment the run
 // does.
+// Everything that heals over time: the Recovery tome, the Renewal shrine and
+// gear regen, all on one clock.
+let _regenAt = 0;
 function tickBuffs() {
   const b = activeBuffs();
-  if (!b.heal) return;
   const now = Date.now();
-  const dt = now - b.heal.last;
+  if (!_regenAt || now - _regenAt > 1000) _regenAt = now;
+  const dt = now - _regenAt;
   if (dt < 250) return;
-  b.heal.last = now;
+  _regenAt = now;
+  if (state.hp <= 0 || (window.gameDepths && gameDepths.isDowned())) return;
+  let perSec = 0;
+  if (b.heal) perSec += b.heal.perSec;
+  if (window.gameDepths && state.dungeon) perSec += gameDepths.regenPerSec();
+  if (state.area === "dungeon") perSec += playerFx().regen || 0;
+  if (perSec <= 0) return;
   const before = state.hp;
-  state.hp = Math.min(state.maxHp, state.hp + b.heal.perSec * (dt / 1000));
-  if (state.hp > before && Math.random() < 0.5) addParticles(state.pos.x, state.pos.y - 10, "#86efac", 2);
+  state.hp = Math.min(state.maxHp, state.hp + perSec * (dt / 1000));
+  if (state.hp > before && Math.random() < 0.35) addParticles(state.pos.x, state.pos.y - 10, "#86efac", 2);
 }
 
 window.gameCombatTomes = { useTome, tomeStatus, startTomeCine, buffDamageMult, buffTakenMult, buffSpeedMult };
@@ -2361,4 +3929,7 @@ window.gameCombat = {
   adoptServerFloor, applyEnemyChanges, dungeonPresence,
   resumeGuildRunIfAny,
   QUEST_TIERS, ENEMY_TYPES,
+  // Arcane Depths (MASTER-PLAN §6.7)
+  dashReady, fx: playerFx, dash: () => tryDash(0, 0), dashState, cancelDash,
+  adoptSpawned, showProcs, playerMaxHp, shake: () => _dungeonShake,
 };

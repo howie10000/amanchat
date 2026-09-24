@@ -61,7 +61,8 @@ async function tryRpc(c, op, args) { try { return { ok: true, data: await c.rpc(
         assert(gearSlots.every(s => ECON.GEAR_BASES.some(b => b.slot === s && b.lvl === 7)), 'every equipment slot has a top-level base');
         assert(ECON.TOME_ORDER.every(id => ECON.TOMES[id] && ECON.TOMES[id].kind), 'every tome does something');
         assert(ECON.TOMES.eruption.rarity === 'mythic', 'eruption is the mythic of the set');
-        assert(ECON.TOME_ORDER.filter(id => ECON.TOMES[id].rarity === 'legendary').length === 3, 'the other three are legendary');
+        // (Arcane Depths appended Storms and Haste, both legendary — MASTER-PLAN §3.8.)
+        assert(ECON.TOME_ORDER.filter(id => ECON.TOMES[id].rarity === 'legendary').length === ECON.TOME_ORDER.length - 1, 'all the others are legendary');
         {
             // Only guild dungeons can hand one out, and the deepest one most often.
             let quest = 0, dragon = 0;
@@ -162,6 +163,50 @@ async function tryRpc(c, op, args) { try { return { ok: true, data: await c.rpc(
     // Everything above went through ops, so the record on disk should agree.
     const rec = await boss.rpc('get', { path: 'users/geara/equipped' });
     assert(!rec || !rec[piece.slot], 'the stored equipped map matches what the op reported');
+
+    console.log('the arcane depths: v2 prices, locks, legacy pieces, staff grants');
+    {
+        await boss.rpc('staff_unlock', { pass: 'pw123456' });
+        // A legacy (pre-v2) piece written straight into the record still
+        // equips, totals and sells exactly as it always did.
+        const fx = require('./fixtures/legacy-gear.json').items[0];
+        const legacy = Object.assign({}, fx.item, { id: 'legacy1' });
+        await boss.rpc('put', { path: 'users/geara/gear', value: { legacy1: legacy } });
+        let r = await tryRpc(a, 'gear', { action: 'equip', piece: 'legacy1' });
+        assert(r.ok && r.data.totals.atk === fx.totals.atk && r.data.totals.def === fx.totals.def && r.data.totals.vit === fx.totals.vit, 'a legacy item equips and totals exactly as before');
+        assert(r.ok && r.data.fx && r.data.sets && r.data.packMax === ECON.GEAR_PACK_MAX && Array.isArray(r.data.overflow) && r.data.mats, 'the gear view carries fx, sets, packMax, overflow and materials');
+        const m0 = await a.rpc('get', { path: 'users/geara/money' });
+        r = await tryRpc(a, 'gear', { action: 'sell', piece: 'legacy1' });
+        assert(r.ok && r.data.gained === fx.sell, `a legacy item still sells at its old price ($${fx.sell})`);
+        // v2 pieces sell at 50%
+        let g = await boss.rpc('gear', { action: 'grant', base: fx.item.base, rarity: fx.item.rarity, target: 'geara' });
+        const v2 = g.granted;
+        assert(v2.v === 2 && v2.staff === true, 'staff grants mint v2 pieces marked staff:true');
+        r = await tryRpc(a, 'gear', { action: 'sell', piece: v2.id });
+        const full = ECON.gearSellValue(Object.assign({}, v2, { v: 1 }));
+        assert(r.ok && r.data.gained === ECON.gearSellValue(v2) && r.data.gained <= Math.ceil(full * ECON.SELL_V2_MULT), `a v2 piece sells at half (${r.ok ? r.data.gained : r.err} of ${full})`);
+        // locks
+        g = await boss.rpc('gear', { action: 'grant', base: 'ashen_maw', rarity: 'worn', target: 'geara' });
+        const worse = g.granted;
+        g = await boss.rpc('gear', { action: 'grant', base: 'ashen_maw', rarity: 'mythic', target: 'geara' });
+        await a.rpc('gear', { action: 'equip', piece: g.granted.id });
+        await a.rpc('forge', { action: 'lock', piece: worse.id, on: true });
+        r = await tryRpc(a, 'gear', { action: 'sell', piece: worse.id });
+        assert(!r.ok && /locked/.test(r.err), 'a locked piece refuses sell');
+        r = await tryRpc(a, 'gear', { action: 'sell_junk' });
+        assert(!r.ok || !r.data.sold.some(x => x.id === worse.id), 'sell_junk never takes a locked piece');
+        const st = await a.rpc('gear', { action: 'status' });
+        assert(st.gear[worse.id], 'it is still in the pack');
+        // uniques, set pieces, plus and mods
+        g = await boss.rpc('gear', { action: 'grant', uq: 'orrery_blade' });
+        assert(g.granted.uq === 'orrery_blade' && ECON.gearRarityIdx(g.granted.rarity) >= ECON.gearRarityIdx('mythic') && g.granted.lvl === 8, 'staff can grant a unique (at its minimum rarity)');
+        g = await boss.rpc('gear', { action: 'grant', set: 'starlit_codex', slot: 'ring' });
+        assert(g.granted.set === 'starlit_codex' && g.granted.slot === 'ring', 'and a set piece');
+        g = await boss.rpc('gear', { action: 'grant', base: 'ashen_maw', rarity: 'legendary', plus: 7, mods: [{ k: 'crit', v: 0.05 }, { k: 'nope', v: 9 }] });
+        assert(g.granted.plus === 7 && g.granted.mods.length === 1 && g.granted.mods[0].k === 'crit', 'and set plus and (valid) mods');
+        r = await tryRpc(boss, 'gear', { action: 'grant', uq: 'no_such_unique' });
+        assert(!r.ok, 'an unknown unique is refused');
+    }
 
     console.log('');
     console.log(fails ? `${fails} FAILURES (${passes} passed)` : `ALL ${passes} PASSED`);
