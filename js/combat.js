@@ -2287,6 +2287,7 @@ async function onBossDead() {
   // party walks on. Its bounty is held by the server until the run is cleared.
   // The Heart of the Depths is the same: the sanctuary is behind it.
   if (d.isMini || d.endless) {
+    if (d.boss && d.boss.stage < d.boss.stages) { toast("Warden " + d.boss.stage + " defeated. The next warden is awakening…", 2500); return; }
     if (d.endless && !d.isMini) d.finalDone = true;
     toast(d.endless && !d.isMini ? "THE HEART BREAKS. The sanctuary is open." : "It goes down. The way is open.", 3000);
     return;

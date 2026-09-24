@@ -72,9 +72,10 @@
     finally { pending=false; }
   }
   async function leave() {
-    if (pending) return; pending=true;
+    const d=state.dungeon;
+    if (pending || Date.now()<retryAt || (d.boss && d.boss.stage<d.boss.stages)) return; pending=true;
     try { await netGuildDungeon({action:'encounter_leave'}); }
-    catch(e) { toast(escapeHtml(e.message)); }
+    catch(e) { retryAt=Date.now()+1500; toast(escapeHtml(e.message)); }
     finally { pending=false; }
   }
   function apply(msg) {

@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const raf=[],idle=[],scripts=[];let hidden=false;
-const env={URL,Promise,setTimeout,window:{requestIdleCallback:f=>idle.push(f)},requestAnimationFrame:f=>raf.push(f),MutationObserver:class{observe(){}},document:{currentScript:{src:'https://example.com/amanchat/js/sea-assets.js?v=1'},hidden:false,getElementById:()=>({classList:{contains:()=>hidden}}),createElement:()=>({setAttribute(){},remove(){}}),head:{appendChild:s=>scripts.push(s)},addEventListener(){}}};
+const env={URL,Promise,setTimeout,window:{requestIdleCallback:f=>idle.push(f)},requestAnimationFrame:f=>raf.push(f),MutationObserver:class{constructor(fn){env.observe=fn;}observe(){}},document:{currentScript:{src:'https://example.com/amanchat/js/sea-assets.js?v=1'},hidden:false,getElementById:()=>({classList:{contains:()=>hidden}}),createElement:()=>({setAttribute(){},remove(){}}),head:{appendChild:s=>scripts.push(s)},addEventListener(){}}};
 vm.runInNewContext(fs.readFileSync(path.join(__dirname,'sea-assets.js'),'utf8'),env);
 (async()=>{
  assert.equal(scripts.length,0);raf.shift()();assert.equal(scripts.length,0);raf.shift()();
@@ -22,5 +22,6 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'sea-assets.js'),'utf8'),
  const retry={URL,Promise,setTimeout,window:{},requestAnimationFrame:f=>f(),MutationObserver:class{constructor(fn){retry.observe=fn;}observe(){}},document:{currentScript:{src:'https://example.com/x/js/sea-assets.js'},hidden:false,getElementById:()=>({classList:{contains:()=>false}}),createElement:()=>({setAttribute(){},remove(){}}),head:{appendChild:s=>retry.list.push(s)},addEventListener(){}},list:[]};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'sea-assets.js'),'utf8'),retry);
  assert.equal(retry.list.length,1);retry.list[0].onerror();await new Promise(r=>setTimeout(r,0));retry.observe();assert.equal(retry.list.length,2,'Title load retries after a network failure');
+ hidden=true;const before=scripts.length;env.observe();assert.equal(scripts.length-before,4,'Gameplay only prefetches optional artwork');assert(scripts.slice(before).every(s=>s.rel==='prefetch'&&s.fetchPriority==='low'),'Background loading never executes model packs or builds scenes');
  console.log('PASS post-paint dungeon title loading, on-demand racing models, shared requests, project paths and retry');
 })().catch(e=>{console.error(e);process.exitCode=1;});

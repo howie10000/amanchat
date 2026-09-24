@@ -202,7 +202,7 @@
   <script type="text/plain" data-boot src="js/race-art.js?v=release-20260922-1"></script>
   <script type="text/plain" data-boot src="js/race-effects.js?v=apex-organic-8"></script>
   <script type="text/plain" data-boot src="js/race-effects3.js?v=apex-organic-8"></script>
-  <script type="text/plain" data-boot src="js/race.js?v=release-20260922-1"></script>
+  <script type="text/plain" data-boot src="js/race.js?v=responsive-1"></script>
   <script type="text/plain" data-boot src="js/world.js?v=racing-2"></script>
   <script type="text/plain" data-boot src="js/scenery.js?v=racing-2"></script>
   <script type="text/plain" data-boot src="js/interiors.js?v=qual-3"></script>
@@ -212,9 +212,9 @@
   <script type="text/plain" data-boot src="js/dungeon3d.js?v=release-20260923-1"></script>
   <script type="text/plain" data-boot src="js/bosses.js?v=release-20260923-1"></script>
   <script type="text/plain" data-boot src="js/visibility.js?v=release-20260923-1"></script>
-  <script type="text/plain" data-boot src="js/combat.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/combat.js?v=responsive-1"></script>
   <script type="text/plain" data-boot src="js/depths-client.js?v=depths-3"></script>
-  <script type="text/plain" data-boot src="js/expedition.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/expedition.js?v=responsive-1"></script>
   <script type="text/plain" data-boot src="js/guild.js?v=release-20260923-1"></script>
   <script type="text/plain" data-boot src="js/raid-ui.js?v=depths-2"></script>
   <script type="text/plain" data-boot src="js/item-icons.js?v=depths-3"></script>
@@ -232,7 +232,7 @@
   <script type="text/plain" data-boot src="js/sea.js?v=touch-1"></script>
   <script type="text/plain" data-boot src="js/game.js?v=release-20260923-1"></script>
   <script type="text/plain" data-boot src="js/mobile.js?v=release-20260923-1"></script>
-  <script type="text/plain" data-boot src="js/sea-assets.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/sea-assets.js?v=responsive-1"></script>
   <!-- Boot order: three.js + the Arcane Depths login backdrop load and draw their first frame on
        their own; the game scripts above download in parallel meanwhile (the browser compiles them
        off the main thread) and only execute once the title is on screen, in document order. -->
@@ -243,19 +243,24 @@
    rest.forEach(function(src){var l=document.createElement('link');l.rel='preload';l.as='script';l.href=src;l.fetchPriority='low';document.head.appendChild(l);});
    function load(src,high){return new Promise(function(ok,fail){var el=document.createElement('script');el.src=src;el.async=true;if(high)el.fetchPriority='high';el.onload=ok;el.onerror=fail;document.head.appendChild(el);});}
    var started=false;
-   function startGame(){if(started)return;started=true;rest.forEach(function(src){var el=document.createElement('script');el.src=src;el.async=false;document.body.appendChild(el);});}
-   // Hand over once the title has presented a frame, given up (fallback), or the login is gone.
-   function waitForTitle(){
-    var t0=performance.now(),login=document.getElementById('loginScreen');
-    (function poll(){
-     var m=window.titleBg&&window.titleBg.metrics&&window.titleBg.metrics();
-     if(!login||login.classList.contains('hidden')||(m&&(m.frames>0||m.fallback))||performance.now()-t0>2500||document.hidden)return requestAnimationFrame(startGame);
-     requestAnimationFrame(poll);
-    })();
+   function startGame(){
+    if(started)return;started=true;
+    // One script per task preserves dependency order and gives input/paint a turn between parses.
+    var chain=Promise.resolve();rest.forEach(function(src){chain=chain.then(function(){return new Promise(function(ok){setTimeout(ok,16);});}).then(function(){return load(src,false);});});
+    return chain;
    }
-   window.__titleBoot=load(three,true).then(function(){return load('js/dungeon-title.js?v=arcane-2',true);});
-   window.__titleBoot.then(waitForTitle,startGame);
-   setTimeout(startGame,6000);
+   var lastInput=performance.now();
+   document.addEventListener('input',function(){lastInput=performance.now();},true);
+   function titleWhenQuiet(){return new Promise(function(resolve,reject){
+    function attempt(){var login=document.getElementById('loginScreen'),el=document.activeElement;
+     if(!login){resolve();return;}if(login.classList.contains('hidden')){setTimeout(attempt,500);return;}
+     if(document.hidden||(el&&login.contains(el)&&/^(INPUT|BUTTON)$/.test(el.tagName))||performance.now()-lastInput<1800){setTimeout(attempt,250);return;}
+     load('js/dungeon-title.js?v=responsive-1',false).then(resolve,reject);
+    }attempt();
+   });}
+   // The usable login/game scripts take priority over the decorative scene.
+   window.__titleBoot=load(three,true).then(startGame).then(titleWhenQuiet);
+   window.__titleBoot.catch(function(e){console.warn('Optional login background unavailable',e);});
   })();
   </script>
 </body>

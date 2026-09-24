@@ -2684,7 +2684,7 @@ function bossDied(run, now) {
         run.depthPurse += DEPTHS.heartPurse(run.floor);
     }
     const cfg = ECON.GUILD_DUNGEONS[run.tier];
-    if (b.mini && cfg && cfg.minis && (run.miniStage | 0) < cfg.minis.length - 1) b.nextStageAt = now + ECON.GUILD_BOSS.DEAD_LINGER_MS;
+    if (b.mini && cfg && cfg.minis && (run.miniStage | 0) < cfg.minis.length - 1) b.nextStageAt = now + 2000;
     clearArenaAdds(run, now);
     runBroadcast(run, 'dead');
 }

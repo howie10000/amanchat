@@ -11,12 +11,12 @@ function load(opts={}){
  else THREE.WebGLRenderer=class{constructor({canvas}){this.domElement=canvas;this.getContext=()=>opts.gl||null;}setPixelRatio(){}setSize(w,h){this.domElement.width=w;this.domElement.height=h;}render(s,c){scene=s;camera=c;renders++;}dispose(){disposed++;}};
  const loginClasses=new Set(),canvasClasses=new Set();
  const canvas={clientWidth:1600,clientHeight:1000,style:{},addEventListener(type,fn){listeners['canvas:'+type]=fn;},classList:{add:c=>canvasClasses.add(c),remove:c=>canvasClasses.delete(c)}};
- const login={classList:{contains:c=>c==='hidden'?hidden:loginClasses.has(c),add:c=>loginClasses.add(c),remove:c=>loginClasses.delete(c)},addEventListener(){},contains:()=>false,setAttribute:(k,v)=>{attrs[k]=v;}};
+ const login={classList:{contains:c=>c==='hidden'?hidden:loginClasses.has(c),add:c=>loginClasses.add(c),remove:c=>loginClasses.delete(c)},addEventListener(type,fn){listeners["login:"+type]=fn;},contains:el=>el===doc.activeElement&&el.tagName!=="BODY",setAttribute:(k,v)=>{attrs[k]=v;}};
  const doc={hidden:false,activeElement:{tagName:'BODY'},getElementById:id=>id==='titleBg'?canvas:id==='loginScreen'?login:null,createElement:()=>({width:0,height:0,getContext(type){return opts.gl&&String(type||'').includes('webgl')?opts.gl:painter();}}),addEventListener(type,fn){listeners['doc:'+type]=fn;}};
  const env={console,document:doc,window:{addEventListener(type,fn){listeners['win:'+type]=fn;}},innerWidth:1600,innerHeight:1000,setTimeout,matchMedia:()=>reduced,requestAnimationFrame:f=>{frames.set(++number,f);return number;},cancelAnimationFrame:i=>frames.delete(i),MutationObserver:class{constructor(fn){observer=fn;}observe(){}}};
  if(!opts.noThree)env.THREE=THREE;
  vm.createContext(env);vm.runInContext(source,env);
- function frame(t){const [id,fn]=frames.entries().next().value||[];if(fn){frames.delete(id);fn(t);}}
+ function frame(t,one=false){let steps=0;do{const [id,fn]=frames.entries().next().value||[];if(!fn)break;frames.delete(id);fn(t);steps++;}while(!one&&env.window.titleBg.metrics().building&&steps<50);}
  return {env,doc,canvas,login,attrs,loginClasses,canvasClasses,frame,frames,listeners,get hidden(){return hidden;},set hidden(v){hidden=v;},observer(){observer();},scene:()=>scene,camera:()=>camera,disposed:()=>disposed,renders:()=>renders,title:()=>env.window.titleBg};
 }
 function uhd630(){
@@ -169,3 +169,5 @@ const css=fs.readFileSync(path.join(__dirname,'../style.css'),'utf8');assert(css
 assert(/data-ignite/.test(css),'CSS ignites the title letters');
 
 console.log('PASS arcane cathedral: sculpted dragon + breath, rift vortex, orrery, singing geode, rime ice, relic beam, guild march; seven-shot camera with safe clearances, 60/30 FPS tiers, bounded size, adaptive quality, parallax, reduced motion, hidden-login disposal/restart, context loss and WebGL fallback');
+
+const typingScene=load();typingScene.frame(1,true);assert(typingScene.title().metrics().building,'Scene construction yields before completing');typingScene.doc.activeElement={tagName:'INPUT'};typingScene.listeners['login:focusin']();assert.equal(typingScene.frames.size,0,'Focusing login cancels background construction');assert.equal(typingScene.renders(),0);typingScene.doc.activeElement={tagName:'BODY'};typingScene.title().start();typingScene.frame(2);assert(typingScene.renders()>0,'Construction resumes after leaving form');const count=typingScene.renders();typingScene.doc.activeElement={tagName:'INPUT'};typingScene.listeners['login:focusin']();typingScene.frame(100);assert.equal(typingScene.renders(),count,'Existing animation pauses while typing too');typingScene.hidden=true;typingScene.observer();assert.equal(typingScene.title().metrics().active,false,'Logging in disposes even while input still has focus');

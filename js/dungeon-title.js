@@ -121,9 +121,11 @@
   'col+=vec3(.55,.42,1.)*uGlow*(.3+fr*.7);gl_FragColor=vec4(col,1.);\n#include <fog_fragment>\n}';
 
  /* ---------- procedural art ---------- */
- function build(){
+ let builder=null;
+ function* build(){
   let seed=20260922;const rand=()=>(seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296;
   const textures=[],root=new THREE.Scene(),V=(x,y,z)=>new THREE.Vector3(x,y,z),TAU=Math.PI*2;
+  W={root,textures};
   root.background=new THREE.Color(0x0b0820);root.fog=new THREE.FogExp2(0x0b0820,.017);
   function paint(w,h,fn,repeat){
    const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext&&c.getContext('2d');if(g)fn(g,w,h);
@@ -161,6 +163,7 @@
   const flood=paint(64,256,(g,w,h)=>{const r=g.createLinearGradient(0,h,0,0);r.addColorStop(0,'rgba(255,255,255,1)');r.addColorStop(.3,'rgba(255,255,255,.42)');r.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=r;g.fillRect(0,0,w,h);for(let i=0;i<16;i++){g.fillStyle='rgba(0,0,0,.4)';g.fillRect(rand()*w,0,1+rand()*5,h);}});
   const ley=paint(64,512,(g,w,h)=>{g.strokeStyle='#fff';g.lineWidth=3;g.shadowColor='#fff';g.shadowBlur=6;g.fillStyle='rgba(255,255,255,.35)';g.fillRect(w/2-2,0,4,h);for(let i=0;i<8;i++)glyph(g,w/2,i*64+32,0,14);},[1,1]);
   const coinTex=paint(256,256,(g,w,h)=>{g.fillStyle='#6b4a12';g.fillRect(0,0,w,h);for(let i=0;i<260;i++){const x=rand()*w,y=rand()*h,r=6+rand()*9,v=150+rand()*105;g.fillStyle=`rgb(${v|0},${(v*.74)|0},${(v*.26)|0})`;g.beginPath();g.arc(x,y,r,0,TAU);g.fill();g.strokeStyle='rgba(60,30,0,.55)';g.lineWidth=1.5;g.stroke();}},[5,3]);
+  yield;
   // Wall banners of the three new dungeons and the Depths: star, crystal, snowflake, rift-eye.
   const bannerTex=paint(256,512,g=>{
    [['#1e1b4b','#fde68a','star'],['#3b0764','#f0abfc','crystal'],['#0c3a52','#bae6fd','flake'],['#2e1065','#67e8f9','eye']].forEach(([bg,fg,kind],k)=>{
@@ -174,6 +177,7 @@
     else{g.beginPath();g.arc(cx,cy,40,0,TAU);g.stroke();g.beginPath();g.arc(cx,cy,14,0,TAU);g.fill();for(let i=0;i<8;i++){const a=i/8*TAU;g.beginPath();g.moveTo(cx+Math.cos(a)*48,cy+Math.sin(a)*48);g.lineTo(cx+Math.cos(a)*60,cy+Math.sin(a)*60);g.stroke();}}
     g.restore();});
   });
+  yield;
   // Guild banners are painted light so each guild's instance colour tints them.
   const guildTex=paint(128,256,(g,w,h)=>{g.fillStyle='#d4d4d4';g.beginPath();g.moveTo(0,0);g.lineTo(w,0);g.lineTo(w,h-30);g.lineTo(w*.75,h);g.lineTo(w/2,h-30);g.lineTo(w*.25,h);g.lineTo(0,h-30);g.closePath();g.fill();
    g.fillStyle='#ffffff';g.fillRect(0,0,w,14);g.fillRect(6,20,4,h-64);g.fillRect(w-10,20,4,h-64);
@@ -220,6 +224,7 @@
    hilt:std({color:0xffffff,metalness:.85,roughness:.3,vertexColors:true,emissive:0x2a1400}),
    page:new THREE.MeshBasicMaterial({map:pageTex,side:DS,color:0xbdb095})
   };
+  yield;
   // Small shader patches on standard materials (vertex motion, per-instance glow, rim light).
   function patch(m,key,{u={},vh='',vn='',vv='',fh='',fe=''}){
    m.onBeforeCompile=sh=>{Object.assign(sh.uniforms,u);
@@ -287,6 +292,7 @@
   const mesh=(geo,m,o)=>add(new THREE.Mesh(geo,m),o);
   const lightSources=[],eyes=[],glints=[],halos=[];
 
+  yield;
   /* hall shell: nave, transept, vault wall with the rift opening */
   const walls=[],wall=(w,h,m)=>{const g=new THREE.PlaneGeometry(w,h),u=g.attributes.uv;for(let i=0;i<u.count;i++)u.setXY(i,u.getX(i)*w/6,u.getY(i)*h/5.6);walls.push([g,m]);};
   for(const s of [-1,1]){
@@ -302,6 +308,7 @@
   const floorG=new THREE.PlaneGeometry(64,150),fu=floorG.attributes.uv;for(let i=0;i<fu.count;i++)fu.setXY(i,fu.getX(i)*16,fu.getY(i)*34);
   const floor=mesh(floorG,M.floor);floor.rotation.x=-Math.PI/2;floor.position.set(0,0,-28);
 
+  yield;
   /* colonnade, gothic ribs, stairs, dais, pedestals and pylons */
   const stone=[],ribs=[],irons=[],torches=[],trims=[];
   for(const z of PILLAR_Z)for(const s of [-1,1]){
@@ -330,6 +337,7 @@
   for(let k=0;k<3;k++){const a=k/3*TAU;rod(trims,V(ORRERY.x+Math.cos(a)*2.3,1,ORRERY.z+Math.sin(a)*2.3),V(ORRERY.x,4.4,ORRERY.z),.12);}
   mesh(bake(stone),M.pillar);mesh(bake(ribs),M.dark);
 
+  yield;
   /* banners of the new dungeons along the walls, arcane lanterns between them */
   const flagsParts=[];let bk=0;
   for(let i=0;i<PILLAR_Z.length-1;i+=2)for(const s of [-1,1]){const z=(PILLAR_Z[i]+PILLAR_Z[i+1])/2;if(z<-29&&z>-51)continue;const g=new THREE.PlaneGeometry(3.2,6.4),u=g.attributes.uv,k=bk++%4;
@@ -338,6 +346,7 @@
   for(let i=1;i<PILLAR_Z.length-1;i+=2)for(const s of [-1,1]){const z=(PILLAR_Z[i]+PILLAR_Z[i+1])/2;if(z<-29&&z>-51)continue;irons.push([cube,mat(s*16.7,8.5,z,.4,.9,.4)]);torches.push({x:s*16.4,y:9.2,z,c:[.45,.35,1],size:1.1,cold:true});}
   mesh(bake(irons),M.iron);
 
+  yield;
   /* rune circle around the relic */
   const rune=[];
   for(const [tex,r,color,y,spin] of [[circleA,16,0x3fe6ff,.05,.05],[circleB,10.5,0x9a6bff,.07,-.09]]){
@@ -360,12 +369,14 @@
   for(let a=0;a<8;a++){const ang=a/8*TAU,list=a%2?growV:growC;list.push([oct,mat(Math.cos(ang)*8.6,.6,RELIC.z+Math.sin(ang)*8.6,.36,1.5,.36,Math.cos(ang)*.3,0,Math.sin(ang)*.3)]);}
   mesh(bake(growC),M.cyan);mesh(bake(growV),M.violet);
 
+  yield;
   /* ley lines converging on the Leyline Nexus at the vault */
   const leys=[],leyStrip=(x0,z0,x1,z1)=>{const len=Math.hypot(x1-x0,z1-z0),g=new THREE.PlaneGeometry(.9,len),u=g.attributes.uv;for(let i=0;i<u.count;i++)u.setY(i,u.getY(i)*len/10);leys.push([g,mat((x0+x1)/2,.04,(z0+z1)/2,1,1,1,-Math.PI/2,0,Math.atan2(-(x1-x0),-(z1-z0)))]);};
   leyStrip(0,10,0,-15);leyStrip(0,-29,0,-47.5);leyStrip(0,-64,0,-92);leyStrip(-19,-40,-5,-40);leyStrip(19,-40,5,-40);
   const leyMat=new THREE.MeshBasicMaterial({map:ley,color:0x46e8ff,transparent:true,blending:ADD,depthWrite:false,opacity:.75});
   mesh(bake(leys),leyMat);
 
+  yield;
   /* the hoard */
   const mound=new THREE.SphereGeometry(1,48,16,0,TAU,0,Math.PI/2),mp=mound.attributes.position;
   for(let i=0;i<mp.count;i++){const y=mp.getY(i);if(y>.05)mp.setY(i,y+(rand()-.5)*.08);}mound.computeVertexNormals();
@@ -392,6 +403,7 @@
   for(let i=0;i<6;i++){const a=i/6*TAU;trims.push([coneG,mat(cx+Math.cos(a)*.42,crownY+.22,cz+Math.sin(a)*.42,.08,.3,.08)]);}
   mesh(bake(woods),M.wood);mesh(bake(steel),M.iron);
 
+  yield;
   /* THE DRAGON: one sculpted body (tail, torso, neck) with limbs and spines baked in; sculpted head
      with horns and an opening jaw; two-joint membrane wings that curl in a vertex shader. */
   const BACK=[.1,.07,.17],BELLY=[.46,.32,.24],BONE=[.8,.72,.62],CLAW=[.25,.2,.2];
@@ -416,6 +428,7 @@
    dragonParts.push([ball,mat(s*3.05,3.55,-56.8,.5,.28,.66),{c:BACK,aS:.5}]);claws(s*3.05,3.5,-56.3);
   }
   const dragonMesh=mesh(bake(dragonParts,{color:true,attrs:['aS']}),M.hide,{tag:'dragon'});
+  yield;
   // Head (local: origin at the skull base, +z along the snout).
   const headParts=[[ball,mat(0,.18,.3,.72,.62,.9),{c:BACK}],
    [sculpt(new THREE.LineCurve3(V(0,.12,.55),V(0,-.02,2.75)),14,14,t=>[.6-.34*t,.44-.24*t],{back:BACK,belly:BELLY,ridge:.12,flat:.7,ru:3,rv:3})],
@@ -440,6 +453,7 @@
   const mouthLocal=V(0,-.2,2.8);
   halos.push({x:0,y:5.6,z:-54,c:[1,.35,.08],s:9,type:'ember'});
   halos.push({pos:'mouth',c:[.75,.45,1],s:5,type:'mouth'});
+  yield;
   // Wings: scalloped membrane fans between the finger bones.
   function wingGeo(){
    const S=V(0,0,0),El=V(3.2,1.8,.6),Wr=V(6.8,3.6,-.4),F=[V(12.4,5.4,-1.6),V(13,1.4,-3.4),V(10.8,-2,-4.9),V(7.2,-3.4,-5.6)],Bd=V(.5,-1.3,-5.2);
@@ -459,6 +473,7 @@
   }
   const wg=wingGeo(),wings=[1,-1].map(s=>{const w=mesh(wg,M.wing,{tag:'wing'});w.position.set(s*1.05,6.8,-55.4);w.scale.set(s,1,1);w.rotation.set(-.1,s*.14,s*.44);return w;});
 
+  yield;
   /* THE VAULT and the rift into the Arcane Depths behind it */
   const vortexU={uTime:{value:0},uOpen:{value:0},uBeat:{value:0}};
   const vortex=mesh(new THREE.CircleGeometry(9.5,64),new THREE.ShaderMaterial({uniforms:vortexU,vertexShader:UV_V,fragmentShader:VORTEX_F}),{tag:'vortex'});vortex.position.set(0,RIFT.y,-106.1);
@@ -487,6 +502,7 @@
   const leyBeam=mesh(bake(leyBeams),glowMat(null,0xa98bff,.2),{tag:'pylons'});
   halos.push({x:0,y:RIFT.y,z:-100.8,c:[.55,.35,1],s:16,type:'vault'});
 
+  yield;
   /* the Rimeveil Abyss has frozen the last pillars and the dais */
   const ice=[],jag=(g,amt)=>{const p=g.attributes.position;for(let i=0;i<p.count;i++){const x=p.getX(i),y=p.getY(i),z=p.getZ(i),k=1+amt*(Math.sin(x*4.1+y*1.7+z)*.5+Math.sin(z*3.7-y*2.3)*.5);p.setXYZ(i,x*k,y,z*k);}return g;};
   for(const z of RIME_Z)for(const s of [-1,1]){
@@ -501,6 +517,7 @@
   mesh(iceG,new THREE.ShaderMaterial({uniforms:iceU,vertexShader:ICE_V,fragmentShader:ICE_F,fog:true}),{tag:'rime'});
   const frostM=glowMat(frost,0x9fdcff,.28,{fog:true});const frostP=mesh(new THREE.PlaneGeometry(32,42),frostM);frostP.rotation.x=-Math.PI/2;frostP.position.set(0,.05,-80);
 
+  yield;
   /* THE STARLIT ARCHIVE: Astraea's orrery with seven planets under a painted-star dome */
   const rings=[5.6,4.7,3.9].map((r,i)=>{const m=mesh(new THREE.TorusGeometry(r,.1-i*.015,6,120),M.gold,{tag:'orrery'});m.position.set(ORRERY.x,ORRERY.y,ORRERY.z);return m;});
   const band=mesh(new THREE.RingGeometry(6,6.9,96,1),glowMat(zodiac,0xffd98a,.85,{side:DS}));band.rotation.x=-Math.PI/2;band.position.set(ORRERY.x,ORRERY.y,ORRERY.z);
@@ -527,6 +544,7 @@
   const pages=add(new THREE.InstancedMesh(new THREE.PlaneGeometry(.55,.75),M.page,30));
   const pageData=Array.from({length:30},()=>({r:6.8+rand()*2.6,a:rand()*TAU,y:2.5+rand()*9,sp:(rand()<.5?-1:1)*(.08+rand()*.12),ph:rand()*9}));
 
+  yield;
   /* THE SINGING GEODE: a cracked-open geode lined with crystals that ring in waves of light,
      clutched by the crystal legs of Khyra, the Singing Matriarch */
   const shellG=new THREE.SphereGeometry(6,36,22,.95,TAU-1.9,0,Math.PI*.78),sp=shellG.attributes.position;
@@ -557,6 +575,7 @@
   const songRings=[0,1,2].map(i=>{const m=mesh(new THREE.PlaneGeometry(2,2),glowMat(ringTex,i%2?0x5ff3ff:0xf0abfc,0));m.rotation.x=-Math.PI/2;m.position.set(origin.x,.1+i*.02,origin.z);m.userData.ph=i/3;return m;});
   halos.push({x:origin.x,y:2.4,z:origin.z,c:[.95,.5,1],s:12,type:'geode'});
 
+  yield;
   /* THE RELIC: a legendary blade of Arcane rarity above its pedestal, in a prismatic pillar of light */
   const sword=add(new THREE.Group(),{tag:'relic'});sword.position.set(RELIC.x,RELIC.y,RELIC.z);
   const blade=new THREE.Mesh(new THREE.CylinderGeometry(.22,.012,3.2,4),M.blade);blade.scale.z=.3;blade.position.y=-1.3;sword.add(blade);
@@ -570,6 +589,7 @@
   const beamCore=mesh(new THREE.CylinderGeometry(.2,.2,30,16,1,true),beamMat(coreU));beamCore.position.set(RELIC.x,15,RELIC.z);
   halos.push({x:RELIC.x,y:RELIC.y+.38,z:RELIC.z,c:[1,1,1],s:5,type:'prism'});
 
+  yield;
   /* THE MULTI-GUILD RAID: four guilds march on the vault under their banners */
   const fig=[[new THREE.CylinderGeometry(.24,.55,1.45,9),mat(0,.72,0)],[ball,mat(0,1.46,0,.44,.3,.3)],[ball,mat(0,1.74,0,.2,.23,.2)],[coneG,mat(0,1.86,.12,.2,.4,.2,.6,0,0)],
    [new THREE.CylinderGeometry(.36,.36,.06,14),mat(0,1.2,.26,1,1,1,Math.PI/2,0,0)]];
@@ -580,6 +600,7 @@
   const poles=add(new THREE.InstancedMesh(poleG,M.pole,COLS.length)),banners=add(new THREE.InstancedMesh(new THREE.PlaneGeometry(1.4,2.1,1,6),M.gbanner,COLS.length),{tag:'banners'});
   for(let c=0;c<COLS.length;c++){const g=GUILDS[c];banners.setColorAt(c,new THREE.Color(g[0],g[1],g[2]));for(let r=0;r<ROWS;r++)figures.setColorAt(c*ROWS+r,new THREE.Color(.3+g[0]*.4,.3+g[1]*.4,.3+g[2]*.4));halos.push({pos:'orb',col:c,c:g,s:2.4,type:'orb'});}
 
+  yield;
   /* light shafts from the fractured ceiling */
   const shafts=[];
   for(const [x,z,rt,rb,col,op,tilt] of [[-6,-7,1.2,3.8,0x8b7dff,.16,.16],[7,-40,1.2,3.6,0x8b7dff,.12,-.14],[1.5,-56,1.6,6.2,0xffd48a,.13,.08],[0,-92,2,5,0x6fdcff,.2,0],[ORRERY.x,ORRERY.z,1.4,5.2,0xbfd4ff,.16,.05],[GEODE.x-1,GEODE.z,1.4,5,0xf0abfc,.14,-.06]]){
@@ -587,6 +608,7 @@
    m.position.set(x,13,z);m.rotation.z=tilt;shafts.push({m,op,ph:rand()*6});
   }
 
+  yield;
   /* glowing point sprites (one draw call per layer, per-point size and colour) */
   const spriteU={value:500};
   function sprites(n,tex,size,fog=true){
@@ -808,19 +830,19 @@
   try{renderer=new THREE.WebGLRenderer({canvas,antialias:!weak,alpha:false,powerPreference:weak?'low-power':'high-performance'});}catch(e){renderer=null;fallback();return false;}
   try{const gl=renderer.getContext&&renderer.getContext(),ext=gl&&gl.getExtension&&gl.getExtension('WEBGL_debug_renderer_info');if(ext&&gl.getParameter){const n=gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);if(n)gpu=String(n);}}catch(e){}
   renderer.setPixelRatio(1);if(THREE.ACESFilmicToneMapping)renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.35;
-  try{W=build();}catch(e){try{renderer.dispose();}catch(_){}renderer=null;W=null;fallback();return false;}
-  scene=W.root;camera=new THREE.PerspectiveCamera(52,1,.1,200);login.classList?.remove('arcane-static');
-  applyQuality();return true;
+  try{builder=build();}catch(e){try{renderer.dispose();}catch(_){}renderer=null;W=null;fallback();return false;}
+  return true;
  }
  function dispose(){
   if(!W)return;const seen=new Set();
   W.root.traverse(o=>{if(o.isInstancedMesh&&o.dispose)o.dispose();if(o.geometry&&!seen.has(o.geometry)){seen.add(o.geometry);o.geometry.dispose();}const m=o.material;if(m&&!seen.has(m)){seen.add(m);m.dispose();}});
   for(const t of W.textures)t.dispose();W=null;scene=null;
  }
- function stop(){if(raf)cancelAnimationFrame(raf);raf=0;last=0;shot=null;if(renderer){dispose();renderer.dispose();renderer=null;camera=null;}canvas.classList?.remove('ready');}
+ function stop(){builder=null;if(raf)cancelAnimationFrame(raf);raf=0;last=0;shot=null;if(renderer){dispose();renderer.dispose();renderer=null;camera=null;}canvas.classList?.remove('ready');}
  function ignite(kind){ignites++;login.setAttribute?.('data-ignite',kind||(ignites%2?'a':'b'));}
  function frame(stamp){
   raf=0;if(login.classList.contains('hidden')){stop();return;}if(document.hidden){last=0;return;}if(typing())return;if(!renderer&&!init())return;
+  if(builder){try{const part=builder.next();if(!part.done){raf=requestAnimationFrame(frame);return;}W=part.value;builder=null;scene=W.root;camera=new THREE.PerspectiveCamera(52,1,.1,200);login.classList?.remove('arcane-static');applyQuality();}catch(e){stop();fallback();return;}}
   if(last&&stamp-last<(interval>=28?interval-.5:interval*.82)&&!reduced.matches){raf=requestAnimationFrame(frame);return;}
   const delta=last?stamp-last:0;adapt(delta);if(!renderer)return;const dt=last&&!reduced.matches?Math.min(.1,delta/1000):0;time+=dt;last=stamp;
   const t=reduced.matches?STILL:time,cam=pose(t),T=tl=timeline(t);shot=cam.id;
@@ -842,18 +864,19 @@
   renderer.toneMappingExposure=1.35*(1+flash)*Math.max(.001,dim);scene.background.setRGB(.043*dim,.031*dim,.125*dim);
   renderer.render(scene,camera);canvas.classList?.add('ready');frames++;if(!reduced.matches)raf=requestAnimationFrame(frame);
  }
- function typing(){const el=document.activeElement;return !renderer&&el&&/^(INPUT|BUTTON)$/.test(el.tagName)&&login.contains?.(el);}
- function start(){if(typing())return;if(login.classList.contains('hidden')){stop();return;}if(document.hidden)return;if(!raf&&!lost){last=0;raf=requestAnimationFrame(frame);}}
+ function typing(){const el=document.activeElement;return el&&/^(INPUT|BUTTON)$/.test(el.tagName)&&login.contains?.(el);}
+ function start(){if(login.classList.contains('hidden')){stop();return;}if(typing())return;if(document.hidden)return;if(!raf&&!lost){last=0;raf=requestAnimationFrame(frame);}}
+ login.addEventListener?.('focusin',()=>{if(raf)cancelAnimationFrame(raf);raf=0;last=0;});
  login.addEventListener?.('focusout',()=>setTimeout(start,0));
  window.addEventListener('resize',()=>{resize();start();});
  window.addEventListener('pointermove',e=>{if(e.pointerType&&e.pointerType!=='mouse')return;const w=innerWidth||1,h=innerHeight||1;mouse.tx=Math.max(-1,Math.min(1,e.clientX/w*2-1));mouse.ty=Math.max(-1,Math.min(1,e.clientY/h*2-1));});
  document.addEventListener('mouseleave',()=>{mouse.tx=0;mouse.ty=0;});
  document.addEventListener('visibilitychange',start);new MutationObserver(start).observe(login,{attributes:true,attributeFilter:['class']});reduced.addEventListener?.('change',start);
  canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();lost=true;stop();});canvas.addEventListener('webglcontextrestored',()=>{if(!fallen){lost=false;start();}});
- window.titleBg={start,metrics:()=>({frames,active:!!renderer,fallback:fallen,quality:tier,gpu,weak,fps:caps().fps,stripped,time,shot,dim,shots:SHOTS.map(s=>s.id),period:PERIOD,
+ window.titleBg={start,metrics:()=>({frames,building:!!builder,active:!!renderer,fallback:fallen,quality:tier,gpu,weak,fps:caps().fps,stripped,time,shot,dim,shots:SHOTS.map(s=>s.id),period:PERIOD,
   open:tl?tl.open:0,breath:tl?tl.breath:0,march:tl?tl.march:0,ignites,
   width:renderer&&renderer.domElement?renderer.domElement.width:0,height:renderer&&renderer.domElement?renderer.domElement.height:0,
-  motes:W?Math.min(W.N,caps().motes):0,lights:W?W.torchLights.filter(l=>l.visible).length+W.keys.filter(l=>l.visible).length:0,
+  motes:W&&W.N?Math.min(W.N,caps().motes):0,lights:W&&W.torchLights?W.torchLights.filter(l=>l.visible).length+W.keys.filter(l=>l.visible).length:0,
   camera:camera?{x:camera.position.x,y:camera.position.y,z:camera.position.z}:null,resources:W?{textures:W.textures.length,objects:W.root.children.length}:null}),
   pose,timeline,seek:t=>{time=Math.max(0,+t||0);},mouse:(x,y)=>{mouse.tx=x;mouse.ty=y;}};
  start();
