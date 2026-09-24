@@ -229,15 +229,16 @@
     team_match:   { perStake: 5, cooldown: 30000 },
     // Guild dungeons pay the run reward plus the boss bounty, so their caps sit
     // above GUILD_DUNGEONS.reward + GUILD_BOSSES.reward for the matching tier.
-    guild_crypt:  { cap: 6000, cooldown: 180000 },
-    guild_forge:  { cap: 10500, cooldown: 240000 },
-    guild_void:   { cap: 18500, cooldown: 300000 },
-    guild_dragon: { cap: 31500, cooldown: 360000 },
+    // Each completed run pays immediately, with no cooldown between runs.
+    guild_crypt:  { cap: 6000, cooldown: 0 },
+    guild_forge:  { cap: 10500, cooldown: 0 },
+    guild_void:   { cap: 18500, cooldown: 0 },
+    guild_dragon: { cap: 31500, cooldown: 0 },
     // ---- THE ARCANE DEPTHS (docs/arcane-depths/MASTER-PLAN.md §3.1) ----
-    guild_archive: { cap: 44500, cooldown: 390000 },
-    guild_geode:   { cap: 59000, cooldown: 420000 },
-    guild_rime:    { cap: 77000, cooldown: 450000 },
-    raid_nexus:    { cap: 76000, cooldown: 480000 },
+    guild_archive: { cap: 44500, cooldown: 0 },
+    guild_geode:   { cap: 59000, cooldown: 0 },
+    guild_rime:    { cap: 77000, cooldown: 0 },
+    raid_nexus:    { cap: 76000, cooldown: 0 },
     // Endless segments are bounded by DEPTHS.depthsSegmentCap(f), not this row.
     arcane_depths: { cap: 0, cooldown: 0 },
   };

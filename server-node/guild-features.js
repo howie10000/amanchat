@@ -283,7 +283,6 @@ module.exports = function createFeatureHandlers(deps) {
             if (!ch) throw new Error('There is no chest like that here.');
             if (ch.mimic) throw new Error('That is no chest.');
             if (run.opened[fk(run, id)]) throw new Error('That chest is already open.');
-            requireAge(run, now);
             if (ch.secret && !run.revealed[fk(run, ch.secret)]) throw new Error('There is no chest like that here.');
             if (ch.kind === 'trial') { const tr = run.trials[ch.trial]; if (!tr || tr.state !== 'won') throw new Error('The trial has not been won.'); }
             if (ch.kind === 'vault') { if (!run.vaultOpen) throw new Error('The vault is sealed.'); if (!run.vkDead) throw new Error('The Vault Keeper still stands.'); }

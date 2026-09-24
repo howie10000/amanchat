@@ -3,7 +3,7 @@
 //   node raid.test.js            (port 18451)
 //
 // The lobby: caps (24 / 16 per guild / 6 guilds), privacy, the invite rate
-// limit, leader auto-promote, the board, no mid-run kick, cooldown drops at
+// limit, leader auto-promote, the board, no mid-run kick, repeat participation at
 // start. The payout, with the REAL purse (no mini-reward knob): three guilds
 // (4 / 2 / 1 fighters) clear the Ashen Roost together — gross 31,000 (the
 // Broodmother pays $1,000) — and each member is paid 3,985 / 3,986 / 3,986,
@@ -14,7 +14,7 @@
 // LD §2.12.4's literal worked example (gross 30,950 with the old $950 mini:
 // 3,979 each, tithes 1,768 / 884 / 442) is kept as a pure settleRunPurse check.
 // Then the credit rules (damage share, 24h tenure, a mid-run guild hop),
-// per-member cooldown withholding in a single-guild party, and the
+// repeat-member rewards in a single-guild party, and the
 // leaderboard entries.
 //
 // Test knobs (never set in production): DUNGEON_TEST_BOSS_HP shrinks the
@@ -231,14 +231,14 @@ const VEST_MS = 40000;
         assert(fighters.every(n => raidPay[n] >= solo7 && raidPay[n] - solo7 <= 2),
             'no raid member was paid less than the single-guild party of the same size (' + solo7 + '): ' + JSON.stringify(raidPay));
 
-        // --------------------------------------------- cooldown drops at start
-        console.log('raid_start drops members on cooldown');
+        // --------------------------------------------- repeat participation at start
+        console.log('raid_start includes members who just earned rewards');
         r = await P.a5.tgd({ action: 'raid_create', tier: 'guild_dragon', privacy: 'open' });
         await P.a1.gd({ action: 'raid_join', raid: r.data.raid.id });
         await P.a9.gd({ action: 'raid_join', raid: r.data.raid.id });
         r = await P.a5.tgd({ action: 'raid_start' });
-        assert(r.ok && r.data.members.length === 2 && r.data.dropped.some(d => d.user === 'ra1' && d.reason === 'on cooldown'), 'a member still on the tier cooldown is dropped with a notice');
-        assert(!!(await P.a1.waitFor(e => e.event === 'guild_raid' && e.kind === 'dropped' && e.user === 'ra1', 3000)), 'and told why');
+        assert(r.ok && r.data.members.length === 3 && !r.data.dropped.some(d => d.user === 'ra1'), 'a member who just claimed rewards can immediately join another raid');
+        await P.a1.gd({ action: 'abandon' });
         await P.a5.gd({ action: 'abandon' }); await P.a9.gd({ action: 'abandon' });
 
         // --------------------------------------------- the credit rules
@@ -271,8 +271,8 @@ const VEST_MS = 40000;
         const cl1 = { A: (await gStat(P.a1)).clears, B: (await gStat(P.b1)).clears, D: (await gStat(P.d1)).clears, E: (await gStat(P.e1)).clears };
         assert(cl1.A === cl0.A + 1 && cl1.B === cl0.B && cl1.D === cl0.D && cl1.E === cl0.E, 'only the qualifying guild gains a clear');
 
-        // --------------------------------------------- per-member cooldown (D4)
-        console.log('a member on cooldown is counted but withheld (single-guild party)');
+        // --------------------------------------------- repeat-member rewards
+        console.log('a returning member receives their full share (single-guild party)');
         r = await P.a5.gd({ action: 'party_create', tier: 'guild_dragon' });
         await P.a5.gd({ action: 'party_invite', user: 'ra1' });
         await P.a1.gd({ action: 'party_accept', party: r.data ? r.data.party.id : r.party.id });
@@ -287,11 +287,11 @@ const VEST_MS = 40000;
         assert(d3.ok, 'the party pays out: ' + (d3.err || ''));
         const expTithe = Math.floor(GROSS * ECON.GUILD_DUNGEON_CUT), expEach = Math.floor((GROSS - expTithe) / 2);
         assert(d3.ok && d3.data.gross === GROSS && d3.data.tithe === expTithe && d3.data.gained === expEach && d3.data.settlement.N === 2, `N stays 2: the claimer gets ${expEach}, the tithe is ${expTithe}`);
-        assert(d3.ok && d3.data.party.ra1.withheld === true && d3.data.party.ra1.gross === 0, 'the member on cooldown has their share withheld');
-        assert((await P.a1.rpc('get', { path: 'users/ra1/money' })) === m1 && (await P.a5.rpc('get', { path: 'users/ra5/money' })) === m5 + expEach, 'the withheld share is neither paid nor redistributed');
+        assert(d3.ok && !d3.data.party.ra1.withheld && d3.data.party.ra1.gross === expEach, 'the returning member receives their full share');
+        assert((await P.a1.rpc('get', { path: 'users/ra1/money' })) === m1 + expEach && (await P.a5.rpc('get', { path: 'users/ra5/money' })) === m5 + expEach, 'both members are paid equally');
         assert((await gStat(P.a1)).treasury - tA0 === expTithe, 'the guild still gets the full tithe');
         const w = await P.a1.waitFor(e => e.event === 'guild_dungeon' && e.kind === 'reward' && e.runId === s3.runId, 4000);
-        assert(w && w.settlement.withheld === true && w.mats && w.mats.dust > 0, 'but their loot and materials are still granted');
+        assert(w && !w.settlement.withheld && w.mats && w.mats.dust > 0, 'their loot and materials are also granted');
     } catch (e) {
         console.error(e);
         console.error(srv.out.slice(-3000));
