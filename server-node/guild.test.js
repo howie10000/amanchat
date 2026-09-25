@@ -505,6 +505,39 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
     r = await tryRpc(member, 'guild', { action: 'status' });
     assert(r.ok && r.data.guild === null, 'you are guildless after leaving');
 
+    console.log('disbanding');
+    const before = (await master.rpc('guild', { action: 'status' })).guild;
+    const offStatus = await tryRpc(officer, 'guild', { action: 'status' });
+    const offIn = offStatus.ok && offStatus.data.guild && offStatus.data.guild.id === gid;
+    const offBanked = offIn ? offStatus.data.guild.myBank : 0;
+    const offCash = await moneyOf(officer, 'gofficer');
+    const masterCash = await moneyOf(master, 'gmaster');
+    if (offIn) {
+        r = await tryRpc(officer, 'guild', { action: 'disband', confirm: before.name });
+        assert(!r.ok, 'only the Guild Master can disband');
+    }
+    r = await tryRpc(master, 'guild', { action: 'disband' });
+    assert(!r.ok, 'disbanding without typing the name is refused');
+    r = await tryRpc(master, 'guild', { action: 'disband', confirm: 'not the name' });
+    assert(!r.ok, 'disbanding with the wrong name is refused');
+    assert(!!(await boss.rpc('get', { path: 'guilds/' + gid })), 'a refused disband leaves the guild intact');
+    const evBefore = officer.events.length;
+    r = await tryRpc(master, 'guild', { action: 'disband', confirm: before.name.toUpperCase() });
+    assert(r.ok && r.data.disbanded === true, 'the Master can disband after confirming the name');
+    assert(r.ok && r.data.treasury === before.treasury && (await moneyOf(master, 'gmaster')) === masterCash + before.treasury + (r.data.refunded || 0), 'the treasury and the Master\'s own balance come back to the Master');
+    assert(!(await boss.rpc('get', { path: 'guilds/' + gid })), 'the guild record is deleted');
+    r = await tryRpc(master, 'guild', { action: 'status' });
+    assert(r.ok && r.data.guild === null, 'the Master is guildless afterwards');
+    if (offIn) {
+        r = await tryRpc(officer, 'guild', { action: 'status' });
+        assert(r.ok && r.data.guild === null, 'every member is removed');
+        assert((await moneyOf(officer, 'gofficer')) === offCash + offBanked, 'each member gets their guild-bank balance back');
+        await sleep(150);
+        assert(officer.events.slice(evBefore).some(e => e.event === 'guild' && e.kind === 'disbanded'), 'members are told the guild was disbanded');
+    }
+    r = await tryRpc(master, 'guild', { action: 'create', name: before.name, tag: before.tag });
+    assert(r.ok || /costs/.test(r.err || ''), 'the old name and tag are free again');
+
     console.log('');
     console.log(fails ? `${fails} FAILURES (${passes} passed)` : `ALL ${passes} PASSED`);
     srv.kill();

@@ -4455,6 +4455,59 @@ const ECONOMY_OPS = {
             return { left: true, refunded: back, money: moneyOf(u) };
         }
 
+        // The Master closes the guild for good. The client warns first; the
+        // server still demands the guild's exact name back so a stray click or
+        // a replayed packet can never wipe a guild. Nobody loses money: every
+        // member's bank balance comes back, and the treasury and the materials
+        // vault go to the Master, who is the only rank that could draw them all.
+        if (action === 'disband') {
+            const g = guildRequire(user);
+            if (g.master !== user || guildRankOf(g, user) !== 'master') throw new Error('Only the Guild Master can disband the guild.');
+            if (String(msg.confirm || '').trim().toLowerCase() !== String(g.name).toLowerCase()) throw new Error('Type the guild\'s exact name to confirm disbanding it.');
+            for (const run of guildRuns.values()) {
+                if (run.gid === g.id || [...run.members].some(m => g.members[m])) throw new Error('A guild dungeon run is still in progress. Disband once everyone is back out.');
+            }
+            const members = Object.keys(g.members);
+            const refunds = {};
+            for (const m of members) {
+                guildBankSync(g, m, now);
+                const back = Math.max(0, Math.floor(+((g.bank[m] || {}).balance) || 0));
+                if (back > 0) { const r = m === user ? u : userRec(m); setMoney(m, r, moneyOf(r) + back); }
+                refunds[m] = back;
+            }
+            const treasury = Math.max(0, Math.floor(+g.treasury || 0));
+            if (treasury > 0) setMoney(user, u, moneyOf(u) + treasury);
+            const vault = (g.vault && typeof g.vault === 'object') ? g.vault : {};
+            const mats = (u.mats && typeof u.mats === 'object') ? u.mats : (u.mats = {});
+            for (const [k, n] of Object.entries(vault)) { const c = Math.max(0, Math.floor(+n || 0)); if (c) mats[k] = (mats[k] | 0) + c; }
+            if (Object.keys(vault).length) store.put(`users/${user}/mats`, mats);
+            // Cut every tie other guilds hold to this one.
+            for (const gid of new Set([...Object.keys(g.allies || {}), ...Object.keys(g.allyReq || {})])) {
+                const other = guildRec(gid);
+                if (!other) continue;
+                const was = !!other.allies[g.id];
+                delete other.allies[g.id]; delete other.allyReq[g.id];
+                saveGuild(other);
+                if (was) guildBroadcast(other, { kind: 'ally_removed', gid: g.id, name: g.name, tag: g.tag });
+            }
+            const invites = store.get('guild_invites') || {};
+            for (const [who, inv] of Object.entries(invites)) {
+                if (inv && typeof inv === 'object' && inv[g.id]) { delete inv[g.id]; store.put('guild_invites/' + who, inv); }
+            }
+            for (const m of members) {
+                const p = partyFor(m);
+                if (p) { if (p.gid === g.id) disbandParty(p, 'guild disbanded'); else { guildPartyOf.delete(m); p.members.delete(m); if (!p.members.size) disbandParty(p, 'left'); } }
+                raids.leaveRaid(m);
+            }
+            for (const m of members) {
+                store.delete(`users/${m}/guild`);
+                if (m !== user) pushTo(m, { event: 'guild', kind: 'disbanded', guild: g.id, name: g.name, by: user, refunded: refunds[m] || 0 });
+            }
+            store.delete('guilds/' + g.id);
+            console.log(`[guild] ${user} disbanded "${g.name}" [${g.tag}] (${members.length} members, treasury ${treasury})`);
+            return { disbanded: true, refunded: refunds[user] || 0, treasury, mats: Object.keys(vault).length ? mats : undefined, money: moneyOf(u) };
+        }
+
         if (action === 'kick') {
             const g = guildRequirePower(user, 'canKick');
             const who = String(msg.user || '').trim().toLowerCase();

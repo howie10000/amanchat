@@ -247,7 +247,15 @@ function openHall() {
       <p class="muted">A new name costs ${money(ECON.GUILD_RENAME_COST)}, a new tag costs ${money(ECON.GUILD_TAG_CHANGE_COST)} — pay for whichever you actually change. Leave a field as it is to skip its cost.</p>
       <div class="formRow"><input id="gRenameName" class="menuInput" maxlength="${ECON.GUILD_NAME_MAX}" placeholder="Guild name" value="${esc(g.name)}" /></div>
       <div class="formRow"><input id="gRenameTag" class="menuInput" maxlength="${ECON.GUILD_TAG_MAX}" placeholder="TAG" style="text-transform:uppercase" value="${esc(g.tag)}" /></div>
-      <button class="menuBtn gold" onclick="gameGuild.renameGuild()">REBRAND</button>`;
+      <button class="menuBtn gold" onclick="gameGuild.renameGuild()">REBRAND</button>
+
+      <h3 class="section danger">DISBAND THE GUILD</h3>
+      <div class="guildDanger">
+        <p><b>⚠ This cannot be undone.</b> [${esc(g.tag)}] ${esc(g.name)} will be deleted along with its level, research, trophies, records and alliances. Every member is removed.</p>
+        <p class="muted">No money is lost: each member's guild-bank balance is returned to them, and the treasury (${money(g.treasury)}) and the materials vault come to you. You can't disband while a guild dungeon run is in progress.</p>
+        <div class="formRow"><input id="gDisbandName" class="menuInput" maxlength="${ECON.GUILD_NAME_MAX}" placeholder="Type ${esc(g.name)} to confirm" autocomplete="off" /></div>
+        <button class="menuBtn red" onclick="gameGuild.disband()">DISBAND GUILD</button>
+      </div>`;
   }
   if (g.myRank !== "master") {
     html += `<h3 class="section">LEAVE</h3>
@@ -304,6 +312,30 @@ async function leave() {
     toast(res.refunded > 0 ? `You're out. ${money(res.refunded)} returned.` : "You're out.", 4000);
     updateHUD(); closeMenu();
   } catch (e) { toast(esc(e.message), 4000); }
+}
+
+async function disband() {
+  const g = guildState;
+  if (!g) return;
+  const typed = ((document.getElementById("gDisbandName") || {}).value || "").trim();
+  if (typed.toLowerCase() !== String(g.name).toLowerCase()) { toast(`Type the guild's exact name — ${esc(g.name)} — to confirm.`, 4000); return; }
+  const n = Array.isArray(g.members) ? g.members.length : Object.keys(g.members || {}).length;
+  if (!confirm(`FINAL WARNING
+
+Disband [${g.tag}] ${g.name}?
+
+The guild, its level, research, trophies and alliances are deleted forever and all ${n} member${n === 1 ? "" : "s"} will be removed. Bank balances are returned to each member; the treasury and vault come to you.
+
+This cannot be undone.`)) return;
+  try {
+    const res = await netGuild({ action: "disband", confirm: typed });
+    guildState = null;
+    state.data.money = res.money;
+    if (res.mats && state.data) state.data.mats = res.mats;
+    const back = (res.refunded || 0) + (res.treasury || 0);
+    toast(`${esc(g.name)} has been disbanded.${back > 0 ? ` ${money(back)} returned to you.` : ""}`, 6000);
+    updateHUD(); closeMenu();
+  } catch (e) { toast(esc(e.message), 5000); }
 }
 
 // ---------------- GUILD PROGRESSION (THE ARCANE DEPTHS) ----------------
@@ -1125,6 +1157,7 @@ if (window.NET) {
     toast(`${esc(m.by)} invited you to [${esc(m.tag)}] ${esc(m.name)} — the broker in the Adventurers Guild has the paperwork.`, 7000);
   });
   NET.on("guild", (m) => {
+    if (m.kind === "disbanded") { guildState = null; toast(`${esc(m.by)} disbanded ${esc(m.name)}${m.refunded ? ` — ${money(m.refunded)} returned from the guild bank` : ""}.`, 7000); updateHUD(); return; }
     if (m.kind === "kicked") { guildState = null; toast(`You were removed from ${esc(m.name)}${m.refunded ? ` — ${money(m.refunded)} returned` : ""}.`, 6000); updateHUD(); return; }
     if (m.kind === "skill_point") toast(`Your guild earned a skill point (${m.clears} clears).`, 5000);
     // An auto-settled chest (nobody opened it in time) has no claimer.
@@ -1242,7 +1275,7 @@ if (window.NET) {
 window.gameGuild = {
   refresh: refreshGuild, myGuild, myRank,
   openBroker, createGuild, acceptInvite, declineInvite, browse,
-  openHall, invite, setRank, kick, saveRates, renameGuild, spendSkill, leave,
+  openHall, invite, setRank, kick, saveRates, renameGuild, spendSkill, leave, disband,
   openLeaderNPC, askLeader,
   openBank, bank, openTreasury, treasury,
   openDungeons, openMastery, enterGuildHall,
