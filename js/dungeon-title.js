@@ -72,7 +72,7 @@
  }
  function caps(){
   if(tier>=2)return {scale:1,w:1440,h:950,fps:60,motes:2400,torches:4,keys:5,coins:760,crystals:150,breath:320,pages:30,stars:260};
-  if(tier>=1)return {scale:.82,w:1152,h:720,fps:60,motes:1300,torches:2,keys:5,coins:460,crystals:110,breath:200,pages:20,stars:200};
+  if(tier>=1)return {scale:.82,w:1152,h:720,fps:window.__titleWorker?30:60,motes:1300,torches:2,keys:5,coins:460,crystals:110,breath:200,pages:20,stars:200};
   return {scale:.56,w:896,h:504,fps:30,motes:stripped?240:560,torches:1,keys:3,coins:220,crystals:70,breath:110,pages:12,stars:120};
  }
 
@@ -826,7 +826,7 @@
  function settle(){fallback();stop();}
  function init(){
   if(typeof THREE==='undefined'||!THREE.WebGLRenderer){fallback();return false;}
-  const info=probe();gpu=info.name;weak=info.weak;maxTier=weak?1:2;tier=weak?0:2;stripped=false;
+  const info=probe();gpu=info.name;weak=info.weak;maxTier=weak||window.__titleWorker?1:2;tier=weak?0:maxTier;stripped=false;
   try{renderer=new THREE.WebGLRenderer({canvas,antialias:!weak,alpha:false,powerPreference:weak?'low-power':'high-performance'});}catch(e){renderer=null;fallback();return false;}
   try{const gl=renderer.getContext&&renderer.getContext(),ext=gl&&gl.getExtension&&gl.getExtension('WEBGL_debug_renderer_info');if(ext&&gl.getParameter){const n=gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);if(n)gpu=String(n);}}catch(e){}
   renderer.setPixelRatio(1);if(THREE.ACESFilmicToneMapping)renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.35;
@@ -841,7 +841,7 @@
  function stop(){builder=null;if(raf)cancelAnimationFrame(raf);raf=0;last=0;shot=null;if(renderer){dispose();renderer.dispose();renderer=null;camera=null;}canvas.classList?.remove('ready');}
  function ignite(kind){ignites++;login.setAttribute?.('data-ignite',kind||(ignites%2?'a':'b'));}
  function frame(stamp){
-  raf=0;if(login.classList.contains('hidden')){stop();return;}if(document.hidden){last=0;return;}if(typing())return;if(!renderer&&!init())return;
+  raf=0;if(login.classList.contains('hidden')){stop();return;}if(document.hidden){last=0;return;}if(typing()){raf=requestAnimationFrame(frame);return;}if(!renderer&&!init())return;
   if(builder){try{const part=builder.next();if(!part.done){raf=requestAnimationFrame(frame);return;}W=part.value;builder=null;scene=W.root;camera=new THREE.PerspectiveCamera(52,1,.1,200);login.classList?.remove('arcane-static');applyQuality();}catch(e){stop();fallback();return;}}
   if(last&&stamp-last<(interval>=28?interval-.5:interval*.82)&&!reduced.matches){raf=requestAnimationFrame(frame);return;}
   const delta=last?stamp-last:0;adapt(delta);if(!renderer)return;const dt=last&&!reduced.matches?Math.min(.1,delta/1000):0;time+=dt;last=stamp;
@@ -864,9 +864,10 @@
   renderer.toneMappingExposure=1.35*(1+flash)*Math.max(.001,dim);scene.background.setRGB(.043*dim,.031*dim,.125*dim);
   renderer.render(scene,camera);canvas.classList?.add('ready');frames++;if(!reduced.matches)raf=requestAnimationFrame(frame);
  }
- function typing(){const el=document.activeElement;return el&&/^(INPUT|BUTTON)$/.test(el.tagName)&&login.contains?.(el);}
- function start(){if(login.classList.contains('hidden')){stop();return;}if(typing())return;if(document.hidden)return;if(!raf&&!lost){last=0;raf=requestAnimationFrame(frame);}}
- login.addEventListener?.('focusin',()=>{if(raf)cancelAnimationFrame(raf);raf=0;last=0;});
+ let inputAt=-Infinity;
+ function typing(){return performance.now()-inputAt<120;}
+ function start(){if(login.classList.contains('hidden')){stop();return;}if(document.hidden)return;if(!raf&&!lost){last=0;raf=requestAnimationFrame(frame);}}
+ login.addEventListener?.('input',()=>{inputAt=performance.now();start();});
  login.addEventListener?.('focusout',()=>setTimeout(start,0));
  window.addEventListener('resize',()=>{resize();start();});
  window.addEventListener('pointermove',e=>{if(e.pointerType&&e.pointerType!=='mouse')return;const w=innerWidth||1,h=innerHeight||1;mouse.tx=Math.max(-1,Math.min(1,e.clientX/w*2-1));mouse.ty=Math.max(-1,Math.min(1,e.clientY/h*2-1));});

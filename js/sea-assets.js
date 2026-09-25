@@ -12,7 +12,7 @@ window.loadSeaAssets=function(){return assets??=Promise.all(SEA.map(([key,url])=
 window.loadRacingAssets=function(){return racing??=script('js/race-models.js?v=apex-organic-8').catch(e=>{racing=null;throw e;});};
 // The login backdrop is THE ARCANE DEPTHS cathedral: fully procedural, so it needs no model
 // download. index.html's boot loader normally starts it after the game scripts are ready.
-function start(){if(!login||login.classList.contains('hidden')||document.hidden)return;if(!title)title=(window.__titleBoot||script('js/dungeon-title.js?v=responsive-1')).catch(()=>{title=null;window.__titleBoot=null;});}
+function start(){if(!login||login.classList.contains('hidden')||document.hidden)return;if(!title)title=(window.__titleBoot||script('js/title-background.js?v=worker-1')).catch(()=>{title=null;window.__titleBoot=null;});}
 if(!window.titleBg)window.titleBg={start};
 // Background work gets one quiet slot at a time, with a measured recovery gap.
 // Never force an idle callback to run via a timeout while the main thread is busy.

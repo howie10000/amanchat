@@ -134,7 +134,7 @@
       <input id="chatBox" maxlength="80" placeholder="Say something... (Enter to send, ESC to cancel)" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="send" />
     </div>
 
-    <!-- "Your client is out of date" — see the version check in js/net.js?v=release-20260923-1 -->
+    <!-- "Your client is out of date" — see the version check in js/net.js?v=manifest-2 -->
     <div id="updateBanner" class="hidden">
       <span class="ubIcon">⚠️</span>
       <div class="ubText"><b>Update available</b><div id="ubDetail" class="ubDetail"></div></div>
@@ -178,7 +178,7 @@
 
 <script type="text/plain" data-boot src="js/sea-animation.js?v=1"></script><script type="text/plain" data-boot src="js/sea3d.js?v=gentle-warmup-1"></script>
 
-  <script type="text/plain" data-boot src="js/net.js?v=release-20260923-1"></script>
+  <script type="text/plain" data-boot src="js/net.js?v=manifest-2"></script>
   <script type="text/plain" data-boot src="js/furniture.js?v=racing-2"></script>
   <script type="text/plain" data-boot src="js/shared/economy.js?v=chests-20260924"></script>
   <script type="text/plain" data-boot src="js/shared/depths.js?v=depths-1"></script>
@@ -232,16 +232,14 @@
   <script type="text/plain" data-boot src="js/sea.js?v=touch-1"></script>
   <script type="text/plain" data-boot src="js/game.js?v=release-20260923-1"></script>
   <script type="text/plain" data-boot src="js/mobile.js?v=release-20260923-1"></script>
-  <script type="text/plain" data-boot src="js/sea-assets.js?v=gentle-warmup-1"></script>
-  <!-- Boot order: three.js + the Arcane Depths login backdrop load and draw their first frame on
-       their own; the game scripts above download in parallel meanwhile (the browser compiles them
-       off the main thread) and only execute once the title is on screen, in document order. -->
+  <script type="text/plain" data-boot src="js/sea-assets.js?v=worker-1"></script>
+  <!-- Game dependencies yield between scripts; the title runs independently in a worker. -->
   <script>
   (function(){
    var tags=[].slice.call(document.querySelectorAll('script[data-boot]')),three=null,rest=[];
    tags.forEach(function(t){var src=t.getAttribute('src');if(/vendor\/three\.min\.js/.test(src))three=src;else rest.push(src);});
    rest.forEach(function(src){var l=document.createElement('link');l.rel='preload';l.as='script';l.href=src;l.fetchPriority='low';document.head.appendChild(l);});
-   function load(src,high){return new Promise(function(ok,fail){var el=document.createElement('script');el.src=src;el.async=true;if(high)el.fetchPriority='high';el.onload=ok;el.onerror=fail;document.head.appendChild(el);});}
+   function load(src,high){return new Promise(function(ok,fail){var el=document.createElement('script');el.src=src;el.async=true;if(high)el.fetchPriority='high';el.onload=ok;el.onerror=function(){fail(new Error('Could not load '+src));};document.head.appendChild(el);});}
    var started=false;
    function startGame(){
     if(started)return;started=true;
@@ -249,17 +247,9 @@
     var chain=Promise.resolve();rest.forEach(function(src){chain=chain.then(function(){return new Promise(function(ok){setTimeout(ok,16);});}).then(function(){return load(src,false);});});
     return chain;
    }
-   var lastInput=performance.now();
-   document.addEventListener('input',function(){lastInput=performance.now();},true);
-   function titleWhenQuiet(){return new Promise(function(resolve,reject){
-    function attempt(){var login=document.getElementById('loginScreen'),el=document.activeElement;
-     if(!login){resolve();return;}if(login.classList.contains('hidden')){setTimeout(attempt,500);return;}
-     if(document.hidden||(el&&login.contains(el)&&/^(INPUT|BUTTON)$/.test(el.tagName))||performance.now()-lastInput<1800){setTimeout(attempt,250);return;}
-     load('js/dungeon-title.js?v=responsive-1',false).then(resolve,reject);
-    }attempt();
-   });}
-   // The usable login/game scripts take priority over the decorative scene.
-   window.__titleBoot=load(three,true).then(startGame).then(titleWhenQuiet);
+   window.__gameBoot=load(three,true).then(startGame);
+   window.__gameBoot.catch(function(e){console.error('Game startup failed',e);});
+   window.__titleBoot=load('js/title-background.js?v=worker-1',true);
    window.__titleBoot.catch(function(e){console.warn('Optional login background unavailable',e);});
   })();
   </script>

@@ -182,15 +182,7 @@
   // the server has moved on — which is exactly how a protocol change turns into
   // "everyone vanished when I moved".
   //
-  // This compares the bytes the browser ACTUALLY RAN against the bytes currently
-  // deployed, for every script on the page:
-  //   cache:"force-cache" -> the HTTP-cache entry the <script> tag was served
-  //   cache:"no-store"    -> what the origin is serving right now
-  // Differ on any file and the running copy is stale. Nothing to maintain: no
-  // version constant to bump, no GitHub API (so no rate limits), and it cannot
-  // false-positive — if the bytes match, you are on the deployed build.
-  // A first-ever load has no cache entry, so force-cache fetches from the network
-  // too, both sides match, and no banner appears.
+  // Compare the declared boot manifest, not runtime-injected script elements.
   const VERSION_TTL = 15 * 60 * 1000;   // re-check at most this often per browser
 
   function showUpdateBanner(lastModified) {
@@ -213,58 +205,37 @@
     el.classList.remove("hidden");
   }
 
-  // The game's own scripts, straight off the page — so a file added later is
-  // covered automatically.
-  function clientScriptUrls() {
-    const here = location.origin;
-    return [...document.querySelectorAll("script[src]")]
-      .map(el => el.src)
-      .filter(u => { try { return new URL(u, location.href).origin === here; } catch (e) { return false; } });
+  function clientManifest(doc, base) {
+    return JSON.stringify([...doc.querySelectorAll('script[data-boot][src],link[rel="stylesheet"][href]')]
+      .map(el => new URL(el.getAttribute('src') || el.getAttribute('href'), base).href));
   }
-
   async function checkClientVersion(force) {
     try {
+      const boot = document.querySelector('script[data-boot][src*="js/net.js"]');
+      if (!boot) return false;
+      const entry = new URL('../index.html', new URL(boot.getAttribute('src'), location.href));
+      const signature = clientManifest(document, location.href);
       if (!force) {
         try {
-          const c = JSON.parse(localStorage.getItem("clientVersionCheck") || "null");
-          if (c && Date.now() - c.at < VERSION_TTL) {
-            if (c.stale) showUpdateBanner(c.lastModified);
-            return !!c.stale;
+          const c = JSON.parse(localStorage.getItem('clientVersionCheck') || 'null');
+          // Never carry a stale banner across reloads or a different installed build.
+          if (c && c.signature === signature && c.stale === false && Date.now() - c.at < VERSION_TTL) {
+            document.getElementById('updateBanner')?.classList.add('hidden');
+            return false;
           }
         } catch (e) {}
       }
-      let stale = false, lastModified = null;
-      if (!force) {
-        // Releases version their script URLs in index.html. Check that small
-        // manifest instead of downloading and decoding every model twice.
-        const boot = clientScriptUrls().find(url => new URL(url).pathname.endsWith('/js/net.js'));
-        if (!boot) return false;
-        const entry = new URL('../index.html', boot);
-        const response = await fetch(entry.href, { cache: 'no-store' });
-        if (!response.ok) return false;
-        const live = new DOMParser().parseFromString(await response.text(), 'text/html');
-        const signature = (doc, base) => JSON.stringify([...doc.querySelectorAll('script[src]:not([data-optional-asset]),link[rel="stylesheet"][href]')]
-          .map(el => new URL(el.getAttribute('src') || el.getAttribute('href'), base).href)
-          .filter(url => new URL(url).origin === entry.origin));
-        stale = signature(document, location.href) !== signature(live, entry.href);
-        lastModified = response.headers.get('last-modified');
-      } else for (const url of clientScriptUrls()) {
-        let ran, live;
-        try {
-          const [a, b] = await Promise.all([
-            fetch(url, { cache: "force-cache" }),
-            fetch(url, { cache: "no-store" }),
-          ]);
-          if (!a.ok || !b.ok) continue;              // can't tell — don't guess
-          lastModified = b.headers.get("last-modified") || lastModified;
-          [ran, live] = await Promise.all([a.text(), b.text()]);
-        } catch (e) { continue; }                    // offline / blocked: stay quiet
-        if (ran.length !== live.length || ran !== live) { stale = true; break; }
-      }
-      try { localStorage.setItem("clientVersionCheck", JSON.stringify({ at: Date.now(), stale, lastModified })); } catch (e) {}
+      const response = await fetch(entry.href, { cache: 'no-store' });
+      if (!response.ok) return false;
+      const live = new DOMParser().parseFromString(await response.text(), 'text/html');
+      if (!live.querySelector('script[data-boot][src*="js/net.js"]')) return false;
+      const stale = signature !== clientManifest(live, entry.href);
+      const lastModified = response.headers.get('last-modified');
+      try { localStorage.setItem('clientVersionCheck', JSON.stringify({ at: Date.now(), signature, stale, lastModified })); } catch (e) {}
       if (stale) showUpdateBanner(lastModified);
+      else document.getElementById('updateBanner')?.classList.add('hidden');
       return stale;
-    } catch (e) { return false; }                    // never let this break the game
+    } catch (e) { return false; }
   }
 
   // Not on the critical path — let the game boot first.
