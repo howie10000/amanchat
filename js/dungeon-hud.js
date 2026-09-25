@@ -1,6 +1,7 @@
 (function(){'use strict';
- let button=null,lastDungeon=null,lastQuest=null;
+ let button=null,runButton=null,lastDungeon=null,lastQuest=null,lastRun=null;
  window.dungeonQuestCollapsed=false;
+ window.dungeonRunCollapsed=false;
  function label(){
   const collapsed=window.dungeonQuestCollapsed;
   button.textContent=collapsed?'+':'−';button.classList.toggle('collapsed',collapsed);
@@ -19,6 +20,23 @@
   }
   if(button&&quest!==lastQuest)button.hidden=!quest;
   lastQuest=quest;
+  const run=!!(dungeon&&d?.cfg?.guild);
+  if(run&&!runButton){
+   runButton=document.createElement('button');runButton.id='dungeonRunToggle';runButton.type='button';
+   const update=()=>{
+    const collapsed=window.dungeonRunCollapsed;
+    document.body.classList.toggle('dungeon-run-collapsed',collapsed);
+    runButton.textContent=collapsed?'+':'−';
+    runButton.setAttribute('aria-expanded',String(!collapsed));
+    runButton.setAttribute('aria-controls','adRunHud');
+    runButton.setAttribute('aria-label',collapsed?'Show dungeon timer':'Collapse dungeon timer');
+   };
+   runButton.addEventListener('pointerdown',e=>e.stopPropagation());
+   runButton.addEventListener('click',e=>{e.stopPropagation();window.dungeonRunCollapsed=!window.dungeonRunCollapsed;update();runButton.blur();});
+   document.getElementById('stage').appendChild(runButton);update();
+  }
+  if(runButton&&run!==lastRun)runButton.hidden=!run;
+  lastRun=run;
  }
  window.gameDungeonHud={sync};
 })();

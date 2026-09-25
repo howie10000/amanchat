@@ -1775,6 +1775,12 @@ function queueBossAttack(a) {
   const head = bossHeadScreenPos();
   const rng = mulberry32(a.seed >>> 0);
   const shot = Object.assign({}, a, { at: now, fireAt: now + a.warnMs, resolved: false, head });
+  // Roars are local blasts, never a disk covering the entire arena. Use the
+  // same bounded radius for both the telegraph and collision.
+  if (a.type === "roar" || a.type === "wave") {
+    const radius = Number.isFinite(a.r) && a.r > 0 ? a.r : 300;
+    shot.r = Math.min(radius, Math.min(BOSS_ROOM.w, BOSS_ROOM.h) * 0.45);
+  }
   const jitter = (n) => (rng() - 0.5) * n;
   const pts = [];
   for (let i = 0; i < Math.max(1, a.targets || 1); i++) {
@@ -2096,8 +2102,8 @@ function updateBossAttacks() {
       a.inside = a.finalCount;
       if (inside) {
         netGuildDungeon({ action: "soak", seq: a.seq, inside: true }).catch(() => {});
-        // The burden is shared: each soaker takes a slice of it.
-        takePlayerDamage(a.dmg || 20); shakeDungeon(6);
+        // Meeting the circle requirement is safe. The server alone applies
+        // backlash if too few players report being inside.
         if (G) G.burst(a.sx, a.sy, ["#f0abfc", "#fff"], 24, { speed: 5 });
         if (playerDead()) return;
       }
@@ -2115,6 +2121,7 @@ function updateBossAttacks() {
       if (Math.abs(py - a.y) < (a.band || 40)) hit = true;
       addParticles(px, a.y, "#fbbf24", 14);
     } else if (a.type === "roar" || a.type === "wave") {
+      if (now - a.fireAt > Math.max(a.durMs || 0, 700)) continue;
       if (Math.hypot(px - a.head.x, py - a.head.y) < (a.r || 300)) hit = true;
     } else if (a.type === "chain") {
       for (const p of a.points) {

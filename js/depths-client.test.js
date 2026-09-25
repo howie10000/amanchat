@@ -365,6 +365,27 @@ for (const tier of ['guild_archive', 'guild_geode', 'guild_rime', 'guild_crypt']
     S.state.pos.x = soak.sx + 400;
     K.drawBossRoom();
     ok(soak.inside === 0, 'and drops when you leave');
+    const savedAttacks=d.bossAttacks;
+    d.bossAttacks=[soak];soak.need=1;soak.fireAt=Date.now()-1;soak.reported=false;
+    S.state.pos.x=soak.sx;S.state.pos.y=soak.sy;S.state.hp=100;
+    const callsBefore=S.netCalls.length;
+    K.updateBossAttacks();
+    ok(S.state.hp===100,'1/1 circle protects the solo player instead of dealing unavoidable damage');
+    ok(soak.finalCount===1&&S.netCalls.slice(callsBefore).some(x=>x.action==='soak'&&x.inside&&x.seq===soak.seq),'successful circle participation is reported for server resolution');
+    K.updateBossAttacks();ok(S.netCalls.length===callsBefore+1,'circle reports only once');
+    d.bossAttacks=savedAttacks;
+    for(const type of ['roar','wave']){
+      d.bossAttacks=[];K.queueBossAttack({type,r:700,dmg:20,warnMs:1400,seed:4});
+      const blast=d.bossAttacks[0];
+      ok(blast.r<=Math.min(K.BOSS_ROOM.w,K.BOSS_ROOM.h)*.45,type+' leaves room to escape');
+      S.state.pos.x=blast.head.x+blast.r+2;S.state.pos.y=blast.head.y;S.state.hp=100;blast.fireAt=Date.now()-1;
+      K.updateBossAttacks();ok(S.state.hp===100,type+' cannot damage outside its visible radius');
+      blast.resolved=false;d.bossAttacks=[blast];S.state.pos.x=blast.head.x;blast.fireAt=Date.now()-5000;
+      K.updateBossAttacks();ok(S.state.hp===100,type+' cannot land after its visual has expired');
+      blast.resolved=false;d.bossAttacks=[blast];blast.fireAt=Date.now()-1;S.state.iframesUntil=0;
+      K.updateBossAttacks();ok(S.state.hp<100,type+' still damages inside the active blast');
+    }
+    d.bossAttacks=savedAttacks;
     // bosses.js draws all nine from those fields, wind-up through open window
     const bctx = stubCtx();
     const t0 = Date.now();

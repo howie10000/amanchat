@@ -2580,7 +2580,13 @@ img.ii.iiSil{filter:brightness(0) drop-shadow(0 0 1px #64748b);opacity:.6}
 /* ===== END ARCANE DEPTHS ICONS ===== */
 
 /* Keep dungeon exploration clear; the objective can collapse to a single control. */
-body.dungeon-clean-hud #hud, body.dungeon-clean-hud #adRunHud { display: none !important; }
+body.dungeon-clean-hud #hud { display: none !important; }
 #dungeonQuestToggle { position:absolute; top:12px; left:calc(50% + 155px); width:30px; height:30px; padding:0; z-index:25; border:1px solid #88764e; border-radius:6px; background:#11151fee; color:#ffe5a8; font-size:22px; line-height:1; }
 #dungeonQuestToggle.collapsed { left:calc(50% - 15px); }
 #dungeonQuestToggle[hidden] { display:none; }
+
+/* The run timer stays available at the middle-left edge, even in boss rooms. */
+body.dungeon-clean-hud #adRunHud { top:50%; left:52px; transform:translateY(-50%); width:min(292px,calc(100% - 68px)); max-height:70%; overflow:auto; pointer-events:auto; }
+body.dungeon-run-collapsed #adRunHud { display:none !important; }
+#dungeonRunToggle { position:absolute; top:50%; left:14px; transform:translateY(-50%); width:30px; height:30px; padding:0; z-index:25; border:1px solid #88764e; border-radius:6px; background:#11151fee; color:#ffe5a8; font-size:22px; line-height:1; }
+#dungeonRunToggle[hidden] { display:none; }
