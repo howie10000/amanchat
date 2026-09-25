@@ -769,10 +769,10 @@
     return glCanvas;
   }
 
-  function warmup() {
-    if (dead || renderer) return !dead;
-    if (!init()) return false;
-    if (renderer.compile) renderer.compile(scene, camera);
+  function warmup(stage) {
+    if (dead) return false;
+    if (!renderer && !init()) return false;
+    if (stage !== 'build' && renderer.compile) renderer.compile(scene, camera);
     return true;
   }
 

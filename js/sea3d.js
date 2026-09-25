@@ -576,16 +576,16 @@ for(const e of v.entities){if(inCave||e.kind!=='island'&&e.hp<=0&&!e.wreck)conti
  if(v.me?.weapon==='gun'&&v.me.role==='crew'){const a=yaw+Math.PI,ex=v.x+Math.cos(a)*150,ey=v.y+Math.sin(a)*150,e=v.entities.find(e=>e.id===v.onFoot),p=project(ex,e?DARK_SEA.terrainHeight(e,ex,ey,v.me.cave)*U+1.7:3,ey);if(p){ctx.strokeStyle='#ffe2aa';ctx.lineWidth=2;ctx.beginPath();ctx.arc(p.x,p.y,8,0,Math.PI*2);ctx.stroke();}}
   if(gunner){ctx.strokeStyle='#ffe8ab';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(w/2,h/2,12,0,Math.PI*2);ctx.moveTo(w/2-24,h/2);ctx.lineTo(w/2+24,h/2);ctx.moveTo(w/2,h/2-24);ctx.lineTo(w/2,h/2+24);ctx.stroke();for(let i=1;i<5;i++){ctx.beginPath();ctx.moveTo(w/2-5,h/2+i*24);ctx.lineTo(w/2+5,h/2+i*24);ctx.stroke();}ctx.fillStyle='rgba(3,15,22,.88)';ctx.fillRect(w/2-250,h-90,500,64);ctx.fillStyle='#f5dc9f';ctx.font='16px Georgia';ctx.fillText(v.me.role.toUpperCase()+' CANNON · '+Math.round(cannonAim.elevation*180/Math.PI)+'° elevation',w/2,h-64);ctx.font='12px system-ui';const reload=v.cannonReload?.[v.me.cannon]||0;ctx.fillText((reload>0?'RELOADING '+(reload/1000).toFixed(1)+'s':'READY — click / Space to fire')+' · Hold right mouse / arrows to aim · F leave',w/2,h-42);}
   ctx.restore();if(v.cinematic){ctx.fillStyle='#000';ctx.fillRect(0,0,w,h*.095);ctx.fillRect(0,h*.905,w,h*.095);}return true;}
-function warmup(){
- if(renderer||failed)return !!renderer;
+function warmup(stage){
+ if(failed)return false;
  try{
-  if(!initialize())return false;
+  if(!renderer&&!initialize())return false;
   if(!hero){
    hero=boat('brig',false,false);
    scene.add(hero);
    shipType='brig';
   }
-  if(renderer.compile)renderer.compile(scene,camera);
+  if(stage!=='build'&&renderer.compile)renderer.compile(scene,camera);
   return true;
  }catch(e){
   console.warn('SeaGL warmup unavailable',e);

@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const raf=[],idle=[],scripts=[];let hidden=false;
-const env={URL,Promise,setTimeout,window:{requestIdleCallback:f=>idle.push(f)},requestAnimationFrame:f=>raf.push(f),MutationObserver:class{constructor(fn){env.observe=fn;}observe(){}},document:{currentScript:{src:'https://example.com/amanchat/js/sea-assets.js?v=1'},hidden:false,getElementById:()=>({classList:{contains:()=>hidden}}),createElement:()=>({setAttribute(){},remove(){}}),head:{appendChild:s=>scripts.push(s)},addEventListener(){}}};
+const env={URL,Promise,performance:{now:()=>0},navigator:{},setTimeout:()=>1,clearTimeout(){},window:{addEventListener(){},requestIdleCallback:f=>idle.push(f)},requestAnimationFrame:f=>raf.push(f),MutationObserver:class{constructor(fn){env.observe=fn;}observe(){}},document:{currentScript:{src:'https://example.com/amanchat/js/sea-assets.js?v=1'},hidden:false,getElementById:()=>({classList:{contains:()=>hidden}}),createElement:()=>({setAttribute(){},remove(){}}),head:{appendChild:s=>scripts.push(s)},addEventListener(){}}};
 vm.runInNewContext(fs.readFileSync(path.join(__dirname,'sea-assets.js'),'utf8'),env);
 (async()=>{
  assert.equal(scripts.length,0);raf.shift()();assert.equal(scripts.length,0);raf.shift()();
@@ -11,7 +11,7 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'sea-assets.js'),'utf8'),
  const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
  assert(!html.includes('<script defer src="js/race-models.js'),'Model download cannot block deferred login/game scripts');
  assert(!/<script[^>]*src="js\/dungeon-title\.js/.test(html),'Title scene stays off the deferred startup path');
- assert(html.includes("load('js/dungeon-title.js"),'Boot loader starts the title before game scripts');
+ assert(html.includes("load('js/dungeon-title.js"),'Boot loader owns title startup');
  scripts[0].onload();await Promise.resolve();
  // Racing models stay available on demand for the racetrack, sharing one request.
  const race=env.window.loadRacingAssets();assert.equal(env.window.loadRacingAssets(),race,'Background downloads share a promise');
@@ -19,9 +19,9 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'sea-assets.js'),'utf8'),
  env.window.DarkSeaBlenderMeshes={partial:true};env.window.DarkSeaLegendary={partial:true};
  const pending=env.window.loadSeaAssets();assert.equal(env.window.loadSeaAssets(),pending);assert.equal(scripts.length,5,'Partial title globals must not suppress full gameplay downloads');assert(scripts.slice(2).every(s=>s.src.startsWith('https://example.com/amanchat/assets/')));scripts.slice(2).forEach(s=>s.onload());await pending;
  // A failed title download can be retried when the login is shown again.
- const retry={URL,Promise,setTimeout,window:{},requestAnimationFrame:f=>f(),MutationObserver:class{constructor(fn){retry.observe=fn;}observe(){}},document:{currentScript:{src:'https://example.com/x/js/sea-assets.js'},hidden:false,getElementById:()=>({classList:{contains:()=>false}}),createElement:()=>({setAttribute(){},remove(){}}),head:{appendChild:s=>retry.list.push(s)},addEventListener(){}},list:[]};
+ const retry={URL,Promise,performance:{now:()=>0},navigator:{},setTimeout,clearTimeout,window:{addEventListener(){}},requestAnimationFrame:f=>f(),MutationObserver:class{constructor(fn){retry.observe=fn;}observe(){}},document:{currentScript:{src:'https://example.com/x/js/sea-assets.js'},hidden:false,getElementById:()=>({classList:{contains:()=>false}}),createElement:()=>({setAttribute(){},remove(){}}),head:{appendChild:s=>retry.list.push(s)},addEventListener(){}},list:[]};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'sea-assets.js'),'utf8'),retry);
  assert.equal(retry.list.length,1);retry.list[0].onerror();await new Promise(r=>setTimeout(r,0));retry.observe();assert.equal(retry.list.length,2,'Title load retries after a network failure');
- hidden=true;const before=scripts.length;env.observe();assert.equal(scripts.length-before,4,'Gameplay only prefetches optional artwork');assert(scripts.slice(before).every(s=>s.rel==='prefetch'&&s.fetchPriority==='low'),'Background loading never executes model packs or builds scenes');
+ hidden=true;const before=scripts.length;env.observe();assert.equal(scripts.length,before,'Entering gameplay queues optional work without running it immediately');assert.equal(typeof env.window.scheduleBackgroundWarmup,'function');
  console.log('PASS post-paint dungeon title loading, on-demand racing models, shared requests, project paths and retry');
 })().catch(e=>{console.error(e);process.exitCode=1;});
