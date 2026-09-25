@@ -215,8 +215,9 @@ function adModText(m) {
   if (!def) return "";
   if (m.k === "resonance") return "Resonance: +5% to every other mod";
   if (m.k === "dashCd") return "-" + adPct(m.v) + " Dash cooldown";
-  if (!def.pct) return "+" + (Math.round((+m.v || 0) * 10) / 10) + " " + def.label;
-  return "+" + adPct(m.v) + " " + def.label;
+  const effective = (m.k === "lifesteal" || m.k === "regen") ? m.v * ECON.ITEM_HEALING_MULT : m.v;
+  if (!def.pct) return "+" + (Math.round((+effective || 0) * 100) / 100) + " " + def.label;
+  return "+" + adPct(effective) + " " + def.label;
 }
 const AD_FX_LABEL = {
   crit: "Critical chance", critDmg: "Critical damage", bossDmg: "Damage to bosses", eliteDmg: "Damage to elites",
@@ -225,11 +226,11 @@ const AD_FX_LABEL = {
   defPct: "Defence", atkPct: "Attack", critIgnite: "Crits ignite for extra damage",
 };
 // Human lines for any fx object (unique signature, set bonus, rune, totals).
-function adFxLines(fx) {
+function adFxLines(fx, effective = false) {
   const out = [];
   if (!fx || typeof fx !== "object") return out;
   for (const k of Object.keys(fx)) {
-    const v = fx[k];
+    const v = !effective && (k === "lifesteal" || k === "regen") ? fx[k] * ECON.ITEM_HEALING_MULT : fx[k];
     if (v == null || v === 0 || k === "sets") continue;
     if (AD_FX_LABEL[k] && typeof v === "number") out.push("+" + adPct(v) + " " + AD_FX_LABEL[k]);
     else if (k === "regen" && typeof v === "number") out.push("+" + (Math.round(v * 10) / 10) + " HP regen /s");
@@ -436,7 +437,7 @@ function armoryNav() {
 }
 function fxChips() {
   const fx = gearFxNow();
-  const lines = adFxLines(Object.assign({}, fx, { sets: null }));
+  const lines = adFxLines(Object.assign({}, fx, { sets: null }), true);
   if (!lines.length) return "";
   return `<div class="adFxChips">${lines.map(l => `<span>${gEsc(l)}</span>`).join("")}</div>`;
 }

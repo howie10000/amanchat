@@ -223,12 +223,12 @@
   }
   // Pylon data for a phase: the Concordant carries its own; khyra/iskarra get
   // pylons on their LAST phase in raid mode. Null when there are none.
-  function raidPylons(bossId, phase, isRaid) {
+  function raidPylons(bossId, phase, isRaid, players = 1) {
     const def = ECON.GUILD_BOSSES[bossId];
     if (!def) return null;
     const count = ECON.bossPhaseCount(bossId);
     const p = phase >= 2 ? ECON.bossPhases(bossId)[Math.min(phase, count) - 2] : null;
-    if (def.pylons) return p && p.pylonShield ? { pylons: def.pylons, pylonHpFrac: def.pylonHpFrac, pylonWindowMs: def.pylonWindowMs } : null;
+    if (def.pylons) return p && p.pylonShield ? { pylons: bossId === 'concordant' ? Math.min(4, Math.max(1, players | 0)) : def.pylons, pylonHpFrac: def.pylonHpFrac, pylonWindowMs: def.pylonWindowMs } : null;
     if (isRaid && RAID_OVERLAY.pylonBosses.includes(bossId) && (phase | 0) >= count && count > 1)
       return { pylons: RAID_OVERLAY.pylons, pylonHpFrac: RAID_OVERLAY.pylonHpFrac, pylonWindowMs: RAID_OVERLAY.pylonWindowMs };
     return null;

@@ -1742,7 +1742,7 @@ function onPylon(m) {
   if (m.broken) {
     b.pylonsBroken = true;
     if (G) G.banner("THE PYLONS SHATTER", "The leyline shield is down — strike now", "#c4b5fd", 2600);
-    for (let i = 0; i < 4; i++) { const p = pylonScreenPos(i); if (G) G.burst(p.x, p.y - 20, ["#c4b5fd", "#fff"], 40, { speed: 7, life: 50 }); }
+    for (let i = 0; i < b.parts.filter(p => p.pylon).length; i++) { const p = pylonScreenPos(i); if (G) G.burst(p.x, p.y - 20, ["#c4b5fd", "#fff"], 40, { speed: 7, life: 50 }); }
     shakeDungeon(20);
   }
   if (Array.isArray(m.regrew) && m.regrew.length) {
@@ -2817,7 +2817,7 @@ function drawBossStatusHud(ctx, b, t, x0, w, accent) {
   if (b.hardEnraged || (state.dungeon && state.dungeon.hardEnraged)) notes.push({ txt: "HARD ENRAGED", col: "#ef4444" });
   const d = state.dungeon;
   if (b.addsShield && (d.arenaEnemies || []).some(e => e.hp > 0)) notes.push({ txt: "SHIELDED BY ITS THRALLS — kill the adds", col: "#67e8f9" });
-  if (b.pylonShield && !b.pylonsBroken) notes.push({ txt: "BREAK ALL FOUR PYLONS TOGETHER", col: "#c4b5fd" });
+  if (b.pylonShield && !b.pylonsBroken) notes.push({ txt: b.parts.filter(p => p.pylon).length === 1 ? "BREAK THE PYLON" : "BREAK ALL " + b.parts.filter(p => p.pylon).length + " PYLONS TOGETHER", col: "#c4b5fd" });
   if (d.wardUntil > t) notes.push({ txt: "WARDED — hits reflect", col: "#e9d5ff" });
   if (b.stages > 1) notes.push({ txt: "WARDEN " + (b.stage || 1) + " / " + b.stages, col: "#fde68a" });
   notes.forEach((n, i) => {
@@ -3220,7 +3220,7 @@ function drawTomeHud() {
 
 
 function drawDungeon() {
-  if (state.dungeon && state.dungeon.bossRoom) { drawBossRoom(); if(state.dungeon.continuous && !state.dungeon.cine && !state.dungeon.phaseCine && !state.dungeon.victoryCine) gameExpedition.minimap(); return; }
+  if (state.dungeon && state.dungeon.bossRoom) { drawBossRoom(); return; }
   if (state.dungeon && state.dungeon.continuous) { gameExpedition.draw(); return; }
   const t = Date.now();
   // Floor (full-canvas background, unshifted)

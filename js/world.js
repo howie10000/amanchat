@@ -745,6 +745,7 @@ function drawWaypointArrow() {
 // ---- Minimap: the whole town on a dark-glass plate with a gold bezel, bottom-left ----
 const MINIMAP = { w: 190, h: 148, pad: 12 };
 function drawMinimap() {
+  if (window.gameLake && (gameLake.fightActive() || gameLake.inCinematic())) return;
   const mw = MINIMAP.w, mh = MINIMAP.h;
   const ox = MINIMAP.pad;   // bottom-left: the phone HUD owns the bottom-right corner
   const oy = canvas.height - mh - MINIMAP.pad - 46;

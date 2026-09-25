@@ -284,7 +284,7 @@
     ctx.restore();
     // Title + objective, top-centre: the top-left corner belongs to the DOM HUD
     // (money card + run HUD), which used to cover this panel (QA B7).
-    {const pw=380,px=(canvas.width-pw)/2,cap=th?th.cap:'#88764e';
+    if(!window.dungeonQuestCollapsed){const pw=380,px=(canvas.width-pw)/2,cap=th?th.cap:'#88764e';
     ctx.fillStyle='rgba(4,6,9,.82)';ctx.fillRect(px,10,pw,56);ctx.strokeStyle=cap;ctx.globalAlpha=.55;ctx.strokeRect(px+.5,10.5,pw-1,55);ctx.globalAlpha=1;
     ctx.fillStyle=th?th.torch:'#e3d1a6';ctx.font='17px Georgia';ctx.textAlign='center';ctx.fillText(p.depth?'The Arcane Depths — Floor '+p.depth:d.cfg.name,canvas.width/2,33);
     ctx.font='12px sans-serif';ctx.fillStyle='#d8dadd';

@@ -2300,6 +2300,7 @@ function update() {
 
 // ---------- DRAW ----------
 function draw() {
+  window.gameDungeonHud?.sync();
   if (state.area === 'sea') { gameSea.draw(); return; }
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (state.area === "neighborhood") gameWorld.drawNeighborhood();

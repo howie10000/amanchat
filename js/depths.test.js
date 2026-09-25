@@ -133,7 +133,7 @@ for (const [slot, ids] of Object.entries(DEPTHS.AFFIX_POOLS)) for (const id of i
     }
   }
   ok(DEPTHS.raidDeck('concordant', 1, true).filter(a => a.type === 'soak').length === 1, 'the Concordant keeps its own soak');
-  ok(DEPTHS.raidPylons('concordant', 2, true).pylons === 4 && DEPTHS.raidPylons('concordant', 1, true) === null && DEPTHS.raidPylons('concordant', 3, true) === null, 'Concordant pylons on its divided phase');
+  ok(DEPTHS.raidPylons('concordant', 2, true).pylons === 1 && DEPTHS.raidPylons('concordant', 1, true) === null && DEPTHS.raidPylons('concordant', 3, true) === null, 'Concordant pylons on its divided phase');
   ok(DEPTHS.raidPylons('khyra', 2, true).pylons === 4 && DEPTHS.raidPylons('khyra', 2, false) === null && DEPTHS.raidPylons('iskarra', 3, true) && !DEPTHS.raidPylons('iskarra', 2, true), 'khyra/iskarra get pylons on their LAST phase in raids');
 }
 

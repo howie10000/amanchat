@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict'),E=require('./shared/economy'),D=require('./shared/depths');
+for(let players=1;players<=24;players++)assert.equal(D.raidPylons('concordant',2,true,players).pylons,Math.min(4,players));
+assert.equal(D.raidPylons('khyra',2,true,1).pylons,4,'Other bosses retain their pylon rules');
+const boss=E.GUILD_BOSSES.concordant;
+assert.equal(boss.baseHp,480000);
+assert.deepEqual(boss.attacks.filter(a=>a.dmg).map(a=>a.dmg),[60,60,56,48]);
+assert.deepEqual(boss.phases[0].attacks.filter(a=>a.dmg).map(a=>a.dmg),[88,24,52,48,56]);
+assert.deepEqual(boss.phases[1].attacks.filter(a=>a.dmg).map(a=>a.dmg),[36,26,52,52,60]);
+assert.deepEqual([boss.attacks[3].backlash,boss.phases[0].attacks[3].backlash,boss.phases[1].attacks[3].backlash],[90,100,110]);
+const item={v:2,slot:'weapon',mods:[{k:'lifesteal',v:.03},{k:'regen',v:1.5},{k:'bossDmg',v:.1}],gems:[]};
+const fx=E.gearFx([item]);assert.equal(fx.lifesteal,.0075);assert.equal(fx.regen,.375);assert.equal(fx.bossDmg,.1);
+const capped=E.gearFx(Array(20).fill(item));assert.equal(capped.lifesteal,.03);assert.equal(capped.regen,1.5);
+const unique=E.gearFx([{v:2,slot:'ring',uq:'concord_band',mods:[],gems:[]}]);assert.equal(unique.lifesteal,.0075);
+assert.equal(D.SHRINES.renewal.regen,6,'Shrine regeneration remains unchanged');
+console.log('PASS Concordant 1–4 pylons, triple HP, double attacks/backlash, item-only healing reduction and caps');

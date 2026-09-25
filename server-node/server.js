@@ -2618,7 +2618,7 @@ function spawnGuildBoss(run, bossId) {
 function setPylons(run, now) {
     const b = run.boss;
     b.parts = b.parts.filter(p => !p.pylon);
-    const pc = DEPTHS.raidPylons(b.id, b.phase, b.raid);
+    const pc = DEPTHS.raidPylons(b.id, b.phase, b.raid, [...run.members].filter(u => !run.spectators.has(u)).length);
     b.pylonCfg = pc;
     b.pylonShield = !!pc;
     b.pylonsBroken = false;
@@ -5201,7 +5201,7 @@ const ECONOMY_OPS = {
             if (isPylon) { if (!b.pylonShield || b.pylonsBroken) throw new Error('The pylon is dormant.'); }
             else {
                 if (b.addsShield && arenaAddsAlive(run)) throw new Error('Its thralls shield it.');
-                if (b.pylonShield && !b.pylonsBroken) throw new Error('The leylines shield it — break all four pylons together.');
+                if (b.pylonShield && !b.pylonsBroken) throw new Error('The leylines shield it — break the active pylons together.');
             }
             if (target.hp <= 0) throw new Error('That part is already down.');
             b.hitLast.set(k, now);

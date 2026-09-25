@@ -1393,37 +1393,37 @@
     // ---- RAID: THE CONCORDANT (raid_nexus boss) ----
     concordant: {
       name: "THE CONCORDANT", parts: 4, partName: "leyline anchor", color: "#1e1b4b", accent: "#c4b5fd",
-      baseHp: 160000, reward: 36000, tier: "boss", enrageMs: 10 * 60000, maxAdds: 8,
+      baseHp: 480000, reward: 36000, tier: "boss", enrageMs: 10 * 60000, maxAdds: 8,
       pylons: 4, pylonHpFrac: 0.05, pylonWindowMs: 4000,          // pylon parts are indices parts..parts+3
       cry: "SIX HOUSES. ONE HEARTBEAT. LET US SEE IF YOU CAN KEEP TIME.", title: "WHERE EVERY LEYLINE MEETS",
       attacks: [
-        { type: "cross",  weight: 20, warnMs: 1700, arms: 4, len: 600, w: 56, dmg: 30, durMs: 1100, tell: "CONVERGENCE", dodge: "stand between the beams" },
-        { type: "orbit",  weight: 18, warnMs: 1700, len: 560, w: 58, dmg: 30, durMs: 2400, sweep: 5.0, tell: "LEY SWEEP", dodge: "run the way the arm is going" },
-        { type: "ring",   weight: 18, warnMs: 1600, r: 560, band: 56, dmg: 28, durMs: 1500, count: 2, gapMs: 500, tell: "RESONANCE", dodge: "let each ring pass" },
-        { type: "soak",   weight: 22, warnMs: 2200, r: 120, dmg: 24, backlash: 45, tell: "BEAR THE CONCORD", dodge: "enough of you must stand in the circle" },
+        { type: "cross",  weight: 20, warnMs: 1700, arms: 4, len: 600, w: 56, dmg: 60, durMs: 1100, tell: "CONVERGENCE", dodge: "stand between the beams" },
+        { type: "orbit",  weight: 18, warnMs: 1700, len: 560, w: 58, dmg: 60, durMs: 2400, sweep: 5.0, tell: "LEY SWEEP", dodge: "run the way the arm is going" },
+        { type: "ring",   weight: 18, warnMs: 1600, r: 560, band: 56, dmg: 56, durMs: 1500, count: 2, gapMs: 500, tell: "RESONANCE", dodge: "let each ring pass" },
+        { type: "soak",   weight: 22, warnMs: 2200, r: 120, dmg: 48, backlash: 90, tell: "BEAR THE CONCORD", dodge: "enough of you must stand in the circle" },
         { type: "summon", weight: 22, warnMs: 1700, n: 3, addType: "voidling", tell: "DISSONANCE", dodge: "cut the voidlings down" },
       ],
       phases: [
         { at: 0.60, shiftMs: 3600, attackEveryMs: 2200, pylonShield: true,
           name: "THE CONCORDANT, DIVIDED", color: "#312e81", accent: "#a78bfa",
-          cry: "FOUR PILLARS. FOUR HANDS. ONE MOMENT.", title: "BREAK THE PYLONS TOGETHER",
+          cry: "THE PILLARS. YOUR HANDS. ONE MOMENT.", title: "BREAK THE PYLONS TOGETHER",
           attacks: [
-            { type: "sigils", weight: 22, warnMs: 2400, n: 3, r: 64, dmg: 44, perQuadrant: true, tell: "FOUR SIGNS", dodge: "each corner reads its own sign" },
-            { type: "lance",  weight: 18, warnMs: 1400, len: 900, w: 50, dmg: 12, durMs: 3400, turn: 1.0, tell: "LEY LANCE", dodge: "keep circling" },
-            { type: "spiral", weight: 16, warnMs: 1500, arms: 4, points: 28, r: 42, dmg: 26, durMs: 2200, turns: 1.6, tell: "LEY WHEEL", dodge: "cross the arms" },
-            { type: "soak",   weight: 20, warnMs: 2200, r: 120, dmg: 24, backlash: 50, tell: "BEAR THE CONCORD", dodge: "enough of you must stand in the circle" },
+            { type: "sigils", weight: 22, warnMs: 2400, n: 3, r: 64, dmg: 88, perQuadrant: true, tell: "FOUR SIGNS", dodge: "each corner reads its own sign" },
+            { type: "lance",  weight: 18, warnMs: 1400, len: 900, w: 50, dmg: 24, durMs: 3400, turn: 1.0, tell: "LEY LANCE", dodge: "keep circling" },
+            { type: "spiral", weight: 16, warnMs: 1500, arms: 4, points: 28, r: 42, dmg: 52, durMs: 2200, turns: 1.6, tell: "LEY WHEEL", dodge: "cross the arms" },
+            { type: "soak",   weight: 20, warnMs: 2200, r: 120, dmg: 48, backlash: 100, tell: "BEAR THE CONCORD", dodge: "enough of you must stand in the circle" },
             { type: "summon", weight: 12, warnMs: 1700, n: 2, addType: "sentinel", tell: "WARDENS OF THE LINE", dodge: "kill the sentinels" },
-            { type: "ring",   weight: 12, warnMs: 1500, r: 580, band: 58, dmg: 28, durMs: 1500, count: 3, gapMs: 460, tell: "RESONANCE", dodge: "let each ring pass" },
+            { type: "ring",   weight: 12, warnMs: 1500, r: 580, band: 58, dmg: 56, durMs: 1500, count: 3, gapMs: 460, tell: "RESONANCE", dodge: "let each ring pass" },
           ] },
         { at: 0.25, shiftMs: 3600, attackEveryMs: 1800, regrowParts: 0,
           name: "THE CONCORDANT, UNBOUND", color: "#0f172a", accent: "#f0abfc",
           cry: "THEN LET THE LINES SNAP.", title: "THE NEXUS COLLAPSES",
           attacks: [
-            { type: "collapse", weight: 20, warnMs: 1800, rStart: 540, rEnd: 150, dmg: 18, durMs: 4000, tell: "NEXUS COLLAPSE", dodge: "stay in the light" },
-            { type: "lance",    weight: 22, warnMs: 1400, len: 900, w: 50, dmg: 13, durMs: 3600, turn: 1.1, beams: 2, tell: "TWIN LEY LANCES", dodge: "stay between the two beams and keep turning" },
-            { type: "meteor",   weight: 16, warnMs: 1400, r: 54, dmg: 26, targets: 14, durMs: 1800, tell: "SHATTERED SKY", dodge: "never stop moving" },
-            { type: "soak",     weight: 20, warnMs: 2100, r: 120, dmg: 26, backlash: 55, tell: "BEAR THE CONCORD", dodge: "enough of you must stand in the circle" },
-            { type: "constellation", weight: 22, warnMs: 1800, stars: 8, w: 36, dmg: 30, durMs: 900, tell: "BROKEN CONCORD", dodge: "step off the lines" },
+            { type: "collapse", weight: 20, warnMs: 1800, rStart: 540, rEnd: 150, dmg: 36, durMs: 4000, tell: "NEXUS COLLAPSE", dodge: "stay in the light" },
+            { type: "lance",    weight: 22, warnMs: 1400, len: 900, w: 50, dmg: 26, durMs: 3600, turn: 1.1, beams: 2, tell: "TWIN LEY LANCES", dodge: "stay between the two beams and keep turning" },
+            { type: "meteor",   weight: 16, warnMs: 1400, r: 54, dmg: 52, targets: 14, durMs: 1800, tell: "SHATTERED SKY", dodge: "never stop moving" },
+            { type: "soak",     weight: 20, warnMs: 2100, r: 120, dmg: 52, backlash: 110, tell: "BEAR THE CONCORD", dodge: "enough of you must stand in the circle" },
+            { type: "constellation", weight: 22, warnMs: 1800, stars: 8, w: 36, dmg: 60, durMs: 900, tell: "BROKEN CONCORD", dodge: "step off the lines" },
           ] },
       ],
     },
@@ -2088,6 +2088,7 @@
   // items = equipped pieces (raw or normGear'd). Sums mods (resonance x1.05
   // on its own item), gem/rune effects, unique signature effects and set
   // bonuses at 2/4 pieces, then applies GEAR_FX_CAPS.
+  const ITEM_HEALING_MULT = 0.25;
   function gearFx(items) {
     const fx = emptyFx();
     for (const raw of (items || [])) {
@@ -2113,7 +2114,10 @@
       if (n >= 2) addFx(fx, s.bonus[2]);
       if (n >= 4) addFx(fx, s.bonus[4]);
     }
-    return capFx(fx);
+    capFx(fx);
+    fx.lifesteal *= ITEM_HEALING_MULT;
+    fx.regen *= ITEM_HEALING_MULT;
+    return fx;
   }
   // The damage number for one hit (server-side for guild runs, local on the
   // quest board). `base` already carries mastery x gearAttackMult.
@@ -3093,7 +3097,7 @@
     bossPhases, bossPhaseCount, guildBossHpMult, guildBossPylonPos,
     gearRarityIdx, GEAR_ATK_SOFTCAP, GEAR_MODS, GEAR_MOD_COUNT, GEAR_FX_CAPS, GEAR_UNIQUES, GEAR_SETS,
     SOCKETS_BY_RARITY, SELL_V2_MULT, SET_SLOTS,
-    normGear, gearStats, setCounts, gearFx, emptyFx, rollHitDamage, rollMod,
+    normGear, gearStats, setCounts, gearFx, ITEM_HEALING_MULT, emptyFx, rollHitDamage, rollMod,
     makeUnique, makeSetPiece, shiftWeights, floorWeights, lootQualityMult,
     DUNGEON_LOOT, lootRowFor, BONUS_LOOT, CHEST_TIERS, MATERIALS, MATERIAL_IDS, sigilOf,
     GEMS, GEM_TYPES, GEM_MAX_GRADE, RUNES, RUNE_IDS, parseGem, gemId, mergeMats,
