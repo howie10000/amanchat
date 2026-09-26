@@ -5076,7 +5076,7 @@
     crescent(ctx, a, t, o) {
       const from = (a.ox != null && a.oy != null) ? { x: a.ox, y: a.oy } : (a.head || headPos());
       const to = (a.points && a.points[0]) || a.safe || { x: W / 2, y: H * 0.7 };
-      const ang = Math.atan2(to.y - from.y, to.x - from.x), band = a.band || 60, speed = (a.speed || 7) * 60;
+      const ang = a.ang != null && Number.isFinite(+a.ang) ? +a.ang : Math.atan2(to.y - from.y, to.x - from.x), band = a.band || 60, speed = (a.speed || 7) * 60;
       ctx.save(); ctx.translate(from.x, from.y); ctx.rotate(ang);
       if (o.winding) {
         ctx.fillStyle = `rgba(239,68,68,${0.07 + 0.1 * o.warn})`; ctx.fillRect(0, -band * 1.3, 1100, band * 2.6);

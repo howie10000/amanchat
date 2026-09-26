@@ -500,7 +500,10 @@
   const BOSS_THEME = { curator: "archive", astraea: "archive", prismgolem: "geode", khyra: "geode", halvard: "rime", iskarra: "rime",
     heart: "depths", concordant: "nexus", ley_ember: "nexus", ley_tide: "nexus", ley_star: "nexus",
     // the three minis that used to borrow the brick room
-    ogrelord: "warpit", herald: "belfry", broodmother: "nest" };
+    ogrelord: "warpit", herald: "belfry", broodmother: "nest",
+    // THE SUNDERED CROWN
+    gorehorn: "thornwild", briar_matron: "thornwild", kael: "colosseum", pit_champion: "colosseum",
+    twin_monarchs: "mirror", veiled_assassin: "mirror", sundered_king: "throne", kael_crownbound: "throne" };
   const THEME_LOOK = {
     //          stone tint           ambient   hemi-sky  fog       bg        torch     key light
     archive: { tint: [0.5, 0.56, 1.0], amb: 0x2a2a55, sky: 0x4a4a8a, fog: 0x05060f, bg: 0x070918, torch: 0xfde68a, key: 0xfff0c8 },
@@ -515,6 +518,11 @@
     belfry:  { tint: [0.5, 0.5, 0.57], amb: 0x1a1826, sky: 0x37344e, fog: 0x06050b, bg: 0x07060c, torch: 0xffd9a8, key: 0xdcd6ee, flame: 0.4, torchI: 0.8 },
     // Broodmother: the Ashen Roost's nest, a basalt cave cut by lava.
     nest:    { tint: [0.5, 0.36, 0.3], amb: 0x2a120a, sky: 0x4a2010, fog: 0x0e0503, bg: 0x0a0302, torch: 0xff7a2e, key: 0xffc890, flame: 0.8, torchI: 0.45 },
+    // THE SUNDERED CROWN chambers
+    thornwild: { tint: [0.55, 0.7, 0.45], amb: 0x1a2410, sky: 0x3c5a1e, fog: 0x050803, bg: 0x040603, torch: 0xbef264, key: 0xe8ffc8 },
+    colosseum: { tint: [0.85, 0.66, 0.5], amb: 0x2a1a10, sky: 0x6a4020, fog: 0x0b0604, bg: 0x0a0503, torch: 0xfb923c, key: 0xffd6a8 },
+    mirror:    { tint: [0.7, 0.66, 0.9], amb: 0x241e3a, sky: 0x5a4a8a, fog: 0x040308, bg: 0x06040c, torch: 0xf5d0fe, key: 0xf0e6ff },
+    throne:    { tint: [0.62, 0.52, 0.44], amb: 0x2a1c0c, sky: 0x5a4010, fog: 0x050302, bg: 0x050302, torch: 0xfde047, key: 0xfff0c0 },
   };
   let themeNow = null, roomMats = null, flameK = 1, torchK = 1;
   const decor = {};
@@ -3146,10 +3154,281 @@
       return { eyes, eyeY, limbs, parts: [], idle, torso };
     };
   }
+  // ---------------------------------------------------------------
+  //  THE SUNDERED CROWN (B3) — cutscene rigs
+  // ---------------------------------------------------------------
+  // One jointed humanoid kit for the duellists, the monarchs and the king
+  // (hips -> knees, shoulders -> elbows -> weapon hands, all groups so the
+  // entrance / death poses can swing them), a quadruped for Gorehorn, and the
+  // King's spectral colossus for his phase-2 cinematic.
+  function crownMat(color, o) { return new THREE.MeshStandardMaterial(Object.assign({ color: new THREE.Color(color), roughness: 0.6, metalness: 0.3 }, o || {})); }
+  function crownHuman(o) {
+    return function (root, shell, body, trim, accent) {
+      const S = o.scale || 1, g = new THREE.Group(); g.scale.setScalar(S); g.position.x = o.x || 0; shell.add(g);
+      const armorM = crownMat(o.armor || 0x3a2a2e, { metalness: 0.55, roughness: 0.42 });
+      const clothM = crownMat(o.cloth || 0x7f1d1d, { metalness: 0.05, roughness: 0.9, side: THREE.DoubleSide });
+      const skinM = crownMat(o.skin || 0xe7c1a0, { metalness: 0, roughness: 0.8 });
+      const metalM = crownMat(o.metal || 0xcbd5e1, { metalness: 0.92, roughness: 0.22 });
+      const trimM = crownMat(o.trim || accent || 0xfde68a, { metalness: 0.7, roughness: 0.3, emissive: new THREE.Color(o.trim || accent || 0xfde68a), emissiveIntensity: 0.25 });
+      const bladeM = crownMat(0xe8edf3, { metalness: 0.95, roughness: 0.12, emissive: new THREE.Color(o.bladeGlow || accent || 0xffffff), emissiveIntensity: 0.15 });
+      const hipY = 5.6;
+      // legs (a robe hides them)
+      const legs = [];
+      for (const sx of [-1, 1]) {
+        const hip = new THREE.Group(); hip.position.set(sx * 0.9, hipY, 0); g.add(hip);
+        limbOf(hip, o.robe ? clothM : clothM, [[0, 0, 0], [0, -1.4, 0.15], [0, -2.8, 0.1]], 0.72, 0.55, 6, 10);
+        const knee = new THREE.Group(); knee.position.set(0, -2.8, 0.1); hip.add(knee);
+        limbOf(knee, armorM, [[0, 0, 0], [0, -1.3, -0.05], [0, -2.6, 0]], 0.55, 0.42, 6, 10);
+        blob(knee, armorM, 0.5, 0.35, 0.95, 0, -2.75, 0.35);
+        legs.push({ hip, knee, sx });
+      }
+      if (o.robe) { const robe = mesh(g, lathe([[o.robeR || 3.1, 0], [2.4, 2.5], [1.5, 5.2], [1.25, 6.6]], 28), clothM, 0, 0, 0); robe.material = clothM;
+        for (let k = 0; k < 3; k++) { const hem = mesh(g, new THREE.TorusGeometry((o.robeR || 3.1) - 0.05 - k * 0.3, 0.07, 5, 40), trimM, 0, 0.12 + k * 0.9, 0); hem.rotation.x = Math.PI / 2; } }
+      // torso: a lathed chest flattened front-to-back, a belt, a tabard
+      const torsoG = lathe([[1.15, 0], [1.3, 0.9], [1.7, 2.3], [1.85, 3.3], [1.45, 4.0], [0.7, 4.3]], 24);
+      sculpt(torsoG, (v) => { v.z *= 0.72; });
+      const torso = mesh(g, torsoG, o.bareChest ? skinM : armorM, 0, hipY, 0);
+      const belt = mesh(g, new THREE.TorusGeometry(1.22, 0.14, 6, 24), trimM, 0, hipY + 0.2, 0); belt.rotation.x = Math.PI / 2; belt.scale.y = 0.72;
+      if (!o.robe) { const tab = mesh(g, new THREE.PlaneGeometry(1.5, 2.4, 1, 4), clothM, 0, hipY - 1.1, 0.95); tab.rotation.x = 0.08; }
+      // shoulders + arms
+      const arms = [];
+      for (const sx of [-1, 1]) {
+        const sh = new THREE.Group(); sh.position.set(sx * 1.95, hipY + 3.6, 0); g.add(sh);
+        if (o.pauldron) { const p = blob(sh, metalM, 1.0, 0.7, 1.0, sx * 0.2, 0.25, 0); p.rotation.z = -sx * 0.3; }
+        limbOf(sh, o.bareArms ? skinM : clothM, [[0, 0, 0], [sx * 0.2, -1.2, 0.1], [sx * 0.25, -2.3, 0.2]], 0.5, 0.42, 6, 10);
+        const el = new THREE.Group(); el.position.set(sx * 0.25, -2.3, 0.2); sh.add(el);
+        limbOf(el, armorM, [[0, 0, 0], [0, -1.0, 0.35], [0, -1.9, 0.55]], 0.42, 0.34, 6, 10);
+        const hand = blob(el, o.bareArms ? skinM : armorM, 0.36, 0.4, 0.36, 0, -2.05, 0.6);
+        arms.push({ arm: sh, el, hand, sx });
+      }
+      // the weapon, in the right hand
+      const R = arms[1], weap = new THREE.Group(); weap.position.set(0, -2.05, 0.6); R.el.add(weap);
+      if (o.weapon === "sword" || o.weapon === "greatsword") {
+        const L = o.weapon === "greatsword" ? 6.2 : 4.8, W = o.weapon === "greatsword" ? 0.42 : 0.26;
+        const bg = new THREE.BoxGeometry(W, L, 0.07, 1, 8, 1); sculpt(bg, (v) => { const f = v.y + L / 2; if (f > L - 0.7) v.x *= (L - f) / 0.7 + 0.02; });
+        mesh(weap, bg, bladeM, 0, L / 2 + 0.5, 0);
+        mesh(weap, new THREE.BoxGeometry(1.3, 0.14, 0.2), trimM, 0, 0.45, 0);
+        mesh(weap, new THREE.CylinderGeometry(0.11, 0.12, 0.9, 8), clothM, 0, 0, 0);
+        weap.rotation.x = -0.4;
+      } else if (o.weapon === "spear") {
+        mesh(weap, new THREE.CylinderGeometry(0.08, 0.08, 8, 6), crownMat(0x7c5a35), 0, 1.5, 0);
+        mesh(weap, new THREE.ConeGeometry(0.24, 1.1, 6), metalM, 0, 6.0, 0);
+        weap.rotation.x = -0.25;
+      } else if (o.weapon === "daggers") {
+        for (const a of [R, arms[0]]) { const d = new THREE.Group(); d.position.set(0, -2.05, 0.6); a.el.add(d); mesh(d, new THREE.ConeGeometry(0.14, 1.5, 4), bladeM, 0, -0.9, 0).rotation.x = Math.PI; }
+      } else if (o.weapon === "claws") {
+        for (const a of [R, arms[0]]) for (let f = -1; f <= 1; f++) { const c = mesh(a.el, new THREE.ConeGeometry(0.07, 0.9, 4), trimM, f * 0.18, -2.6, 0.7); c.rotation.x = Math.PI + 0.3; }
+      }
+      if (o.shield) { const sh = mesh(arms[0].el, new THREE.CylinderGeometry(1.7, 1.7, 0.18, 24), clothM, -0.2, -1.2, 1.0); sh.rotation.x = Math.PI / 2; const bo = mesh(arms[0].el, new THREE.SphereGeometry(0.35, 12, 8), metalM, -0.2, -1.2, 1.15); const rim = mesh(arms[0].el, new THREE.TorusGeometry(1.7, 0.1, 6, 28), metalM, -0.2, -1.2, 1.1); }
+      // head
+      const head = new THREE.Group(); head.position.set(0, hipY + 4.85, 0.05); g.add(head);
+      blob(head, o.helm === "greathelm" || o.helm === "crest" ? metalM : o.helm === "hood" ? clothM : skinM, 0.78, 0.88, 0.8, 0, 0, 0);
+      if (o.helm === "hair" || o.helm === "sun") { blob(head, crownMat(o.hair || 0x1c1917, { roughness: 0.9 }), 0.84, 0.6, 0.86, 0, 0.35, -0.12); limbOf(head, crownMat(o.hair || 0x1c1917), [[0, 0.3, -0.7], [0, -0.6, -1.2], [0, -1.8, -1.3]], 0.28, 0.12, 6, 8); const band = mesh(head, new THREE.TorusGeometry(0.82, 0.07, 5, 24), trimM, 0, 0.3, 0); band.rotation.x = Math.PI / 2; }
+      if (o.helm === "crest") { limbOf(head, crownMat(0xdc2626, { roughness: 0.9 }), [[0, 0.7, 0.6], [0, 1.25, 0], [0, 0.9, -0.9]], 0.2, 0.12, 8, 8); mesh(head, new THREE.TorusGeometry(0.95, 0.08, 5, 24, Math.PI), metalM, 0, -0.2, 0).rotation.y = Math.PI / 2; }
+      if (o.helm === "hood") { const hood = blob(head, clothM, 0.95, 1.05, 0.98, 0, 0.12, -0.08, (n, v) => { if (n.z > 0.55) v.z -= 0.35; }); const veil = mesh(head, new THREE.PlaneGeometry(1.3, 0.8), crownMat(0xe9d5ff, { transparent: true, opacity: 0.55, side: THREE.DoubleSide }), 0, -0.35, 0.8); }
+      if (o.helm === "greathelm") { mesh(head, new THREE.BoxGeometry(1.1, 0.14, 0.3), new THREE.MeshBasicMaterial({ color: 0x0c0a09 }), 0, 0.05, 0.78); }
+      if (o.crown) { const cr = new THREE.Group(); cr.position.y = 0.85; head.add(cr); mesh(cr, new THREE.CylinderGeometry(0.85, 0.8, 0.28, 16, 1, true), trimM);
+        for (let k = 0; k < 7; k++) { if (o.brokenCrown && k === 4) continue; const a = k / 7 * TAU; spike(cr, trimM, 0.13, 0.55 + (k % 2) * 0.25, Math.cos(a) * 0.8, 0.1, Math.sin(a) * 0.8); } }
+      if (o.helm === "antlers") for (const sx of [-1, 1]) { limbOf(head, crownMat(0x3f2a14), [[sx * 0.5, 0.6, 0], [sx * 1.3, 1.6, -0.1], [sx * 1.2, 2.7, 0]], 0.13, 0.06, 8, 6); limbOf(head, crownMat(0x3f2a14), [[sx * 1.1, 1.5, 0], [sx * 2.0, 1.9, 0.1]], 0.08, 0.04, 4, 6); }
+      if (o.helm === "sun") { const halo = mesh(head, new THREE.TorusGeometry(1.5, 0.08, 6, 40), glowMat(0xfde68a, 0.8), 0, 0.3, -0.6); for (let k = 0; k < 12; k++) { const r2 = mesh(head, new THREE.BoxGeometry(0.08, 0.7, 0.05), glowMat(0xfde68a, 0.7), Math.cos(k / 12 * TAU) * 2, 0.3 + Math.sin(k / 12 * TAU) * 2, -0.6); r2.rotation.z = k / 12 * TAU + Math.PI / 2; } }
+      if (o.helm === "moon") { for (const sx of [-1, 1]) limbOf(head, trimM, [[sx * 0.5, 0.7, 0], [sx * 1.1, 1.3, 0], [sx * 0.7, 1.9, 0]], 0.1, 0.05, 6, 6); }
+      const eyeY = (hipY + 4.85) * S;
+      const eyes = eyeMeshes(root, o.eye || accent || 0xffffff, [[(o.x || 0) - 0.3 * S, eyeY + 0.05, 0.75 * S], [(o.x || 0) + 0.3 * S, eyeY + 0.05, 0.75 * S]], 0.08 * S);
+      // cape
+      let cape = null;
+      if (o.cape) { const cg = new THREE.PlaneGeometry(3.6, 7.4, 6, 10); sculpt(cg, (v) => { const h = (v.y + 3.7) / 7.4; v.z = -0.35 * (1 - (v.x / 1.8) ** 2) + 0.2 * Math.sin(v.x * 2.5 + v.y * 0.6) * (1 - h); if (h < 0.1) v.y += 0.4 * Math.abs(Math.sin(v.x * 4)); });
+        cape = mesh(g, cg, clothM, 0, hipY + 0.2, -1.25); cape.rotation.x = 0.08; }
+      const rest = () => { for (const l of legs) { l.hip.rotation.set(0, 0, 0); l.knee.rotation.set(0, 0, 0); } for (const a of arms) { a.arm.rotation.set(0, 0, a.sx * 0.12); a.el.rotation.set(-0.5, 0, 0); } head.rotation.set(0, 0, 0); g.rotation.set(0, 0, 0); g.position.y = 0; };
+      // a stance per kind: the duellist holds a guard, the king plants his sword
+      function stance(t, k) {
+        rest();
+        const breathe = Math.sin(t / 600) * 0.03;
+        if (o.weapon === "sword" || o.weapon === "daggers") { arms[1].arm.rotation.set(-0.9, 0, 0.25); arms[1].el.rotation.set(-0.9, 0, 0); arms[0].arm.rotation.set(-0.7, 0, -0.35); arms[0].el.rotation.set(-1.1, 0, 0); legs[0].hip.rotation.x = -0.35; legs[0].knee.rotation.x = 0.4; legs[1].hip.rotation.x = 0.3; g.position.y = -0.25; }
+        else if (o.weapon === "greatsword") { arms[1].arm.rotation.set(-0.35, 0, 0.35); arms[1].el.rotation.set(-0.9, 0, 0); arms[0].arm.rotation.set(-0.35, 0, -0.35); arms[0].el.rotation.set(-0.9, 0, 0); weap.rotation.x = Math.PI - 0.1; }
+        else if (o.shield) { arms[0].arm.rotation.set(-1.1, 0, -0.2); arms[0].el.rotation.set(-0.6, 0, 0); arms[1].arm.rotation.set(0.2, 0, 0.9); arms[1].el.rotation.set(-1.4, 0, 0); legs[0].hip.rotation.x = -0.3; legs[0].knee.rotation.x = 0.3; }
+        else { const up = o.robe ? 0.4 : 0; arms[1].arm.rotation.set(-0.6 - up, 0, 0.5); arms[0].arm.rotation.set(-0.6 - up, 0, -0.5); }
+        torso.scale.set(1, 1 + breathe, 1); head.rotation.x = Math.sin(t / 1300) * 0.05;
+        if (cape) cape.rotation.x = 0.08 + Math.sin(t / 700) * 0.04;
+        if (o.hover) g.position.y = 0.8 + Math.sin(t / 700) * 0.3;
+      }
+      function idle(t) { stance(t, 0); }
+      // the mini's entrance beat: land, straighten, lift the weapon at you
+      function miniPose(s) {
+        stance(s.t, 0);
+        const crouch = s.land > 0 && s.up < 1 ? (1 - easeOut(s.up)) : 0;
+        for (const l of legs) { l.hip.rotation.x -= 0.9 * crouch; l.knee.rotation.x += 1.5 * crouch; }
+        g.position.y -= 1.4 * crouch;
+        const L = easeOut(s.look); arms[1].arm.rotation.x -= 0.8 * L; weap.rotation.z = 0.3 * L;
+        bladeM.emissiveIntensity = 0.15 + 1.2 * L;
+      }
+      // entrance for the bosses (awakeCrown): k 0..1 of "it stands and draws"
+      function rise(k, t) {
+        stance(t, 0);
+        const kneel = 1 - easeOut(clamp01(k / 0.55));
+        for (const l of legs) { l.hip.rotation.x -= 1.2 * kneel * (l.sx > 0 ? 1 : 0.2); l.knee.rotation.x += 1.9 * kneel * (l.sx > 0 ? 1 : 0.4); }
+        g.position.y -= 1.8 * kneel; head.rotation.x = 0.45 * kneel;
+        const draw = easeOut(clamp01((k - 0.55) / 0.35));
+        arms[1].arm.rotation.x -= 1.4 * draw * (1 - draw * 0.4); bladeM.emissiveIntensity = 0.15 + 1.6 * draw;
+      }
+      function deathPose(c, t) {
+        stance(t, 0);
+        for (const l of legs) { l.hip.rotation.x = -1.3 * c; l.knee.rotation.x = 2.1 * c; }
+        g.position.y = -2.4 * c; g.rotation.x = 0.5 * easeIn(clamp01((c - 0.4) / 0.6)); head.rotation.x = 0.6 * c;
+        arms[1].arm.rotation.x = -0.3 * (1 - c); weap.rotation.x = -0.4 - 1.2 * c;
+      }
+      idle(0);
+      return { eyes, eyeY, limbs: arms, parts: [], idle, miniPose, rise, deathPose, torso, head, sculpted: true, crownHuman: true, weapon: weap, bladeM, g };
+    };
+  }
+  const CROWN_HUMANS = {
+    kael: { scale: 1.35, armor: 0x3a2a2e, cloth: 0x7f1d1d, weapon: "sword", helm: "hair", eye: 0xfecdd3, bladeGlow: 0xf43f5e },
+    kael_crownbound: { scale: 1.35, armor: 0x1c1917, cloth: 0x292524, weapon: "sword", helm: "hair", hair: 0xe7e5e4, cape: true, pauldron: true, trim: 0xfde047, eye: 0xfde047, bladeGlow: 0xfde047 },
+    pit_champion: { scale: 1.4, armor: 0x7c4a1e, cloth: 0x92400e, skin: 0xb07a52, weapon: "spear", shield: true, helm: "crest", bareChest: true, bareArms: true, cape: true, metal: 0xd6a45a, eye: 0xfde68a },
+    veiled_assassin: { scale: 1.2, armor: 0x1e1b4b, cloth: 0x312e81, weapon: "daggers", helm: "hood", eye: 0xe9d5ff },
+    briar_matron: { scale: 1.5, armor: 0x3f2a14, cloth: 0x3f6212, skin: 0x9dbb6a, weapon: "claws", helm: "antlers", robe: true, bareArms: true, trim: 0xbef264, eye: 0xd9f99d },
+  };
+  // THE TWIN MONARCHS: two robed rulers in one rig, a sun disc and a dark moon between them
+  function buildTwinMonarchs(root, shell, body, trim, accent) {
+    const sol = crownHuman({ x: -5.5, scale: 1.45, cloth: 0xf59e0b, armor: 0xb45309, skin: 0xf5d7a8, trim: 0xfef3c7, robe: true, helm: "sun", crown: true, hover: true, eye: 0xffffff, hair: 0xfef3c7 })(root, shell, body, trim, accent);
+    const umbra = crownHuman({ x: 5.5, scale: 1.45, cloth: 0x4c1d95, armor: 0x2e1065, skin: 0xb9a6d6, trim: 0xc4b5fd, robe: true, helm: "moon", hover: true, eye: 0xf5d0fe })(root, shell, body, trim, accent);
+    const sun = mesh(shell, new THREE.SphereGeometry(1.6, 24, 16), emissiveMat(0xfde68a, 1.4), -5.5, 17.5, -2);
+    const sunGlow = glowSprite(0xfbbf24, 9, 0.55); sunGlow.position.set(-5.5, 17.5, -2.2); shell.add(sunGlow);
+    const moon = mesh(shell, new THREE.SphereGeometry(1.5, 24, 16), new THREE.MeshStandardMaterial({ color: 0x0c0620, roughness: 1 }), 5.5, 17.5, -2);
+    const moonRim = mesh(shell, new THREE.TorusGeometry(1.6, 0.08, 6, 40), glowMat(0xc4b5fd, 0.8), 5.5, 17.5, -1.95);
+    const eyes = sol.eyes.concat(umbra.eyes);
+    function idle(t) { sol.idle(t); umbra.idle(t + 900); sun.rotation.y = t / 3000; sunGlow.material.opacity = 0.45 + 0.15 * Math.sin(t / 500); moonRim.rotation.z = t / 4000; }
+    function rise(k, t) { sol.rise(k, t); umbra.rise(clamp01(k * 1.1 - 0.05), t); sun.scale.setScalar(Math.max(0.01, easeOutBack(clamp01((k - 0.4) / 0.4)))); moon.scale.setScalar(Math.max(0.01, easeOutBack(clamp01((k - 0.5) / 0.4)))); }
+    function deathPose(c, t) { sol.deathPose(c, t); umbra.deathPose(c, t); sun.position.y = 17.5 - 15 * easeIn(c); moon.position.y = 17.5 - 15 * easeIn(c); }
+    return { eyes, eyeY: sol.eyeY, limbs: sol.limbs.concat(umbra.limbs), parts: [], idle, rise, deathPose, torso: sol.torso, head: sol.head, sculpted: true, crownHuman: true };
+  }
+  // THE SUNDERED KING: the knight, and the colossus that rises behind him (hidden until phase 2)
+  function buildSunderedKing(root, shell, body, trim, accent) {
+    const knight = crownHuman({ scale: 1.6, armor: 0x57534e, cloth: 0x7f1d1d, weapon: "greatsword", helm: "greathelm", crown: true, brokenCrown: true, cape: true, pauldron: true, trim: 0xfde047, eye: 0xfde047, metal: 0xa8a29e, bladeGlow: 0xfde047 })(root, shell, body, trim, accent);
+    const col = new THREE.Group(); col.position.set(0, 0, -13); root.add(col); col.visible = false;
+    const ghost = new THREE.MeshStandardMaterial({ color: 0xfde68a, emissive: 0xfacc15, emissiveIntensity: 0.6, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const ghostRim = glowMat(0xfde047, 0.55);
+    const cTorso = mesh(col, lathe([[4.5, 0], [6, 6], [8.5, 13], [8, 17], [4, 19.5]], 24), ghost, 0, 8, 0); cTorso.scale.z = 0.6;
+    const cHead = blob(col, ghost, 3.2, 3.6, 3.0, 0, 31, 0);
+    const cCrown = new THREE.Group(); cCrown.position.set(0, 34.5, 0); col.add(cCrown);
+    mesh(cCrown, new THREE.CylinderGeometry(3.1, 2.9, 1, 20, 1, true), ghostRim);
+    for (let k = 0; k < 8; k++) { if (k === 5) continue; const a = k / 8 * TAU; spike(cCrown, ghostRim, 0.45, 2.2 + (k % 2), Math.cos(a) * 3, 0.3, Math.sin(a) * 3); }
+    const cHands = [];
+    for (const sx of [-1, 1]) {
+      const arm = new THREE.Group(); arm.position.set(sx * 8.2, 24, 0); col.add(arm);
+      limbOf(arm, ghost, [[0, 0, 0], [sx * 3, -6, 3], [sx * 3.5, -12, 7]], 1.9, 1.3, 8, 10);
+      const hand = blob(arm, ghost, 2.4, 1.3, 2.8, sx * 3.5, -13, 8); cHands.push({ arm, hand, sx });
+    }
+    const cEyes = eyeMeshes(col, 0xfff7d6, [[-1.2, 31.3, 2.6], [1.2, 31.3, 2.6]], 0.35);
+    const mist = glowSprite(0xfacc15, 40, 0.28); mist.position.set(0, 12, -1); col.add(mist);
+    function colossus(u, t) {
+      col.visible = u > 0.001;
+      col.position.y = -26 * (1 - easeOut(u)); col.scale.setScalar(0.5 + 0.42 * easeOut(u));
+      ghost.opacity = 0.32 * u; ghostRim.opacity = 0.55 * u; mist.material.opacity = 0.28 * u;
+      for (const h of cHands) { h.arm.rotation.z = h.sx * (0.5 - 0.7 * easeOut(u) + Math.sin(t / 900 + h.sx) * 0.05); h.arm.rotation.x = -0.4 * u; }
+      cCrown.rotation.y = t / 2500;
+    }
+    function idle(t) { knight.idle(t); colossus(0, t); }
+    return Object.assign({}, knight, { idle, colossus, colGroup: col, colEyes: cEyes });
+  }
+  // GOREHORN: the quadruped
+  function buildGorehorn(root, shell, body, trim, accent) {
+    const hide = crownMat(0x5a3413, { roughness: 0.95, metalness: 0 });
+    const dark = crownMat(0x24130a, { roughness: 1, metalness: 0 });
+    const horn = crownMat(0xefe2c2, { roughness: 0.45, metalness: 0.05 });
+    const hoof = crownMat(0x1c1210, { roughness: 0.7 });
+    const g = new THREE.Group(); g.scale.setScalar(1.25); shell.add(g);
+    // barrel, hump, rump
+    const barrel = blob(g, hide, 3.6, 3.0, 6.2, 0, 7.2, -0.6, (n, v) => { v.y += 0.35 * Math.max(0, n.y) * Math.max(0, n.z + 0.3); v.x *= 1 - 0.1 * Math.max(0, -n.y); });
+    const hump = blob(g, dark, 3.3, 2.6, 3.0, 0, 9.3, 2.2, (n, v) => { v.y += 0.25 * snoise(n.x * 5, n.y * 5, n.z * 5); });
+    const rump = blob(g, hide, 3.1, 2.8, 2.6, 0, 7.8, -5.2);
+    const legs = [];
+    for (const [x, z, front] of [[-2.2, 3.4, 1], [2.2, 3.4, 1], [-2.3, -5.0, 0], [2.3, -5.0, 0]]) {
+      const top = new THREE.Group(); top.position.set(x, 6.4, z); g.add(top);
+      limbOf(top, hide, [[0, 0, 0], [0, -2.0, front ? 0.3 : -0.6], [0, -3.4, front ? 0 : -0.2]], 1.15, 0.8, 6, 10);
+      const knee = new THREE.Group(); knee.position.set(0, -3.4, front ? 0 : -0.2); top.add(knee);
+      limbOf(knee, dark, [[0, 0, 0], [0, -1.6, front ? -0.2 : 0.4], [0, -2.8, 0]], 0.75, 0.6, 6, 10);
+      blob(knee, hoof, 0.8, 0.45, 0.95, 0, -2.95, 0.15);
+      legs.push({ top, knee, front, sx: x > 0 ? 1 : -1 });
+    }
+    // neck + head with the two great horns
+    const head = new THREE.Group(); head.position.set(0, 8.2, 6.4); g.add(head);
+    blob(head, hide, 1.9, 1.9, 2.8, 0, 0, 1.2, (n, v) => { if (n.z > 0.5) v.y -= 0.35; });
+    blob(head, dark, 1.3, 1.1, 1.0, 0, -0.9, 3.6);
+    const ring = mesh(head, new THREE.TorusGeometry(0.45, 0.08, 6, 16), crownMat(0xfbbf24, { metalness: 0.9, roughness: 0.3 }), 0, -1.5, 4.3);
+    for (const sx of [-1, 1]) {
+      limbOf(head, horn, [[sx * 1.3, 0.8, 0.8], [sx * 3.6, 1.8, 0.8], [sx * 4.8, 3.6, 2.2], [sx * 4.2, 5.8, 4.2]], (u) => 0.75 * (1 - u) + 0.06, null, 16, 10);
+    }
+    const eyes = eyeMeshes(root, 0xfbbf24, [[-1.3 * 1.25, 8.6 * 1.25, 8.4 * 1.25], [1.3 * 1.25, 8.6 * 1.25, 8.4 * 1.25]], 0.18);
+    const tail = new THREE.Group(); tail.position.set(0, 8.4, -7.4); g.add(tail);
+    limbOf(tail, dark, [[0, 0, 0], [0, -1.5, -1.0], [0, -3.4, -1.3]], 0.3, 0.16, 8, 8); blob(tail, dark, 0.45, 0.9, 0.45, 0, -3.8, -1.3);
+    // the mane: a row of dark spikes along the neck and hump
+    for (let k = 0; k < 9; k++) { const s2 = spike(g, dark, 0.35, 1.2 + (k % 3) * 0.4, (k % 2 ? 0.3 : -0.3), 10.3 - Math.abs(k - 3) * 0.35, 4.6 - k * 0.9, -0.5, 0); }
+    function stand(t) {
+      for (const l of legs) { l.top.rotation.set(0, 0, 0); l.knee.rotation.set(0, 0, 0); }
+      g.position.y = 0; g.rotation.set(0, 0, 0); head.rotation.set(0.1 + Math.sin(t / 1400) * 0.05, Math.sin(t / 2300) * 0.1, 0); tail.rotation.x = Math.sin(t / 500) * 0.2;
+      barrel.scale.set(1, 1 + Math.sin(t / 700) * 0.015, 1);
+    }
+    function idle(t) { stand(t); }
+    // it paws, lowers its head, then rears and bellows
+    function rise(k, t) {
+      stand(t);
+      const paw = clamp01(k / 0.5), rear = Math.sin(clamp01((k - 0.55) / 0.35) * Math.PI);
+      legs[1].top.rotation.x = -0.6 * Math.max(0, Math.sin(t / 120)) * paw * (1 - rear);
+      head.rotation.x = 0.45 * paw * (1 - rear) - 0.6 * rear;
+      g.rotation.x = -0.45 * rear; g.position.y = 1.2 * rear;
+      legs[0].top.rotation.x = legs[1].top.rotation.x - 0.8 * rear; legs[0].knee.rotation.x = 1.2 * rear; legs[1].knee.rotation.x = 1.2 * rear;
+    }
+    function miniPose(s) { rise(s.look, s.t); }
+    function deathPose(c, t) {
+      stand(t);
+      for (const l of legs) { l.top.rotation.x = (l.front ? -1 : 1) * 0.8 * c; l.knee.rotation.x = (l.front ? 1.4 : -1.2) * c; }
+      g.position.y = -2.2 * c; g.rotation.z = 1.25 * easeIn(clamp01((c - 0.35) / 0.65)); head.rotation.x = 0.5 * c;
+    }
+    return { eyes, eyeY: 8.6 * 1.25, limbs: legs.map(l => ({ arm: l.top, sx: l.sx })), parts: [], idle, rise, miniPose, deathPose, torso: barrel, head, sculpted: true };
+  }
+  const CROWN_BUILDERS = { gorehorn: buildGorehorn, twin_monarchs: buildTwinMonarchs, sundered_king: buildSunderedKing };
+  for (const id in CROWN_HUMANS) CROWN_BUILDERS[id] = crownHuman(CROWN_HUMANS[id]);
+
+  // the crown chambers, dressed lightly (they are transient: freed when the tier changes)
+  function crownDecor(kind) {
+    return function () {
+      const group = new THREE.Group(); scene.add(group);
+      const stone = new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 0.95 });
+      if (kind === "thornwild") {
+        const bramble = new THREE.MeshStandardMaterial({ color: 0x16230a, roughness: 1 });
+        for (let i = 0; i < 26; i++) { const sx = i % 2 ? 1 : -1, z = 6 - i * 1.9; blob(group, bramble, 2.2, 1.6 + (i % 3) * 0.6, 2.2, sx * (ROOM.halfW - 2), 1.2, z, (n, v) => { v.addScaledVector(n, 0.4 * snoise(n.x * 6, n.y * 6, n.z * 6)); }, 12); }
+        for (const [x, z] of [[-9, -24], [9, -24], [-9, -36], [9, -36]]) { mesh(group, new THREE.CylinderGeometry(1.6, 1.9, 8, 10), new THREE.MeshStandardMaterial({ color: 0x3a3530, roughness: 1 }), x, 4, z); blob(group, new THREE.MeshStandardMaterial({ color: 0x2b400d, roughness: 1 }), 1.9, 0.5, 1.9, x, 0.3, z); }
+      } else if (kind === "colosseum") {
+        const sand = new THREE.Mesh(new THREE.CircleGeometry(16, 40), new THREE.MeshStandardMaterial({ color: 0x8a6a44, roughness: 1 })); sand.rotation.x = -Math.PI / 2; sand.position.set(0, 0.05, ROOM.bossZ + 4); group.add(sand);
+        for (let i = 0; i < 12; i++) { const sx = i % 2 ? 1 : -1, z = 4 - Math.floor(i / 2) * 8; mesh(group, new THREE.CylinderGeometry(1.1, 1.3, 11 - (i % 3) * 3, 12), stone, sx * (ROOM.halfW - 2.5), 5.5 - (i % 3) * 1.5, z); }
+        for (let i = 0; i < 6; i++) { const b = mesh(group, new THREE.PlaneGeometry(2.2, 6), new THREE.MeshStandardMaterial({ color: i % 2 ? 0x7f1d1d : 0x92400e, side: THREE.DoubleSide }), -10 + i * 4, 14, ROOM.backZ + 0.5); }
+      } else if (kind === "mirror") {
+        const glass = crystalMat(0x8b86a8, 0xf5d0fe, 0.85), frame = crownMat(0xcbd5e1, { metalness: 0.9, roughness: 0.25 });
+        for (let i = 0; i < 10; i++) { const sx = i % 2 ? 1 : -1, z = 2 - Math.floor(i / 2) * 9; const p = mesh(group, new THREE.BoxGeometry(0.2, 9, 4), glass, sx * (ROOM.halfW - 0.8), 5.5, z); mesh(group, new THREE.BoxGeometry(0.3, 9.6, 0.3), frame, sx * (ROOM.halfW - 0.8), 5.5, z + 2.1); }
+        const checker = canvasTex(256, 256, (c) => { for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { c.fillStyle = (x + y) % 2 ? "#1a1528" : "#9d98b8"; c.fillRect(x * 32, y * 32, 32, 32); } });
+        checker.wrapS = checker.wrapT = THREE.RepeatWrapping; checker.repeat.set(6, 6);
+        const fl = new THREE.Mesh(new THREE.PlaneGeometry(34, 50), new THREE.MeshStandardMaterial({ map: checker, roughness: 0.25, metalness: 0.4 })); fl.rotation.x = -Math.PI / 2; fl.position.set(0, 0.04, -18); group.add(fl);
+        return { group, transient: true, texs: [checker] };
+      } else if (kind === "throne") {
+        const gold = crownMat(0xca8a04, { metalness: 0.85, roughness: 0.3 });
+        const dais = mesh(group, new THREE.BoxGeometry(14, 1.2, 6), stone, 0, 0.6, ROOM.backZ + 4);
+        const throne = new THREE.Group(); throne.position.set(0, 1.2, ROOM.backZ + 3); group.add(throne);
+        mesh(throne, new THREE.BoxGeometry(4, 2, 3), crownMat(0x2b211b), 0, 1, 0); mesh(throne, new THREE.BoxGeometry(4, 8, 0.8), crownMat(0x2b211b), 0, 5, -1.2);
+        for (let k = 0; k < 4; k++) spike(throne, gold, 0.3, 1.6, -1.5 + k, 9, -1.2);
+        for (let i = 0; i < 8; i++) { const sh = mesh(group, new THREE.OctahedronGeometry(0.4 + (i % 3) * 0.15, 0), crystalMat(0xfde047, 0xfacc15, 0.95), (i - 4) * 2.4, 0.4, -20 + (i % 3) * 4); sh.rotation.set(i, i * 2, 0); }
+        // the throne room's roof is broken open (as in the 2D arena): the colossus stands up through it
+        return { group, transient: true, hideCeiling: true };
+      }
+      return { group, transient: true };
+    };
+  }
+
   const BUILDERS = { warden: buildWarden, smith: buildSmith, tyrant: buildTyrant, ogrelord: buildOgre, tempest: buildTempest,
     curator: buildCurator, astraea: buildAstraea, prismgolem: buildPrismGolem, khyra: buildKhyra, halvard: buildHalvard,
     iskarra: buildIskarra, herald: buildHerald, broodmother: buildBroodmother, heart: buildHeart, concordant: buildConcordant,
     ley_ember: buildLeyWarden("ember"), ley_tide: buildLeyWarden("tide"), ley_star: buildLeyWarden("star") };
+  Object.assign(BUILDERS, CROWN_BUILDERS);
+  BUILD_DECOR.thornwild = crownDecor("thornwild"); BUILD_DECOR.colosseum = crownDecor("colosseum"); BUILD_DECOR.mirror = crownDecor("mirror"); BUILD_DECOR.throne = crownDecor("throne");
   function artOf(id) { try { return (window.ECON && ECON.bossArt) ? ECON.bossArt(id) : id; } catch (e) { return id; } }
   function builderFor(id) { return id === "dragon" ? buildDragon : (BUILDERS[id] || BUILDERS[artOf(id)] || buildTyrant); }
 
@@ -4344,10 +4623,45 @@
       if (rig.deathPose) rig.deathPose(collapse, p.t); else for (const l of rig.limbs) l.arm.rotation.z = l.sx * lerp(-0.2, -1, collapse);
     }
   }
+  // ================= THE SUNDERED CROWN — they rise out of the dark and draw ==
+  const CAM_CROWN = OPEN_CAM.concat([
+    [E.dark, 0, 3, -6, 0, 5, ROOM.bossZ, 50],
+    [0.55, -8, 6, ROOM.bossZ + 18, 0, 8, ROOM.bossZ, 44],
+    [0.8, 0, 10, ROOM.bossZ + 24, 0, 12, ROOM.bossZ, 40],
+    [1.0, 0, 10, 6, 0, 12, ROOM.bossZ, 58],
+  ]);
+  function awakeCrown(p) {
+    const { k, t } = p;
+    let shake = 0;
+    litBraziers(k, t, E.seal, 0.1);
+    rig.shell.visible = k > E.dark * 0.9;
+    const u = beat(k, E.dark, 0.9);
+    if (rig.rise) rig.rise(u, t);
+    eyesOpen(beat(k, 0.45, 0.6));
+    const flare = beat(k, 0.62, 0.8);
+    if (flare > 0 && flare < 1) { shake = 0.6 * (1 - flare); shockwaves(0, ROOM.bossZ, flare, rig.accent, 50); } else hideWaves();
+    eyeLight.color.copy(rig.accent).lerp(WHITE, 0.4); eyeLight.intensity = 2.2 * u; eyeLight.distance = 50; eyeLight.position.set(0, rig.eyeY, ROOM.bossZ + 6);
+    sigilGlow(k, u, 1600, t);
+    fx.wash.material.color.copy(rig.accent); fx.wash.material.opacity = clamp01(1 - Math.abs(flare - 0.1) / 0.1) * 0.5;
+    ambient.intensity = 0.14 + 0.2 * u; hemi.intensity = 0.14 + 0.2 * u;
+    return shake;
+  }
+  // the King's second phase: the knight goes to one knee and the colossus climbs out of the floor behind him
+  function posePhaseKing(p) {
+    posePhaseGeneric(p);
+    const { k, t } = p;
+    if (rig.rise) rig.rise(1 - 0.85 * Math.sin(clamp01(k / 0.45) * Math.PI * 0.5), t);
+    if (rig.colossus) rig.colossus(beat(k, 0.22, 0.8), t);
+    if (rig.colEyes) for (const e of rig.colEyes) e.scale.setScalar(Math.max(0.01, beat(k, 0.7, 0.85)));
+    const up = beat(k, 0.22, 0.8);
+    flyCamera([[0, 0, 8, 10, 0, 10, ROOM.bossZ, 60], [0.3, -6, 5, ROOM.bossZ + 18, 0, 8, ROOM.bossZ, 48], [0.65, 0, 7, 6, 0, 24, ROOM.bossZ - 10, 80], [1, 0, 8, 8, 0, 25, ROOM.bossZ - 10, 82]], k, 0.7 * Math.sin(up * Math.PI));
+  }
   const AWAKE = { warden: awakeWarden, smith: awakeSmith, tyrant: awakeTyrant, dragon: awakeDragon,
-    astraea: awakeAstraea, khyra: awakeKhyra, iskarra: awakeIskarra, heart: awakeHeart, concordant: awakeConcordant };
+    astraea: awakeAstraea, khyra: awakeKhyra, iskarra: awakeIskarra, heart: awakeHeart, concordant: awakeConcordant,
+    gorehorn: awakeCrown, kael: awakeCrown, twin_monarchs: awakeCrown, sundered_king: awakeCrown };
   const AWAKE_CAM = { warden: CAM_WARDEN, smith: CAM_SMITH, tyrant: CAM_TYRANT, dragon: CAM_DRAGON,
-    astraea: CAM_ASTRAEA, khyra: CAM_KHYRA, iskarra: CAM_ISKARRA, heart: CAM_HEART, concordant: CAM_CONCORDANT };
+    astraea: CAM_ASTRAEA, khyra: CAM_KHYRA, iskarra: CAM_ISKARRA, heart: CAM_HEART, concordant: CAM_CONCORDANT,
+    gorehorn: CAM_CROWN, kael: CAM_CROWN, twin_monarchs: CAM_CROWN, sundered_king: CAM_CROWN };
 
   function poseEntrance(p) {
     const shake = poseArrival(p);
@@ -4789,7 +5103,7 @@
     if (rig.idle) rig.idle(q.t, q.k);
     {
       if (p.mode === "victory") poseVictory(q);
-      else if (p.mode === "phase2") { if (p.id === "dragon") posePhase2(q); else if (p.id === "iskarra") posePhaseIskarra(q); else posePhaseGeneric(q); }
+      else if (p.mode === "phase2") { if (p.id === "dragon") posePhase2(q); else if (p.id === "iskarra") posePhaseIskarra(q); else if (p.id === "sundered_king" && rig.colossus) posePhaseKing(q); else posePhaseGeneric(q); }
       else if (p.mini) poseMini(q);
       else poseEntrance(q);
       if(rig.stormRings && p.mode!=='victory'){

@@ -32,6 +32,7 @@ const cv=document.getElementById('c'),ctx=cv.getContext('2d');
 const IDS=ECON.CROWN_BOSS_ORDER.concat(ECON.CROWN_MINIS);
 const P=Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
 let zoom=+(P.zoom||1);const cam={x:512,y:260};
+if(P.shot)document.head.insertAdjacentHTML('beforeend','<style>nav,#perf{display:none}canvas{width:1024px;margin:0}body{overflow:hidden}</style>');
 let id=P.id||'kael',phase=+(P.phase||1),q=P.q||'auto',stress=P.stress==='1',speed=+(P.speed||1),freeze=P.freeze!=null?+P.freeze:null,cine=P.cine||'';
 function btn(parent,text,on,fn){const b=document.createElement('button');b.textContent=text;if(on)b.className='on';b.onclick=fn;parent.append(b);return b;}
 function setHash(){location.hash=new URLSearchParams(Object.assign({id,phase,q,speed,zoom},stress?{stress:1}:{},cine?{cine}:{})).toString();build();reset();}
