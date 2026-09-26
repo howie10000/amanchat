@@ -1,0 +1,200 @@
+<!doctype html><meta charset="utf-8"><title>Sundered Crown boss review</title>
+<style>
+body{margin:0;background:#07060c;color:#dbc791;font:13px Georgia}
+nav{padding:6px 10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+nav b{color:#fda4af;margin-right:4px}
+button{background:#1a1726;color:#fde68a;border:1px solid #4c3d6b;padding:5px 9px;cursor:pointer;font:12px Georgia}
+button.on{background:#7f1d1d;border-color:#fda4af}
+canvas{width:min(100%,1024px);display:block;margin:0 10px}
+#perf{padding:4px 12px;color:#bef264;font:12px monospace;white-space:pre}
+</style>
+<nav id="ids"><b>boss</b></nav>
+<nav id="opts"></nav>
+<div id="perf"></div>
+<canvas id="c" width="1024" height="640"></canvas>
+<script>const state={pos:{x:512,y:540},appearance:{}};</script>
+<script src="../../js/vendor/three.min.js"></script>
+<script src="../../js/shared/economy.js"></script>
+<script src="../../js/shared/depths.js"></script>
+<script src="../../js/shared/dungeon.js"></script>
+<script src="../../js/shared/crown.js"></script>
+<script>// the files under review are always fetched fresh
+for(const f of ['graphics','mobs','dungeon3d','boss-rigs','bosses'])document.write('<script src="../../js/'+f+'.js?v='+Date.now()+'"><\/script>');</script>
+<script>
+/* Live review of every Sundered Crown boss (B3). The page runs the REAL server
+   planner (CROWN.planBoss, the same pure function B1 ticks) against three
+   simulated players who circle the arena, feeds the plans to the renderer
+   exactly as the game does (boss.motion / clones / pillars / shards /
+   polarity), and times the boss draw path every frame.
+   URL hash: #id=kael&phase=3&q=auto&stress=1&speed=1&freeze=<ms>&menu=  (menu=entrance|victory|phase2 for 3D cutscenes)
+     stress=1  the §10 worst cases: Kael with clones + thousand cuts + 4 players, the King's crown phase with 8 shards. */
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const IDS=ECON.CROWN_BOSS_ORDER.concat(ECON.CROWN_MINIS);
+const P=Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
+let zoom=+(P.zoom||1);const cam={x:512,y:260};
+let id=P.id||'kael',phase=+(P.phase||1),q=P.q||'auto',stress=P.stress==='1',speed=+(P.speed||1),freeze=P.freeze!=null?+P.freeze:null,cine=P.cine||'';
+function btn(parent,text,on,fn){const b=document.createElement('button');b.textContent=text;if(on)b.className='on';b.onclick=fn;parent.append(b);return b;}
+function setHash(){location.hash=new URLSearchParams(Object.assign({id,phase,q,speed,zoom},stress?{stress:1}:{},cine?{cine}:{})).toString();build();reset();}
+function build(){
+  const I=document.getElementById('ids');I.innerHTML='<b>boss</b>';for(const b of IDS)btn(I,b,b===id,()=>{id=b;phase=1;setHash();});
+  const O=document.getElementById('opts');O.innerHTML='';
+  for(let p=1;p<=ECON.bossPhaseCount(id);p++)btn(O,'phase '+p,p===phase,()=>{phase=p;setHash();});
+  for(const qq of ['auto','0','1','2'])btn(O,'LOD '+qq,qq===q,()=>{q=qq;setHash();});
+  btn(O,'stress',stress,()=>{stress=!stress;setHash();});
+  for(const z of [1,2.2])btn(O,'zoom '+z,z===zoom,()=>{zoom=z;setHash();});
+  for(const s of [0.25,1])btn(O,'x'+s,s===speed,()=>{speed=s;setHash();});
+  for(const m of ['','entrance','phase2','victory'])btn(O,m?'3D '+m:'fight',m===cine,()=>{cine=m;setHash();});
+}
+// ------------------------------------------------------------ the simulated fight
+let sim=null;
+function reset(){
+  BossRigs._reset();BossRigs.setQuality(q==='auto'?null:+q);
+  const def=ECON.GUILD_BOSSES[id],t=performance.now();
+  const bodies=def.archetype==='twins'?['sol','umbra']:['main'];
+  sim={t0:t,now:0,rand:ECON.mulberry32(7),bodies:{},clones:{},cloneSeq:0,clonesAt:0,cutsAt:stress?0:5000,pillars:CROWN.arenaPillars(id,phase),evDone:new Set(),
+    shards:null,phase,pol:{t0:0,periodMs:(def.twins&&def.twins.swapMs)||11000,first:'sol'},frameMs:[],drawMs:[],lastReal:0,atkShow:[]};
+  for(const b of bodies)sim.bodies[b]={steps:[],cds:{},last:null,pos:b==='umbra'?{x:700,y:250}:{x:330,y:250},slams:0};
+  if(CROWN.driverOf(id,phase)==='crown'){const n=stress?8:5;sim.shards={t0:0,center:CROWN.CENTER,list:CROWN.crownShards(n,11).map(s=>Object.assign(s,{hp:60,maxHp:60}))};}
+}
+function players(now){const n=stress?4:3;return Array.from({length:n},(_,i)=>({user:'p'+i,x:512+Math.cos(now/2600+i*1.9)*(230+40*Math.sin(now/3100+i)),y:330+Math.sin(now/2100+i*1.9)*150,dmg:i*5,facing:'down'}));}
+function tickSim(now){
+  const def=ECON.GUILD_BOSSES[id],tg=players(now);
+  for(const [b,S] of Object.entries(sim.bodies)){
+    if(CROWN.stepsEnd(S.steps)-now<300){
+      const end=CROWN.stepsEnd(S.steps),last=S.steps[S.steps.length-1],pos=last?CROWN.stepPos(last,end):S.pos;
+      const other=b==='sol'?sim.bodies.umbra.pos:b==='umbra'?sim.bodies.sol.pos:undefined;
+      const plan=CROWN.planBoss({bossId:id,phase,now:Math.max(now,end),pos:{x:pos.x,y:pos.y},face:last?last.f1:Math.PI/2,targets:tg,cds:S.cds,last:S.last,pillars:sim.pillars,patches:CROWN.arenaPatches(id),
+        fighters:tg.length,hpFrac:.7,body:b==='main'?undefined:b,other,clonesAlive:Object.keys(sim.clones).length,clonesReadyAt:sim.clonesAt,cutsReadyAt:sim.cutsAt,slams:S.slams,
+        sunderedUntil:sim.shards&&sim.shards.list.every(s=>s.hp<=0)?sim.sunderAt:0},sim.rand);
+      S.cds=Object.assign({},S.cds,plan.cds);S.last=plan.move||S.last;if(plan.slam)S.slams++;if(plan.resetSlams)S.slams=0;
+      S.steps=S.steps.filter(x=>CROWN.stepEnd(x)>now-2000).concat(plan.steps);
+      if(plan.spawnClones){sim.clonesAt=now+(stress?9000:20000);const n=(def.duelist&&def.duelist.clones)||2;for(let k=0;k<n;k++)sim.clones['c'+(++sim.cloneSeq)]={until:now+10000,angle:(k?-1:1)*Math.PI*2/3};}
+      if(plan.cuts)sim.cutsAt=now+(stress?9000:26000);
+      if(plan.cast){const a=plan.cast;sim.atkShow.push(Object.assign({},a,{fireAt:now+(a.warnMs||1000),head:{x:pos.x,y:pos.y-40},ox:pos.x,oy:pos.y,points:tg.slice(0,a.targets||3).map(p=>({x:p.x,y:p.y})),x0:pos.x,y0:pos.y,x1:(other||tg[0]).x,y1:(other||tg[0]).y,x:pos.x,y:pos.y}));}
+    }
+    // server events: a charge into a pillar cracks it
+    for(const st of S.steps)for(const ev of (st.ev||[]))if(ev.at<=now&&!sim.evDone.has(st.t0+ev.kind)){sim.evDone.add(st.t0+ev.kind);if(ev.kind==='pillar_hit'){const p=sim.pillars[ev.i];if(p)p.hits=Math.max(0,p.hits-1);}}
+    S.pos=CROWN.posAt(S.steps,now);
+  }
+  for(const [cid,c] of Object.entries(sim.clones))if(now>c.until)delete sim.clones[cid];
+  if(sim.pillars.every(p=>p.hits<=0))sim.pillars=CROWN.arenaPillars(id,phase);
+  // shards: players whittle them down; all broken -> sundered, then reform
+  if(sim.shards){const L=sim.shards.list;if(!sim.sunderAt||now>sim.sunderAt+8000){if(L.every(s=>s.hp<=0)){sim.sunderAt=now;}else{const i=Math.floor(now/2200)%L.length;if(L[i].hp>0&&Math.floor(now/60)%7===0)L[i].hp-=1;}}
+    if(sim.sunderAt&&now>sim.sunderAt+8000&&L.every(s=>s.hp<=0)){sim.shards={t0:now,center:CROWN.CENTER,list:CROWN.crownShards(Math.max(3,L.length-1),now|0).map(s=>Object.assign(s,{hp:60,maxHp:60}))};}}
+  sim.atkShow=sim.atkShow.filter(a=>now<a.fireAt+(a.durMs||900)+2500);
+}
+function bossView(now){
+  const mot={};for(const [b,S] of Object.entries(sim.bodies))mot[b]=S.steps;
+  const clones={};for(const [cid,c] of Object.entries(sim.clones))clones[cid]=CROWN.mirrorSteps(sim.bodies.main.steps,c.angle,{bodyR:34});
+  return {id,phase,status:'alive',motion:mot,clones,pillars:sim.pillars,shards:sim.shards,polarity:sim.pol,bodies:ECON.GUILD_BOSSES[id].archetype==='twins'?[{key:'sol',dead:false},{key:'umbra',dead:false}]:undefined,twin:{}};
+}
+// ------------------------------------------------------------ draw loop
+function frame(real){
+  const dtReal=sim.lastReal?real-sim.lastReal:16.7;sim.lastReal=real;
+  if(freeze==null)sim.now+=Math.min(50,dtReal)*speed;else sim.now=freeze;
+  const now=sim.now,tWall=now;
+  BossRigs.setClockOffset(0);
+  if(cine){drawCine(real);requestAnimationFrame(frame);return;}
+  tickSim(now);
+  ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#09060a';ctx.fillRect(0,0,1024,640);
+  if(zoom>1){const S0=Object.values(sim.bodies)[0],p=S0?CROWN.posAt(S0.steps,now):{x:512,y:300};cam.x+=(p.x-cam.x)*.08;cam.y+=(p.y-60-cam.y)*.08;ctx.setTransform(zoom,0,0,zoom,512-cam.x*zoom,320-cam.y*zoom);}
+  gameBosses.drawArena(ctx,id,now,{x:60,y:52,w:904,h:500});
+  const b=bossView(now);
+  // telegraphs of the running steps (what B2 does with drawCrownAttack)
+  const t0=performance.now();
+  for(const [bk,S] of Object.entries(sim.bodies)){const st=CROWN.stepAt(S.steps,now);if(st&&st.atk)gameBosses.drawCrownAttack(ctx,st.atk,now,st);}
+  for(const steps of Object.values(b.clones)){const st=CROWN.stepAt(steps,now);if(st&&st.atk&&st.atk.shape)gameBosses.drawCrownAttack(ctx,st.atk,now,st);}
+  // players
+  for(const p of players(now))GFX.drawCharacter(ctx,p.x,p.y,{shirt:'#3b82f6'},{facing:'down',walking:now/16});
+  gameBosses.drawBoss(ctx,b,now);
+  if(sim.atkShow.length)gameBosses.drawAttacks(ctx,sim.atkShow,now,ECON.bossLook(id,phase));
+  const t1=performance.now();
+  sim.frameMs.push(dtReal);sim.drawMs.push(t1-t0);if(sim.frameMs.length>240){sim.frameMs.shift();sim.drawMs.shift();}
+  if((real|0)%10<2)report();
+  requestAnimationFrame(frame);
+}
+function stats(a){const s=a.slice().sort((x,y)=>x-y);const avg=a.reduce((x,y)=>x+y,0)/Math.max(1,a.length);return {avg,p99:s[Math.floor(s.length*.99)]||0,max:s[s.length-1]||0};}
+function report(){
+  const f=stats(sim.frameMs),d=stats(sim.drawMs),Q=BossRigs.quality();
+  const S=Object.values(sim.bodies)[0],st=S&&CROWN.stepAt(S.steps,sim.now);
+  document.getElementById('perf').textContent=`frame ${f.avg.toFixed(2)}ms avg (${(1000/f.avg).toFixed(0)} fps) · worst ${f.max.toFixed(1)}ms   boss draw path ${d.avg.toFixed(2)}ms avg · p99 ${d.p99.toFixed(2)} · max ${d.max.toFixed(2)}ms   LOD tier ${Q.tier} · live particles ${Q.particles}   state ${st?st.s+(st.atk?' '+st.atk.type:''):''}`;
+  window.__perf={frame:f,draw:d,tier:Q.tier,particles:Q.particles,samples:sim.drawMs.length};
+}
+// 3D cutscene frames (dungeon3d.js), scrubbed on a loop
+function drawCine(real){
+  const def=ECON.GUILD_BOSSES[id],dur=cine==='phase2'?6000:5000,k=freeze!=null?Math.min(1,freeze/1000):((real/dur)%1);
+  const gl=window.DungeonGL&&DungeonGL.available()?DungeonGL.render({mode:cine,sceneId:cine+id,id,mini:def.tier==='mini',k,t:real,phase:2,people:[{appearance:null},{appearance:{shirt:'#dc2626'}}],color:def.color,accent:def.accent}):null;
+  ctx.fillStyle='#000';ctx.fillRect(0,0,1024,640);if(gl)ctx.drawImage(gl,0,0,1024,640);
+  ctx.fillStyle='#fde68a';ctx.font='14px Georgia';ctx.fillText(cine+' k='+k.toFixed(2),20,30);
+}
+// ------------------------------------------------------------ stills: a pose sheet per rig (#mode=stills&id=kael)
+const SHEETS={
+  kael:[['idle',0,0,'',1.57],['run',0,0,'',0.2],['windup',.35,0,'dash_slash',0],['windup',.9,0,'dash_slash',0],['active',.5,0,'dash_slash',0],['recover',.2,0,'dash_slash',0],['windup',.8,0,'combo',1.2],['active',.5,0,'combo',1.2],['windup',.8,2,'combo',1.2],['active',.55,2,'combo',1.2],['guard',.5,0,'parry',1.57],['cast',.4,0,'',1.57],['exhausted',.5,0,'',1.57],['dead',0,0,'',1.57]],
+  kael_crownbound:[['idle',0,0,'',1.57],['run',0,0,'',0.2],['windup',.9,0,'dash_slash',0],['active',.5,2,'combo',1.2],['guard',.5,0,'parry',1.57],['exhausted',.5,0,'',1.57]],
+  pit_champion:[['idle',0,0,'',1.57],['run',0,0,'',0],['windup',.8,0,'spear_thrust',0.3],['active',.6,0,'spear_thrust',0.3],['active',.5,0,'shield_bash',1.57],['active',.5,0,'spear_sweep',1.57],['recover',.3,0,'spear_thrust',0.3],['cast',.6,0,'',1.57],['idle',0,0,'',-1.57]],
+  veiled_assassin:[['idle',0,0,'',1.57],['run',0,0,'',0],['windup',.9,0,'ambush',1.57],['active',.5,0,'ambush',1.57],['active',.5,0,'shadow_lunge',0],['vanish',.5,0,'',1.57],['cast',.55,0,'',1]],
+  briar_matron:[['idle',0,0,'',1.57],['move',0,0,'',0],['cast',.5,0,'',1.57],['vanish',.6,0,'burrow',1.57],['emerge',.5,0,'',1.57],['dead',0,0,'',1.57]],
+  twin_monarchs:[['idle',0,0,'',1.57,'sol'],['cast',.6,0,'',1.57,'sol'],['active',.5,0,'solar_flare',1.57,'sol'],['idle',0,0,'',1.57,'umbra'],['cast',.6,0,'',1.57,'umbra'],['active',.5,0,'shadow_step',1.57,'umbra'],['fallen',0,0,'',1.57,'umbra']],
+  sundered_king:[['idle',0,0,'',1.57],['run',0,0,'',0],['windup',.8,0,'kings_cleave',1.2],['active',.5,1,'kings_cleave',1.2],['windup',.9,0,'decree',1.57],['active',.5,0,'decree',1.57],['guard',.5,0,'parry',1.57],['sundered',.5,0,'',1.57]],
+  gorehorn:[['idle',0,0,'',0],['idle',0,0,'',1.57],['run',0,0,'',0],['windup',.8,0,'gore_charge',0],['windup',.6,0,'stomp',0.4],['active',.5,0,'gore',0],['stunned',.5,0,'',0.3],['dead',0,0,'',0]],
+};
+const T0S=performance.now();
+function stills(real){
+  const list=SHEETS[id]||SHEETS.kael,g=ctx,t=real;
+  g.setTransform(1,0,0,1,0,0);g.fillStyle='#8a7560';g.fillRect(0,0,1024,640);
+  const cols=Math.min(list.length,id==='gorehorn'?4:5),cw=1024/cols,beast=id==='gorehorn';
+  list.forEach((L,i)=>{
+    const [s,k,hit,type,f,body]=L,col=i%cols,row=Math.floor(i/cols),cx=col*cw+cw/2,cy=row*(beast?230:200)+(beast?170:150);
+    const run=s==='run'||s==='move';
+    const x=cx+(run?((t/4)%60)-30:0);
+    const step={s,t0:T0S+i,dur:800,x0:x,y0:cy,x1:x,y1:cy,e:'linear',f0:f,f1:f,vuln:s==='recover'?1.25:undefined,atk:type?{type,phase:s==='active'?'hit':'tell',hit}:undefined};
+    const boss={id,phase:id==='kael'&&i>9?3:1,status:'alive',__noPillarRedraw:1};
+    BossRigs.drawMobile(g,boss,{x,y:cy,f,s,k,step,body:body||'main',key:'still'+i},t);
+    g.fillStyle='#1c1410';g.font='11px Georgia';g.textAlign='center';g.fillText(s+(type?' '+type+(hit?'#'+hit:''):'')+(k?' k'+k:''),cx,cy+(beast?58:40));
+  });
+  requestAnimationFrame(stills);
+}
+// ------------------------------------------------------------ bench (#mode=bench): simulated 60 fps frames in a
+// tight loop, independent of rAF throttling. Times the boss draw path (telegraphs + drawBoss + casts) and the
+// whole frame (arena + players too); getImageData(1px) after each frame forces the GPU to finish, so the
+// numbers include rasterisation, not just command recording.
+function benchOne(bid,ph,st,q2,frames){
+  id=bid;phase=ph;stress=st;q=q2;reset();
+  const bossMs=[],frameMs=[];let now=0;
+  for(let f=0;f<frames;f++){
+    now+=1000/60;sim.now=now;
+    const a0=performance.now();
+    tickSim(now);ctx.setTransform(1,0,0,1,0,0);gameBosses.drawArena(ctx,id,now,{x:60,y:52,w:904,h:500});
+    for(const p of players(now))GFX.drawCharacter(ctx,p.x,p.y,{shirt:'#3b82f6'},{facing:'down',walking:now/16});
+    const b=bossView(now);
+    const b0=performance.now();
+    for(const S of Object.values(sim.bodies)){const s2=CROWN.stepAt(S.steps,now);if(s2&&s2.atk)gameBosses.drawCrownAttack(ctx,s2.atk,now,s2);}
+    for(const steps of Object.values(b.clones)){const s2=CROWN.stepAt(steps,now);if(s2&&s2.atk&&s2.atk.shape)gameBosses.drawCrownAttack(ctx,s2.atk,now,s2);}
+    gameBosses.drawBoss(ctx,b,now);
+    if(sim.atkShow.length)gameBosses.drawAttacks(ctx,sim.atkShow,now,ECON.bossLook(id,phase));
+    const b1=performance.now();
+    ctx.getImageData(0,0,1,1);
+    const b2=performance.now();
+    bossMs.push(b1-b0);frameMs.push(b2-b1);
+  }
+  // the same frames without the boss: the GPU cost the boss adds = flush - baseline flush
+  const baseMs=[];now=0;
+  for(let f=0;f<Math.min(frames,300);f++){now+=1000/60;ctx.setTransform(1,0,0,1,0,0);gameBosses.drawArena(ctx,id,now,{x:60,y:52,w:904,h:500});
+    for(const p of players(now))GFX.drawCharacter(ctx,p.x,p.y,{shirt:'#3b82f6'},{facing:'down',walking:now/16});
+    const c0=performance.now();ctx.getImageData(0,0,1,1);baseMs.push(performance.now()-c0);}
+  const js=stats(bossMs),fl=stats(frameMs),bs=stats(baseMs);
+  return {boss:bid,phase:ph,stress:st,lod:q2,js_avg:+js.avg.toFixed(3),js_p99:+js.p99.toFixed(3),gpu_avg:+Math.max(0,fl.avg-bs.avg).toFixed(3),flush_avg:+fl.avg.toFixed(3),flush_base:+bs.avg.toFixed(3),particles:BossRigs.quality().particles};
+}
+function bench(){
+  const rows=[];
+  // warm up every rig once (sprite baking, JIT)
+  for(const b of IDS)benchOne(b,1,false,'0',60);
+  for(const b of IDS)for(let ph=1;ph<=ECON.bossPhaseCount(b);ph++)rows.push(benchOne(b,ph,false,'0',600));
+  for(const lod of ['0','1','2']){rows.push(benchOne('kael',3,true,lod,900));rows.push(benchOne('sundered_king',3,true,lod,900));}
+  window.__bench=rows;
+  document.getElementById('perf').textContent='boss draw path: JS/record time per frame, and the extra GPU time it adds (flush - arena-only flush)\n'+rows.map(r=>`${r.boss.padEnd(16)} p${r.phase}${r.stress?' STRESS':'       '} LOD${r.lod}  js ${r.js_avg.toFixed(2)}ms avg / ${r.js_p99.toFixed(2)} p99   +gpu ${r.gpu_avg.toFixed(2)}ms  (flush ${r.flush_avg.toFixed(2)} vs base ${r.flush_base.toFixed(2)})`).join('\n');
+  id='kael';phase=3;
+}
+if(P.mode==='bench'){build();setTimeout(bench,50);}
+else if(P.mode==='stills'){build();requestAnimationFrame(stills);} else {build();reset();requestAnimationFrame(frame);}
+</script>

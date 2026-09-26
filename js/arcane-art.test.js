@@ -7,7 +7,7 @@
 // frame for every boss without a GPU.
 //   node js/arcane-art.test.js
 const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm');
-const ECON = require('./shared/economy.js'), DEPTHS = require('./shared/depths.js'), DUNGEON = require('./shared/dungeon.js');
+const ECON = require('./shared/economy.js'), DEPTHS = require('./shared/depths.js'), DUNGEON = require('./shared/dungeon.js'), CROWN = require('./shared/crown.js');
 
 let checks = 0, clock = 1_700_000_000_000, where = '';
 const fail = (msg) => { throw new Error(where + ': ' + msg); };
@@ -17,7 +17,7 @@ const gradient = { addColorStop(o, c) { if (!(o >= 0 && o <= 1)) fail('addColorS
 function makeCtx() {
   const target = { createLinearGradient: () => gradient, createRadialGradient: () => gradient, createPattern: () => ({}), measureText: (s) => ({ width: String(s).length * 6 }),
     getImageData: () => ({ data: new Uint8ClampedArray(4) }), setLineDash: noop, getLineDash: () => [] };
-  const styles = {};
+  const styles = { globalAlpha: 1, lineWidth: 1, globalCompositeOperation: 'source-over' };   // a real 2D context starts with these
   return new Proxy(target, {
     get(o, k) {
       if (k in styles) return styles[k];
@@ -37,16 +37,16 @@ function makeCtx() {
   });
 }
 const ctx = makeCtx();
-const world = { ECON, DEPTHS, DUNGEON, Math, console, JSON, Object, Array, Number, String, Set, Map, Symbol, Error, isFinite, parseInt, parseFloat,
+const world = { ECON, DEPTHS, DUNGEON, CROWN, Float32Array, Float64Array, Int8Array, Uint8Array, Uint16Array, Math, console, JSON, Object, Array, Number, String, Set, Map, Symbol, Error, isFinite, parseInt, parseFloat,
   Date: { now: () => clock }, state: { pos: { x: 512, y: 520 }, appearance: {} } };
 world.window = world;
 vm.createContext(world);
-for (const f of ['./mobs.js', './bosses.js']) vm.runInContext(fs.readFileSync(require.resolve(f), 'utf8'), world, { filename: f });
+for (const f of ['./mobs.js', './boss-rigs.js', './bosses.js']) vm.runInContext(fs.readFileSync(require.resolve(f), 'utf8'), world, { filename: f });
 const B = world.gameBosses, M = world.gameMobs;
 
 // ---------------------------------------------------------------- bosses
 const allBosses = Object.keys(ECON.GUILD_BOSSES);
-const NEW_BOSSES = ECON.GUILD_BOSS_ORDER.slice(4).concat(ECON.GUILD_MINIS.slice(2), ECON.GUILD_RAID_MINIS, ECON.GUILD_SPECIAL_BOSSES);
+const NEW_BOSSES = ECON.GUILD_BOSS_ORDER.slice(4).concat(ECON.GUILD_MINIS.slice(2), ECON.GUILD_RAID_MINIS, ECON.GUILD_SPECIAL_BOSSES, ECON.CROWN_BOSS_ORDER, ECON.CROWN_MINIS);
 for (const id of NEW_BOSSES) assert(B.hasRenderer(id), id + ' has a bespoke 2D renderer');
 for (const id of allBosses) assert(B.rendererFor(id), id + ' resolves to a renderer (own, def.art, or the warden fallback)');
 function bossState(id, phase, status, variant) {
@@ -89,9 +89,10 @@ for (const id of allBosses) {
 const types = new Set();
 for (const id of allBosses) for (let ph = 1; ph <= ECON.bossPhaseCount(id); ph++) for (const a of ECON.bossDeck(id, ph)) types.add(a.type);
 for (const a of Object.values(DEPTHS.RAID_OVERLAY)) if (a && a.type) types.add(a.type);
-// SUNDERED CROWN (Wave A, docs/sundered-crown/MASTER-PLAN.md S19): art for these ids lands in Wave B3. B3 DELETES THIS LINE (acceptance).
-const CROWN_PENDING = new Set([].concat(ECON.CROWN_CONTENT.attackTypes, ECON.CROWN_CONTENT.enemyTypes, ECON.CROWN_CONTENT.props, ECON.CROWN_CONTENT.cosmetics));
-for (const t of types) if (!CROWN_PENDING.has(t)) assert(B.drawsAttack(t), 'drawsAttack(' + t + ')');
+for (const t of types) assert(B.drawsAttack(t), 'drawsAttack(' + t + ')');
+// every crown move / cast type (including the twins' per-body decks) has its own art
+for (const t of ECON.CROWN_CONTENT.attackTypes) assert(B.drawsAttack(t), 'drawsAttack(' + t + ')');
+for (const id of ECON.CROWN_CONTENT.bosses) assert(B.isMobileBoss(id) && B.rigFor(id), id + ' has a skeletal rig');
 function shotFor(a, fireAt) {
   const head = B.headPos(), pts = [{ x: 400, y: 460 }, { x: 600, y: 420 }, { x: 700, y: 500 }];
   const s = Object.assign({}, a, { fireAt, at: fireAt - a.warnMs, head, from: head, points: pts, x0: 60, x1: 964, y: 440, dir: 1, angle: 1.2, ang: 1.3, rot: 0.4,
@@ -110,6 +111,41 @@ for (const id of allBosses) for (let ph = 1; ph <= ECON.bossPhaseCount(id); ph++
 }
 where = 'whirlpool push'; B.drawAttacks(ctx, [shotFor({ type: 'whirlpool', warnMs: 1000, pull: -1.8, durMs: 2000, tell: 'x' }, clock + 100)], clock, ECON.GUILD_BOSSES.khyra);
 
+// ---------------------------------------------------------------- the client runtime's calls (js/crown-boss.js, js/crown-arts.js)
+{
+  // drawMobileBoss(ctx, view, P, t) with the runtime's persistent pose object; view may be null
+  assert.equal(B.drawMobileBoss(ctx, null, { x: 1, y: 1, f: 0, s: 'idle', k: 0, ok: true }, clock), false, 'no view: the runtime draws its fallback');
+  for (const id of ECON.CROWN_CONTENT.bosses) for (let ph = 1; ph <= ECON.bossPhaseCount(id); ph++) {
+    const view = { id, phase: ph, status: 'alive', bodies: id === 'twin_monarchs' ? [{ key: 'sol', hp: 5, maxHp: 10, dead: false }, { key: 'umbra', hp: 0, maxHp: 10, dead: true }] : undefined };
+    const bodies = id === 'twin_monarchs' ? ['sol', 'umbra'] : ['main', 'c7'];
+    for (const key of bodies) {
+      const P = { x: 400, y: 300, f: 0.3, s: 'idle', k: 0, step: null, ok: true, hidden: false };
+      for (const [s, type] of [['idle', ''], ['run', ''], ['windup', 'combo'], ['active', 'dash_slash'], ['guard', 'parry'], ['stunned', ''], ['vanish', ''], ['hidden', ''], ['rest', 'colossus_slam'], ['kneel', ''], ['sundered', ''], ['dead', '']]) {
+        where = `drawMobileBoss ${id} p${ph} ${key} ${s}`;
+        clock += 16; P.x += 3;
+        P.s = s; P.k = 0.5; P.step = { s, t0: clock - 200, dur: 400, x0: P.x, y0: P.y, x1: P.x + 40, y1: P.y, e: 'linear', f0: 0.3, f1: 0.3, atk: type ? { type, phase: 'tell', x: 500, y: 300, r: 90 } : undefined, hb: s === 'rest' ? { x: 500, y: 300, r: 70 } : undefined };
+        P.body = key; P.clone = key === 'c7'; P.real = !P.clone; P.flash = s === 'active'; P.guard = s === 'guard'; P.vuln = s === 'stunned' ? 2 : 1;
+        P.exposed = key !== 'umbra'; P.form = id === 'sundered_king' ? CROWN.formOf(id, ph).key : undefined; P.sundered = s === 'sundered';
+        assert.equal(B.drawMobileBoss(ctx, view, P, clock), true, 'drawMobileBoss draws ' + id);
+      }
+    }
+  }
+  // drawPillar(ctx, p, t, bossId), drawCrownShard(ctx, shard, t), drawCrownAttack(ctx, atk, t), drawArt(ctx, fx, t)
+  for (const hits of [2, 1, 1, 0, 2]) { where = 'drawPillar ' + hits; clock += 16; assert.equal(B.drawPillar(ctx, { i: 1, x: 300, y: 230, r: 36, hits, crackAt: clock - 50 }, clock, 'gorehorn'), true); }
+  for (const hp of [60, 40, 0]) { where = 'drawCrownShard ' + hp; clock += 16; assert.equal(B.drawCrownShard(ctx, { i: 2, hp, maxHp: 60, r: 26, pos: { x: 500, y: 300 }, trail: new Float32Array(16), tn: 0, th: 0 }, clock), true); }
+  for (const st of [{ s: 'windup', atk: { type: 'gore_charge', phase: 'tell', shape: 'lane', x0: 100, y0: 100, x1: 600, y1: 300, w: 118, hit: 'pillar' } }, { s: 'active', atk: { type: 'combo', phase: 'hit', shape: 'cone', x: 400, y: 300, ang: 1, arc: 2.2, r: 120, hit: 2 } },
+    { s: 'hidden', atk: { type: 'thousand_cuts', phase: 'hit', cuts: { seed: 5, n: 12, t0: clock, gapMs: 260, w: 46 } } }]) {
+    where = 'drawCrownAttack ' + st.atk.type;
+    const atk = Object.assign(st.atk, { k: 0.5, now: clock + 400, s: st.s, body: 'main', t0: clock });
+    assert.equal(B.drawCrownAttack(ctx, atk, clock), true);
+  }
+  for (const art of CROWN.ART_ORDER) {
+    const A = CROWN.ARTS[art];
+    const f = { on: true, art, x: 300, y: 300, x1: 480, y1: 330, ang: 0.2, t0: clock, dur: 900, mine: true, by: 'me', counter: false, kind: A.kind, color: A.color, r: A.r || 0, w: A.w || 40 };
+    for (const age of [0, 100, 450, 880]) { where = `drawArt ${art} ${age}`; B.drawArt(ctx, f, clock + age); }
+  }
+}
+
 // ---------------------------------------------------------------- loot, chests, features
 for (const r of ECON.GEAR_RARITIES) {
   assert(ECON.GEAR_RARITY_INFO[r].beam, r + ' has a beam config');
@@ -122,12 +158,13 @@ const FEATURES = ['vault_door', 'secret_hint', 'trial_door', 'rift_stair', 'sanc
 for (const f of FEATURES) for (const st of [{}, { used: true }, { open: 0.5, locked: true }, { open: 1 }, { shards: 2, need: 3 }, { glow: 0.8 }, { label: 'TRIAL', state: 'active' }, { open: true }, { hp: 0, maxHp: 10, broken: true }, { hp: 5, maxHp: 10 }]) {
   where = `drawFeature ${f} ${JSON.stringify(st)}`; B.drawFeature(ctx, f, 500, 300, clock, st);
 }
-for (const k of ['archive', 'geode', 'rime', 'depths', 'nexus', 'astraea', 'guild_rime', 'raid_nexus', 'arcane_depths']) { where = 'arena ' + k; assert(B.drawArena(ctx, k, clock, { x: 60, y: 52, w: 904, h: 500 }), 'arena ' + k); }
+for (const k of ['archive', 'geode', 'rime', 'depths', 'nexus', 'astraea', 'guild_rime', 'raid_nexus', 'arcane_depths', 'thornwild', 'colosseum', 'mirror', 'throne', 'gorehorn', 'guild_throne']) { where = 'arena ' + k; assert(B.drawArena(ctx, k, clock, { x: 60, y: 52, w: 904, h: 500 }), 'arena ' + k); }
 assert.equal(B.drawArena(ctx, 'crypt', clock), false, 'old tiers keep combat.js room');
 
 // ---------------------------------------------------------------- enemies
 const TYPES = DUNGEON.ENEMY_TYPES;
-for (const t of Object.keys(TYPES)) if (!CROWN_PENDING.has(t)) assert(M.hasModel(t), 'enemy model ' + t);
+for (const t of Object.keys(TYPES)) assert(M.hasModel(t), 'enemy model ' + t);
+assert.equal(M.CROWN_THEMED, true);
 assert.equal(M.THEMED, true); assert.equal(M.ELITE_OVERLAY, true);
 const AFF = Object.keys(DEPTHS.ELITE_AFFIXES);
 let enemyFrames = 0;
@@ -149,7 +186,7 @@ for (const key of Object.keys(DEPTHS.DUNGEON_THEMES).concat(ECON.GUILD_DUNGEON_O
   M.drawFloor(ctx, 0, 0, 256, 256, key); M.drawFloor(ctx, 0, 0, 128, 128, T);
   M.drawWalls(ctx, [{ x: 0, y: 0, w: 200, h: 24 }, { x: 0, y: 0, w: 24, h: 200 }], T);
   const props = (T.props || []).map((kind, i) => ({ kind, x: 50 + i * 60, y: 100, rot: 0.5, ph: i }));
-  for (const p of props) if (!CROWN_PENDING.has(p.kind)) assert(M.GROUND_KINDS[p.kind] || M.THEMED_STANDING[p.kind], `theme ${key} prop ${p.kind} has its own art (not the torch fallback)`);
+  for (const p of props) assert(M.GROUND_KINDS[p.kind] || M.THEMED_STANDING[p.kind], `theme ${key} prop ${p.kind} has its own art (not the torch fallback)`);
   M.drawGroundProps(ctx, props, clock); M.drawStandingProps(ctx, props, clock); M.drawStandingProps(ctx, props, clock, T);
   M.drawMotes(ctx, 0, 0, 400, 300, clock, T); M.drawDarkness(ctx, 100, 100, 0, 0, 400, 300, T);
 }
@@ -174,7 +211,7 @@ M.drawFloor(ctx, 0, 0, 64, 64); M.drawWalls(ctx, [{ x: 0, y: 0, w: 64, h: 16 }])
   // the new ids are drawn (not silently ignored): count canvas calls against a plain appearance
   const count = (app) => { const before = checks; GFX.drawCharacter(ctx, 200, 200, app, { facing: 'down' }); return checks - before; };
   const plain = count({});
-  for (const [kind, cid] of unlockable) if (kind !== 'nameColor' && !CROWN_PENDING.has(kind + ':' + cid)) assert(count({ [kind]: cid }) > plain, `${kind}:${cid} has its own draw branch`);
+  for (const [kind, cid] of unlockable) if (kind !== 'nameColor') assert(count({ [kind]: cid }) > plain, `${kind}:${cid} has its own draw branch`);
 }
 
 // ---------------------------------------------------------------- 3D cutscenes

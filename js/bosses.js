@@ -24,7 +24,7 @@
 
   // Per-part hit flashes, keyed by part index (6 = head), holding a timestamp.
   const flash = {};
-  function flashPart(i) { flash[i] = Date.now() + 140; }
+  function flashPart(i) { flash[i] = Date.now() + 140; const R = typeof window !== "undefined" && window.BossRigs; if (R && R.hit) R.hit(null, null, Date.now()); }
   function isFlashing(i, t) { return (flash[i] || 0) > t; }
 
   function partPos(i, n) { return ECON.guildBossPartPos(i, n, W, H); }
@@ -1879,6 +1879,7 @@
     return { cx, cy, vuln };
   }
 
+  const MOBILE_R = { mobile: true, part: () => {}, head: () => null };
   const RENDER = {
     warden:   { part: drawChain,     head: drawWardenHead },
     smith:    { part: drawBellows,   head: drawSmithHead },
@@ -1899,6 +1900,9 @@
     ley_ember:   { part: drawLeyFocus,    head: drawLeyWardenHead },
     ley_tide:    { part: drawLeyFocus,    head: drawLeyWardenHead },
     ley_star:    { part: drawLeyFocus,    head: drawLeyWardenHead },
+    // THE SUNDERED CROWN: mobile bosses — drawn by the skeletal rigs in js/boss-rigs.js
+    gorehorn: MOBILE_R, kael: MOBILE_R, twin_monarchs: MOBILE_R, sundered_king: MOBILE_R,
+    briar_matron: MOBILE_R, pit_champion: MOBILE_R, veiled_assassin: MOBILE_R, kael_crownbound: MOBILE_R,
   };
   // Renderer for any boss id: its own, else the one its data borrows (`art`),
   // else the Warden's (the documented fallback).
@@ -2716,6 +2720,7 @@
 
   function drawBoss(ctx, boss, t) {
     if (!boss) return;
+    if (isMobileBoss(boss.id)) { drawMobileBossAuto(ctx, boss, t); return; }
     phaseTint(ctx, boss, t, () => drawBossBody(ctx, boss, t));
     drawBossOverlays(ctx, boss, t);
   }
@@ -3135,6 +3140,8 @@
         }
       } else if (ARCANE_SHAPES[a.type]) {
         ARCANE_SHAPES[a.type](ctx, a, t, { warn, after, life, winding, fade, acc, body, boss });
+      } else if (CROWN_SHAPES[a.type]) {
+        CROWN_SHAPES[a.type](ctx, a, t, { warn, after, life, winding, fade, acc, body, boss });
       }
 
       // The name of the move, over the wind-up, plus how to beat it.
@@ -3795,11 +3802,13 @@
   // so the caller knows to fall back. `key` is a theme, a tier or a boss id.
   const BOSS_THEME = { curator: "archive", astraea: "archive", prismgolem: "geode", khyra: "geode", halvard: "rime", iskarra: "rime",
     heart: "depths", concordant: "nexus", ley_ember: "nexus", ley_tide: "nexus", ley_star: "nexus",
+    gorehorn: "thornwild", briar_matron: "thornwild", kael: "colosseum", pit_champion: "colosseum",
+    twin_monarchs: "mirror", veiled_assassin: "mirror", sundered_king: "throne", kael_crownbound: "throne",
     ogrelord: "warpit", herald: "belfry", broodmother: "nest" };
   function themeKeyOf(key) {
     if (!key) return null;
     if (BOSS_THEME[key]) return BOSS_THEME[key];
-    if (["archive", "geode", "rime", "depths", "nexus", "warpit", "belfry", "nest"].includes(key)) return key;
+    if (["archive", "geode", "rime", "depths", "nexus", "warpit", "belfry", "nest", "thornwild", "colosseum", "mirror", "throne"].includes(key)) return key;
     const cfg = ECON.GUILD_DUNGEONS && ECON.GUILD_DUNGEONS[key];
     if (cfg && cfg.theme) return cfg.theme;
     return null;
@@ -3808,7 +3817,8 @@
   function drawArena(ctx, key, t, rect, accent) {
     const th = themeKeyOf(key);
     const PAINT = { archive: arenaArchive, geode: arenaGeode, rime: arenaRime, depths: arenaDepths, nexus: arenaNexus,
-      warpit: arenaWarpit, belfry: arenaBelfry, nest: arenaNest }[th];
+      warpit: arenaWarpit, belfry: arenaBelfry, nest: arenaNest,
+      thornwild: arenaThornwild, colosseum: arenaColosseum, mirror: arenaMirror, throne: arenaThrone }[th];
     if (!PAINT) return false;
     const R = rect || { x: 0, y: 0, w: W, h: H };
     ctx.save();
@@ -4980,6 +4990,292 @@
     letterbox(ctx, k < 0.08 ? k / 0.08 : k > 0.9 ? (1 - k) / 0.1 : 1);
   }
 
+  // ======================================================= THE SUNDERED CROWN (B3)
+  // docs/sundered-crown/MASTER-PLAN.md §6.5 / §8 B3. The mobile bosses are drawn
+  // by js/boss-rigs.js (window.BossRigs): procedural skeletal rigs posed from the
+  // server's motion steps. drawBoss() on a mobile boss needs nothing extra from
+  // the caller — it reads boss.motion / clones / pillars / shards / polarity and
+  // depth-sorts the bodies with the arena pillars. drawMobileBoss() is the
+  // per-body entry point for a caller that computes poses itself.
+  const CROWN_IDS = { gorehorn: 1, kael: 1, twin_monarchs: 1, sundered_king: 1, briar_matron: 1, pit_champion: 1, veiled_assassin: 1, kael_crownbound: 1 };
+  const RIGS_ = () => (typeof window !== "undefined" && window.BossRigs) || null;
+  // glows from BossRigs' pre-baked sprites: no gradient is created per frame (§10)
+  const _rgbHex = {};
+  function sglow(ctx, x, y, r, hex, a) {
+    const R = RIGS_();
+    if (!R || !R._i) return glowAt(ctx, x, y, r, hex, a);
+    R._i.glow(ctx, x, y, r, _rgbHex[hex] || (_rgbHex[hex] = hexToRgb(hex)), a);
+  }
+  function isMobileBoss(id) {
+    if (CROWN_IDS[id]) return true;
+    try { return !!(window.CROWN && CROWN.isMobile && CROWN.isMobile(id)); } catch (e) { return false; }
+  }
+  // what drawBoss draws for a mobile boss when the rig module is missing: a body disc
+  function mobileFallback(ctx, boss, t) {
+    const look = lookOf(boss);
+    ctx.fillStyle = "rgba(0,0,0,.4)"; ctx.beginPath(); ctx.ellipse(W / 2, 290, 40, 16, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = look.color; ctx.beginPath(); ctx.arc(W / 2, 250, 34, 0, TAU); ctx.fill();
+    ctx.strokeStyle = look.accent; ctx.lineWidth = 3; ctx.stroke();
+  }
+  function drawMobileBossAuto(ctx, boss, t) {
+    const R = RIGS_();
+    let ok = false;
+    try { ok = !!(R && R.drawAuto(ctx, boss, t)); } catch (e) { ok = false; }
+    if (!ok) mobileFallback(ctx, boss, t);
+    if (boss.hardEnraged && boss.status !== "dead") {
+      ctx.save(); ctx.globalCompositeOperation = "lighter";
+      const pulse = 0.5 + 0.5 * Math.sin(t / 140);
+      sglow(ctx, W / 2, H / 2, 520, "#ef4444", 0.08 + 0.06 * pulse);
+      ctx.restore();
+    }
+  }
+  // gameBosses.drawMobileBoss(ctx, boss, pose, t) -> bool (false: caller draws its fallback)
+  function drawMobileBoss(ctx, boss, pose, t) {
+    const R = RIGS_();
+    if (!R || !boss || !pose) return false;
+    try { return R.drawMobile(ctx, boss, pose, t == null ? Date.now() : t); } catch (e) { return false; }
+  }
+  // gameBosses.drawCrownAttack(ctx, atk, t, step?) — a body move's telegraph / strike
+  function drawCrownAttack(ctx, atk, t, step) {
+    const R = RIGS_();
+    if (!R || !atk) return false;
+    try { return R.drawAttack(ctx, atk, t == null ? Date.now() : t, step); } catch (e) { return false; }
+  }
+  // gameBosses.drawArt(ctx, use, t) -> true while the Crown Art effect is playing
+  function drawArt(ctx, use, t) {
+    const R = RIGS_();
+    if (!R || !use) return false;
+    try { return R.drawArt(ctx, use, t == null ? Date.now() : t); } catch (e) { return false; }
+  }
+  function rigFor(id) { const R = RIGS_(); return R ? R.rigFor(id) : null; }
+
+  // ---- the new cast shapes (thrown through the classic payload path) and the body moves
+  //   entangle  a.points, a.r, a.rootMs      crescent  a.ox/oy (else a.head) -> a.points[0], a.band, a.speed (px/frame)
+  //   eclipse   a.x0,a.y0,a.x1,a.y1, a.w     body moves: a.shape (lane|cone|ring|circle) -> BossRigs.drawAttack
+  const BODY_MOVES = ["gore_charge", "gore", "stomp", "burrow", "dash_slash", "combo", "parry", "riposte", "afterimage", "thousand_cuts", "spear_thrust", "shield_bash",
+    "spear_sweep", "shield_charge", "solar_flare", "shadow_step", "ambush", "shadow_lunge", "kings_cleave", "crown_dash", "decree", "colossus_slam"];
+  const CROWN_SHAPES = {
+    entangle(ctx, a, t, o) {
+      const r = a.r || 56;
+      for (const p of (a.points || [])) {
+        if (o.winding) {
+          dangerCircle(ctx, p.x, p.y, r, o.warn);
+          ctx.strokeStyle = `rgba(190,242,100,${0.35 + 0.4 * o.warn})`; ctx.lineWidth = 2;
+          for (let k = 0; k < 6; k++) { const an = k / 6 * TAU + t / 900; ctx.beginPath(); ctx.moveTo(p.x + Math.cos(an) * r * 0.9, p.y + Math.sin(an) * r * 0.54); ctx.quadraticCurveTo(p.x + Math.cos(an + 0.4) * r * 0.5, p.y + Math.sin(an + 0.4) * r * 0.3 - 6 * o.warn, p.x, p.y); ctx.stroke(); }
+        } else {
+          const k = clamp01(o.after / Math.max(1, o.life)), up = Math.sin(clamp01(k * 2.2) * Math.PI * 0.5), fade = o.fade;
+          ctx.fillStyle = `rgba(22,40,8,${0.55 * fade})`; ctx.beginPath(); ctx.ellipse(p.x, p.y, r, r * 0.6, 0, 0, TAU); ctx.fill();
+          ctx.strokeStyle = `rgba(77,124,15,${fade})`; ctx.lineWidth = 5; ctx.lineCap = "round";
+          for (let v = 0; v < 7; v++) { const an = v / 7 * TAU; ctx.beginPath(); ctx.moveTo(p.x + Math.cos(an) * r * 0.8, p.y + Math.sin(an) * r * 0.48);
+            ctx.bezierCurveTo(p.x + Math.cos(an) * r * 0.9, p.y + Math.sin(an) * r * 0.5 - 30 * up, p.x + Math.cos(an + 1.2) * r * 0.3, p.y - 44 * up, p.x + Math.cos(an + 2) * 6, p.y - 30 * up); ctx.stroke(); }
+          ctx.fillStyle = `rgba(190,242,100,${fade})`; for (let v = 0; v < 9; v++) { const an = v * 2.3; ctx.beginPath(); ctx.arc(p.x + Math.cos(an) * r * 0.5, p.y + Math.sin(an) * r * 0.3 - 20 * up, 2.2, 0, TAU); ctx.fill(); }
+          ctx.lineCap = "butt";
+        }
+      }
+    },
+    crescent(ctx, a, t, o) {
+      const from = (a.ox != null && a.oy != null) ? { x: a.ox, y: a.oy } : (a.head || headPos());
+      const to = (a.points && a.points[0]) || a.safe || { x: W / 2, y: H * 0.7 };
+      const ang = Math.atan2(to.y - from.y, to.x - from.x), band = a.band || 60, speed = (a.speed || 7) * 60;
+      ctx.save(); ctx.translate(from.x, from.y); ctx.rotate(ang);
+      if (o.winding) {
+        ctx.fillStyle = `rgba(239,68,68,${0.07 + 0.1 * o.warn})`; ctx.fillRect(0, -band * 1.3, 1100, band * 2.6);
+        ctx.strokeStyle = `rgba(254,202,202,${0.35 + 0.4 * o.warn})`; ctx.lineWidth = 2; ctx.setLineDash([12, 10]); ctx.strokeRect(0, -band * 1.3, 1100, band * 2.6); ctx.setLineDash([]);
+        ctx.strokeStyle = `rgba(244,63,94,${0.4 + 0.6 * o.warn})`; ctx.lineWidth = 3 + 5 * o.warn; ctx.beginPath(); ctx.arc(-30, 0, 70, -0.9, 0.9); ctx.stroke();
+      } else {
+        const d = speed * o.after / 1000;
+        ctx.globalCompositeOperation = "lighter";
+        ctx.strokeStyle = `rgba(244,63,94,${0.75 * o.fade})`; ctx.lineWidth = band * 0.7; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.arc(d - 70, 0, 90, -0.85, 0.85); ctx.stroke();
+        ctx.strokeStyle = `rgba(255,255,255,${o.fade})`; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(d - 58, 0, 90, -0.8, 0.8); ctx.stroke();
+        ctx.lineCap = "butt";
+      }
+      ctx.restore();
+    },
+    eclipse(ctx, a, t, o) {
+      const x0 = a.x0 != null ? a.x0 : W * 0.3, y0 = a.y0 != null ? a.y0 : H * 0.4, x1 = a.x1 != null ? a.x1 : W * 0.7, y1 = a.y1 != null ? a.y1 : H * 0.4;
+      const ang = Math.atan2(y1 - y0, x1 - x0), len = Math.hypot(x1 - x0, y1 - y0), w = a.w || 96;
+      ctx.save(); ctx.translate(x0, y0); ctx.rotate(ang);
+      if (o.winding) {
+        ctx.fillStyle = `rgba(239,68,68,${0.08 + 0.14 * o.warn})`; ctx.fillRect(0, -w / 2, len, w);
+        ctx.strokeStyle = `rgba(253,230,138,${0.4 + 0.5 * o.warn})`; ctx.lineWidth = 2; ctx.setLineDash([16, 8]); ctx.strokeRect(0, -w / 2, len, w); ctx.setLineDash([]);
+      } else {
+        ctx.fillStyle = `rgba(6,3,16,${0.85 * o.fade})`; ctx.fillRect(0, -w / 2, len, w);
+        ctx.globalCompositeOperation = "lighter";
+        ctx.fillStyle = `rgba(253,224,71,${0.7 * o.fade})`; ctx.fillRect(0, -w / 2, len, 5); ctx.fillRect(0, w / 2 - 5, len, 5);
+        ctx.fillStyle = `rgba(196,181,253,${0.5 * o.fade})`; ctx.fillRect(0, -3, len, 6);
+      }
+      ctx.restore();
+    },
+  };
+  // a body move handed to drawAttacks: with geometry it is the rig telegraph, else a marker
+  function drawBodyMoveShot(ctx, a, t, o) {
+    if (a.shape || a.cuts) {
+      const k = o.winding ? o.warn : clamp01(o.after / Math.max(120, o.life || 300));
+      drawCrownAttack(ctx, Object.assign({}, a, { phase: o.winding ? "tell" : "hit", k }), t);
+      return;
+    }
+    for (const p of (a.points || [])) {
+      const r = a.r || 90;
+      if (o.winding) dangerCircle(ctx, p.x, p.y, r, o.warn);
+      else { const k = clamp01(o.after / 400); ctx.strokeStyle = `rgba(255,255,255,${0.8 * (1 - k)})`; ctx.lineWidth = 6 * (1 - k) + 1; ctx.beginPath(); ctx.ellipse(p.x, p.y, r * (0.5 + k), r * (0.5 + k) * 0.6, 0, 0, TAU); ctx.stroke(); }
+    }
+  }
+  for (const m of BODY_MOVES) if (!CROWN_SHAPES[m]) CROWN_SHAPES[m] = drawBodyMoveShot;
+
+  // ---- the four crown arenas: static layer painted once, a few things animate
+  const thornGeom = (R) => { const wallH = Math.min(90, R.h * 0.17); return { wallH, fy: R.y + wallH, cx: R.x + R.w / 2, cy: R.y + R.h * 0.56 }; };
+  function thornStatic(ctx, R) {
+    const { wallH, fy, cx, cy } = thornGeom(R);
+    ctx.fillStyle = "#141a0c"; ctx.fillRect(R.x, R.y, R.w, R.h);
+    // earth, moss and root veins
+    for (let k = 0; k < 520; k++) { const x = R.x + hash01(k * 1.7) * R.w, y = fy + hash01(k * 2.3) * (R.h - wallH), n = hash01(k * 5.1);
+      ctx.fillStyle = n > 0.6 ? `rgba(63,98,18,${0.25 + n * 0.2})` : `rgba(40,30,18,${0.3 + n * 0.3})`; ctx.beginPath(); ctx.ellipse(x, y, 6 + n * 16, 3 + n * 6, n * 3, 0, TAU); ctx.fill(); }
+    // the trampled ring where it circles its prey
+    ctx.strokeStyle = "rgba(60,44,26,.55)"; ctx.lineWidth = 34; ctx.beginPath(); ctx.ellipse(cx, cy, R.w * 0.33, R.h * 0.3, 0, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = "rgba(20,14,8,.35)"; ctx.lineWidth = 2;
+    for (let k = 0; k < 40; k++) { const an = k / 40 * TAU, x = cx + Math.cos(an) * R.w * 0.33, y = cy + Math.sin(an) * R.h * 0.3; ctx.beginPath(); ctx.ellipse(x, y, 5, 3, an, 0, TAU); ctx.stroke(); }
+    ctx.strokeStyle = "rgba(58,40,20,.8)"; ctx.lineCap = "round";
+    for (let v = 0; v < 14; v++) { const x0 = R.x + hash01(v * 3.3) * R.w, y0 = fy + hash01(v * 7.1) * (R.h - wallH); ctx.lineWidth = 3 + hash01(v) * 4; ctx.beginPath(); ctx.moveTo(x0, y0);
+      ctx.bezierCurveTo(x0 + 60, y0 + 20 - hash01(v * 9) * 40, x0 + 110, y0 - 30, x0 + 170 + hash01(v * 2) * 60, y0 + hash01(v * 4) * 40 - 20); ctx.stroke(); }
+    ctx.lineCap = "butt";
+    // the warren's back wall: hedge of bramble and root, dark
+    const g = ctx.createLinearGradient(0, R.y, 0, fy + 10); g.addColorStop(0, "#0a0e05"); g.addColorStop(1, "#23300f");
+    ctx.fillStyle = g; ctx.fillRect(R.x, R.y, R.w, wallH);
+    for (let k = 0; k < 70; k++) { const x = R.x + hash01(k * 4.1) * R.w, y = R.y + hash01(k * 1.9) * wallH, r = 10 + hash01(k * 7) * 24; ctx.fillStyle = k % 3 ? "#1f2d0b" : "#2f4a0c"; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); }
+    ctx.strokeStyle = "#0b0f05"; ctx.lineWidth = 2;
+    for (let k = 0; k < 40; k++) { const x = R.x + hash01(k * 2.7) * R.w, y = R.y + 10 + hash01(k * 3.9) * (wallH - 10); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 8, y - 5); ctx.moveTo(x + 4, y - 2); ctx.lineTo(x + 6, y + 6); ctx.stroke(); }
+    ctx.fillStyle = "rgba(0,0,0,.45)"; ctx.fillRect(R.x, fy - 4, R.w, 10);
+    // fallen logs round the edge
+    for (const [u, v, w, a] of [[0.07, 0.6, 90, 0.4], [0.93, 0.45, 110, -0.5], [0.12, 0.9, 70, -0.2], [0.86, 0.92, 90, 0.2]]) {
+      const x = R.x + R.w * u, y = R.y + R.h * v;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(a); ctx.fillStyle = "#3b2a16"; ctx.fillRect(-w / 2, -9, w, 18); ctx.fillStyle = "#5a4024"; ctx.beginPath(); ctx.ellipse(w / 2, 0, 5, 9, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = "rgba(77,124,15,.6)"; ctx.fillRect(-w / 2, -9, w * 0.6, 4); ctx.restore();
+    }
+  }
+  function arenaThornwild(ctx, R, t) {
+    arenaLayer("thornwild", ctx, R, thornStatic);
+    const { fy } = thornGeom(R);
+    // glowing caps along the hedge, drifting pollen
+    for (let k = 0; k < 12; k++) { const x = R.x + 30 + hash01(k * 6.1) * (R.w - 60), y = fy + 8 + hash01(k * 3.1) * 12, pu = 0.5 + 0.5 * Math.sin(t / 900 + k);
+      sglow(ctx, x, y - 4, 22, "#bef264", 0.15 + 0.15 * pu); ctx.fillStyle = "#65a30d"; ctx.beginPath(); ctx.ellipse(x, y - 4, 6, 3.5, 0, Math.PI, TAU); ctx.fill(); ctx.fillStyle = "#e7e5e4"; ctx.fillRect(x - 1, y - 4, 2, 5); }
+    for (let k = 0; k < 34; k++) { const ph = (t / 7000 + k / 34) % 1, x = R.x + ((hash01(k * 3.3) * R.w + Math.sin(t / 1600 + k) * 30 + R.w) % R.w), y = R.y + R.h - ph * R.h;
+      ctx.fillStyle = `rgba(217,249,157,${0.5 * Math.sin(ph * Math.PI)})`; ctx.fillRect(x, y, 2, 2); }
+  }
+  const colGeom = (R) => { const wallH = Math.min(110, R.h * 0.2); return { wallH, fy: R.y + wallH, cx: R.x + R.w / 2, cy: R.y + R.h * 0.58 }; };
+  function colStatic(ctx, R) {
+    const { wallH, fy, cx, cy } = colGeom(R);
+    // warm raked sand
+    const g = ctx.createRadialGradient(cx, cy, 40, cx, cy, R.w * 0.62); g.addColorStop(0, "#8a6a44"); g.addColorStop(1, "#4a3422");
+    ctx.fillStyle = g; ctx.fillRect(R.x, fy, R.w, R.h - wallH);
+    ctx.strokeStyle = "rgba(60,40,20,.25)"; ctx.lineWidth = 1;
+    for (let k = 0; k < 26; k++) { ctx.beginPath(); ctx.ellipse(cx, cy, 40 + k * 22, (40 + k * 22) * 0.48, 0, 0, TAU); ctx.stroke(); }
+    for (let k = 0; k < 18; k++) { const x = R.x + hash01(k * 5.3) * R.w, y = fy + 20 + hash01(k * 2.1) * (R.h - wallH - 30); ctx.fillStyle = k % 3 ? "rgba(90,20,14,.35)" : "rgba(30,20,14,.4)"; ctx.beginPath(); ctx.ellipse(x, y, 10 + hash01(k) * 18, 5 + hash01(k * 3) * 6, hash01(k * 7) * 3, 0, TAU); ctx.fill(); }
+    // the stone rim of the pit
+    ctx.strokeStyle = "#6b5845"; ctx.lineWidth = 10; ctx.beginPath(); ctx.ellipse(cx, cy, R.w * 0.47, R.h * 0.42, 0, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = "rgba(0,0,0,.35)"; ctx.lineWidth = 2; for (let k = 0; k < 48; k++) { const an = k / 48 * TAU; ctx.beginPath(); ctx.moveTo(cx + Math.cos(an) * R.w * 0.46, cy + Math.sin(an) * R.h * 0.41); ctx.lineTo(cx + Math.cos(an) * R.w * 0.48, cy + Math.sin(an) * R.h * 0.43); ctx.stroke(); }
+    // the stands: tiers of stone with an arcade under them
+    for (let tr = 0; tr < 4; tr++) { const y = R.y + tr * (wallH / 4); ctx.fillStyle = tr % 2 ? "#3b2c22" : "#46352a"; ctx.fillRect(R.x, y, R.w, wallH / 4); ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fillRect(R.x, y + wallH / 4 - 3, R.w, 3); }
+    for (let k = 0; k < 16; k++) { const x = R.x + (k + 0.5) * R.w / 16; ctx.fillStyle = "#1a120c"; ctx.beginPath(); ctx.moveTo(x - 16, fy); ctx.lineTo(x - 16, fy - 22); ctx.arc(x, fy - 22, 16, Math.PI, 0); ctx.lineTo(x + 16, fy); ctx.closePath(); ctx.fill(); }
+    // the royal box in the middle of the stands
+    ctx.fillStyle = "#5c1d12"; ctx.fillRect(cx - 70, R.y + 6, 140, wallH * 0.55); ctx.strokeStyle = "#d6a45a"; ctx.lineWidth = 2; ctx.strokeRect(cx - 70, R.y + 6, 140, wallH * 0.55);
+    // spears stuck in the sand
+    for (let k = 0; k < 9; k++) { const x = R.x + 40 + hash01(k * 9.7) * (R.w - 80), y = fy + 30 + hash01(k * 4.4) * (R.h - wallH - 60); if (Math.abs(x - cx) < 220 && Math.abs(y - cy) < 150) continue;
+      ctx.strokeStyle = "#5a4a3a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (hash01(k) - 0.5) * 14, y - 40); ctx.stroke(); ctx.fillStyle = "rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(x + 8, y, 8, 3, 0, 0, TAU); ctx.fill(); }
+  }
+  function arenaColosseum(ctx, R, t) {
+    arenaLayer("colosseum", ctx, R, colStatic);
+    const { wallH, fy, cx } = colGeom(R);
+    // the crowd: heads bobbing along the tiers
+    for (let tr = 0; tr < 3; tr++) for (let k = 0; k < 44; k++) {
+      const x = R.x + 8 + (k + (tr % 2) * 0.5) * (R.w / 44), y = R.y + 12 + tr * (wallH / 4) + Math.abs(Math.sin(t / (260 + (k % 5) * 40) + k * 1.3)) * -3;
+      if (Math.abs(x - cx) < 74 && tr < 2) continue;
+      ctx.fillStyle = ["#6b4a36", "#4a3428", "#7c5a44", "#3a2a20"][(k + tr) % 4]; ctx.beginPath(); ctx.arc(x, y, 4.5, 0, TAU); ctx.fill();
+    }
+    // banners and braziers on the rim
+    for (let k = 0; k < 6; k++) { const x = R.x + R.w * (0.1 + k * 0.16), wave = Math.sin(t / 500 + k) * 4;
+      ctx.fillStyle = k % 2 ? "#7f1d1d" : "#92400e"; ctx.beginPath(); ctx.moveTo(x - 10, R.y + 2); ctx.lineTo(x + 10, R.y + 2); ctx.lineTo(x + 10 + wave, R.y + 44); ctx.lineTo(x + wave, R.y + 36); ctx.lineTo(x - 10 + wave, R.y + 44); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#fde68a"; ctx.fillRect(x - 3 + wave * 0.5, R.y + 14, 6, 6); }
+    for (const [x, y] of [[R.x + 40, fy + 20], [R.x + R.w - 40, fy + 20], [R.x + 40, R.y + R.h - 40], [R.x + R.w - 40, R.y + R.h - 40]]) {
+      ctx.fillStyle = "#2a2018"; ctx.fillRect(x - 8, y - 4, 16, 18); sglow(ctx, x, y - 10, 46, "#fb923c", 0.3 + 0.08 * Math.sin(t / 120 + x));
+      ctx.fillStyle = "#fb923c"; ctx.beginPath(); ctx.ellipse(x, y - 8, 8, 12 + Math.sin(t / 90 + x) * 2, 0, 0, TAU); ctx.fill(); ctx.fillStyle = "#fde68a"; ctx.beginPath(); ctx.ellipse(x, y - 6, 4, 6, 0, 0, TAU); ctx.fill(); }
+    for (let k = 0; k < 20; k++) { const ph = (t / 5000 + k / 20) % 1, x = R.x + hash01(k * 1.7) * R.w + Math.sin(t / 900 + k) * 10, y = R.y + R.h - ph * R.h;
+      ctx.fillStyle = `rgba(168,162,158,${0.35 * Math.sin(ph * Math.PI)})`; ctx.fillRect(x, y, 2, 2); }
+  }
+  const mirGeom = (R) => { const wallH = Math.min(120, R.h * 0.22); return { wallH, fy: R.y + wallH, cx: R.x + R.w / 2, cy: R.y + R.h * 0.58 }; };
+  function mirStatic(ctx, R) {
+    const { wallH, fy, cx, cy } = mirGeom(R);
+    // polished checker marble
+    const S = 56;
+    for (let y = fy, row = 0; y < R.y + R.h; y += S * 0.7, row++) for (let x = R.x, col = 0; x < R.x + R.w; x += S, col++) {
+      const dark = (row + col) % 2, n = hash01(row * 13 + col * 7);
+      ctx.fillStyle = dark ? `rgb(${22 + n * 8},${18 + n * 6},${34 + n * 10})` : `rgb(${150 + n * 20},${144 + n * 18},${170 + n * 16})`; ctx.fillRect(x, y, S, S * 0.7);
+      if (!dark && n > 0.7) { ctx.strokeStyle = "rgba(90,80,110,.35)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + 6, y + 4); ctx.bezierCurveTo(x + 20, y + 20, x + 30, y + 10, x + S - 6, y + S * 0.6); ctx.stroke(); }
+    }
+    // a soft pool of light in the middle, dark at the edges
+    const g = ctx.createRadialGradient(cx, cy, 20, cx, cy, R.w * 0.55); g.addColorStop(0, "rgba(245,208,254,.14)"); g.addColorStop(1, "rgba(4,2,10,.55)");
+    ctx.fillStyle = g; ctx.fillRect(R.x, fy, R.w, R.h - wallH);
+    // the gallery of mirrors on the back wall, framed in silver, between drapes
+    ctx.fillStyle = "#1a1528"; ctx.fillRect(R.x, R.y, R.w, wallH);
+    for (let k = 0; k < 7; k++) {
+      const x = R.x + (k + 0.5) * R.w / 7, w = R.w / 7 * 0.56, top = R.y + 10, h = wallH - 18;
+      ctx.fillStyle = "#6b21a8"; ctx.fillRect(x - R.w / 14, R.y, 12, wallH); ctx.fillRect(x + R.w / 14 - 12, R.y, 12, wallH);
+      ctx.fillStyle = "#cbd5e1"; ctx.beginPath(); ctx.moveTo(x - w / 2 - 4, top + h); ctx.lineTo(x - w / 2 - 4, top + 18); ctx.quadraticCurveTo(x, top - 12, x + w / 2 + 4, top + 18); ctx.lineTo(x + w / 2 + 4, top + h); ctx.closePath(); ctx.fill();
+      const mg = ctx.createLinearGradient(x - w / 2, top, x + w / 2, top + h); mg.addColorStop(0, "#3b3556"); mg.addColorStop(0.5, "#8b86a8"); mg.addColorStop(1, "#2a2440");
+      ctx.fillStyle = mg; ctx.beginPath(); ctx.moveTo(x - w / 2, top + h - 3); ctx.lineTo(x - w / 2, top + 20); ctx.quadraticCurveTo(x, top - 6, x + w / 2, top + 20); ctx.lineTo(x + w / 2, top + h - 3); ctx.closePath(); ctx.fill();
+    }
+    ctx.fillStyle = "rgba(0,0,0,.5)"; ctx.fillRect(R.x, fy - 3, R.w, 8);
+  }
+  function arenaMirror(ctx, R, t) {
+    arenaLayer("mirror", ctx, R, mirStatic);
+    const { wallH } = mirGeom(R);
+    // light sliding across each mirror, candle flames
+    for (let k = 0; k < 7; k++) {
+      const x = R.x + (k + 0.5) * R.w / 7, w = R.w / 7 * 0.56, ph = ((t / 3200) + k * 0.23) % 1.6;
+      if (ph < 1) { ctx.fillStyle = `rgba(255,255,255,${0.22 * Math.sin(ph * Math.PI)})`; ctx.beginPath(); const sx = x - w / 2 + ph * w; ctx.moveTo(sx, R.y + 16); ctx.lineTo(sx + 10, R.y + 16); ctx.lineTo(sx - 8, R.y + wallH - 10); ctx.lineTo(sx - 18, R.y + wallH - 10); ctx.closePath(); ctx.fill(); }
+    }
+    for (const [x, y] of [[R.x + 36, R.y + wallH + 30], [R.x + R.w - 36, R.y + wallH + 30], [R.x + 36, R.y + R.h - 36], [R.x + R.w - 36, R.y + R.h - 36]]) {
+      ctx.fillStyle = "#cbd5e1"; ctx.fillRect(x - 2, y - 26, 4, 30); ctx.fillRect(x - 14, y - 26, 28, 3);
+      for (const e of [-12, 0, 12]) { ctx.fillStyle = "#fef3c7"; ctx.fillRect(x + e - 2, y - 36, 4, 10); sglow(ctx, x + e, y - 40, 14, "#f5d0fe", 0.35); ctx.fillStyle = "#fde68a"; ctx.beginPath(); ctx.ellipse(x + e, y - 40, 1.8, 3.4 + Math.sin(t / 80 + e) * 0.6, 0, 0, TAU); ctx.fill(); }
+    }
+    for (let k = 0; k < 26; k++) { const x = R.x + hash01(k * 2.9) * R.w, y = R.y + wallH + hash01(k * 1.1) * (R.h - wallH), tw = Math.abs(Math.sin(t / (400 + k * 30) + k)); sparkle(ctx, x, y, 3 * tw, "#f5d0fe", 0.5 * tw); }
+  }
+  const thrGeom = (R) => { const wallH = Math.min(120, R.h * 0.22); return { wallH, fy: R.y + wallH, cx: R.x + R.w / 2, cy: R.y + R.h * 0.58 }; };
+  function thrStatic(ctx, R) {
+    const { wallH, fy, cx, cy } = thrGeom(R);
+    ctx.fillStyle = "#1a1512"; ctx.fillRect(R.x, R.y, R.w, R.h);
+    // dark flagstones with gold inlay that has cracked
+    for (let y = fy, row = 0; y < R.y + R.h; y += 44, row++) for (let x = R.x - (row % 2) * 34; x < R.x + R.w; x += 68) {
+      const n = hash01((x - R.x) * 0.31 + (y - R.y) * 1.7); ctx.fillStyle = `rgb(${34 + n * 12},${28 + n * 10},${24 + n * 8})`; ctx.fillRect(x + 1, y + 1, 66, 42); }
+    ctx.strokeStyle = "rgba(202,138,4,.55)"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(cx, cy, R.w * 0.36, R.h * 0.32, 0, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx, cy, R.w * 0.2, R.h * 0.18, 0, 0, TAU); ctx.stroke();
+    for (let k = 0; k < 8; k++) { const an = k / 8 * TAU; ctx.beginPath(); ctx.moveTo(cx + Math.cos(an) * R.w * 0.2, cy + Math.sin(an) * R.h * 0.18); ctx.lineTo(cx + Math.cos(an) * R.w * 0.36, cy + Math.sin(an) * R.h * 0.32); ctx.stroke(); }
+    // the crack through the whole floor
+    ctx.strokeStyle = "#050302"; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(cx - 40, fy); ctx.lineTo(cx - 10, cy - 60); ctx.lineTo(cx + 30, cy); ctx.lineTo(cx - 20, cy + 90); ctx.lineTo(cx + 10, R.y + R.h); ctx.stroke();
+    // the throne dais at the back: steps, the broken throne, torn banners
+    ctx.fillStyle = "#0e0b09"; ctx.fillRect(R.x, R.y, R.w, wallH);
+    for (let s = 0; s < 3; s++) { ctx.fillStyle = s % 2 ? "#3a2f26" : "#2e251e"; ctx.fillRect(cx - 170 + s * 30, fy - 16 - s * 12, 340 - s * 60, 16); }
+    ctx.fillStyle = "#2b211b"; ctx.fillRect(cx - 44, R.y + 8, 88, wallH - 40);
+    ctx.fillStyle = "#ca8a04"; ctx.beginPath(); ctx.moveTo(cx - 44, R.y + 8); ctx.lineTo(cx - 30, R.y - 6); ctx.lineTo(cx - 14, R.y + 8); ctx.lineTo(cx, R.y - 10); ctx.lineTo(cx + 10, R.y + 8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#050302"; ctx.beginPath(); ctx.moveTo(cx + 44, R.y + 8); ctx.lineTo(cx + 10, R.y + 30); ctx.lineTo(cx + 44, R.y + 50); ctx.closePath(); ctx.fill();
+    for (let k = 0; k < 6; k++) { const x = R.x + R.w * (0.08 + k * 0.17) + (k > 2 ? 40 : -40); if (Math.abs(x - cx) < 120) continue;
+      ctx.fillStyle = "#57130f"; ctx.beginPath(); ctx.moveTo(x - 16, R.y); ctx.lineTo(x + 16, R.y); ctx.lineTo(x + 16, R.y + wallH * 0.6); ctx.lineTo(x + 4, R.y + wallH * 0.45); ctx.lineTo(x - 8, R.y + wallH * 0.75); ctx.lineTo(x - 16, R.y + wallH * 0.5); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#ca8a04"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x - 16, R.y + 4); ctx.lineTo(x + 16, R.y + 4); ctx.stroke(); }
+    ctx.fillStyle = "rgba(0,0,0,.5)"; ctx.fillRect(R.x, fy - 3, R.w, 8);
+  }
+  function arenaThrone(ctx, R, t) {
+    arenaLayer("throne", ctx, R, thrStatic);
+    const { fy, cx, cy } = thrGeom(R);
+    // light falling through the broken roof, crown dust in it
+    for (const [u, w] of [[0.3, 70], [0.72, 90]]) { const x = R.x + R.w * u; ctx.fillStyle = `rgba(253,224,71,${0.05 + 0.02 * Math.sin(t / 1200 + u * 9)})`; ctx.beginPath(); ctx.moveTo(x - w * 0.3, R.y); ctx.lineTo(x + w * 0.3, R.y); ctx.lineTo(x + w, R.y + R.h); ctx.lineTo(x - w * 0.4, R.y + R.h); ctx.closePath(); ctx.fill(); }
+    for (let k = 0; k < 30; k++) { const ph = (t / 9000 + k / 30) % 1, x = R.x + hash01(k * 2.3) * R.w + Math.sin(t / 1400 + k) * 16, y = R.y + ph * R.h;
+      ctx.fillStyle = `rgba(253,224,71,${0.5 * Math.sin(ph * Math.PI)})`; ctx.fillRect(x, y, 2, 2); }
+    const pu = 0.5 + 0.5 * Math.sin(t / 1400);
+    ctx.strokeStyle = `rgba(250,204,21,${0.12 + 0.12 * pu})`; ctx.lineWidth = 5; ctx.beginPath(); ctx.ellipse(cx, cy, R.w * 0.36, R.h * 0.32, 0, 0, TAU); ctx.stroke();
+    for (let k = 0; k < 14; k++) { const x = cx + (hash01(k * 5.5) - 0.5) * R.w * 0.9, y = fy + 20 + hash01(k * 3.3) * (R.h * 0.7); sparkle(ctx, x, y, 3, "#fde047", 0.3 + 0.5 * Math.abs(Math.sin(t / 500 + k))); }
+  }
+
   window.gameBosses = {
     drawBoss, drawAttacks, startCinematic, drawCinematic,
     startPhaseCinematic, drawPhaseCinematic,
@@ -4989,7 +5285,16 @@
     startPhaseShift, drawPhaseShift,
     drawLootBeam, drawChestTier, drawRarityGlow, drawFeature,
     drawArena, hasRenderer, rendererFor, glyph,
-    drawsAttack: (type) => !!ARCANE_SHAPES[type] || OLD_SHAPES.includes(type),
+    drawsAttack: (type) => !!ARCANE_SHAPES[type] || OLD_SHAPES.includes(type) || !!CROWN_SHAPES[type],
+    // ---- the Sundered Crown (MASTER-PLAN §6.5) ----
+    drawMobileBoss, rigFor, drawCrownAttack, drawArt, isMobileBoss,
+    // extra hooks js/crown-boss.js calls (guarded there): a Gorehorn pillar, a crown shard at the position it computed
+    drawPillar: (ctx, p, t, bossId) => { const R = RIGS_(); try { return !!(R && R.drawPillarHook(ctx, p, t == null ? Date.now() : t, bossId)); } catch (e) { return false; } },
+    drawCrownShard: (ctx, s, t) => { const R = RIGS_(); try { return !!(R && R.drawShardHook(ctx, s, t == null ? Date.now() : t)); } catch (e) { return false; } },
+    setClockOffset: (ms) => { const R = RIGS_(); if (R) R.setClockOffset(ms); },
+    hitMobile: (id, body) => { const R = RIGS_(); if (R) R.hit(id, body, Date.now()); },
+    blockMobile: (id) => { const R = RIGS_(); if (R) R.block(id, Date.now()); },
+    rigQuality: () => { const R = RIGS_(); return R ? R.quality() : null; },
     pylonPos: (i) => (ECON.guildBossPylonPos ? ECON.guildBossPylonPos(i, W, H) : { x: i % 2 ? W - 90 : 90, y: i < 2 ? 90 : H - 90 }),
     realPartCount: realCount,
   };
