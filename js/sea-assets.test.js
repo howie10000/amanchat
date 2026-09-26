@@ -4,13 +4,13 @@ const env={URL,Promise,performance:{now:()=>0},navigator:{},setTimeout:()=>1,cle
 vm.runInNewContext(fs.readFileSync(path.join(__dirname,'sea-assets.js'),'utf8'),env);
 (async()=>{
  assert.equal(scripts.length,0);raf.shift()();assert.equal(scripts.length,0);raf.shift()();
- assert.equal(scripts.length,1,'Only the Arcane Depths title is requested after paint');
+ assert.equal(scripts.length,1,'Only the Sundered Crown title is requested after paint');
  assert(scripts[0].src.startsWith('https://example.com/amanchat/js/title-background.js?'),'Login loads the procedural dungeon title');
  assert(!scripts.some(s=>s.src.includes('race-models.js')||s.src.includes('race-title.js')),'The login no longer downloads racing models or the racing title');
- assert(fs.existsSync(path.join(__dirname,'dungeon-title.js')),'Title script exists');
+ assert(fs.existsSync(path.join(__dirname,'crown-title.js'))&&fs.existsSync(path.join(__dirname,'crown-title-worker.js')),'Title scene and worker host exist');
  const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
  assert(!html.includes('<script defer src="js/race-models.js'),'Model download cannot block deferred login/game scripts');
- assert(!/<script[^>]*src="js\/dungeon-title\.js/.test(html),'Title scene stays off the deferred startup path');
+ assert(!/<script[^>]*src="js\/crown-title\.js/.test(html),'Title scene stays off the deferred startup path');
  assert(html.includes("load('js/title-background.js"),'Boot loader owns title startup');
  scripts[0].onload();await Promise.resolve();
  // Racing models stay available on demand for the racetrack, sharing one request.

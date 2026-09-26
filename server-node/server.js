@@ -52,6 +52,8 @@ const CROWN = require(path.join(JS_DIR, 'shared', 'crown.js'));   // THE SUNDERE
 const createFeatureHandlers = require('./guild-features.js');
 const createRaids = require('./guild-raids.js');
 const createProgress = require('./guild-progress.js');
+const createCrownEngine = require('./crown-engine.js');
+const createCrownArts = require('./crown-arts.js');
 // Test-only knobs for the Arcane Depths server tests. None of these is ever set
 // in production; each one only shortens a wait or shrinks a pool so a live-
 // server test can finish in minutes.
@@ -63,7 +65,13 @@ const TEST = {
     vestMs: process.env.RAID_TEST_VEST_MS != null && process.env.RAID_TEST_VEST_MS !== '' ? +process.env.RAID_TEST_VEST_MS : null,
     miniReward: +process.env.DUNGEON_TEST_MINI_REWARD || 0,        // a story mini's purse (the LD §2.12.4 example used 950)
     claimMs: +process.env.DUNGEON_TEST_CLAIM_MS || 0,              // how long an unopened final chest stays claimable
+    // THE SUNDERED CROWN: "boss:move,boss:move" makes the planner prefer those moves; a short twin link window.
+    crownForce: (process.env.DUNGEON_TEST_CROWN_FORCE || '').split(',').map(x => x.trim()).filter(Boolean).map(x => { const [boss, move] = x.split(':'); return { boss, move }; }),
+    twinLinkMs: +process.env.DUNGEON_TEST_TWIN_LINK_MS || 0,
 };
+if (!TEST.crownForce.length) TEST.crownForce = null;
+// Ops kill switch: CROWN_TIERS=0 closes the four Sundered Crown tiers.
+const CROWN_TIERS_OPEN = process.env.CROWN_TIERS !== '0';
 // D31: stream dungeon presence per run ('dungeon:<runId>'); PRESENCE_RUN_KEY=0 turns it off.
 const PRESENCE_RUN_KEY = process.env.PRESENCE_RUN_KEY !== '0';
 const { FURNITURE_CATALOG, FURNITURE_LIST } = require(path.join(JS_DIR, 'furniture.js'));
@@ -182,6 +190,8 @@ function compactUser(u) {
         // Arcane Depths records carry zeroed counters and empty sub-maps when
         // nothing has happened yet; those read back as {} lazily.
         if ((k === 'delve' || k === 'codex') && deepEmpty(v)) continue;
+        // Crown Arts: a record with nothing owned and no pity counters is empty.
+        if (k === 'arts' && v && typeof v === 'object' && deepEmpty(v.own) && deepEmpty(v.pity)) continue;
         out[k] = v;
     }
     return out;
@@ -922,7 +932,7 @@ const PROTECTED_FIELDS = new Set(['cars', 'equippedCar', 'sea', 'money', 'invent
     'lastInterest', 'fishInventory', 'houseStyle', 'furniture', 'houseIndex', 'createdAt',
     'bankBalance', 'bankLast', 'creditScore', 'creditGainLast', 'loan', 'notes',
     'farm', 'meals', 'luck', 'gear', 'equipped',
-    'mastery', 'mats', 'gems', 'delve', 'codex', 'overflow', 'depthsBest', 'journey', 'guild', 'lastSeen']);
+    'mastery', 'mats', 'gems', 'delve', 'codex', 'overflow', 'depthsBest', 'journey', 'guild', 'lastSeen', 'arts']);
 // The only fields of a user record another (non-staff) player is allowed to
 // SEE. Everything else — friends, keys, furniture, inventory, notes, all the
 // bank/loan/credit numbers — is private and never leaves the server for anyone
@@ -1764,7 +1774,7 @@ function handleMessage(c, msg) {
         // ----- server-authoritative economy ops (docs/SERVER-AUTHORITY.md) -----
         case 'car': case 'bank': case 'buy': case 'furniture_set': case 'earn': case 'fish': case 'casino': case 'home': case 'treasury': case 'staff_finance':
         case 'sea': case 'farm': case 'cook': case 'kraken': case 'guild': case 'mastery': case 'guild_dungeon': case 'gear':
-        case 'forge': case 'delver': case 'journey': {
+        case 'forge': case 'delver': case 'journey': case 'arts': {
             if (!c.user) return replyErr('not authed');
             let out;
             try { out = ECONOMY_OPS[op](c.user, msg); }
@@ -2319,6 +2329,8 @@ const progress = createProgress({
     gearPackOf, equippedOf, saveGear, isStaff, guildRankOf,
     gearFxOf: (user) => gearFxOf(user), equippedItems: (u) => equippedItems(u),
     depositTenureMs: TEST.vestMs != null ? TEST.vestMs : null,
+    // THE SUNDERED CROWN: art drops + crown shards, rolled after the legacy loot roll.
+    crownRewards: (user, u, ctx, now) => crownArts.settleRewards(user, u, ctx, now),
 });
 
 // ---- THE ARCANE DEPTHS journey & endgame (guild-journey.js) ----
@@ -2337,7 +2349,7 @@ const JOURNEY_EVENT_OVERRIDES = process.env.JOURNEY_AWAKENING_START
     ? { awakening: isNaN(+process.env.JOURNEY_AWAKENING_START) ? Date.parse(process.env.JOURNEY_AWAKENING_START) : +process.env.JOURNEY_AWAKENING_START }
     : {};
 const JOURNEY_SRV = createJourney({
-    ECON, JOURNEY, store, userRec, guildIdOf, guildRec, pushTo,
+    ECON, JOURNEY, CROWN, store, userRec, guildIdOf, guildRec, pushTo,
     now: () => Date.now(),
     // leaderboards and world firsts skip hidden players and staff-geared runs, like delve_records
     lbBanned: (u) => lbBanned(u) || wearsStaffGear(u),
@@ -2534,7 +2546,7 @@ function arenaAddsAlive(run) {
     const b = run.boss, hp = run.enemyHp[run.floor] || {};
     return !!(b && b.adds && b.adds.some(id => hp[id] > 0));
 }
-function guildBossView(run, now) {
+function guildBossView(run, now, full) {
     const b = run && run.boss;
     if (!b) return null;
     now = now || Date.now();
@@ -2544,7 +2556,7 @@ function guildBossView(run, now) {
     const hp = bossHpOf(b);
     const ehp = run.enemyHp[run.floor] || {}, emeta = run.enemyMeta[run.floor] || {};
     const cfg = ECON.GUILD_DUNGEONS[run.tier] || {};
-    return {
+    return Object.assign({
         id: b.id, name: look.name, cry: look.cry, color: look.color, accent: look.accent,
         title: look.title, tier: def.tier, mini, phase: b.phase || 1,
         // A phase change is a cutscene on every client, so it needs its own
@@ -2565,11 +2577,16 @@ function guildBossView(run, now) {
         wardUntil: b.wardUntil || 0, wardIn: b.wardFrom ? Math.max(0, b.wardFrom - now) : 0, wardLeft: b.wardUntil ? Math.max(0, b.wardUntil - now) : 0, addsShield: !!b.addsShield, pylonShield: !!b.pylonShield, pylonsBroken: !!b.pylonsBroken,
         pylons: b.parts.map((p, i) => p.pylon ? { i, hp: p.hp, maxHp: p.maxHp } : null).filter(Boolean),
         raid: !!b.raid, stage: (run.miniStage | 0) + 1, stages: cfg.minis ? cfg.minis.length : 1, art: ECON.bossArt(b.id),
-    };
+    }, crownEngine.isMobile(b) ? crownEngine.view(run, now, full !== false) : null);
 }
+// Pushes that carry the motion plans in their boss view (the rest stay lean:
+// an `hp` or `attack` push never re-sends the steps; `motion` pushes do).
+const FULL_VIEW_KINDS = new Set(['spawn', 'stage']);
 function runBroadcast(run, kind, extra) {
-    const msg = Object.assign({ event: 'guild_boss', kind, runId: run.id, now: Date.now(), boss: guildBossView(run) }, extra || {});
+    const msg = Object.assign({ event: 'guild_boss', kind, runId: run.id, now: Date.now(), boss: guildBossView(run, null, FULL_VIEW_KINDS.has(kind)) }, extra || {});
     pushMany(run.members, msg);
+    const b = run.boss;
+    if (b && b.archetype) { const n = JSON.stringify(msg).length * run.members.size; b.bytesOut = (b.bytesOut || 0) + n; b.bytesBy = b.bytesBy || {}; b.bytesBy[kind] = (b.bytesBy[kind] || 0) + n; }
 }
 // Boss HP beyond the party curve: delve (or the endless floor), Tyrannical,
 // raid mode and the test multiplier. Exactly 1 for a delve-0 story run.
@@ -2597,21 +2614,25 @@ function spawnGuildBoss(run, bossId) {
     // Solo-sized at spawn; rescaleGuildBoss grows it as fighters land hits.
     const extra = bossHpExtra(run, bossId);
     const maxHp = extra === 1 ? ECON.guildBossMaxHp(bossId, 1) : Math.round(def.baseHp * extra);
-    const headHp = Math.floor(maxHp * ECON.GUILD_BOSS.HEAD_FRAC);
-    const partHp = Math.floor((maxHp - headHp) / def.parts);
+    // A Sundered Crown boss (archetype, parts: 0) is one pool — twins split it
+    // in crown-engine.js. Never divide by its zero parts.
+    const mobile = CROWN.isMobile(bossId);
+    const headHp = mobile ? maxHp : Math.floor(maxHp * ECON.GUILD_BOSS.HEAD_FRAC);
+    const partHp = mobile ? 0 : Math.floor((maxHp - headHp) / def.parts);
     const riseMs = mini ? ECON.GUILD_BOSS.MINI_RISE_MS : ECON.GUILD_BOSS.RISE_MS;
     run.boss = {
         id: bossId, mini, status: 'rising', spawnedAt: now, diedAt: 0, phase: 1,
         baseHead: headHp, basePart: partHp, hpMult: 1, soloPool: maxHp,
-        maxHp: headHp + partHp * def.parts,
+        maxHp: mobile ? headHp : headHp + partHp * def.parts,
         head: { hp: headHp, maxHp: headHp },
-        parts: Array.from({ length: def.parts }, () => ({ hp: partHp, maxHp: partHp })),
+        parts: mobile ? [] : Array.from({ length: def.parts }, () => ({ hp: partHp, maxHp: partHp })),
         damage: {}, hitLast: new Map(),
         nextAttackAt: now + riseMs + 1200, lastBroadcast: 0, lastAttack: null,
         fightStart: now, phaseCount: ECON.bossPhaseCount(bossId), hardEnraged: false, enrageMs: TEST.enrageMs || def.enrageMs || 0,
         wardFrom: 0, wardUntil: 0, reflect: 0, addsShield: false, pylonShield: false, pylonsBroken: false, pylonCfg: null,
         soak: null, soakSeq: 0, backlashPending: false, raid: run.kind === 'raid', adds: [], attackCount: 0, shiftMs: 0,
     };
+    if (mobile) crownEngine.spawn(run, run.boss, now);
     console.log(`[guild-boss] ${def.name} awoke for run ${run.id} (${run.members.size} in the party)`);
     runBroadcast(run, 'spawn');
 }
@@ -2668,6 +2689,7 @@ function beginBossPhase(run, ph, now) {
     console.log(`[guild-boss] ${look.name} (phase ${b.phase}) for run ${run.id}`);
     runBroadcast(run, 'phase', { phase: b.phase, phaseCount: b.phaseCount, cinematic: !!ph.cinematic, shiftMs: b.shiftMs, look });
     if (b.id === 'dragon') runBroadcast(run, 'phase2');
+    if (crownEngine.isMobile(b)) crownEngine.onPhase(run, ph, now);
 }
 function bossDied(run, now) {
     const b = run.boss;
@@ -2687,6 +2709,7 @@ function bossDied(run, now) {
     const cfg = ECON.GUILD_DUNGEONS[run.tier];
     if (b.mini && cfg && cfg.minis && (run.miniStage | 0) < cfg.minis.length - 1) b.nextStageAt = now + 2000;
     clearArenaAdds(run, now);
+    if (crownEngine.isMobile(b)) crownEngine.onDeath(run, now);
     runBroadcast(run, 'dead');
 }
 // A threshold phase must never be skipped by a single blow to the head.
@@ -2716,6 +2739,7 @@ function rescaleGuildBoss(run) {
     const mult = ECON.guildBossHpMult(n);
     if (mult === b.hpMult) return;
     b.hpMult = mult;
+    if (crownEngine.isMobile(b)) { crownEngine.rescale(run, mult); return; }
     const scale = (p, base) => {
         const frac = p.maxHp > 0 ? p.hp / p.maxHp : 0;
         p.maxHp = Math.round(base * mult);
@@ -2770,11 +2794,38 @@ function pylonUpdate(run, i, now) {
     for (const o of pyl) if (o.q.downAt < now - win) { o.q.hp = o.q.maxHp; o.q.downAt = 0; regrew.push(o.j); }
     runBroadcast(run, 'pylon', { regrew });
 }
+// A boss swing's gear procs jump to the living arena adds.
+function bossProcs(run, user, r, dmg, now) {
+    const b = run.boss;
+    const procs = [];
+    if (r.procs.length && b.adds && b.adds.length) {
+        const hp = run.enemyHp[run.floor] || {};
+        const changed = [];
+        for (const pr of r.procs) {
+            const targets = [];
+            for (const id of b.adds) {
+                if (targets.length >= (pr.n | 0)) break;
+                if (!(hp[id] > 0)) continue;
+                const d = Math.max(1, Math.round(dmg * (pr.frac || 0)));
+                hp[id] = Math.max(0, hp[id] - d);
+                changed.push({ id, hp: hp[id], dead: hp[id] <= 0 });
+                targets.push(id);
+            }
+            if (targets.length) procs.push({ id: pr.id, targets, dmg: Math.round(dmg * (pr.frac || 0)) });
+        }
+        if (changed.length) {
+            const res = features.onEnemyDamage(run, user, changed, now);
+            pushMany(run.members, { event: 'guild_dungeon', kind: 'enemies', runId: run.id, floor: run.floor, changed, by: user, cleared: floorCleared(run, run.floor), spawned: res.spawned, drops: res.drops });
+        }
+    }
+    return procs;
+}
 // Damage from anything that is not a swing (tomes, arena procs) goes through
 // here too so the phase engine sees it.
 function hurtBoss(run, user, budget, opts, now) {
     const b = run.boss;
     if (!b || b.status !== 'alive' || budget <= 0) return 0;
+    if (crownEngine.isMobile(b)) return crownEngine.hurt(run, user, budget, opts, now);
     if (b.pylonShield && !b.pylonsBroken) return 0;
     if (b.addsShield && arenaAddsAlive(run)) return 0;
     let dealt = 0;
@@ -2800,7 +2851,8 @@ function pickFromDeck(deck) {
     for (const a of deck) { if ((x -= a.weight) <= 0) return a; }
     return deck[0];
 }
-const EXTRA_ATTACK_FIELDS = ['stars', 'turn', 'n', 'points', 'turns', 'lingerMs', 'slow', 'rStart', 'rEnd', 'count', 'gapMs', 'reflect', 'addType', 'backlash', 'beams', 'perQuadrant'];
+const EXTRA_ATTACK_FIELDS = ['stars', 'turn', 'n', 'points', 'turns', 'lingerMs', 'slow', 'rStart', 'rEnd', 'count', 'gapMs', 'reflect', 'addType', 'backlash', 'beams', 'perQuadrant',
+    'ox', 'oy', 'rootMs', 'x0', 'y0', 'x1', 'y1'];
 function rollGuildBossAttack(run, now) {
     const b = run.boss;
     now = now || Date.now();
@@ -2813,6 +2865,13 @@ function rollGuildBossAttack(run, now) {
         a = ECON.pickGuildBossAttack(b.id, null, b.phase);
         if (a === b.lastAttack && Math.random() < 0.6) a = ECON.pickGuildBossAttack(b.id, null, b.phase);
     }
+    return attackPayload(run, a, now);
+}
+// The payload of one deck attack (shared by the legacy cadence and the
+// Sundered Crown casts, which add the body origin ox/oy on top).
+function attackPayload(run, a, now) {
+    const b = run.boss;
+    now = now || Date.now();
     b.lastAttack = a;
     b.attackCount = (b.attackCount | 0) + 1;
     const dmgMult = (run.bossDmgMult || 1) * (b.hardEnraged ? 1.5 : 1) * (b.backlashPending ? 1.5 : 1);
@@ -2968,7 +3027,7 @@ function presenceOf(user) {
     const c = byUser.get(user);
     const p = c && c.presence;
     if (!p) return null;
-    return { x: p.x, y: p.y, area: p.area, run: p.run, dfloor: p.dfloor, at: c.presenceAt || 0 };
+    return { x: p.x, y: p.y, area: p.area, run: p.run, dfloor: p.dfloor, at: c.presenceAt || 0, facing: p.facing };
 }
 // The caller's reported position, if it is inside this run's dungeon (a
 // presence tagged with another run, or from town, does not count).
@@ -3028,6 +3087,9 @@ function startGuildRun(leader, tier, members, opts) {
     const g = guildRequire(leader);
     const cfg = ECON.GUILD_DUNGEONS[tier];
     if (!cfg) throw new Error('No such guild dungeon.');
+    // The Sundered Crown tiers need the archetype engine (a parts:0 boss on
+    // the legacy engine would divide its pool by zero) — closed if it is off.
+    if (cfg.crown && (!CROWN_TIERS_OPEN || !crownEngine)) throw new Error('That dungeon is not open yet.');
     const raid = opts.kind === 'raid';
     if (cfg.mode === 'raid' && !raid) throw new Error('Raid-only dungeon — open a raid lobby.');
     const endless = cfg.mode === 'endless';
@@ -3186,7 +3248,11 @@ function guildRunTick(run, now) {
                     if (regrew.length) runBroadcast(run, 'pylon', { regrew });
                 }
             }
-            if (now >= b.nextAttackAt) {
+            if (crownEngine.isMobile(b)) {
+                // THE SUNDERED CROWN: motion plans, step events, casts, twins, shards, clones.
+                crownEngine.tick(run, now);
+                if (b.status === 'alive' && now - b.lastBroadcast > 1000) { b.lastBroadcast = now; runBroadcast(run, 'tick'); }
+            } else if (now >= b.nextAttackAt) {
                 const speed = bossHpOf(b) / b.maxHp < ECON.GUILD_BOSS.ENRAGE_FRAC ? ECON.GUILD_BOSS.ENRAGE_SPEED : 1;
                 const attack = rollGuildBossAttack(run, now);
                 const ph = bossPhaseDef(b, b.phase);
@@ -3238,6 +3304,12 @@ function swingBuffMult(run, user, now, fx, afterDash) {
     if (run.buffs.fury && run.buffs.fury.until > now) m *= DEPTHS.SHRINES.fury.dmgMult;
     if (run.buffs.stars && run.buffs.stars.until > now) m *= 1.2;
     if (afterDash && fx.afterDashHit && now - (run.dashAt[user] || 0) <= (+fx.afterDashHit.ms || 0)) m *= (+fx.afterDashHit.mult || 1);
+    // War Cry (Crown Art): the strongest active cry that reached this player.
+    if (run.warCry && run.warCry.length) {
+        let best = 1;
+        for (const w of run.warCry) if (w.until > now && w.users.includes(user)) best = Math.max(best, w.mult);
+        m *= best;
+    }
     return m;
 }
 function lbBanned(user) { return !!store.get('lb_bans/' + user); }
@@ -3292,6 +3364,16 @@ function runTallies(run) {
     const t = run.tallies || {};
     return { elites: t.elite | 0, champions: t.champion | 0, goblins: t.goblin | 0, trials: t.trial | 0, vaults: t.vault | 0, secrets: t.secret | 0 };
 }
+// What the Sundered Crown adds to one member's settle (§3.5, §3.8, §6.4).
+function crownCtx(run, m, source) {
+    const st = (run.crownStats && run.crownStats[m]) || {};
+    return { source, stats: { stuns: st.stuns | 0, artHits: st.artHits | 0, crownShardsBroken: st.crownShardsBroken | 0 },
+        noRiposte: run.tier === 'guild_colosseum' ? !run.parried : false, twinSync: run.tier === 'guild_mirror' ? !!run.twinSync : false };
+}
+function crownJourney(run, m) {
+    const c = crownCtx(run, m, 'boss');
+    return Object.assign({}, c.stats, { noRiposte: c.noRiposte ? 1 : 0, twinSync: c.twinSync ? 1 : 0 });
+}
 function rewardPush(run, m, S, res, cash, extra) {
     const rec = userRec(m);
     const pu = S.perUser[m];
@@ -3303,6 +3385,7 @@ function rewardPush(run, m, S, res, cash, extra) {
         chestTier: res ? res.chestTier : 0, mats: res ? res.mats : {}, gems: res ? res.gems : {}, overflow: res ? res.overflow : [], packFull: res ? res.packFull : false,
         delver: res ? res.delver : null, codexNew: res ? res.codexNew : [], achievements: res ? res.achievements : [],
         weekly: !!(res && res.weekly),
+        arts: res && res.arts ? res.arts : [], crownShards: res ? res.crownShards | 0 : 0, artPity: !!(res && res.artPity),
     }, extra || {}));
 }
 
@@ -3362,6 +3445,7 @@ function settleRun(run, user, now) {
             pending: run.pendingLoot[m] || [], fortune: run.fortune, raidBonus: S.raidBonus,
             research: progress.researchOf(mg), bannerFx: progress.bannerFx(mg, now), trophyMatFind: mg ? 0.01 * ECON.trophyTier(mg.trophies[cfg.boss]) : 0,
             bossRoll: true, tallies: runTallies(run), flawless, mini: !!cfg.mini, codexBoss: cfg.boss, codexTier: run.tier,
+            crown: crownCtx(run, m, 'boss'),
         }, now);
         if (S.perUser[m]) grantMastery(m, rec, 'combat', ECON.MASTERY_XP.guild_clear);
     }
@@ -3385,7 +3469,7 @@ function settleRun(run, user, now) {
             members: Object.keys(results).map(m => ({
                 user: m, u: userRec(m), ilvl: (run.ilvlAtStart || {})[m], loot: results[m].allGear, pending: run.pendingLoot[m] || [],
                 delverGained: results[m].delver ? results[m].delver.gained : 0, tallies: run.tallies,
-                dealt: (b.damage[m] || 0) > 0, spectator: run.spectators.has(m),
+                dealt: (b.damage[m] || 0) > 0, spectator: run.spectators.has(m), crown: crownJourney(run, m),
             })),
         });
     } catch (e) { console.error('[journey] settle', e); }
@@ -3405,6 +3489,7 @@ function settleRun(run, user, now) {
         chestTier: mine.chestTier, mats: mine.mats, gems: mine.gems, overflow: mine.overflow, packFull: mine.packFull,
         delver: mine.delver, codexNew: mine.codexNew, achievements: mine.achievements,
         delve: delveOut, records: { guildBest: delveOut.record, weekly: !!mine.weekly }, tier: run.tier,
+        arts: mine.arts || [], crownShards: mine.crownShards | 0, artPity: !!mine.artPity,
     };
 }
 // Nobody loses a chest by being slow: a final boss that died but whose chest
@@ -3461,6 +3546,7 @@ function settleSegment(run, user, kind, now) {
             tier: 'arcane_depths', floor: f, delve: 0, spectator, pending, bossRoll: false, endless: true,
             research: progress.researchOf(mg), bannerFx: progress.bannerFx(mg, now), raidBonus: S.raidBonus,
             tallies: runTallies(run), floors: run.floorsDone | 0, heartBand, extraXp: plan.guardian && run.miniDone ? ECON.DELVER_XP.depths.guardian : 0,
+            crown: leave ? null : crownCtx(run, m, 'sanctuary'),
         }, now);
         const d = obj(rec.depthsBest);
         d.floor = Math.max(d.floor | 0, f); d.at = now;
@@ -3499,6 +3585,7 @@ function settleSegment(run, user, kind, now) {
         delver: mine.delver, codexNew: mine.codexNew, achievements: mine.achievements,
         delve: { level: 0, floor: f }, records: { guildBest: false, weekly: !!run.weekly }, segment: true, floor: f, tier: run.tier,
         reward: { gained: myPu ? myPu.each : 0, gross },
+        arts: mine.arts || [], crownShards: mine.crownShards | 0, artPity: !!mine.artPity,
     };
     if (leave) endGuildRun(run, 'left');
     return out;
@@ -3547,7 +3634,7 @@ function depthsInfo(user, now) {
     const gid = guildIdOf(user);
     const g = gid ? guildRec(gid) : null;
     const research = progress.researchOf(g);
-    const order = ECON.GUILD_DUNGEON_ORDER.concat(['raid_nexus', 'arcane_depths']);
+    const order = ECON.GUILD_DUNGEON_ORDER.concat(['raid_nexus', 'arcane_depths'], ECON.CROWN_DUNGEON_ORDER || []);
     const tiers = order.filter(k => ECON.GUILD_DUNGEONS[k]).map(key => {
         const cfg = ECON.GUILD_DUNGEONS[key];
         const t = g ? g.depths.tiers[key] : null;
@@ -3558,6 +3645,7 @@ function depthsInfo(user, now) {
             clears: t ? t.clears | 0 : 0, delveUnlocked: t ? t.unlocked | 0 : 0, maxDelve: g ? DEPTHS.guildMaxDelve(t, research.keystone) : 0,
             best: t ? t.best | 0 : 0, bestMs: t ? t.bestMs | 0 : 0, parMs: DEPTHS.parMsFor(key, research.pathfinders), gearLvl: cfg.gearLvl,
             boss: cfg.boss, mini: cfg.mini, raidable: !!cfg.raidable, raidMin: cfg.raidMin | 0,
+            ...(cfg.crown ? { crown: true, archetype: ECON.bossArchetype(cfg.boss), open: CROWN_TIERS_OPEN } : {}),
         };
     });
     const week = DEPTHS.affixWeek(now);
@@ -3591,6 +3679,18 @@ const features = createFeatureHandlers({
     endGuildRun: (run, reason) => { if (reason === 'wiped') autoSettle(run, Date.now(), 'wiped after the kill'); if (guildRuns.has(run.id)) endGuildRun(run, reason); }, settleSegment, recordDepth,
     runBroadcast, floorStateView, onFloorChange: applyDepthFloor,
     testKnobs: { featureAgeMs: TEST.fast ? 0 : null, trialDeadlineMs: TEST.trialDeadlineMs, descendHoldMs: TEST.fast ? 1000 : null },
+});
+// ---- THE SUNDERED CROWN modules (crown-engine.js / crown-arts.js) ----
+const crownEngine = createCrownEngine({
+    ECON, CROWN, pushMany, runBroadcast, presenceOf, attackPayload, bossHpOf, pendingThreshold, checkBossPhase,
+    userRec, masteryLevelOf, gearStatsOf, gearFxOf: (user) => gearFxOf(user), swingBuffMult, bossProcs,
+    rescaleGuildBoss, raidSoak: DEPTHS.RAID_OVERLAY.soak,
+    testKnobs: { crownForce: TEST.crownForce, twinLinkMs: TEST.twinLinkMs },
+});
+const crownArts = createCrownArts({
+    ECON, CROWN, DUNGEON, store, userRec, runFor, presenceOf, gearFxOf: (user) => gearFxOf(user), gearStatsOf, masteryLevelOf, moneyOf, setMoney,
+    pushMany, pushTo, features, floorPlan, floorCleared, leashRefusal, engine: crownEngine, swingBuffMult, hurtBoss,
+    afterBossDamage: (run, now) => { if (!checkBossPhase(run, now)) runBroadcast(run, 'hp'); },
 });
 const raids = createRaids({
     ECON, DEPTHS, byUser, guildIdOf, guildRec, saveGuild, guildRankOf, pushTo, pushMany, guildBroadcast, guildRunOf, pushId, startGuildRun,
@@ -4819,6 +4919,8 @@ const ECONOMY_OPS = {
         return out;
     },
     journey(user, msg) { return JOURNEY_SRV.op(user, msg); },
+    // THE SUNDERED CROWN: the Crown Arts collection (crown-arts.js, §6.3).
+    arts(user, msg) { return crownArts.op(user, msg); },
     delver(user, msg) { return progress.delverOp(user, msg); },
 
     guild_dungeon(user, msg) {
@@ -5239,6 +5341,10 @@ const ECONOMY_OPS = {
             if (now < (b.invulnUntil || 0)) throw new Error('It is still getting up.');
             if (run.spectators.has(user)) throw new Error('You are only watching now.');
             if (run.downed[user]) throw new Error('You are down.');
+            // THE SUNDERED CROWN: a mobile boss has no parts — reach, guard,
+            // block, veil and vulnerability are checked against its server-
+            // authoritative motion (crown-engine.js, MASTER-PLAN §4.4).
+            if (crownEngine.isMobile(b)) return crownEngine.hit(run, user, msg, now);
             const weapon = msg.weapon === 'pistol' ? 'pistol' : 'sword';
             const k = user + ':' + weapon;
             if (now - (b.hitLast.get(k) || 0) < ECON.GUILD_BOSS.HIT_MIN_MS[weapon]) throw new Error('Too fast.');
@@ -5274,27 +5380,7 @@ const ECONOMY_OPS = {
             if (run.tier === 'arcane_depths') run.segDamage[user] = (run.segDamage[user] | 0) + dmg;
             const reflected = b.wardUntil && now >= b.wardFrom && now <= b.wardUntil ? Math.round(dmg * (b.reflect || 0)) : 0;
             // Arena procs land on the living adds.
-            const procs = [];
-            if (r.procs.length && b.adds && b.adds.length) {
-                const hp = run.enemyHp[run.floor] || {};
-                const changed = [];
-                for (const pr of r.procs) {
-                    const targets = [];
-                    for (const id of b.adds) {
-                        if (targets.length >= (pr.n | 0)) break;
-                        if (!(hp[id] > 0)) continue;
-                        const d = Math.max(1, Math.round(dmg * (pr.frac || 0)));
-                        hp[id] = Math.max(0, hp[id] - d);
-                        changed.push({ id, hp: hp[id], dead: hp[id] <= 0 });
-                        targets.push(id);
-                    }
-                    if (targets.length) procs.push({ id: pr.id, targets, dmg: Math.round(dmg * (pr.frac || 0)) });
-                }
-                if (changed.length) {
-                    const res = features.onEnemyDamage(run, user, changed, now);
-                    pushMany(run.members, { event: 'guild_dungeon', kind: 'enemies', runId: run.id, floor: run.floor, changed, by: user, cleared: floorCleared(run, run.floor), spawned: res.spawned, drops: res.drops });
-                }
-            }
+            const procs = bossProcs(run, user, r, dmg, now);
             const downed = target.hp <= 0;
             let pylon;
             if (isPylon) { pylonUpdate(run, idx, now); pylon = { i: idx, hp: target.hp }; }
@@ -5310,6 +5396,14 @@ const ECONOMY_OPS = {
             const out = { part: msg.part, hp: target.hp, maxHp: target.maxHp, dmg, downed, dead: b.status === 'dead', mini: !!b.mini, crit: r.crit, procs, reflected };
             if (pylon) out.pylon = pylon;
             return out;
+        }
+
+        // A Crown Art (crown-arts.js, MASTER-PLAN §4.6).
+        if (action === 'art_use') {
+            const run = runFor(user);
+            if (!run) throw new Error('Crown Arts only answer in a dungeon.');
+            run.lastActivity = now;
+            return crownArts.artUse(run, user, msg, now);
         }
 
         if (action === 'complete') {
@@ -5347,6 +5441,7 @@ const ECONOMY_OPS = {
             // to throw until the reading is over.
             if (run.boss && run.boss.status === 'alive') {
                 run.boss.nextAttackAt = Math.max(run.boss.nextAttackAt, now + ECON.GUILD_BOSS.TOME_CINE_MS + 600);
+                crownEngine.hold(run, now + ECON.GUILD_BOSS.TOME_CINE_MS + 600);
             }
             // Eruption (and Storms) are the tomes that DEAL damage, so their
             // damage is applied here rather than on the reader's client — a

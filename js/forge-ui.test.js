@@ -291,5 +291,39 @@ function legacyExpected(item, worn) {
   ok(res && res.fallback === true && toasts.length >= 1, "no DOM: falls back to announceLoot toasts");
   ok((await LR.show({ loot: [] })).empty === true, "empty result resolves at once");
 
+  // ---- THE SUNDERED CROWN (B4): L11/L12 items, uniques, sets, new fx labels, codex pages, achievements ----
+  const kb = ECON.makeUnique("kingsbane", "mythic", 12, R, { id: "kb1", now: 1758000000000 });
+  const tsc = ECON.makeUnique("the_sundered_crown", "mythic", 12, R, { id: "tsc1", now: 1758000000000 });
+  const mc = ECON.makeUnique("mirror_crown", "mythic", 11, R, { id: "mc1", now: 1758000000000 });
+  const l11 = mk("mirrorplate", "legendary", "l11");
+  h = G.ui.card(kb, { actions: false }); clean(h, "kingsbane card");
+  ok(h.includes("Damage to staggered bosses") && h.includes("iLvl 12"), "staggerDmg label + iLvl 12");
+  h = G.ui.card(tsc, { actions: false }); ok(h.includes("-15% Crown Art cooldown"), "artCd reads as a reduction");
+  h = G.ui.card(mc, { actions: false }); ok(h.includes("+15% Crown Art power"), "artPower label");
+  h = G.ui.card(l11, { actions: false }); clean(h, "L11 card"); ok(h.includes("iLvl 11") && h.includes("Mirrorplate"), "L11 base");
+  ok(G.ui.fxLines(ECON.GEAR_SETS.sundered_regalia.bonus[4]).join("|") === "+30% Damage to staggered bosses|-10% Crown Art cooldown|+25% Critical damage", "Kingbreaker set bonus lines");
+  G.applyView(Object.assign({}, gearStatus, { gear: Object.assign({}, G.view().gear, { kb1: kb }) }));
+  ok(/class="up">\+\d+% Damage to staggered bosses/.test(G.ui.card(kb, {})), "compare panel shows the new fx delta");
+  h = G.renderArmory("sets"); clean(h, "sets tab (crown)");
+  for (const s of ["thornhide", "pit_sovereign", "mirror_regalia", "sundered_regalia"]) ok(h.includes(G.ui.esc(ECON.GEAR_SETS[s].name)), "set tracker lists " + s);
+  ok(h.includes("Kingbreaker") && h.includes("The Crowd&#39;s Favour"), "named 4-piece bonuses");
+  ok(G.renderArmory("gear").includes("CROWN ARTS"), "armory links the Crown Arts panel");
+  FO.tab("craft"); FO.craftPick("sundered_regalia", "helmet"); h = FO.render(); clean(h, "forge craft crown set");
+  ok(h.includes("Sundered Crown") && h.includes(G.ui.esc(G.ui.matName("sigil_sundered_king"))), "crown set forging costs the king's sigils");
+  FO._state.mats = Object.assign({}, FO._state.mats, { crown_shard: 42 }); h = FO.render();
+  ok(h.includes("Crown Shard <b>42</b>") && h.includes("gameArtsUI.open('forge')"), "forge wallet shows crown shards + arts link");
+  CX.tab("codex"); CX.page("guild_throne"); h = CX.render(); clean(h, "codex throne page");
+  ok(h.includes("The Sundered Throne") && h.includes("Crownbreaker") && h.includes("scArch a-multiform"), "throne codex page: reward title + archetype");
+  const side = h.slice(0, h.indexOf("adCxMain"));
+  const ladderPos = ECON.STORY_LADDER.map(t => side.indexOf("gameCodex.page('" + t + "')"));
+  ok(ladderPos.every((p, i) => p > 0 && (i === 0 || p > ladderPos[i - 1])), "codex pages follow STORY_LADDER (11 pages)");
+  ok(h.includes(G.ui.bossName("gorehorn")) && h.includes(G.ui.bossName("kael_crownbound")), "boss kills include the crown bosses");
+  CX.tab("achievements"); h = CX.render(); clean(h, "achievements (crown)");
+  ok(h.includes("Crown Arts") && h.includes("Immovable Object") && h.includes("Kingbreaker") && h.includes("Gorehorn&#39;s Bane I"), "18 new achievements listed");
+  ok(h.includes(`of ${ECON.ACHIEVEMENTS.length} achievements`) && ECON.ACHIEVEMENTS.length === 61, "61 achievements");
+  CX.tab("arts"); h = CX.render(); clean(h, "codex arts tab without the panel");
+  ok(h.includes("CROWN ARTS") && h.includes("arrive with the update"), "codex arts tab degrades without arts-ui");
+  CX.tab("delver"); h = CX.render(); ok(h.includes("The Thornwild Warren") && h.includes("Pillar stuns"), "weekly checklist + tallies include the crown");
+
   console.log(`forge-ui.test.js: ${checks} checks passed`);
 })().catch(e => { console.error(e); process.exit(1); });

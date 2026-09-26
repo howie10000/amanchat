@@ -569,6 +569,95 @@ cd server-node && node loot.test.js && node dungeon.test.js && node expedition.t
   `dungeon.test.js`: 218 pass / **3 fail — the same 3 as the pre-change baseline** (weekly bonus / cooldown-withheld cases around `settle`; not touched by Wave A;
   baseline was 182 pass / 3 fail — the extra passes are the new decks' SHAPES checks). `authority.test.js` had 1 flaky blackjack failure at baseline and passed after.
 
+---
+
+## B4 — done (2026-09-26)
+
+**New files:** `js/arts-ui.js` (`window.gameArtsUI`: the Crown Arts panel + pure helpers `artsForTier`, `sourcesOf`, `artLines`, `rankInfo`, `codexHtml`, `onGranted`, `load`), `js/arts-ui.test.js` (170 checks).
+
+**Changed (B4 files only):**
+- `js/guild.js` (tier lists only; leave/kick/disband and the Master's settings untouched): board, records and fallback rows use `ECON.STORY_LADDER` (11 story cards + endless + Nexus, easiest first); trophy hall includes `CROWN_BOSS_ORDER`/`CROWN_MINIS`; tier cards gain archetype badges (BEAST / DUELIST / TWINS / MULTI-FORM / CLASSIC) on boss and mini, an EARLY/MID/LATE stage tag, "♛ NEW" and RAIDABLE tags, and Crown Art chips (including the rare legacy-dungeon arts, so early players see them too); a Crown Arts banner; one appended Guild-Leader FAQ ("What is the Sundered Crown?"). `ROMAN` extended to XII.
+- `js/raid-ui.js`: raidable tiers follow `STORY_LADDER` (Colosseum/Mirror/Throne appear, Thornwild does not); the create screen shows the archetype badge + art chips; the results screen shows `arts` / `crownShards` / `artPity` (§6.4).
+- `js/gear.js`: fx labels `staggerDmg` ("Damage to staggered bosses"), `artPower` ("Crown Art power"), `artCd` ("-x% Crown Art cooldown", like dashCd) in cards, set bonuses, fx chips and the compare panel; Armory nav "♛ CROWN ARTS".
+- `js/forge.js`: the wallet shows `crown_shard`; "♛ ARTS" link (arts are forged in the Crown Arts panel through the `arts` op, not the `forge` op). Crown sets are forgeable through the existing craft tab (data-driven).
+- `js/codex.js`: pages follow `STORY_LADDER` (11), boss archetype badges + Crown Art chips per page, all-kills include the crown bosses, a new "CROWN ARTS" tab (collection), achievement category `arts`, progress for `immovable_object` / `crown_collector` / `crown_master`, the weekly list over the ladder, tallies `stuns` / `artHits`.
+- `js/loot-reveal.js`: art cards after the gear (own beats of 0.9–1.9 s by rarity, outside the gear cap so gear timing is unchanged), a gold card back, a crown halo + icon pop and a particle burst; result texts NEW / RANK UP → n / +1 copy / melted into shards; a crown-shard chip; a pity toast; the no-DOM fallback toasts arts; triggers `gameArtsUI.load()`.
+- `js/item-icons.js`: themes 11 (Mirror) and 12 (Throne); families + variants for all 62 crown bases (the `CROWN_PENDING` line in `item-icons.test.js` is deleted); 12 unique palettes; 4 set palettes/glyphs; new motifs (glints, crown_dust, thorns, sand) and glyphs (thorn, sunmoon, mirror, dagger); bespoke portraits for the 8 new bosses/minis; tier emblems (XI/XII); a `crown_shard` painter; achievement medals; the 4 codex hats; and `ItemIcons.art(id)` / `html('art', id)` for all 10 arts.
+- `style.css`: the `/* --- SC items & arts --- */` and `/* --- SC guild --- */` sections only. CSS-only effects, at most one loop per card, `prefers-reduced-motion` honoured, a mobile breakpoint.
+- `index.html`: the `js/arts-ui.js` tag after `loot-reveal.js`; B4 files bumped to `?v=crown-b4`.
+
+**Tests:** every `js/*.test.js` passes (50 files, including `item-icons` 3071/0 with the `CROWN_PENDING` line deleted, `raid-ui` 319/0, `forge-ui` 170, `loot-reveal` 21850, `arts-ui` 170, `globals` 62 scripts with no collisions). B4 changed no server file, so the server suites were not re-run.
+
+**Visual check:** a worktree server on :18094 with a temp DB: the Crown Arts panel (desktop + 812×375 landscape), the guild dungeon board, an icon sheet (8 portraits, 10 arts, 4 tier emblems, crown shard, L11/L12 gear, uniques, a set piece, a hat), and the loot reveal with two art cards. Fixed after the check: unowned-art silhouettes were pure black (now dimmed greyscale), the hero layout, disabled buttons in the panel, and the "Kael, Crownbound" source label.
+
+**Integration notes for the lead:**
+1. **`net.js` needs `window.netArts = (data) => rpc("arts", data || {});`** (next to `netDelver`). No package owns net.js, so B4 left it alone. Until the line lands, the panel renders from `state.data.arts` and every action shows the toast "still being forged".
+2. The panel listens to `NET.on("arts")` (`kind:'granted'`). After an equip or forge it calls `gameCrownArts.applyStatus({arts, cds, crown_shard})` when B2's module exists. B2 may also want a dungeon-menu button that calls `gameArtsUI.open()`.
+3. Shared data nit (frozen module, not changed): `MATERIALS.sigil_kael_crownbound.name` is "Sigil of Kael", the same name as `sigil_kael`.
+4. The `arts` op `status` reply is expected to include `crown_shard`. Forge replies may carry `mats` (folded into `gameGear`) and `money`.
+
+## B1 — done (server)
+
+**New files:** `server-node/crown-engine.js` (the archetype engine: spawn / tick / hit / strike / hurt / phase / death / view),
+`server-node/crown-arts.js` (`art_use`, the `arts` op, settle drops), `server-node/testlib/crown-harness.js`,
+`server-node/crown-engine.test.js` (port 18461), `server-node/crown-arts.test.js` (port 18462), `server-node/crown-bench.js` (tick cost).
+**Changed:** `server.js` (wiring only; guild leave/kick/disband untouched), `guild-progress.js` (art drops + crown shards inside `grantRunLoot`
+after `DEPTHS.rollRunLoot`; crown stats / `last.noRiposte` / `last.twinSync` before the achievement check; codex pages list the 4 Crown tiers),
+`guild-journey.js` (first clears + the crown bounty), `authority.test.js` (`arts` protected), `forge.test.js` (codex pages 7 → 11), `guild.test.js` (depths_info: 7 legacy story tiers + the 4 Crown tiers appended).
+Shared modules: **no changes**.
+
+**Safety:** `arts` is in `PROTECTED_FIELDS`; `spawnGuildBoss` never divides by `parts: 0` (mobile bosses are one pool); a crown tier is refused
+(`That dungeon is not open yet.`) if the engine is missing or the ops kill switch `CROWN_TIERS=0` is set. Legacy bosses: `rollGuildBossAttack`
+was split into pick + `attackPayload` (same order of random draws), `guildBossView` is `Object.assign(legacyView, null)`, the proc code moved
+into `bossProcs` unchanged — every legacy suite result is identical to the baseline.
+
+### Protocol as implemented (deviations / additions to §6 — B2/B4 please read)
+- **Boss-room presence:** reach is checked against the presence with `area:'dungeon'`, `run` = the run id and `dfloor` = 1 (mini chamber) / 2
+  (final chamber) — exactly what `gameCombat.dungeonPresence()` already sends. `facing` (string or radians) is read for the Veiled Assassin.
+- **`twin` push:** the field is **`twinEvent`** (`'fell'|'revive'|'both'`), not `event` — `event` is the envelope (`'guild_boss'`) and would be
+  overwritten. `{twinEvent, which, reviveAt}`.
+- **Lean pushes:** `motion` and `shard` carry **no `boss` view** (bandwidth). All other new kinds go through `runBroadcast` and carry `boss`.
+  The mobile fields of the view (`archetype, driver, form, bodyR, stance, serverNow, bodies, pillars, polarity, twin, shards, sunderedUntil`) are
+  in every view; **`motion` and `clones` (the steps) are only in the view of `status` / `floor_state` / `encounter_enter` replies and the
+  `spawn` / `stage` pushes** — afterwards keep them from `motion` pushes.
+- `motion` push: `{body, steps, interrupt?, clones?}` — `steps` is the body's whole kept plan (≤ 3 finished steps + everything ahead); replace
+  `motion[body]` with it. `clones` (main body only) = `{[id]: Step[]}` of the live afterimages, re-derived whenever the real plan changes.
+  A plan that ran out during the rise / a phase shift is bridged with an `idle` step, so consecutive steps always chain (tested).
+- `stagger`: `{until, vuln, reason, body}` (+`body`). Reasons `pillar|wall|exhausted|kneel|sundered`, emitted when the vulnerable step starts.
+- `clone_down`: `{id, by, expired?}` — `by: null, expired: true` when a clone's life ends or the phase changes.
+- `pillar`: `{i, hits, crumbled}` on a hit; `{regrew:[i]}` at the phase regrow. `shards` push payload = `{t0, center, shards:[…]}` (the view's
+  copy is `shards:{t0, center, list:[…]}` as in §6.1). `polarity`: `{exposed, swapAt, periodMs, t0}` at every swap (and at the start).
+- Casts: every cast of a mobile boss carries `ox, oy` (body at cast time); `crescent` also carries **`ang`** (toward its target);
+  the swap `eclipse` carries `x0,y0,x1,y1` (the two twins). Raid mode rolls the soak overlay on 15% of casts.
+- **`boss_hit` reply (mobile):** `{body, part:'head', dmg, crit, vuln, procs, reflected, downed:false, hp, maxHp (the struck body — twins: that
+  twin), poolHp, poolMax, dead, mini, twin?:{fallen, reviveAt}, blocked?, parried?, clone?:{id, down}, shard?:{i, hp}}`. A missing `body` means
+  `'main'` (twins: the exposed twin). Refusals: `Move closer.` / `It is out of reach.` / `You can't reach it.` / `It is veiled.` /
+  `The crown shields him.` / `That afterimage is gone.` / `That shard is already broken.` / `No such target.` / `Too fast.`
+- **`art_use`:** request `{art, slot?, x, y, ang, targets?, body?, counter?, ax?, ay?}` — `ax, ay` = the aim point of a `ground` art (clamped
+  to its reach; default `x,y + reach·ang`). If `slot` is sent it must hold that art. Reply `{art, readyAt, rank, dmg?, crit?, changed?, refused?,
+  boss?:{body, hp, dmg, vuln, parried?, blocked?, clone?, shard?, dead}, buff?:{kind, until, mult?, users?}, bossSlow?}`. Push
+  `guild_dungeon kind:'art' {user, art, rank, x, y, ang, at, counter?}` to the whole run. Clarifications: maze targets **do** get the 1400 px
+  leash check (a tampered client cannot strike across the floor) plus the `warded`/Glimmerthief rules; elites and the rest may be struck. An art
+  on a **legacy** (parts) boss with `body` set deals its damage to the pool via `hurtBoss`. Mirror Step's burst is dealt at cast, around the
+  decoy (= the cast point). The Riposte counter (`counter:true`) is accepted once while `riposteUntil` holds and does not restart the cooldown.
+  War Cry's buff applies (server-side, in `swingBuffMult`) to members within `r` of the cast point on the same `dfloor`; the strongest cry wins.
+- **`arts` op:** `status` → `{arts, cds, crown_shard, table, money}`; `equip {art|null, slot}` → status (`Not mid-fight.` while the run's boss
+  is not dead); `forge {art}` → status + `{cost, rank, mats, achievements}`; **`merge {art}`** spends banked duplicate copies (copies normally
+  auto-merge on arrival, so this is rarely needed). Forge/merge share a 300 ms limit.
+- **Settle:** reply and `reward` push gain `arts:[{id, result, rank, shards}], crownShards, artPity` (also on sanctuary segments, which roll
+  the `arcane_depths` legacy art table). `mini:<id>` pending keys roll that mini's table. Push `event:'arts' kind:'granted' {arts}` per player.
+- `depths_info` appends the 4 Crown tiers after the legacy list with `crown:true, archetype, open`. Unlock rules are the existing
+  `unlockAfter` (Thornwild open; Colosseum after `guild_void`; Mirror after `guild_rime`; Throne after `guild_mirror`). Colosseum/Mirror/Throne raid as usual.
+- **Journey:** first clears claim `first_<tier>` world firsts with the hook texts; one crown bounty a day (`bounties.crown`, id `c<day>:0`,
+  medium reward, claimed through the normal `bounty_claim`). `u.delve.stats` gains `stuns, artHits, crownShardsBroken, noRiposte, twinSync, arts, artMax`.
+- Test knobs (never set in production): `DUNGEON_TEST_CROWN_FORCE="boss:move,…"` (planner prefers those moves), `DUNGEON_TEST_TWIN_LINK_MS`.
+
+### Numbers
+- `node server-node/crown-bench.js 50 30`: 50 concurrent Crown fights → crown tick work 0.58 ms mean / 1.6 ms p99 per 250 ms tick (≈12 µs per
+  fight), motion ≈ 1 KB/s per member.
+- Live Kael fight (test client swinging ~10×/s): 1.86 KB/s per member of boss pushes (motion ≈ 0.7 KB/s; the rest is the legacy `hp` view). The
+  Twins/King fights measured 3-4 KB/s under the same hammering, dominated by the legacy 150 ms-throttled `hp` broadcasts (unchanged from parts bosses).
+
 
 ---
 
@@ -586,7 +675,7 @@ cd server-node && node loot.test.js && node dungeon.test.js && node expedition.t
 **Deviations / integration notes**
 - Two new client files instead of one (`crown-boss.js` holds the boss runtime so combat.js stays readable and the pure parts are testable).
 - B3 hooks (all optional, guarded, return true = drawn): `drawMobileBoss(ctx, view, pose, t)` with pose `{x, y, f, s, k, step, i, body, clone, real, hidden, flash, guard, vuln, exposed, form, sundered}` (one reused object per body); `drawCrownAttack(ctx, atk, t)` gets the step's atk with `k, now, s, body, t0` written on it; **new optional** `drawPillar(ctx, p, t, bossId)` and `drawCrownShard(ctx, shard, t)` (shard has `pos`, `hp`, `maxHp`, `r`); `drawArt(ctx, fx, t)` gets a pooled record `{art, kind, x, y, x1, y1, ang, t0, dur, color, r, w, mine, by, counter}`. `gameBosses.drawBoss` is never called for a mobile boss.
-- B1: every push already carries `now`; please keep it (and `serverNow` in the view). Body-move damage is taken from `atk.dmg` as sent — bake the run's `bossDmgMult` / enrage into it, or send `dmgMult` on the `motion` push (the client multiplies it). `boss_hit` replies: `hp` of the struck body (twins: that body), optional `bossHp` (pool total), `vuln`, `parried`, `blocked`, `clone:{id, down}`, `shard:{i, hp}`. Refusal strings are matched loosely (`Move closer` → re-push presence; `veiled|reach|shields` → floater). `art_use` `readyAt` is converted with the estimated clock offset.
+- Adapted to "B1 — done": `twin` reads `twinEvent`; `motion` pushes (no view) replace/merge the body's plan, the view's `motion`/`clones` are ingested only when present (status / encounter_enter / spawn / stage) and skipped when unchanged; the view's shard set is merged (orbit trails kept) instead of rebuilt each push; `stagger.body`; `clone_down {expired:true}` fades quietly; `crescent` flies along `ang` when sent; `boss_hit` → `hp` of the struck body (`setHp` for a twin), `poolHp/poolMax` drive the bar; the refusals `That afterimage is gone.` / `That shard is already broken.` / `No such target.` show as floaters; ground arts send `ax, ay`; the art reply's `boss` goes through the same `applyBossHit`. Clock: every push's `now` is sampled when present (lean pushes may omit it). Body-move damage is `atk.dmg` as sent (× `dmgMult` if a `motion` push carries one) (B1 bakes `bossDmgMult`, hard enrage and the twin enrage into step payloads via `scaleSteps`, so they match).
 - Shared-module note (no change made): in `CROWN.buildMove` a combo's lunges ignore the distance to the target, so at close range Kael's wide third cut can land *past* a player standing right against him (the cone then points away). Consider clamping each lunge to `max(0, dist − 30)`.
 - `net.js` untouched; `window.netArts` comes from the lead's branch.
 

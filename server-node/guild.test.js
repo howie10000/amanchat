@@ -426,7 +426,7 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
         assert(arch && !arch.unlocked && /Ashen Roost/.test(arch.lockedWhy), 'the Starlit Archive is locked until the Roost is cleared, and says so');
         r = await tryRpc(master, 'guild_dungeon', { action: 'party_create', tier: 'guild_archive' });
         assert(!r.ok && /sealed/.test(r.err), 'a sealed tier cannot be entered');
-        assert(info.tiers.filter(t => t.mode === 'story').length === 7 && info.tiers.some(t => t.key === 'raid_nexus') && info.tiers.some(t => t.key === 'arcane_depths'), 'depths_info lists the 7 story tiers, the raid and the Depths');
+        assert(info.tiers.filter(t => t.mode === 'story' && !t.crown).length === 7 && info.tiers.filter(t => t.crown).map(t => t.key).join() === ECON.CROWN_DUNGEON_ORDER.join() && info.tiers.some(t => t.key === 'raid_nexus') && info.tiers.some(t => t.key === 'arcane_depths'), 'depths_info lists the 7 story tiers, the raid, the Depths and (appended) the 4 Crown tiers');
         const rec = await master.rpc('guild_dungeon', { action: 'records', tier: 'guild_crypt' });
         assert(rec.mine && rec.mine.tiers.guild_crypt.clears === 1 && rec.top.guild_crypt.deep.some(e => e.gid === gid && e.n === 1 && !e.raid), 'records: the guild\'s own tier record and the top board');
 
