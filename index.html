@@ -5,40 +5,41 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Neighborhood</title>
 <link rel="icon" href="data:," />
-<link rel="stylesheet" href="style.css?v=dungeon-timer-1" />
+<link rel="stylesheet" href="style.css?v=crown-login-1" />
 
 </head>
 <body>
-  <!-- LOGIN SCREEN -->
-  <div id="loginScreen" class="screen arcane-login">
+  <!-- LOGIN SCREEN: THE SUNDERED CROWN (js/title-background.js runs js/crown-title.js in a worker) -->
+  <div id="loginScreen" class="screen crown-login" data-shot="crown">
     <canvas id="titleBg" aria-hidden="true"></canvas>
-    <div class="arcane-motes" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="crown-embers" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
     <div class="loginStack">
-      <div class="arcane-brand">
-        <span class="arcane-eyebrow">NEIGHBORHOOD <b>·</b> GUILD DUNGEONS UPDATE</span>
-        <div class="arcane-title-wrap">
-          <div class="arcane-sigil" aria-hidden="true"><i></i><i></i><i></i></div>
-          <h1 class="arcane-title" aria-label="The Arcane Depths"><small>THE </small><span class="arcane-word">ARCANE DEPTHS</span></h1>
-          <span class="arcane-flare" aria-hidden="true"></span>
+      <div class="crown-brand">
+        <span class="crown-eyebrow">NEIGHBORHOOD <b>·</b> GUILD DUNGEONS UPDATE</span>
+        <div class="crown-title-wrap">
+          <div class="crown-sigil" aria-hidden="true"><i></i><i></i><i></i><b></b><b></b></div>
+          <h1 class="crown-title" aria-label="The Sundered Crown"><small>THE </small><span class="crown-word">SUNDERED CROWN</span></h1>
+          <span class="crown-flare" aria-hidden="true"></span>
         </div>
-        <p class="arcane-tagline">Three new dungeons. An endless abyss. Raids that unite every guild.</p>
-        <ul class="arcane-roster" aria-label="New dungeons">
-          <li class="r-archive">The Starlit Archive</li>
-          <li class="r-geode">The Singing Geode</li>
-          <li class="r-rime">The Rimeveil Abyss</li>
+        <p class="crown-tagline">Four new guild dungeons. Bosses that fight back. Earn the Crown Arts and face the Sundered King.</p>
+        <ul class="crown-roster" aria-label="New guild dungeons">
+          <li class="r-thorn"><em>Early</em><span>The Thornwild Warren</span><small>Gorehorn, the Rampager</small></li>
+          <li class="r-ash"><em>Mid</em><span>The Ashen Colosseum</span><small>Kael, the Sundered Blade</small></li>
+          <li class="r-mirror"><em>Late</em><span>The Mirror Court</span><small>The Twin Monarchs, Sol &amp; Umbra</small></li>
+          <li class="r-throne"><em>Raid</em><span>The Sundered Throne</span><small>The Sundered King</small></li>
         </ul>
-        <ul class="arcane-chips" aria-label="What's new">
-          <li><b>7</b> Guild Dungeons</li>
-          <li>New Bosses &amp; Phases</li>
-          <li>Mythic Loot &amp; Sets</li>
-          <li>Delve Ranks &amp; Endless Depths</li>
-          <li>Multi-Guild Raids</li>
+        <ul class="crown-chips" aria-label="What's new">
+          <li><b>4</b> New Guild Dungeons</li>
+          <li>Crown Arts</li>
+          <li>Bosses That Fight Back</li>
+          <li>The Sundered King Raid</li>
+          <li>Leaders Can Disband Guilds</li>
         </ul>
       </div>
     <div class="loginBox">
-      <span class="arcane-new">NEW UPDATE LIVE</span>
+      <span class="crown-new">NEW UPDATE LIVE</span>
       <h1>NEIGHBORHOOD</h1>
-      <p class="tagline">Gather your guild. The vault beneath the town has opened.</p>
+      <p class="tagline">The crown is broken. Rally your guild and claim its shards.</p>
       <input id="loginUser" placeholder="Username" maxlength="16" autocomplete="username" />
       <input id="loginPass" type="password" placeholder="Password" maxlength="32" autocomplete="current-password" />
       <div class="loginBtns">
@@ -46,9 +47,18 @@
         <button id="btnRegister">Register</button>
       </div>
       <div id="loginMsg" class="msg"></div>
-      <p class="arcane-rarity"><span>Ancient</span> &amp; <span>Arcane</span> rarities now drop</p>
+      <p class="crown-arts">Crown Arts: <span>Blade Dash</span> · <span>Riposte</span> · <span>Thorn Snare</span> · <span>Mirror Step</span> · <span>Crown Nova</span></p>
       <div class="hint">Owners and admins get the Staff panel. Be nice — bans and mutes are real.</div>
     </div>
+    </div>
+    <div class="crown-caption" aria-hidden="true">
+      <p data-for="crown"><b>The Sundered Crown</b><span>Its shards still remember a king</span></p>
+      <p data-for="colosseum"><b>The Ashen Colosseum</b><span>Kael, the Sundered Blade</span></p>
+      <p data-for="warren"><b>The Thornwild Warren</b><span>Gorehorn, the Rampager</span></p>
+      <p data-for="mirror"><b>The Mirror Court</b><span>The Twin Monarchs, Sol &amp; Umbra</span></p>
+      <p data-for="king"><b>The Sundered Throne</b><span>The Sundered King awakens</span></p>
+      <p data-for="nova"><b>Crown Arts</b><span>Mirror Step · Crown Nova</span></p>
+      <p data-for="throne"><b>The Sundered Throne</b><span>Endgame guild raid</span></p>
     </div>
   </div>
 
@@ -233,7 +243,7 @@
   <script type="text/plain" data-boot src="js/dungeon-hud.js?v=timer-1"></script>
   <script type="text/plain" data-boot src="js/game.js?v=dungeon-hud-1"></script>
   <script type="text/plain" data-boot src="js/mobile.js?v=release-20260923-1"></script>
-  <script type="text/plain" data-boot src="js/sea-assets.js?v=worker-1"></script>
+  <script type="text/plain" data-boot src="js/sea-assets.js?v=crown-1"></script>
   <!-- Game dependencies yield between scripts; the title runs independently in a worker. -->
   <script>
   (function(){
@@ -250,7 +260,7 @@
    }
    window.__gameBoot=load(three,true).then(startGame);
    window.__gameBoot.catch(function(e){console.error('Game startup failed',e);});
-   window.__titleBoot=load('js/title-background.js?v=worker-1',true);
+   window.__titleBoot=load('js/title-background.js?v=crown-1',true);
    window.__titleBoot.catch(function(e){console.warn('Optional login background unavailable',e);});
   })();
   </script>
