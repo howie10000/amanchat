@@ -53,6 +53,7 @@
   }
   function kindOf(hand) {
     hand = hand === "ranged" ? "ranged" : "melee";
+    if (FORCE && FORCE[hand]) return FORCE[hand];
     const s = ST();
     // The duel arena is deliberately an even fight: everyone holds a sword and a gun.
     if (s && s.area === "duel") return DEFAULT[hand];
@@ -62,7 +63,7 @@
     return E.WEAPON_KINDS[k] && E.WEAPON_KINDS[k].hand === hand ? k : DEFAULT[hand];
   }
   function def(hand) { const E = EC(); return (E && E.WEAPON_KINDS && E.WEAPON_KINDS[kindOf(hand)]) || null; }
-  function activeHand() { const s = ST(); return s && s.weapon === "pistol" ? "ranged" : "melee"; }
+  function activeHand() { if (FORCE && FORCE.hand) return FORCE.hand; const s = ST(); return s && s.weapon === "pistol" ? "ranged" : "melee"; }
   const _lo = { melee: "sword", ranged: "gun", active: "melee" };
   function loadout() { _lo.melee = kindOf("melee"); _lo.ranged = kindOf("ranged"); _lo.active = activeHand(); return { melee: _lo.melee, ranged: _lo.ranged, active: _lo.active }; }
   // Attack power of one hand (the server applies exactly this split).
@@ -84,8 +85,9 @@
   // ================================================================ ATTACK STATE
   // The attack playing now (one at a time; a new one blends out of the old pose).
   const ANIM_MS = { sword: 250, mace: 440, spear: 280, dagger: 170, axe: 380, scythe: 340, gun: 230, boomerang: 300, blowdart: 300, crossbow: 0 };
-  const A = { on: false, hand: "melee", kind: "sword", t0: 0, dur: 0, ang: 0, dir: 1, n: 0, impact: false, released: false,
-    from: { rot: 0, orb: 0, ext: 0, lift: 0 } };
+  // (A, D, the particle pool, the trail and the effect points belong to a RIG:
+  // the player's own, or extra ones a review page / other view creates.)
+  let A;
   const _out = { hand: "melee", kind: "sword", t0: 0, dur: 0 };
   function durOf(kind) {
     if (kind === "crossbow") { const E = EC(); const K = E && E.WEAPON_KINDS.crossbow; return K ? Math.round(K.cd[0] * 16.667) : 600; }
@@ -97,7 +99,7 @@
     kind = kind || kindOf(hand);
     const t = nowMs();
     // blend out of whatever is on screen now
-    A.from.rot = D.rot; A.from.orb = D.orb; A.from.ext = D.ext; A.from.lift = D.lift;
+    A.from.rot = D.rot; A.from.orb = D.orb; A.from.ext = D.ext; A.from.lift = D.lift; A.from.slide = D.slide || 0;
     A.on = true; A.hand = hand; A.kind = kind; A.t0 = t; A.dur = durOf(kind); A.ang = +ang || 0;
     A.n++; A.dir = (kind === "sword" || kind === "dagger") ? (A.n % 2 ? 1 : -1) : 1;
     A.impact = false; A.released = false;
@@ -144,12 +146,12 @@
     blowdart:  { rot: 0, orb: 0, ext: 2, lift: 13 },
     crossbow:  { rot: 0, orb: 0.12, ext: 4, lift: 3 },
   };
-  const P = { rot: 0, orb: 0, ext: 0, lift: 0, str: 1, flash: 0, hide: 0, len: 1, trail: 0, puff: 0 };
+  const P = { rot: 0, orb: 0, ext: 0, lift: 0, str: 1, flash: 0, hide: 0, len: 1, trail: 0, puff: 0, slide: 0 };
   // The keyed curve of one attack at progress k (0..1). dir = ±1 alternates
   // the sword / dagger strokes so chained swings flow back and forth.
   function poseAttack(kind, k, dir) {
     const R = REST[kind] || REST.sword;
-    P.rot = R.rot; P.orb = R.orb; P.ext = R.ext; P.lift = R.lift; P.str = 1; P.flash = 0; P.hide = 0; P.len = 1; P.trail = 0; P.puff = 0;
+    P.rot = R.rot; P.orb = R.orb; P.ext = R.ext; P.lift = R.lift; P.str = 1; P.flash = 0; P.hide = 0; P.len = 1; P.trail = 0; P.puff = 0; P.slide = 0;
     if (kind === "sword") {
       // wind to one side (anticipation) -> snap across -> overshoot and settle
       const w = inOut(seg(k, 0, 0.2)), s = snap(seg(k, 0.2, 0.46)), f = seg(k, 0.46, 1);
@@ -163,14 +165,15 @@
       const bounce = k >= 0.52 && k < 0.66 ? Math.sin(seg(k, 0.52, 0.66) * PI) : 0;
       if (k < 0.38) { P.rot = lerp(R.rot, -2.7, up); P.lift = lerp(0, 20, up); P.ext = lerp(R.ext, -5, up); P.orb = lerp(R.orb, -0.3, up); P.len = lerp(1, 0.7, up); }
       else if (k < 0.52) { P.rot = lerp(-2.7, 0.04, down); P.lift = lerp(20, -1, down); P.ext = lerp(-5, 12, down); P.orb = lerp(-0.3, 0.08, down); P.len = lerp(0.7, 1, down); P.trail = 1; }
-      else if (k < 0.66) { P.rot = 0.04 - 0.16 * bounce; P.lift = -1 + 3 * bounce; P.ext = 12 - 2 * bounce; P.orb = 0.08; }
+      else if (k < 0.66) { P.trail = k < 0.56 ? 1 : 0; P.rot = 0.04 - 0.16 * bounce; P.lift = -1 + 3 * bounce; P.ext = 12 - 2 * bounce; P.orb = 0.08; }
       else { P.rot = lerp(-0.12, R.rot, rec); P.lift = lerp(2, R.lift, rec); P.ext = lerp(10, R.ext, rec); P.orb = lerp(0.08, R.orb, rec); }
     } else if (kind === "spear") {
       // draw back -> thrust (the shaft slides through the hand) -> hold -> retract
       const b = inOut(seg(k, 0, 0.26)), th = snap(seg(k, 0.26, 0.42)), re = outCubic(seg(k, 0.6, 1));
       P.rot = lerp(R.rot, 0, inOut(seg(k, 0, 0.2))) + (k > 0.6 ? R.rot * re : 0);
       P.orb = lerp(R.orb, 0.12, inOut(seg(k, 0, 0.2))) + (k > 0.6 ? (R.orb - 0.12) * re : 0);
-      P.ext = k < 0.26 ? lerp(0, -11, b) : k < 0.42 ? lerp(-11, 34, th) : k < 0.6 ? 34 - 5 * seg(k, 0.42, 0.6) : lerp(29, R.ext, re);
+      P.ext = k < 0.26 ? lerp(0, -4, b) : k < 0.42 ? lerp(-4, 9, th) : k < 0.6 ? 9 - 1.5 * seg(k, 0.42, 0.6) : lerp(7.5, R.ext, re);
+      P.slide = k < 0.26 ? lerp(0, -8, b) : k < 0.42 ? lerp(-8, 24, th) : k < 0.6 ? 24 - 3 * seg(k, 0.42, 0.6) : lerp(21, 0, re);
       P.trail = k > 0.24 && k < 0.5 ? 1 : 0;
     } else if (kind === "dagger") {
       // two quick stabs, the second from the other side
@@ -179,7 +182,7 @@
       const stab = u < 0.35 ? snap(u / 0.35) : 1 - inOut((u - 0.35) / 0.65);
       P.rot = lerp(R.rot, 0.28 * dir * second, inOut(seg(k, 0, 0.1)));
       P.orb = 0.3 * dir * second;
-      P.ext = lerp(-2, 17, stab);
+      P.ext = lerp(-2, 9, stab); P.slide = lerp(0, 6, stab);
       P.trail = stab > 0.35 ? 1 : 0;
     } else if (kind === "axe") {
       // over the shoulder, a heavy chop that bites, then drag it free
@@ -224,8 +227,7 @@
   // D = what is on screen. During an attack it is the keyed curve, blended
   // out of the previous pose over the first 30%; otherwise every channel
   // springs back to rest (slightly under-damped: a little follow-through).
-  const D = { rot: 0.95, orb: 0.55, ext: 0, lift: 0, str: 1, flash: 0, hide: 0, len: 1, trail: 0, puff: 0,
-    vrot: 0, vorb: 0, vext: 0, vlift: 0, aim: 0, vaim: 0, kind: "sword", hand: "melee", t: 0, frameT: -1, aimInit: false };
+  let D;
   const SPRING_K = 170, SPRING_C = 19;           // ~ζ 0.73: settles in ~0.3 s with a small overshoot
   function springTo(key, vkey, target, dt) {
     const a = SPRING_K * (target - D[key]) - SPRING_C * D[vkey];
@@ -254,14 +256,14 @@
       D.rot = lerp(A.from.rot, P.rot, b); D.orb = lerp(A.from.orb, P.orb, b);
       D.ext = lerp(A.from.ext, P.ext, b); D.lift = lerp(A.from.lift, P.lift, b);
       D.vrot = D.vorb = D.vext = D.vlift = 0;
-      D.str = P.str; D.flash = P.flash; D.hide = P.hide ? 1 : 0; D.len = P.len; D.trail = P.trail; D.puff = P.puff;
-      if (!A.impact && (kind === "mace" && k >= 0.52 || kind === "axe" && k >= 0.55)) { A.impact = true; impactFx(kind); }
+      D.str = P.str; D.flash = P.flash; D.hide = P.hide ? 1 : 0; D.len = P.len; D.trail = P.trail; D.puff = P.puff; D.slide = lerp(A.from.slide || 0, P.slide, b);
+      if (!A.impact && (kind === "mace" && k >= 0.52 || kind === "axe" && k >= 0.55)) { A.impact = true; A.impactDue = true; }   // fired once the tip is known (drawHeld)
     } else {
       const R = REST[kind] || REST.sword;
       const bob = Math.sin(t / 520) * 0.04;
       springTo("rot", "vrot", R.rot + bob, dt); springTo("orb", "vorb", R.orb, dt);
       springTo("ext", "vext", R.ext, dt); springTo("lift", "vlift", R.lift + Math.sin(t / 700) * 0.6, dt);
-      D.flash = 0; D.trail = 0; D.puff = 0; D.len += (1 - D.len) * Math.min(1, dt * 12);
+      D.flash = 0; D.trail = 0; D.puff = 0; D.len += (1 - D.len) * Math.min(1, dt * 12); D.slide = (D.slide || 0) * Math.max(0, 1 - dt * 10);
       D.hide = kind === "boomerang" && boomerangOut() ? 1 : 0;
       // the crossbow reloads over its cooldown; when idle the string is drawn
       D.str += (1 - D.str) * Math.min(1, dt * 10);
@@ -270,9 +272,7 @@
 
   // ================================================================ PARTICLES (pooled)
   const PN = 96;
-  const PX = new Float32Array(PN), PY = new Float32Array(PN), PVX = new Float32Array(PN), PVY = new Float32Array(PN),
-    PL = new Float32Array(PN), PM = new Float32Array(PN), PS = new Float32Array(PN), PR = new Float32Array(PN);
-  const PK = new Uint8Array(PN);      // 0 dust · 1 spark · 2 smoke · 3 shell · 4 chip
+  let PX, PY, PVX, PVY, PL, PM, PS, PR, PK;   // PK: 0 dust · 1 spark · 2 smoke · 3 shell · 4 chip
   let pHead = 0;
   const PCOL = ["#a8927a", "#fde68a", "#e5e7eb", "#d4a64a", "#78716c"];
   function spawn(kind, x, y, vx, vy, life, size) {
@@ -304,7 +304,7 @@
     ctx.globalAlpha = 1;
   }
   // world positions of the hand / tip from the last drawn frame
-  const G = { hx: 0, hy: 0, tx: 0, ty: 0, mx: 0, my: 0, px: 0, py: 0, valid: false };
+  let G;
   function muzzleFx(kind) {
     if (!G.valid) return;
     const a = D.aim;
@@ -322,7 +322,7 @@
     if (!G.valid) return;
     const x = G.tx, y = G.ty;
     if (kind === "mace") {
-      for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU; spawn(0, x + Math.cos(a) * 6, y + Math.sin(a) * 3, Math.cos(a) * 120, Math.sin(a) * 55, 0.55, 3.5); }
+      for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU; spawn(0, x + Math.cos(a) * 6, y + Math.sin(a) * 3, Math.cos(a) * 110, Math.sin(a) * 50, 0.5, 2.2); }
       for (let i = 0; i < 5; i++) spawn(4, x, y, (Math.random() - 0.5) * 160, -90 - Math.random() * 90, 0.5, 2.5);
       ring.t0 = nowMs(); ring.x = x; ring.y = y; ring.r = smashR();
     } else if (kind === "axe") {
@@ -330,13 +330,42 @@
       for (let i = 0; i < 4; i++) spawn(1, x, y, (Math.random() - 0.5) * 200, -Math.random() * 120, 0.2, 2);
     }
   }
-  const ring = { t0: -1e9, x: 0, y: 0, r: 40 };
+  let ring;
   function smashR() { const E = EC(); return (E && E.WEAPON_KINDS.mace.smashR) || 44; }
 
   // ================================================================ TRAILS
   const TN = 12;
-  const TR = new Float64Array(TN * 5);     // tipX, tipY, baseX, baseY, t
+  let TR;     // tipX, tipY, baseX, baseY, t
   let tHead = 0, tCount = 0;
+
+  // ================================================================ RIGS
+  // Everything that animates lives in a rig. The module works on the bound
+  // one; the player's rig is bound by default. force = {melee?, ranged?, hand?}
+  // pins the kinds / active hand (review pages; the duel pins nothing — it
+  // reads the defaults through kindOf).
+  let FORCE = null, CUR = null;
+  function makeRig(force) {
+    return {
+      force: force || null,
+      A: { on: false, hand: "melee", kind: "sword", t0: 0, dur: 0, ang: 0, dir: 1, n: 0, impact: false, released: false, from: { rot: 0, orb: 0, ext: 0, lift: 0, slide: 0 } },
+      D: { rot: 0.95, orb: 0.55, ext: 0, lift: 0, str: 1, flash: 0, hide: 0, len: 1, trail: 0, puff: 0, slide: 0,
+        vrot: 0, vorb: 0, vext: 0, vlift: 0, aim: 0, vaim: 0, kind: "", hand: "melee", t: 0, frameT: -1, aimInit: false },
+      PX: new Float32Array(PN), PY: new Float32Array(PN), PVX: new Float32Array(PN), PVY: new Float32Array(PN),
+      PL: new Float32Array(PN), PM: new Float32Array(PN), PS: new Float32Array(PN), PR: new Float32Array(PN), PK: new Uint8Array(PN), pHead: 0,
+      G: { hx: 0, hy: 0, tx: 0, ty: 0, mx: 0, my: 0, px: 0, py: 0, valid: false },
+      ring: { t0: -1e9, x: 0, y: 0, r: 40 },
+      TR: new Float64Array(TN * 5), tHead: 0, tCount: 0,
+    };
+  }
+  function bind(R) {
+    CUR = R; FORCE = R.force; A = R.A; D = R.D; G = R.G; ring = R.ring; TR = R.TR; tHead = R.tHead; tCount = R.tCount;
+    PX = R.PX; PY = R.PY; PVX = R.PVX; PVY = R.PVY; PL = R.PL; PM = R.PM; PS = R.PS; PR = R.PR; PK = R.PK; pHead = R.pHead;
+  }
+  function unbind() { if (CUR) { CUR.tHead = tHead; CUR.tCount = tCount; CUR.pHead = pHead; } }
+  const MAIN = makeRig(null);
+  bind(MAIN);
+  // Run fn with another rig bound (then the player's again).
+  function withRig(R, fn) { unbind(); bind(R); try { return fn(); } finally { unbind(); bind(MAIN); } }
   function trailPush(t, tx, ty, bx, by) {
     const i = tHead * 5; TR[i] = tx; TR[i + 1] = ty; TR[i + 2] = bx; TR[i + 3] = by; TR[i + 4] = t;
     tHead = (tHead + 1) % TN; if (tCount < TN) tCount++;
@@ -445,11 +474,14 @@
       }
     },
     boomerang(ctx, p, tint) {
-      // held by one arm, the elbow pointing forward
-      ctx.beginPath(); ctx.moveTo(-2, -2); ctx.quadraticCurveTo(8, -4, 15, -9); ctx.lineTo(16.5, -6); ctx.quadraticCurveTo(10, -1, 1, 2.5); ctx.quadraticCurveTo(-4, 1, -2, -2); ctx.closePath();
-      ctx.fillStyle = COL.bone; ctx.fill(); outline(ctx);
-      ctx.fillStyle = "#b45309"; ctx.fillRect(6, -4, 2, 3);
-      if (tint) glowEdge(ctx, tint, 2, 14, -4);
+      // held by one arm, the elbow pointing forward, the other arm swept back
+      const path = () => { ctx.beginPath(); ctx.moveTo(-1, 0); ctx.quadraticCurveTo(6, -1, 12, -3); ctx.quadraticCurveTo(10, 3, 5, 10); };
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
+      path(); ctx.strokeStyle = "rgba(15,23,42,.9)"; ctx.lineWidth = 5.6; ctx.stroke();
+      path(); ctx.strokeStyle = COL.bone; ctx.lineWidth = 3.8; ctx.stroke();
+      ctx.strokeStyle = "#b45309"; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(5, -2.6); ctx.lineTo(6, 0.2); ctx.moveTo(9.6, 2.4); ctx.lineTo(7.2, 1.6); ctx.stroke();
+      if (tint) { ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = 0.5; path(); ctx.strokeStyle = tint; ctx.lineWidth = 1.4; ctx.stroke(); ctx.restore(); }
     },
     blowdart(ctx, p, tint) {
       ctx.fillStyle = COL.reed; ctx.fillRect(-4, -1.3, 32, 2.6);
@@ -493,13 +525,20 @@
     const hx = x + Math.cos(handA) * r * (kind === "blowdart" ? 0.5 : 1);
     const hy = y + 3 + Math.sin(handA) * r * 0.78 - D.lift;
     const wa = a + D.rot * flip;
-    const behind = Math.sin(wa) < -0.35 && D.lift < 10 || (kind === "blowdart" && Math.sin(a) < -0.2);
+    // raised overhead / pointing up-screen = behind the head and body
+    const behind = Math.sin(wa) < -0.35 || (kind === "blowdart" && Math.sin(a) < -0.2);
     const t = nowMs();
     // geometry for effects, every frame
     const tip = TIP[kind] || 20;
     G.hx = hx; G.hy = hy; G.valid = true;
-    G.tx = hx + Math.cos(wa) * tip * D.len; G.ty = hy + Math.sin(wa) * tip * D.len;
+    const reachTip = (tip + (D.slide || 0)) * D.len;
+    G.tx = hx + Math.cos(wa) * reachTip; G.ty = hy + Math.sin(wa) * reachTip;
     G.mx = G.tx; G.my = G.ty;
+    if (A.impactDue) { A.impactDue = false; impactFx(kind); }
+    if (layer === "none") {        // advance only (headless / catching up), draw nothing
+      if (D.trail) trailPush(t, G.tx, G.ty, hx + Math.cos(wa) * tip * 0.45, hy + Math.sin(wa) * tip * 0.45);
+      return;
+    }
     if (layer !== "back") {
       // mace crater ring
       const rk = (t - ring.t0) / 420;
@@ -515,12 +554,20 @@
       return;
     }
     const f = MODEL[kind] || MODEL.sword;
+    const ap = (ST() && ST().appearance) || {};
+    // the arm: a sleeve from the shoulder on the weapon side to the fist
+    if (kind !== "blowdart") {
+      const sx = x + (Math.cos(handA) >= 0 ? 8 : -8), sy = y - 1;
+      ctx.lineCap = "round"; ctx.strokeStyle = ap.shirt || "#3b82f6"; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(hx, hy); ctx.stroke();
+    }
     ctx.save();
     ctx.translate(hx, hy);
     ctx.rotate(wa);
     ctx.scale(D.len, flip);
-    f(ctx, D, tintOf(D.hand));
-    ctx.fillStyle = (ST() && ST().appearance && ST().appearance.skin) || "#f5d0a9";
+    if (D.slide) { ctx.save(); ctx.translate(D.slide, 0); f(ctx, D, tintOf(D.hand)); ctx.restore(); }
+    else f(ctx, D, tintOf(D.hand));
+    ctx.fillStyle = ap.skin || "#f5d0a9";
     ctx.beginPath(); ctx.arc(0, 0, 2.6, 0, TAU); ctx.fill();          // the fist over the grip
     ctx.restore();
     if (layer !== "back") { drawPuff(ctx, x, y, a); drawParticles(ctx); }
@@ -642,7 +689,7 @@
 
   const API = {
     loadout, attackAnim, kindOf, def, activeHand, attackMult, startAttack, setInFlight, boomerangOut,
-    drawHeld, drawProjectile, drawReach, drawHud, hint,
+    drawHeld, drawProjectile, drawReach, drawHud, hint, makeRig, withRig,
     bossReach: (wire) => { const K = def(wire === "pistol" || wire === "ranged" ? "ranged" : "melee"); return K ? K.bossReach : null; },
     // test / review hooks
     _pose: (kind, k, dir) => Object.assign({}, poseAttack(kind, k, dir || 1)), _display: () => D, _anim: () => A, REST, TIP,

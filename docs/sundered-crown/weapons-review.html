@@ -1,0 +1,144 @@
+<!doctype html><meta charset="utf-8"><title>Weapons review</title>
+<style>
+body{margin:0;background:#07060c;color:#dbc791;font:13px Georgia}
+nav{padding:6px 10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+nav b{color:#fda4af;margin-right:4px}
+button{background:#1a1726;color:#fde68a;border:1px solid #4c3d6b;padding:5px 9px;cursor:pointer;font:12px Georgia}
+button.on{background:#7f1d1d;border-color:#fda4af}
+canvas{width:min(100%,1280px);display:block;margin:0 10px}
+#perf{padding:4px 12px;color:#bef264;font:12px monospace;white-space:pre}
+#icons{display:flex;flex-wrap:wrap;gap:8px;padding:8px 12px}
+#icons figure{margin:0;text-align:center;font-size:11px;color:#94a3b8}
+</style>
+<nav id="opts"><b>weapons</b></nav>
+<div id="perf"></div>
+<canvas id="c" width="1280" height="720" style="max-width:calc(100% - 20px)"></canvas>
+<div id="icons"></div>
+<script>
+/* Live review of the player's 2D weapons (docs/sundered-crown/WEAPONS.md).
+   Ten rigs — one per kind — each on its own patch of dungeon floor, swinging /
+   shooting at a target dummy that walks round it, with the same projectiles
+   the game flies (boomerang out-and-back, darts, bolts, bullets). The page
+   times the weapon draw path every frame.
+   URL hash: #speed=0.25&zoom=2.4&pause=1&shot=1&at=<ms> (at = freeze every cell <ms> into its attack) */
+const P=Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
+let speed=+(P.speed||1),zoom=+(P.zoom||2.4),paused=P.pause==='1',at=P.at!=null?+P.at:null;
+if(P.shot)document.head.insertAdjacentHTML('beforeend','<style>nav,#perf,#icons{display:none}canvas{width:1280px;margin:0}body{overflow:hidden}</style>');
+// a virtual clock so slow motion slows the animations themselves
+const realNow=performance.now.bind(performance);let vt=0,lastReal=realNow();
+performance.now=()=>vt;
+const state={pos:{x:0,y:0},mouse:{x:0,y:0},appearance:{skin:'#f1c27d',hair:'short',hairColor:'#3f2210',shirt:'#2563eb',pants:'#1e293b'},weapon:'sword',area:'dungeon',attackCooldown:0,bullets:[],dungeon:null};
+</script>
+<script src="../../js/shared/economy.js"></script>
+<script>for(const f of ['graphics','item-icons','player-weapons'])document.write('<script src="../../js/'+f+'.js?v='+Date.now()+'"><\/script>');</script>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const W=window.gameWeapons,E=ECON;
+const KINDS=E.MELEE_KINDS.concat(E.RANGED_KINDS);
+function btn(parent,text,on,fn){const b=document.createElement('button');b.textContent=text;if(on)b.className='on';b.onclick=fn;parent.append(b);return b;}
+function setHash(){location.hash=new URLSearchParams(Object.assign({speed,zoom},paused?{pause:1}:{},at!=null?{at}:{})).toString();build();}
+function build(){const O=document.getElementById('opts');O.innerHTML='<b>weapons</b>';
+  for(const s of [0.15,0.35,1])btn(O,'x'+s,s===speed,()=>{speed=s;setHash();});
+  for(const z of [1.6,2.4,3.2])btn(O,'zoom '+z,z===zoom,()=>{zoom=z;setHash();});
+  btn(O,paused?'play':'pause',paused,()=>{paused=!paused;setHash();});
+  for(const a of [null,40,90,140,200,300])btn(O,a==null?'live':'@'+a+'ms',a===at,()=>{at=a;setHash();});
+}
+build();
+// ------------------------------------------------------------ one cell per kind
+const cells=KINDS.map((kind,i)=>{const K=E.WEAPON_KINDS[kind];return{kind,K,i,rig:W.makeRig({melee:K.hand==='melee'?kind:'sword',ranged:K.hand==='ranged'?kind:'gun',hand:K.hand}),
+  next:600+i*140,shots:[],phase:i*0.7,hits:[]};});
+const CW=256,CH=360;
+function cellOrigin(c){return{x:(c.i%5)*CW+CW/2,y:Math.floor(c.i/5)*CH+CH/2+30};}
+// the dummy walks a slow circle round the fighter (local coords, unzoomed px)
+function dummy(c,t){const r=c.K.hand==='melee'?Math.min(46,c.K.reach*0.62):78;const a=c.phase+t/2600;return{x:Math.cos(a)*r,y:Math.sin(a)*r*0.8};}
+function attack(c,t){
+  const d=dummy(c,t),ang=Math.atan2(d.y,d.x);
+  W.withRig(c.rig,()=>W.startAttack(c.K.hand,c.kind,ang));
+  if(c.K.hand==='ranged'){
+    const sp=c.K.speed,ux=Math.cos(ang),uy=Math.sin(ang);
+    if(c.kind==='boomerang'){const L=110;c.shots.push({kind:'boomerang',boom:1,t:0,T:c.K.life,hold:8,x:0,y:0,vx:0,vy:0,ox:0,oy:0,ax:ux*L,ay:uy*L,side:c.i%2?1:-1,back:false,spin:0});}
+    else c.shots.push({kind:c.kind==='gun'?'gun':c.kind,x:ux*18,y:uy*18,vx:ux*sp*0.6,vy:uy*sp*0.6,life:Math.round(150/(sp*0.6))});
+  } else c.hits.push({t,x:d.x,y:d.y});
+  const cdMs=c.K.cd[0]*16.67;c.next=t+Math.max(cdMs,c.kind==='boomerang'?900:0)+520;
+}
+// a trimmed copy of combat.js boomerangStep (same curve)
+function boomStep(b){if(b.hold>0){b.hold--;return false;}b.t++;const u=b.t/b.T,px=b.x,py=b.y;const nx=-(b.ay-b.oy),ny=b.ax-b.ox,nl=Math.hypot(nx,ny)||1;
+  if(u<=0.5&&!b.back){const k=1-Math.pow(1-u*2,2),bow=Math.sin(k*Math.PI)*26*b.side;b.x=b.ox+(b.ax-b.ox)*k+nx/nl*bow;b.y=b.oy+(b.ay-b.oy)*k+ny/nl*bow;if(u>=0.5)b.back=true;}
+  else{if(!b.back){b.back=true;}const k=Math.pow(Math.min(1,(b.t/b.T-0.5)*2),2),bow=Math.sin(k*Math.PI)*26*-b.side;b.x=b.ax+(0-b.ax)*k+nx/nl*bow;b.y=b.ay+(0-b.ay)*k+ny/nl*bow;}
+  b.vx=b.x-px;b.vy=b.y-py;b.spin+=0.55;return b.t>=b.T;}
+let frames=[],drawMs=[],stepAcc=0;
+function floor(o){ctx.fillStyle='#1c1917';ctx.fillRect(o.x-CW/2+4,o.y-CH/2-26,CW-8,CH-8);
+  ctx.strokeStyle='rgba(120,113,108,.18)';ctx.lineWidth=1;for(let gx=-CW/2+4;gx<CW/2;gx+=32){ctx.beginPath();ctx.moveTo(o.x+gx,o.y-CH/2-26);ctx.lineTo(o.x+gx,o.y+CH/2-34);ctx.stroke();}
+  for(let gy=-CH/2-26;gy<CH/2-30;gy+=32){ctx.beginPath();ctx.moveTo(o.x-CW/2+4,o.y+gy);ctx.lineTo(o.x+CW/2-4,o.y+gy);ctx.stroke();}}
+function frame(){
+  const r=realNow(),dt=Math.min(50,r-lastReal);lastReal=r;
+  if(!paused)vt+=dt*speed;
+  const t=vt;
+  frames.push(dt);if(frames.length>120)frames.shift();
+  // fixed 60 Hz simulation of the projectiles (as the game does)
+  if(!paused){stepAcc+=dt*speed;while(stepAcc>=16.67){stepAcc-=16.67;for(const c of cells){for(const b of c.shots){if(b.boom){if(boomStep(b))b.dead=1;}else{b.x+=b.vx;b.y+=b.vy;if(--b.life<=0)b.dead=1;}}c.shots=c.shots.filter(b=>!b.dead);}}}
+  ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#07060c';ctx.fillRect(0,0,cv.width,cv.height);
+  const d0=realNow();
+  for(const c of cells){
+    const o=cellOrigin(c);floor(o);
+    if(at==null&&t>=c.next&&!paused)attack(c,t);
+    if(at!=null){c.frozen=c.frozen||{};if(c.frozenAt!==at){c.frozenAt=at;vt=Math.max(vt,1000);const ang=Math.atan2(dummy(c,0).y,dummy(c,0).x);W.withRig(c.rig,()=>{const A=W.startAttack(c.K.hand,c.kind,ang);A.t0=vt-at;});}}
+    ctx.save();ctx.translate(o.x,o.y);ctx.scale(zoom,zoom);
+    const d=dummy(c,at!=null?0:t);
+    // target dummy
+    ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(d.x,d.y+8,9,3.5,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#7c2d12';ctx.fillRect(d.x-1.5,d.y-4,3,12);ctx.fillStyle='#d6b77a';ctx.beginPath();ctx.arc(d.x,d.y-8,6.5,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#78350f';ctx.lineWidth=1;ctx.stroke();
+    for(const h of c.hits){const k=(t-h.t)/260;if(k<0||k>1)continue;ctx.globalAlpha=1-k;ctx.strokeStyle='#fde68a';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(h.x,h.y-6,4+10*k,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1;}
+    c.hits=c.hits.filter(h=>t-h.t<300);
+    const aim=Math.atan2(d.y,d.x);
+    state.pos.x=0;state.pos.y=0;state.mouse.x=d.x;state.mouse.y=d.y;state.weapon=c.K.hand==='ranged'?'pistol':'sword';
+    W.withRig(c.rig,()=>{
+      if(!W.attackAnim())W.drawReach(ctx,0,0,aim,'maze');
+      W.drawHeld(ctx,0,0,'back',aim);
+      GFX.drawCharacter(ctx,0,0,state.appearance,{facing:Math.abs(Math.cos(aim))>Math.abs(Math.sin(aim))?(Math.cos(aim)>0?'right':'left'):(Math.sin(aim)>0?'down':'up'),walking:0});
+      W.drawHeld(ctx,0,0,'front',aim);
+      for(const b of c.shots){if(b.hold>0)continue;W.drawProjectile(ctx,b,t);}
+    });
+    ctx.restore();
+    ctx.fillStyle='#fde68a';ctx.font='bold 14px Georgia';ctx.textAlign='center';ctx.fillText(c.K.emoji+' '+c.K.label,o.x,o.y-CH/2-6);
+    ctx.fillStyle='#94a3b8';ctx.font='11px monospace';ctx.fillText(c.K.hand+' · hit '+Math.round((c.K.hand==='ranged'?22:55)*c.K.dmg)+' · '+(60/c.K.cd[0]).toFixed(1)+'/s',o.x,o.y+CH/2-44);
+  }
+  // the HUD as the game draws it (bottom right)
+  state.weapon='sword';
+  drawMs.push(realNow()-d0);if(drawMs.length>120)drawMs.shift();
+  const avg=a=>a.reduce((s,x)=>s+x,0)/Math.max(1,a.length);
+  document.getElementById('perf').textContent='frame '+avg(frames).toFixed(1)+' ms · 10 rigs draw '+avg(drawMs).toFixed(2)+' ms (max '+Math.max(...drawMs).toFixed(2)+') · speed x'+speed;
+  requestAnimationFrame(frame);
+}
+// #strip=<kind>&n=8&ang=0 : one attack as a filmstrip (fresh rig per frame, frozen at k = i/(n-1))
+function strip(kind){
+  const K=E.WEAPON_KINDS[kind],n=+(P.n||8),ang=+(P.ang||0.5),Z=+(P.z||4);
+  const C=+(P.cols||2);cv.width=C*400;cv.height=Math.ceil(n/C)*300;const cw=cv.width/Math.min(n,C),ch=cv.height/Math.ceil(n/C);
+  ctx.fillStyle='#07060c';ctx.fillRect(0,0,cv.width,cv.height);
+  state.weapon=K.hand==='ranged'?'pistol':'sword';
+  const dur=W.withRig(W.makeRig({melee:K.hand==='melee'?kind:'sword',ranged:K.hand==='ranged'?kind:'gun',hand:K.hand}),()=>W.startAttack(K.hand,kind,ang).dur);
+  for(let i=0;i<n;i++){
+    const k=i/(n-1),ox=(i%C)*cw+cw/2,oy=Math.floor(i/C)*ch+ch/2+20;
+    ctx.fillStyle='#1c1917';ctx.fillRect(ox-cw/2+3,oy-ch/2-17,cw-6,ch-6);
+    const rig=W.makeRig({melee:K.hand==='melee'?kind:'sword',ranged:K.hand==='ranged'?kind:'gun',hand:K.hand});
+    ctx.save();ctx.translate(ox,oy);ctx.scale(Z,Z);
+    W.withRig(rig,()=>{
+      // settle, then start the attack and step the display frame-by-frame up to k
+      for(let f=0;f<30;f++){vt+=16.67;W.drawHeld(ctx,0,0,'none',ang);}
+      const A=W.startAttack(K.hand,kind,ang);
+      const steps=Math.max(1,Math.round(k*dur/16.67));
+      for(let f=0;f<steps;f++){vt+=Math.min(16.67,(k*dur)/steps);W.drawHeld(ctx,0,0,'none',ang);}
+      W.drawHeld(ctx,0,0,'back',ang);
+      GFX.drawCharacter(ctx,0,0,state.appearance,{facing:Math.abs(Math.cos(ang))>0.7?(Math.cos(ang)>0?'right':'left'):(Math.sin(ang)>0?'down':'up'),walking:0});
+      W.drawHeld(ctx,0,0,'front',ang);void A;
+    });
+    ctx.restore();
+    ctx.fillStyle='#fde68a';ctx.font='bold 13px Georgia';ctx.textAlign='left';ctx.fillText(K.label+'  k='+k.toFixed(2)+'  '+Math.round(k*dur)+'ms',ox-cw/2+10,oy-ch/2);
+  }
+}
+if(P.strip){document.getElementById('icons').remove();strip(P.strip);}else requestAnimationFrame(frame);
+// item icons for every kind (the Armory's art)
+if(window.ItemIcons&&document.getElementById('icons')){const box=document.getElementById('icons');
+  for(const k of KINDS)for(const lv of [1,7,12]){const id=E.ARMAMENT_BASE[k][lv];const h=ItemIcons.html('gear',{base:id,slot:E.GEAR_BASE_BY_ID[id].slot,lvl:lv,rarity:lv===12?'mythic':lv===7?'epic':'fine'},56,'');box.insertAdjacentHTML('beforeend','<figure>'+h+'<figcaption>'+E.GEAR_BASE_BY_ID[id].name+'</figcaption></figure>');}
+  for(const id of Object.keys(E.ARMAMENT_UNIQUES)){const u=E.GEAR_UNIQUES[id];const h=ItemIcons.html('gear',{base:id,slot:u.slot,lvl:u.lvl,rarity:u.minRarity,uq:id},56,'');box.insertAdjacentHTML('beforeend','<figure>'+h+'<figcaption>'+u.name+'</figcaption></figure>');}}
+</script>

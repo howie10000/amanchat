@@ -2301,7 +2301,7 @@
                  arc: Math.PI / 1.6, targets: 6, knock: 4, fx: {},
                  special: "Balanced slash that sweeps a wide arc (up to 6 foes)." },
     mace:      { hand: "melee", label: "Mace", emoji: "🔨", shape: "smash", dmg: 1.55, rate: 1.5, cd: [21, 18], reach: 64, bossReach: 54, krakenReach: 100,
-                 arc: Math.PI / 1.6, smashR: 62, targets: 6, knock: 9, fx: { staggerDmg: 0.30 },
+                 arc: Math.PI / 1.6, smashR: 40, targets: 6, knock: 9, fx: { staggerDmg: 0.30 },
                  special: "Slow overhead smash: a crater at the impact, huge knockback, +30% vs staggered bosses." },
     spear:     { hand: "melee", label: "Spear", emoji: "🔱", shape: "line", dmg: 1.05, rate: 1.1, cd: [15, 13], reach: 118, bossReach: 96, krakenReach: 160,
                  arc: Math.PI / 7, width: 30, targets: 3, knock: 5, fx: { eliteDmg: 0.10 },

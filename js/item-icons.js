@@ -1422,14 +1422,15 @@
   };
   W.boomerang = function (c, p, v, rn) {
     // a hooked throwing-stick: two broad arms meeting at a carved elbow
-    const body = cc => { cc.moveTo(-10, -50); cc.quadraticCurveTo(14, -28, 16, 0); cc.quadraticCurveTo(14, 28, -10, 50); cc.quadraticCurveTo(-2, 50, 2, 44); cc.quadraticCurveTo(4, 20, 3, 0); cc.quadraticCurveTo(4, -20, 2, -44); cc.quadraticCurveTo(-2, -50, -10, -50); cc.closePath(); };
+    // a sharp V: two broad arms meeting at the elbow (never a bow's crescent)
+    const body = cc => { cc.moveTo(-22, -40); cc.quadraticCurveTo(0, -24, 20, 0); cc.quadraticCurveTo(0, 24, -22, 40); cc.quadraticCurveTo(-24, 34, -18, 30); cc.quadraticCurveTo(-2, 16, 6, 0); cc.quadraticCurveTo(-2, -16, -18, -30); cc.quadraticCurveTo(-24, -34, -22, -40); cc.closePath(); };
     const wood = v.bone ? ["#fbf6e8", "#ded2b6", "#8a7652", "#3a2c16"] : [lt(WOOD[0], 0.15), WOOD[0], WOOD[1], WOOD[3]];
     part(c, body, metal(c, -4, 16, wood), { rn, tex: 16, box: [-10, -50, 16, 50] });
-    strokeP(c, "rgba(255,255,255,.5)", 0.9, cc => { cc.moveTo(-6, -46); cc.quadraticCurveTo(12, -26, 13, -2); });
-    for (const y of [-30, 30]) strokeP(c, p.trim[1], 2.2, cc => { const s = y < 0 ? -1 : 1; cc.moveTo(4, y); cc.lineTo(12, y + s * 3); });
-    for (const y of [-38, 38]) strokeP(c, p.gem, 1.4, cc => { const s = y < 0 ? -1 : 1; cc.moveTo(0, y); cc.lineTo(8, y - s * 2); });
-    gem(c, 9, 0, 3.4, p.gem);
-    if (v.eclipse) { glowDot(c, 9, -16, 3, "#fde68a"); glowDot(c, 9, 16, 3, "#a78bfa"); }
+    strokeP(c, "rgba(255,255,255,.5)", 0.9, cc => { cc.moveTo(-19, -37); cc.quadraticCurveTo(2, -21, 16, -2); });
+    for (const s of [-1, 1]) strokeP(c, p.trim[1], 2.2, cc => { cc.moveTo(-6, s * 20); cc.lineTo(-1, s * 13); });
+    for (const s of [-1, 1]) strokeP(c, p.gem, 1.4, cc => { cc.moveTo(-14, s * 30); cc.lineTo(-9, s * 23); });
+    gem(c, 11, 0, 3.4, p.gem);
+    if (v.eclipse) { glowDot(c, -4, -18, 3, "#fde68a"); glowDot(c, -4, 18, 3, "#a78bfa"); }
   };
   W.blowpipe = function (c, p, v, rn) {
     // a reed pipe with bound nodes, a brass mouthpiece and a dart peeking out
