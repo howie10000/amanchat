@@ -161,38 +161,27 @@
   }
   function liveParticles() { let n = 0; for (let i = 0; i < PN; i++) if (P.life[i] > 0) n++; return n; }
 
-  // =================================================================== SPRITES
-  // Glows are baked once (no per-frame gradients, no shadowBlur) into ONE
-  // 512x512 atlas of 64 px cells. Measured in Chrome: twelve drawImage calls
-  // from separate 64 px canvases cost 2.7 ms of GPU time per frame (small
-  // canvases stay in software and are re-uploaded every draw); from one large
-  // atlas the same twelve cost 0.11 ms. Headless: no atlas, a cheap disc instead.
-  const _sprites = {};
-  let _atlas = null, _atlasN = 0;
+  // =================================================================== GLOWS
+  // Measured in Chrome (docs/sundered-crown/boss-review.html, 12 glows / frame,
+  // GPU flush included): a radial gradient per glow 0.24 ms; drawImage from
+  // pre-baked 64 px sprite canvases 2.7 ms; from a 512 px atlas 8.9-13 ms
+  // (the sprite paths fall off Chrome's accelerated path). So a glow is a
+  // gradient per call; its colour-stop strings are cached per colour so the
+  // only per-frame object is the CanvasGradient itself. No shadowBlur anywhere.
+  const _stops = {};
   function glowSprite(rgb, soft) {
     const key = rgb + (soft ? "s" : "");
-    if (key in _sprites) return _sprites[key];
-    let cell = -1;
-    if (hasDoc() && _atlasN < 64) try {
-      if (!_atlas) { const c = document.createElement("canvas"); c.width = c.height = 512; const g = c.getContext && c.getContext("2d"); _atlas = g && g.createRadialGradient ? { c, g } : false; }
-      if (_atlas) {
-        cell = _atlasN++;
-        const g = _atlas.g, ox = (cell % 8) * 64 + 32, oy = Math.floor(cell / 8) * 64 + 32;
-        const gr = g.createRadialGradient(ox, oy, 0, ox, oy, 31);
-        gr.addColorStop(0, `rgba(${rgb},${soft ? 0.55 : 1})`); gr.addColorStop(soft ? 0.5 : 0.25, `rgba(${rgb},${soft ? 0.22 : 0.45})`); gr.addColorStop(1, `rgba(${rgb},0)`);
-        g.fillStyle = gr; g.fillRect(ox - 32, oy - 32, 64, 64);
-      }
-    } catch (e) { cell = -1; }
-    _sprites[key] = cell;
-    return cell;
+    let st = _stops[key];
+    if (!st) st = _stops[key] = [`rgba(${rgb},${soft ? 0.55 : 1})`, soft ? 0.5 : 0.25, `rgba(${rgb},${soft ? 0.22 : 0.45})`, `rgba(${rgb},0)`];
+    return st;
   }
-  // draw a baked glow (additive or not is the caller's composite)
   function glow(ctx, x, y, r, rgb, a, soft) {
     if (r <= 0 || a <= 0) return;
-    const cell = glowSprite(rgb, soft), ga = ctx.globalAlpha;
+    const st = glowSprite(rgb, soft), ga = ctx.globalAlpha;
     ctx.globalAlpha = ga * clamp01(a);
-    if (cell >= 0) ctx.drawImage(_atlas.c, (cell % 8) * 64, Math.floor(cell / 8) * 64, 64, 64, x - r, y - r, r * 2, r * 2);
-    else { ctx.fillStyle = `rgb(${rgb})`; ctx.globalAlpha = ga * clamp01(a) * 0.3; ctx.beginPath(); ctx.arc(x, y, r * 0.6, 0, TAU); ctx.fill(); }
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, st[0]); g.addColorStop(st[1], st[2]); g.addColorStop(1, st[3]);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
     ctx.globalAlpha = ga;
   }
   function hexRgb(hex) {
@@ -482,7 +471,11 @@
         a.lastPhi[i] = phi;
         if (F[o + 7]) {
           const left = Math.max(0, F[o + 5] + F[o + 6] - t) / 1000, lead = left + (1 - sf) * (cyc / sp) * 0.5;
-          tx += a.vx * lead; ty += a.vy * lead;
+          // predicted landing, clamped to half a cycle: a lunge that reverses the velocity
+          // must not fling the swinging foot across the room
+          let ox = a.vx * lead, oy = a.vy * lead; const ol = Math.hypot(ox, oy), om = cyc * 0.5;
+          if (ol > om) { ox *= om / ol; oy *= om / ol; }
+          tx += ox; ty += oy;
         }
       } else {
         a.lastPhi[i] = 1;
@@ -548,7 +541,7 @@
     a.spinT = 0;
     rig.pose(a, st, a.k, step, t);
     // lunges / dashes are faster than any stride: the legs hold a lunge shape instead
-    if ((step && step.move === "dash" && rig.kind !== "beast") || a.speed > (rig.kind === "beast" ? 1500 : 620)) a.footMode = 1;
+    if ((step && rig.kind !== "beast" && (step.move === "dash" || (step.e === "snap" && Math.abs(step.x1 - step.x0) + Math.abs(step.y1 - step.y0) > 24))) || a.speed > (rig.kind === "beast" ? 1500 : 620)) a.footMode = 1;
     // a spin (spear sweep) is rate-limited and unwinds the short way
     if (a.spinT === 0 && Math.abs(a.spin) > PI) a.spin -= Math.sign(a.spin) * TAU;
     a.spin += clamp(a.spinT - a.spin, -19 * dt, 19 * dt);
