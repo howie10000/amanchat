@@ -339,7 +339,7 @@
 
     // pistol bullets toward the beast
     for (const b of bullets) {
-      b.x += b.vx; b.y += b.vy; b.life--;
+      b.x += b.vx; b.y += b.vy; b.life--; b.spin = (b.spin || 0) + 0.5;
       if (b.life <= 0) continue;
       const hit = partNear(b.x, b.y, 34);
       if (hit) { b.life = 0; addFx(b.x, b.y, 5, "#fde047", { speed: 2, life: 14 }); sendHit(hit.part, "pistol"); }
@@ -385,16 +385,24 @@
     if (!fightActive() || state.attackCooldown > 0 || now() < stunUntil) return;
     const mx = state.mouse.x + state.cam.x, my = state.mouse.y + state.cam.y;
     const dx = mx - state.pos.x, dy = my - state.pos.y, m = Math.hypot(dx, dy) || 1;
+    // WEAPONS: the equipped kind of the active hand (its reach, cadence and
+    // damage are the server's — ECON.kindReach / kindMinMs / kindHitDmg 'kraken').
+    const W = window.gameWeapons, hand = state.weapon === "pistol" ? "ranged" : "melee";
+    const K = (W && W.def && W.def(hand)) || ECON.WEAPON_KINDS[hand === "ranged" ? "gun" : "sword"];
+    if (W && W.startAttack) W.startAttack(hand, K.id, Math.atan2(dy, dx));
     if (state.weapon === "pistol") {
-      state.attackCooldown = 18;
-      bullets.push({ x: state.pos.x + dx / m * 14, y: state.pos.y + dy / m * 14, vx: dx / m * 9, vy: dy / m * 9, life: 40 });
+      state.attackCooldown = K.cd[0];
+      // the gun keeps its old numbers; the rest fly at their own speed to the kind's kraken reach
+      const sp = K.id === "gun" ? 9 : Math.max(8, K.speed * 1.1), life = K.id === "gun" ? 40 : Math.round((K.krakenReach + 60) / sp);
+      bullets.push({ x: state.pos.x + dx / m * 14, y: state.pos.y + dy / m * 14, vx: dx / m * sp, vy: dy / m * sp, life, kind: K.id === "gun" ? undefined : K.id, spin: 0 });
       addFx(state.pos.x + dx / m * 14, state.pos.y + dy / m * 14, 3, "#fde047", { speed: 1.5, life: 8 });
       return;
     }
-    state.attackCooldown = 14;
+    state.attackCooldown = K.cd[0];
     state.swingT = 14;
     state.swingAng = Math.atan2(dy, dx);
     const ang = state.swingAng;
+    const REACH = K.krakenReach || 110, ARC = K.id === "sword" ? Math.PI / 1.4 : Math.max(K.arc || 0, Math.PI / 5);
     let best = null, bd = Infinity;
     const cand = [];
     if (boss) {
@@ -403,10 +411,10 @@
     }
     for (const c of cand) {
       const ex = c.pos.x - state.pos.x, ey = c.pos.y - state.pos.y, d = Math.hypot(ex, ey);
-      const reach = c.part === "head" ? K.REACH.sword + 60 : K.REACH.sword;
+      const reach = c.part === "head" ? REACH + 60 : REACH;
       if (d > reach) continue;
       let diff = Math.abs(Math.atan2(ey, ex) - ang); if (diff > Math.PI) diff = TAU - diff;
-      if (diff < Math.PI / 1.4 && d < bd) { bd = d; best = c; }
+      if (diff < ARC && d < bd) { bd = d; best = c; }
     }
     if (best) { addFx(best.pos.x, best.pos.y - 40, 8, "#fcd34d", { speed: 3, life: 16 }); sendHit(best.part, "sword"); }
     else if (now() - lastHitAt > 1200) { lastHitAt = now(); toast(`Nothing in reach — get closer to a ${beastDef().partName} (or switch to the pistol with 2).`, 1500); }
@@ -826,12 +834,16 @@
       if (ct > 2100 && ct < 4300) { drawLeapingFish(cine.fish, (ct - 2100) / 2200, t); drawLine(tip, { x: BOBBER.x - 4 + ((ct - 2100) / 2200) * 40, y: BOBBER.y - 60 }, 6, 0.6); }
       else drawLine(tip, { x: BOBBER.x, y: BOBBER.y - 4 }, 14);
     }
-    if (state.swingT > 0 && state.weapon === "sword" && fightActive()) {
+    // WEAPONS: the held weapon (drawn over the player while the beast is up)
+    const PW = window.gameWeapons;
+    if (PW && PW.drawHeld && fightActive() && !cine) PW.drawHeld(ctx, state.pos.x, state.pos.y, "both", Math.atan2(state.mouse.y + state.cam.y - state.pos.y, state.mouse.x + state.cam.x - state.pos.x));
+    if (state.swingT > 0 && state.weapon === "sword" && fightActive() && !(PW && PW.drawHeld)) {
       const ang = state.swingAng || 0;
       ctx.strokeStyle = `rgba(252,211,77,${state.swingT / 14})`; ctx.lineWidth = 6;
       ctx.beginPath(); ctx.arc(state.pos.x, state.pos.y, 50, ang - Math.PI / 1.6, ang + Math.PI / 1.6); ctx.stroke();
     }
     for (const b of bullets) {
+      if (b.kind && PW && PW.drawProjectile) { PW.drawProjectile(ctx, b, t); continue; }
       ctx.fillStyle = "rgba(253,224,71,.4)"; ctx.beginPath(); ctx.arc(b.x, b.y, 8, 0, TAU); ctx.fill();
       ctx.fillStyle = "#fde047"; ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, TAU); ctx.fill();
     }
@@ -840,7 +852,8 @@
     if (fightActive() && !cine) {
       const mx = state.mouse.x + state.cam.x, my = state.mouse.y + state.cam.y;
       const ang = Math.atan2(my - state.pos.y, mx - state.pos.x);
-      const len = state.weapon === "sword" ? 50 : 200;
+      const KK = PW && PW.def ? PW.def(state.weapon === "pistol" ? "ranged" : "melee") : null;
+      const len = KK ? KK.krakenReach : state.weapon === "sword" ? 50 : 200;
       ctx.strokeStyle = state.weapon === "sword" ? "rgba(148,163,184,0.5)" : "rgba(255,255,255,0.3)"; ctx.lineWidth = 2; ctx.setLineDash([4, 4]);
       ctx.beginPath(); ctx.moveTo(state.pos.x, state.pos.y); ctx.lineTo(state.pos.x + Math.cos(ang) * len, state.pos.y + Math.sin(ang) * len); ctx.stroke(); ctx.setLineDash([]);
     }
@@ -1232,7 +1245,7 @@
     GFX.roundFill(ctx, W / 2 - 250, H - 104, 500, 30, 8, "rgba(0,0,0,.8)");
     ctx.strokeStyle = boss.kind === "serpent" ? "#2dd4bf" : "#a855f7"; ctx.lineWidth = 1.5; GFX.roundStroke(ctx, W / 2 - 250, H - 104, 500, 30, 8);
     ctx.fillStyle = "#e9d5ff"; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
-    ctx.fillText(`⚔ ${state.weapon.toUpperCase()} — click or SPACE to attack · 1 sword · 2 pistol · every red shape is an attack: get out of it`, W / 2, H - 84);
+    ctx.fillText(`⚔ click or SPACE to attack · ${window.gameWeapons && gameWeapons.hint ? gameWeapons.hint() : "1 sword · 2 pistol"} · every red shape is an attack: get out of it`, W / 2, H - 84);
   }
   function drawScreen() {
     if (state.area !== "neighborhood") return;

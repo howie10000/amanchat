@@ -2318,7 +2318,7 @@
     gun:       { hand: "ranged", label: "Gun", emoji: "🔫", shape: "bullet", dmg: 1, rate: 1, cd: [18, 16], speed: 8, life: 80, bossReach: 420, krakenReach: 340,
                  targets: 1, pierce: 0, knock: 1.5, fx: {},
                  special: "Quick, reliable shots at long range." },
-    boomerang: { hand: "ranged", label: "Boomerang", emoji: "🪃", shape: "boomerang", dmg: 1.4, rate: 1.8, cd: [30, 30], speed: 9, range: 260, life: 90,
+    boomerang: { hand: "ranged", label: "Boomerang", emoji: "🪃", shape: "boomerang", dmg: 1.4, rate: 1.3, cd: [30, 30], speed: 9, range: 260, life: 40,
                  bossReach: 300, krakenReach: 260, targets: 4, pierce: 99, knock: 2.5, fx: {},
                  special: "Flies out and back, striking up to 4 foes on each leg. One in the air at a time." },
     blowdart:  { hand: "ranged", label: "Blowdart", emoji: "🎯", shape: "dart", dmg: 1.9, rate: 1.9, cd: [34, 29], speed: 12, life: 55, bossReach: 520, krakenReach: 420,

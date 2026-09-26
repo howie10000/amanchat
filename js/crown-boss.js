@@ -497,6 +497,12 @@
   // -> {body, x, y, r} | {why} | null (nothing near at all)
   function strikeTarget(me, aim, weapon, reachOverride) {
     if (!R.bossId) return null;
+    // WEAPONS: without an override, the equipped kind's boss reach (the server uses the same)
+    if (reachOverride == null) {
+      const GW = typeof window !== 'undefined' ? window.gameWeapons : null;
+      const rr = GW && GW.bossReach ? GW.bossReach(weapon) : null;
+      if (rr > 0) reachOverride = rr;
+    }
     const C = CR();
     const now = serverNow(), R0 = bodyR();
     const hitter = { x: me.x, y: me.y, at: now };

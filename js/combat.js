@@ -632,7 +632,17 @@ function updateDungeon() {
       if (Math.hypot(state.pos.x - ex.x, state.pos.y - ex.y) < 34) { if (d.continuous) gameExpedition.leave(); else advanceGuildFloor(); }
     }
     if (d.tracers && d.tracers.length) {
-      for (const tr of d.tracers) { tr.x += tr.vx; tr.y += tr.vy; tr.life--; }
+      for (const tr of d.tracers) {
+        if (tr.boom) {
+          // WEAPONS: a boomerang strikes when it reaches the target, and
+          // again when it comes home (the server allows exactly that cadence).
+          const wasBack = tr.back, done = boomerangStep(tr, state.pos.x, state.pos.y);
+          if (tr.back && !wasBack) bossAttackAt(tr.ax, tr.ay);
+          if (done) { tr.life = 0; bossAttackAt(tr.ax, tr.ay); if (window.gameWeapons && gameWeapons.setInFlight) gameWeapons.setInFlight(false); }
+          continue;
+        }
+        tr.x += tr.vx; tr.y += tr.vy; tr.life--;
+      }
       d.tracers = d.tracers.filter(tr => tr.life > 0);
     }
     state.particles = state.particles.filter(p => p.life > 0);
@@ -644,28 +654,34 @@ function updateDungeon() {
   for (const e of state.enemies) if (stepEnemy(e, state.enemies, false) === false) return;
   // Player bullets
   for (const b of state.bullets) {
+    // WEAPONS: a boomerang flies its own out-and-back path (stepShotBoomerang).
+    if (b.boom) { stepShotBoomerang(b); continue; }
     const nx = b.x + b.vx, ny = b.y + b.vy;
-    if (collidesWalls(nx, ny, 3)) { b.life = 0; continue; }
+    if (collidesWalls(nx, ny, 3)) { b.life = 0; flushShot(b); continue; }
     b.x = nx; b.y = ny; b.life--;
     for (const e of state.enemies) {
       if (e.gone || (e.ai === "mimic" && !e.awake)) continue;
+      if (b.hitIds && b.hitIds.includes(e.id)) continue;     // a piercing bolt strikes each foe once
       if (Math.hypot(b.x - e.x, b.y - e.y) < e.size + 4) {
         if (guardBlocks(e, b.x - b.vx * 6, b.y - b.vy * 6)) { blockedFx(e); b.life = 0; break; }
         const isGuild = !!state.dungeon.cfg.guild;
-        const dmg = isGuild ? b.dmg : localHitDamage(b.dmg, e);
+        const dmg = isGuild ? b.dmg : localHitDamage(b.dmg, e, b.kind);
         if (!isGuild || !e.shield) e.hp -= dmg;
-        reportEnemyHits([e.id], "pistol");
+        // The gun reports each hit at once (as it always has); a dart / bolt
+        // reports its hits when it stops, so a pierce is ONE server swing.
+        if (b.hitIds) b.hitIds.push(e.id); else reportEnemyHits([e.id], "pistol");
         onLocalHit(e, dmg, !isGuild);
         e.hitFlash = 6;
         wakeEnemy(e); e.lurking = false;
-        const k = 1.5;
+        const k = b.knock || 1.5;
         e.kbX += (b.vx / Math.hypot(b.vx, b.vy)) * k;
         e.kbY += (b.vy / Math.hypot(b.vx, b.vy)) * k;
-        b.life = 0;
+        if (!b.hitIds || b.hitIds.length > (b.pierce | 0)) b.life = 0;
         addParticles(e.x, e.y, e.color, 5);
         break;
       }
     }
+    if (b.life <= 0) flushShot(b);
   }
   state.bullets = state.bullets.filter(b => b.life > 0);
   if (stepEnemyBullets() === false) return;
@@ -1396,7 +1412,11 @@ function drawSelf(ctx) {
   }
   const veiled = !!(window.gameCrownArts && gameCrownArts.veiled && gameCrownArts.veiled());
   if (veiled) ctx.globalAlpha = 0.45;
+  // WEAPONS: what the active hand holds, animated (js/player-weapons.js)
+  const W = window.gameWeapons, aim = Math.atan2(state.mouse.y - state.pos.y, state.mouse.x - state.pos.x);
+  if (W && W.drawHeld) W.drawHeld(ctx, state.pos.x, state.pos.y, "back", aim);
   GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance, { facing: state.facing, walking: state.walking });
+  if (W && W.drawHeld) W.drawHeld(ctx, state.pos.x, state.pos.y, "front", aim);
   ctx.globalAlpha = 1;
   if (state.rootedUntil && now < state.rootedUntil) {
     // roots: thorny vines wound round your feet until they let go
@@ -1444,6 +1464,46 @@ function setArenaOpen(open) {
 // to open with "something on this floor is still standing" even after every
 // visible enemy was gone. Queue instead of drop: nothing reported ever goes
 // unsent, it's just sent right after the in-flight call resolves.
+// WEAPONS: a dart / bolt that stops reports everything it struck as one swing.
+function flushShot(b) {
+  if (!b || b.flushed || !b.hitIds || !b.hitIds.length) return;
+  b.flushed = true;
+  reportEnemyHits(b.hitIds.slice(0, handKindCap(b.kind)), "pistol");
+}
+function handKindCap(kind) { const K = ECON.WEAPON_KINDS && ECON.WEAPON_KINDS[kind]; return K ? Math.max(1, K.targets | 0) : 1; }
+// A maze boomerang: out to the apex, home to the thrower. It strikes each foe
+// at most once per leg (up to the kind's targets per leg) and reports each leg
+// as one swing — at the apex, and when it is caught.
+function stepShotBoomerang(b) {
+  const wasBack = b.back;
+  const done = boomerangStep(b, state.pos.x, state.pos.y);
+  if (b.hold > 0) return;
+  // a wall on the way out turns it round early
+  if (!b.back && collidesWalls(b.x, b.y, 3)) { b.ax = b.x; b.ay = b.y; b.back = true; b.t = Math.max(b.t, Math.ceil(b.T / 2)); }
+  if (b.back && !wasBack && b.out.length) reportEnemyHits(b.out.slice(), "pistol");
+  const leg = b.back ? b.home : b.out, cap = handKindCap(b.kind);
+  const isGuild = !!(state.dungeon && state.dungeon.cfg.guild);
+  for (const e of state.enemies) {
+    if (leg.length >= cap) break;
+    if (e.gone || e.hp <= 0 || (e.ai === "mimic" && !e.awake) || leg.includes(e.id) || (b.blocked && b.blocked.includes(e.id))) continue;
+    if (Math.hypot(b.x - e.x, b.y - e.y) >= e.size + 9) continue;
+    if (guardBlocks(e, b.x - b.vx * 4, b.y - b.vy * 4)) { blockedFx(e); (b.blocked || (b.blocked = [])).push(e.id); continue; }
+    const dmg = isGuild ? b.dmg : localHitDamage(b.dmg, e, b.kind);
+    if (!isGuild || !e.shield) e.hp -= dmg;
+    leg.push(e.id);
+    onLocalHit(e, dmg, !isGuild);
+    e.hitFlash = 6; wakeEnemy(e); e.lurking = false;
+    const m = Math.hypot(b.vx, b.vy) || 1;
+    e.kbX += b.vx / m * (b.knock || 2.5); e.kbY += b.vy / m * (b.knock || 2.5);
+    addParticles(e.x, e.y, e.color, 5);
+  }
+  if (done) {
+    b.life = 0;
+    if (b.home.length) reportEnemyHits(b.home.slice(), "pistol");
+    if (window.gameWeapons && gameWeapons.setInFlight) gameWeapons.setInFlight(false);
+  } else b.life = 1;
+}
+
 let _swingPending = false;
 let _queuedIds = null, _queuedWeapon = null;
 let _queuedAfterDash = false;
@@ -1569,8 +1629,9 @@ function showProcs(procs) {
 }
 // Quest-board runs have no server: the same pipeline, rolled locally.
 let _localCounter = undefined;
-function localHitDamage(base, e) {
-  const fx = playerFx();
+function localHitDamage(base, e, kind) {
+  // WEAPONS: the kind's specials (dagger crits, axe execute, ...) ride on the gear fx.
+  const fx = kind && ECON.weaponFx ? ECON.weaponFx(playerFx(), kind) : playerFx();
   const r = ECON.rollHitDamage ? ECON.rollHitDamage(base, fx, { kind: e.elite ? "elite" : "enemy", hpFrac: e.maxHp ? e.hp / e.maxHp : 1 }, Math.random, _localCounter) : { dmg: base, crit: false };
   if (r.counterState) _localCounter = r.counterState;
   e._lastCrit = !!r.crit;
@@ -1658,13 +1719,15 @@ function applyEnemyChanges(changed) {
   checkFloorCleared();
 }
 
-function combatDamageMult() {
+function combatDamageMult(hand) {
   const m = state.mastery && state.mastery.combat;
   // Mastery is what you have learned, gear is what you are carrying. They
   // multiply: the server applies exactly the same pair to guild-boss hits.
-  return ECON.masteryCombatMult(m ? m.level : 1)
-    * (window.gameGear ? gameGear.attackMult() : 1)
-    * buffDamageMult();
+  // WEAPONS: the gear part is the HAND's attack power (the melee hand never
+  // counts the ranged weapon's ATK and vice versa — see ECON.handAtk).
+  const W = window.gameWeapons;
+  const gear = W && W.attackMult ? W.attackMult(hand === "ranged" ? "ranged" : "melee") : (window.gameGear ? gameGear.attackMult() : 1);
+  return ECON.masteryCombatMult(m ? m.level : 1) * gear * buffDamageMult();
 }
 
 function bossRoomWalls() {
@@ -1757,10 +1820,12 @@ function crownArtMove(len, ang, ms, iframes) {
 // A swing at a moving boss: pick what is actually in reach (CROWN.canHit,
 // the same check the server makes) and only then ask.
 let _crownWhyAt = 0;
-async function crownBossHit(mx, my) {
+async function crownBossHit(mx, my, hand) {
   const CB = window.gameCrownBoss, d = state.dungeon, G = window.gameDepths;
-  const weapon = state.weapon === "pistol" ? "pistol" : "sword";
-  const tg = CB.strikeTarget({ x: state.pos.x, y: state.pos.y }, { x: mx, y: my }, weapon);
+  hand = hand || (state.weapon === "pistol" ? "ranged" : "melee");
+  const weapon = hand === "ranged" ? "pistol" : "sword";
+  // WEAPONS: the equipped kind's boss reach (the server checks the same number)
+  const tg = CB.strikeTarget({ x: state.pos.x, y: state.pos.y }, { x: mx, y: my }, weapon, handKind(hand).bossReach);
   if (!tg) return;
   if (tg.why) {
     if (G && Date.now() - _crownWhyAt > 700) {
@@ -2589,16 +2654,18 @@ function updateBossAttacks() {
 // Clicking near a weak point (or the head once the guard is down) sends a hit.
 // Adds and pylons come first: what is in your face is what you swing at.
 let _bossHitPending = false;
-async function bossAttackAt(mx, my) {
+async function bossAttackAt(mx, my, handOverride) {
   const d = state.dungeon;
   const b = d && d.boss;
   if (window.gameDepths && gameDepths.isDowned()) return;
-  if (d && hitArenaAdds(mx, my)) return;
+  // WEAPONS: the hand that struck (a boomerang coming home still counts as the ranged hand)
+  const hand = handOverride || (state.weapon === "pistol" ? "ranged" : "melee"), K = handKind(hand), wire = hand === "ranged" ? "pistol" : "sword";
+  if (d && hitArenaAdds(mx, my, hand)) return;
   if (!b || b.status !== "alive" || _bossHitPending) return;
   if (d.cine || d.phaseCine || d.victoryCine || state.tomeCine) return;
   // A moving boss has no weak points: it has bodies, clones and shards.
-  if (crownMobile(b)) return crownBossHit(mx, my);
-  const reach = ECON.GUILD_BOSS.REACH[state.weapon === "pistol" ? "pistol" : "sword"];
+  if (crownMobile(b)) return crownBossHit(mx, my, hand);
+  const reach = K.bossReach;
   const PR = ECON.GUILD_BOSS.PART_HIT_R, HR = ECON.GUILD_BOSS.HEAD_HIT_R;
   const nParts = bossPartCount(b);
   // A weak point is a DISC, not a point, and both checks measure to the EDGE of
@@ -2645,7 +2712,7 @@ async function bossAttackAt(mx, my) {
   if (part === null) return;
   _bossHitPending = true;
   try {
-    const req = { action: "boss_hit", part, weapon: state.weapon === "pistol" ? "pistol" : "sword" };
+    const req = { action: "boss_hit", part, weapon: wire };
     if (afterDashActive()) req.afterDash = true;
     const res = await netGuildDungeon(req);
     const pos = part === "head" ? bossHeadScreenPos() : part >= nParts ? pylonScreenPos(part - nParts) : bossPartScreenPos(part, nParts);
@@ -2676,25 +2743,28 @@ async function bossAttackAt(mx, my) {
   _bossHitPending = false;
 }
 // A swing in the arena that lands on summoned adds instead of the boss.
-function hitArenaAdds(mx, my) {
+function hitArenaAdds(mx, my, hand) {
   const d = state.dungeon, adds = (d.arenaEnemies || []).filter(e => e.hp > 0);
   if (!adds.length) return false;
-  const pistol = state.weapon === "pistol";
+  hand = hand || (state.weapon === "pistol" ? "ranged" : "melee");
+  const pistol = hand === "ranged", K = handKind(hand);
   const ang = Math.atan2(my - state.pos.y, mx - state.pos.x);
   const hits = [];
   for (const e of adds) {
     const ex = e.x - state.pos.x, ey = e.y - state.pos.y, dist = Math.hypot(ex, ey);
     const diff = Math.abs(DepthsCore.angleDiff(ang, Math.atan2(ey, ex)));
-    if (pistol ? (dist < ECON.GUILD_BOSS.REACH.pistol && Math.hypot(mx - e.x, my - e.y) < e.size + 30) : (dist < 70 + e.size && diff < Math.PI / 1.6)) hits.push(e);
+    // WEAPONS: the kind's reach / shape (the sword and gun are exactly the old tests)
+    if (pistol ? (dist < K.bossReach && Math.hypot(mx - e.x, my - e.y) < e.size + 30)
+      : K.id === "sword" ? (dist < 70 + e.size && diff < Math.PI / 1.6) : inMeleeShape(K, ex, ey, Math.atan2(my - state.pos.y, mx - state.pos.x), e.size + 8)) hits.push(e);
   }
   if (!hits.length) return false;
   const open = hits.filter(e => { if (guardBlocks(e, state.pos.x, state.pos.y)) { blockedFx(e); return false; } return true; });
   if (!open.length) return true;
-  const take = open.slice(0, pistol ? 1 : ECON.DUNGEON_HIT_MAX_TARGETS);
+  const take = open.slice(0, pistol ? (K.shape === "boomerang" || K.pierce ? K.targets : 1) : K.targets);
   for (const e of take) {
     e.hitFlash = 6;
     const m = Math.hypot(e.x - state.pos.x, e.y - state.pos.y) || 1;
-    e.kbX += (e.x - state.pos.x) / m * 4; e.kbY += (e.y - state.pos.y) / m * 4;
+    e.kbX += (e.x - state.pos.x) / m * (K.knock || 4); e.kbY += (e.y - state.pos.y) / m * (K.knock || 4);
     addParticles(e.x, e.y, "#fcd34d", 6);
     if (window.gameDepths) gameDepths.burst(e.x, e.y, [e.color, "#fff"], 6, { speed: 3 });
   }
@@ -2806,6 +2876,13 @@ async function endDungeon(victory, alreadyPaid) {
 function doAttack() {
   if (state.attackCooldown > 0) return;
   if (window.gameDepths && gameDepths.isDowned && gameDepths.isDowned()) return;
+  // WEAPONS: the hand is state.weapon ('sword' = melee, 'pistol' = ranged);
+  // what that hand holds (its kind) decides the pattern and the numbers. The
+  // wire still says 'sword' / 'pistol' — the server reads the kind from the
+  // equipped item itself.
+  const hand = state.weapon === "pistol" ? "ranged" : "melee";
+  const K = handKind(hand);
+  const W = window.gameWeapons;
   // In the boss room the swing is a request to the server, which owns the
   // boss's HP — the local animation still plays either way.
   if (state.dungeon && state.dungeon.bossRoom) {
@@ -2816,35 +2893,37 @@ function doAttack() {
     if (d.boss && d.boss.status !== "alive" && !(d.arenaEnemies && d.arenaEnemies.length)) return;
     const dx = state.mouse.x - state.pos.x, dy = state.mouse.y - state.pos.y;
     const m = Math.hypot(dx, dy) || 1;
-    if (state.weapon === "pistol") {
+    if (hand === "ranged") {
+      if (K.shape === "boomerang" && W && W.boomerangOut && W.boomerangOut()) return;   // one in the air
       // A shot, not a slash: a tracer down the barrel and a muzzle flash. The
       // arena has no local physics, so the tracer is purely cosmetic and dies
-      // at the end of the pistol's reach.
-      state.attackCooldown = 16;
+      // at the end of the weapon's reach. A boomerang's tracer strikes twice:
+      // when it reaches the target and when it comes back (updateDungeon).
+      state.attackCooldown = K.cd[1];
       d.tracers = d.tracers || [];
-      d.tracers.push({
-        x: state.pos.x + dx / m * 16, y: state.pos.y + dy / m * 16,
-        vx: dx / m * 11, vy: dy / m * 11,
-        life: Math.round(ECON.GUILD_BOSS.REACH.pistol / 11),
-      });
+      d.tracers.push(makeTracer(K, dx / m, dy / m, m));
       addParticles(state.pos.x + dx / m * 16, state.pos.y + dy / m * 16, "#fde047", 3);
+      if (W && W.startAttack) W.startAttack(hand, K.id, Math.atan2(dy, dx));
+      if (K.shape === "boomerang") { if (W && W.setInFlight) W.setInFlight(true); return; }
     } else {
-      state.attackCooldown = 12;
+      state.attackCooldown = K.cd[1];
       state.swingT = 14;
       state.swingAng = Math.atan2(dy, dx);
+      if (W && W.startAttack) W.startAttack(hand, K.id, state.swingAng);
     }
     bossAttackAt(state.mouse.x, state.mouse.y);
     return;
   }
-  if (state.weapon === "sword") {
-    // Sword: fast cooldown, very high damage, wide arc, hits multiple enemies, knockback
-    state.attackCooldown = 14;
-    const dx = state.mouse.x - state.pos.x;
-    const dy = state.mouse.y - state.pos.y;
+  const dx = state.mouse.x - state.pos.x;
+  const dy = state.mouse.y - state.pos.y;
+  if (hand === "melee") {
+    // Sword: fast cooldown, very high damage, wide arc, hits multiple enemies,
+    // knockback. Every melee kind is the same pipeline with its own shape.
+    state.attackCooldown = K.cd[0];
     const ang = Math.atan2(dy, dx);
     let hit = 0;
     const swept = [];
-    // A guild swing can only ever REPORT DUNGEON_HIT_MAX_TARGETS ids — the
+    // A guild swing can only ever REPORT the kind's target cap — the
     // rest of `swept` used to be damaged and removed locally anyway (and
     // silently sliced off before ever reaching the server), so a pile of
     // more than 6 enemies died on screen while several of them stayed alive
@@ -2853,53 +2932,127 @@ function doAttack() {
     // just what gets reported, keeps the two in sync — the rest just take
     // another swing, same as a real crowd would.
     const isGuild = !!(state.dungeon && state.dungeon.cfg.guild);
-    const cap = isGuild ? ECON.DUNGEON_HIT_MAX_TARGETS : Infinity;
-    for (const e of state.enemies) {
+    const cap = isGuild ? K.targets : (K.id === "sword" ? Infinity : K.targets);
+    const base = 55 * K.dmg * combatDamageMult("melee");
+    const list = K.id === "sword" ? state.enemies : meleeOrder(state.enemies);
+    for (const e of list) {
       const ex = e.x - state.pos.x, ey = e.y - state.pos.y;
-      const d = Math.hypot(ex, ey);
-      if (d < 70) {
-        const a2 = Math.atan2(ey, ex);
-        let diff = Math.abs(a2 - ang); if (diff > Math.PI) diff = 2*Math.PI - diff;
-        if (diff < Math.PI / 1.6) { // ~112° arc
-          if (swept.length >= cap) continue;
-          // A shield-bearer blocks what comes at its front (never reported).
-          if (guardBlocks(e, state.pos.x, state.pos.y)) { blockedFx(e); continue; }
-          if (e.ai === "mimic" && !e.awake) { e.awake = true; }
-          const dmg = isGuild ? 55 * combatDamageMult() : localHitDamage(55 * combatDamageMult(), e);
-          if (!isGuild || !e.shield) e.hp -= dmg;
-          onLocalHit(e, dmg, !isGuild);
-          swept.push(e.id);
-          e.hitFlash = 6;
-          e.awake = true; e.lurking = false;
-          const km = 4;
-          const m = Math.hypot(ex, ey) || 1;
-          e.kbX += (ex / m) * km;
-          e.kbY += (ey / m) * km;
-          addParticles(e.x, e.y, "#fcd34d", 6);
-          hit++;
-        }
-      }
+      if (!inMeleeShape(K, ex, ey, ang, e.size || 12)) continue;
+      if (swept.length >= cap) continue;
+      // A shield-bearer blocks what comes at its front (never reported).
+      if (guardBlocks(e, state.pos.x, state.pos.y)) { blockedFx(e); continue; }
+      if (e.ai === "mimic" && !e.awake) { e.awake = true; }
+      const dmg = isGuild ? base : localHitDamage(base, e, K.id);
+      if (!isGuild || !e.shield) e.hp -= dmg;
+      onLocalHit(e, dmg, !isGuild);
+      swept.push(e.id);
+      e.hitFlash = 6;
+      e.awake = true; e.lurking = false;
+      const km = K.knock || 4;
+      const m = Math.hypot(ex, ey) || 1;
+      e.kbX += (ex / m) * km;
+      e.kbY += (ey / m) * km;
+      addParticles(e.x, e.y, "#fcd34d", 6);
+      hit++;
     }
     state.swingT = 14;
     state.swingAng = ang;
+    if (W && W.startAttack) W.startAttack(hand, K.id, ang);
     reportEnemyHits(swept, "sword");
     // A swing against a cracked wall is how a secret is found.
     if (window.gameDepths && gameDepths.onSwing) gameDepths.onSwing(state.pos.x + Math.cos(ang) * 40, state.pos.y + Math.sin(ang) * 40);
     if (hit > 1) toast(`Multi-hit x${hit}!`, 800);
   } else {
-    // Pistol: slower fire, ranged, less damage per shot
-    state.attackCooldown = 18;
+    // Pistol: slower fire, ranged, less damage per shot. Every ranged kind
+    // is a projectile with its own speed, life, pierce and flight path.
+    if (K.shape === "boomerang" && W && W.boomerangOut && W.boomerangOut()) return;
+    state.attackCooldown = K.cd[0];
     state.swingT = 0;
-    const dx = state.mouse.x - state.pos.x;
-    const dy = state.mouse.y - state.pos.y;
     const m = Math.hypot(dx, dy) || 1;
-    state.bullets.push({
+    const shot = {
       x: state.pos.x, y: state.pos.y,
-      vx: dx/m * 8, vy: dy/m * 8,
-      life: 80, dmg: 22 * combatDamageMult(),
-    });
+      vx: dx/m * K.speed, vy: dy/m * K.speed,
+      life: K.life, dmg: 22 * K.dmg * combatDamageMult("ranged"),
+    };
+    if (K.id !== "gun") {
+      shot.kind = K.id; shot.pierce = K.pierce | 0; shot.hitIds = []; shot.knock = K.knock;
+      if (K.shape === "boomerang") {
+        // out to the cursor (at most its range, at least a short hop), then home
+        const L = Math.max(90, Math.min(K.range || 260, m));
+        Object.assign(shot, { boom: true, t: 0, T: K.life, ox: state.pos.x, oy: state.pos.y, ax: state.pos.x + dx / m * L, ay: state.pos.y + dy / m * L,
+          side: (Math.random() < 0.5 ? -1 : 1), back: false, out: [], home: [], spin: 0, hold: 8 });
+        if (W && W.setInFlight) W.setInFlight(true);
+      }
+    }
+    state.bullets.push(shot);
+    if (W && W.startAttack) W.startAttack(hand, K.id, Math.atan2(dy, dx));
     addParticles(state.pos.x + dx/m * 14, state.pos.y + dy/m * 14, "#fde047", 3);
   }
+}
+// WEAPONS helpers (kept beside doAttack: js/firstperson.test.js runs this slice).
+// The kind in a hand: gameWeapons when it is loaded, today's sword / pistol otherwise.
+function handKind(hand) {
+  const W = typeof window !== "undefined" ? window.gameWeapons : null;
+  const id = W && W.kindOf ? W.kindOf(hand) : (hand === "ranged" ? "gun" : "sword");
+  return (ECON.WEAPON_KINDS && ECON.WEAPON_KINDS[id]) || (hand === "ranged"
+    ? { id: "gun", hand: "ranged", shape: "bullet", dmg: 1, cd: [18, 16], speed: 8, life: 80, bossReach: 420, targets: 1, pierce: 0, knock: 1.5 }
+    : { id: "sword", hand: "melee", shape: "arc", dmg: 1, cd: [14, 12], reach: 70, bossReach: 58, arc: Math.PI / 1.6, targets: 6, knock: 4 });
+}
+// Is an enemy at (ex, ey) from you inside this melee kind's strike? The sword
+// is exactly the old test (70px, ~112° either side of the aim).
+function inMeleeShape(K, ex, ey, ang, size) {
+  const d = Math.hypot(ex, ey);
+  if (K.shape === "line") {
+    const c = Math.cos(ang), s = Math.sin(ang), along = ex * c + ey * s, perp = Math.abs(-ex * s + ey * c);
+    return along > -8 && along < K.reach + size * 0.5 && perp < (K.width || 30) / 2 + size * 0.6;
+  }
+  if (K.shape === "smash") {
+    const cx = Math.cos(ang) * 30, cy = Math.sin(ang) * 30;
+    return Math.hypot(ex - cx, ey - cy) < (K.smashR || 44) + size * 0.5 || d < 22;
+  }
+  if (!(d < K.reach)) return false;
+  let diff = Math.abs(Math.atan2(ey, ex) - ang); if (diff > Math.PI) diff = 2 * Math.PI - diff;
+  return diff < K.arc;
+}
+// Nearest first, so a capped kind takes the ones in its face.
+function meleeOrder(list) {
+  const px = state.pos.x, py = state.pos.y;
+  return list.slice().sort((a, b) => Math.hypot(a.x - px, a.y - py) - Math.hypot(b.x - px, b.y - py));
+}
+// A cosmetic boss-room projectile for a ranged kind.
+function makeTracer(K, ux, uy, dist) {
+  const x = state.pos.x + ux * 16, y = state.pos.y + uy * 16;
+  if (K.id === "gun" || !K.id) return { x, y, vx: ux * 11, vy: uy * 11, life: Math.round(ECON.GUILD_BOSS.REACH.pistol / 11) };
+  if (K.shape === "boomerang") {
+    const L = Math.max(90, Math.min(K.bossReach || 300, dist));
+    return { kind: K.id, boom: true, t: 0, T: K.life, x, y, vx: ux, vy: uy, ox: state.pos.x, oy: state.pos.y,
+      ax: state.pos.x + ux * L, ay: state.pos.y + uy * L, side: (Math.random() < 0.5 ? -1 : 1), back: false, spin: 0, life: K.life, struck: 0, hold: 8 };
+  }
+  const sp = Math.max(8, (K.speed || 8) * 1.2);
+  return { kind: K.id, x, y, vx: ux * sp, vy: uy * sp, life: Math.round((K.bossReach || 420) / sp) };
+}
+// Where a boomerang is at frame t of T: out to the apex along a gentle curve,
+// then home to wherever its thrower is NOW (it is caught, not landed).
+function boomerangStep(b, homeX, homeY) {
+  // held while the arm winds up (the throw animation releases it at ~45%)
+  if (b.hold > 0) { b.hold--; b.x = homeX; b.y = homeY; b.ox = homeX; b.oy = homeY; return false; }
+  b.t++;
+  const u = b.t / b.T, px = b.x, py = b.y;
+  const nx = -(b.ay - b.oy), ny = b.ax - b.ox, nl = Math.hypot(nx, ny) || 1;
+  if (u <= 0.5 && !b.back) {
+    const k = 1 - Math.pow(1 - u * 2, 2);               // decelerates into the apex
+    const bow = Math.sin(k * Math.PI) * 26 * b.side;
+    b.x = b.ox + (b.ax - b.ox) * k + nx / nl * bow; b.y = b.oy + (b.ay - b.oy) * k + ny / nl * bow;
+    if (u >= 0.5) b.back = true;
+  } else {
+    if (!b.back) { b.back = true; b.t = Math.max(b.t, Math.ceil(b.T / 2)); }
+    const k = Math.pow(Math.min(1, (b.t / b.T - 0.5) * 2), 2); // accelerates home
+    const bow = Math.sin(k * Math.PI) * 26 * -b.side;
+    b.x = b.ax + (homeX - b.ax) * k + nx / nl * bow; b.y = b.ay + (homeY - b.ay) * k + ny / nl * bow;
+  }
+  b.vx = b.x - px; b.vy = b.y - py;
+  b.spin = (b.spin || 0) + 0.55;
+  return b.t >= b.T;
 }
 
 // Your guildmates, drawn from the same presence feed the town uses. Only the
@@ -3556,13 +3709,20 @@ function drawBossRoom() {
   if (CB) CB.drawBodies(ctx, t, "front", state.pos.y);
   if (window.gameCrownArts) gameCrownArts.drawEffects(ctx, t);
   if (G) G.drawWorldTop(ctx, t);
+  const PW = window.gameWeapons;
   for (const tr of (d.tracers || [])) {
+    if (tr.hold > 0) continue;
+    if (tr.kind && PW && PW.drawProjectile) { PW.drawProjectile(ctx, tr, t); continue; }
     ctx.fillStyle = "rgba(253,224,71,.4)";
     ctx.beginPath(); ctx.arc(tr.x, tr.y, 8, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "#fde047";
     ctx.beginPath(); ctx.arc(tr.x, tr.y, 4, 0, Math.PI * 2); ctx.fill();
   }
-  if (state.swingT > 0 && state.weapon === "sword") {
+  if (PW && PW.drawReach) {
+    // WEAPONS: the held weapon draws its own swing (trails, craters); this is
+    // how far — and in what shape — it can actually reach a boss.
+    if (b && b.status === "alive" && !(PW.attackAnim && PW.attackAnim())) PW.drawReach(ctx, state.pos.x, state.pos.y, Math.atan2(state.mouse.y - state.pos.y, state.mouse.x - state.pos.x), "boss");
+  } else if (state.swingT > 0 && state.weapon === "sword") {
     const ang = state.swingAng || 0;
     ctx.strokeStyle = "rgba(252,211,77," + (state.swingT / 14) + ")"; ctx.lineWidth = 6;
     ctx.beginPath(); ctx.arc(state.pos.x, state.pos.y, 50, ang - Math.PI / 1.6, ang + Math.PI / 1.6); ctx.stroke();
@@ -3658,8 +3818,10 @@ function drawBossRoom() {
     ctx.fillStyle = "#fcd34d"; ctx.textAlign = "left"; ctx.font = "bold 12px sans-serif";
     ctx.fillText(CB ? "Strike it when it is open — never the glowing guard" : "Click a glowing weak point to strike it", 24, canvas.height - 42);
     ctx.fillStyle = "#9ca3af"; ctx.font = "11px sans-serif";
-    ctx.fillText(CB ? "click or SPACE to attack · 1 sword · 2 pistol · SHIFT dash · F / C Crown Arts · read the red, then move"
-      : "click or SPACE to attack · 1 = sword (close, hits hard) · 2 = pistol (reach) · read the red, then move", 24, canvas.height - 24);
+    const WH = window.gameWeapons, hands = WH && WH.hint ? WH.hint() : "1 sword · 2 pistol";
+    ctx.fillText(CB ? "click or SPACE to attack · " + hands + " · SHIFT dash · F / C Crown Arts · read the red, then move"
+      : "click or SPACE to attack · " + hands + " · read the red, then move", 24, canvas.height - 24);
+    if (WH && WH.drawHud) WH.drawHud(ctx, 12, canvas.height - 106, t);
     drawTomeHud();
     if (window.gameCrownArts) gameCrownArts.drawSlots(ctx, canvas.width - 250 - 124, canvas.height - 66, t);
   }
@@ -3780,8 +3942,11 @@ function drawDungeon() {
   drawPartyMembers(t);
 
 
-  // Bullets (player)
+  // Bullets (player) — WEAPONS: darts, bolts and boomerangs draw themselves
+  const PWb = window.gameWeapons;
   for (const b of state.bullets) {
+    if (b.hold > 0) continue;
+    if (b.kind && PWb && PWb.drawProjectile) { PWb.drawProjectile(ctx, b, t); continue; }
     ctx.fillStyle = "#fde047";
     ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = "rgba(253,224,71,0.4)";
@@ -3803,8 +3968,10 @@ function drawDungeon() {
   }
   // Player
   drawSelf(ctx);
-  // Sword swing arc
-  if (state.swingT > 0 && state.weapon === "sword") {
+  // Sword swing arc (WEAPONS: the held weapon draws its own trail; this is its reach)
+  if (PWb && PWb.drawReach) {
+    if (!(PWb.attackAnim && PWb.attackAnim())) PWb.drawReach(ctx, state.pos.x, state.pos.y, Math.atan2(state.mouse.y - state.pos.y, state.mouse.x - state.pos.x), "maze");
+  } else if (state.swingT > 0 && state.weapon === "sword") {
     const ang = Math.atan2(state.mouse.y - state.pos.y, state.mouse.x - state.pos.x);
     ctx.strokeStyle = `rgba(252,211,77,${state.swingT/14})`; ctx.lineWidth = 6;
     ctx.beginPath();
@@ -3855,7 +4022,11 @@ function drawDungeon() {
   ctx.fillText(`Floor ${state.dungeon ? state.dungeon.floor + 1 : 1} / ${state.dungeon ? state.dungeon.cfg.floors : 1}`, 22, canvas.height - 60);
   ctx.fillText(`Reward: $${state.questReward}`, 22, canvas.height - 42);
   ctx.fillStyle = "#fcd34d";
-  ctx.fillText(`Weapon: ${state.weapon.toUpperCase()} (1=sword, 2=pistol)`, 22, canvas.height - 22);
+  const PWh = window.gameWeapons;
+  if (PWh && PWh.hint) {
+    ctx.fillText("Weapons: " + PWh.hint(), 22, canvas.height - 22);
+    if (PWh.drawHud) PWh.drawHud(ctx, 12, canvas.height - 144, t);
+  } else ctx.fillText(`Weapon: ${state.weapon.toUpperCase()} (1=sword, 2=pistol)`, 22, canvas.height - 22);
   // HP bar
   ctx.fillStyle = "#000"; ctx.fillRect(canvas.width - 232, 12, 220, 22);
   ctx.fillStyle = "#10b981"; ctx.fillRect(canvas.width - 232, 12, 220 * Math.max(0, state.hp / (state.maxHp || 100)), 22);
@@ -4019,6 +4190,7 @@ function drawDuel() {
     ctx.fillStyle = p.color; ctx.globalAlpha = p.life / 40;
     ctx.fillRect(p.x - 2, p.y - 2, 4, 4); ctx.globalAlpha = 1;
   }
+  const PWd = window.gameWeapons, aimD = Math.atan2(state.mouse.y - state.pos.y, state.mouse.x - state.pos.x);
   const opp = state.others[state.duel.opponent];
   if (opp) {
     // Rendered position is eased (dispX/dispY); hit-testing in updateDuel
@@ -4028,9 +4200,11 @@ function drawDuel() {
     GFX.drawCharacter(ctx, ox, oy, opp.appearance, { facing: opp.facing });
     GFX.drawNameAndBubble(ctx, ox, oy, state.duel.opponent, opp.msgs || opp.msg, false, opp.appearance, opp.role);
   }
+  if (PWd && PWd.drawHeld) PWd.drawHeld(ctx, state.pos.x, state.pos.y, "back", aimD);
   GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance,
                      { facing: state.facing, walking: state.walking });
-  if (state.swingT > 0 && state.weapon === "sword") {
+  if (PWd && PWd.drawHeld) PWd.drawHeld(ctx, state.pos.x, state.pos.y, "front", aimD);
+  if (state.swingT > 0 && state.weapon === "sword" && !(PWd && PWd.drawHeld)) {
     const ang = Math.atan2(state.mouse.y - state.pos.y, state.mouse.x - state.pos.x);
     ctx.strokeStyle = `rgba(252,211,77,${state.swingT/14})`; ctx.lineWidth = 6;
     ctx.beginPath();
@@ -4077,6 +4251,7 @@ function doAttackWithDuel() {
       }
     }
     state.swingT = 14;
+    if (window.gameWeapons && gameWeapons.startAttack) gameWeapons.startAttack("melee", "sword", ang);
   } else {
     origDoAttack();
   }
