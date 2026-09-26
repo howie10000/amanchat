@@ -12,7 +12,7 @@
 'use strict';
 
 module.exports = function createCrownArts(deps) {
-    const { ECON, CROWN, store, userRec, runFor, presenceOf, gearFxOf, gearStatsOf, masteryLevelOf, moneyOf, setMoney,
+    const { ECON, CROWN, store, userRec, runFor, presenceOf, gearFxOf, gearStatsOf, weaponOf, masteryLevelOf, moneyOf, setMoney,
         pushMany, features, floorPlan, floorCleared, leashRefusal, engine, swingBuffMult } = deps;
     const PRESENCE_MS = CROWN.HIT.maxAgeMs;
     const CAST_SLACK_PX = 160;
@@ -127,7 +127,8 @@ module.exports = function createCrownArts(deps) {
         // Damage ------------------------------------------------------------
         const damaging = a.power > 0 && (id !== 'riposte' || counter);
         if (damaging) {
-            const swing = ECON.DUNGEON_HIT_DMG.sword * ECON.masteryCombatMult(masteryLevelOf(u, 'combat')) * ECON.gearAttackMult(gearStatsOf(u).atk);
+            // WEAPONS: an art is the melee hand's (its ATK, never the ranged weapon's).
+            const swing = ECON.DUNGEON_HIT_DMG.sword * ECON.masteryCombatMult(masteryLevelOf(u, 'combat')) * ECON.gearAttackMult(weaponOf ? weaponOf(u, 'sword').atk : gearStatsOf(u).atk);
             const base = CROWN.artBaseDamage(id, rank, swing, fx);
             // Where the art reaches (its geometry, validated against the cast point).
             let geo;

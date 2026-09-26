@@ -174,7 +174,10 @@
   // at `now` and `now - lagMs` (the swing left the client up to ~150ms ago)
   // and the closer of the two counts. reach = weapon reach + body radius + slack.
   const HIT = { maxAgeMs: 700, lagMs: 160, slackPx: 36, pistolReach: 420, swordReach: 58 };
-  function reachFor(weapon) {
+  // `kind` (optional, WEAPONS): the equipped weapon kind's boss reach wins.
+  function reachFor(weapon, kind) {
+    const K = kind && ECON.WEAPON_KINDS && ECON.WEAPON_KINDS[kind];
+    if (K && K.bossReach > 0) return K.bossReach;
     const R = (ECON.GUILD_BOSS && ECON.GUILD_BOSS.REACH) || {};
     return weapon === "pistol" ? (R.pistol || HIT.pistolReach) : (R.sword || HIT.swordReach);
   }
@@ -186,7 +189,7 @@
     const steps = o.steps, t = num(o.now);
     const boxes = [hitboxAt(steps, t, o.bodyR), hitboxAt(steps, t - (o.lagMs != null ? o.lagMs : HIT.lagMs), o.bodyR)].filter(Boolean);
     if (!boxes.length) return { ok: false, why: "untargetable" };
-    const reach = (o.reach != null ? +o.reach : reachFor(o.weapon)) + (o.slackPx != null ? o.slackPx : HIT.slackPx);
+    const reach = (o.reach != null ? +o.reach : reachFor(o.weapon, o.kind)) + (o.slackPx != null ? o.slackPx : HIT.slackPx);
     let best = Infinity, box = null;
     for (const b of boxes) { const d = Math.hypot(h.x - b.x, h.y - b.y) - (b.r || 0); if (d < best) { best = d; box = b; } }
     return best <= reach ? { ok: true, dist: best, box } : { ok: false, why: "too far", dist: best };

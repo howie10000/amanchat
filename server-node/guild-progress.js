@@ -305,6 +305,12 @@ module.exports = function createProgress(deps) {
             if (crownOut.crownShards) res.mats = ECON.mergeMats(res.mats || {}, { crown_shard: crownOut.crownShards });
             if (crownOut.crownShards) mats.crown_shard = Math.max(0, (mats.crown_shard | 0) - crownOut.crownShards);   // merged once below
         }
+        // WEAPONS: the boss-weapon (armament) roll — its own Math.random draw,
+        // AFTER the legacy loot and the Crown rewards so neither moves.
+        if (ctx.bossRoll && !spectator && ECON.rollArmamentDrop) {
+            const arm = ECON.rollArmamentDrop({ tier: ctx.tier, bossId: ctx.bossId, chestTier: res.chestTier || chestTier, delve: ctx.delve | 0, now, chance: deps.armamentChance || undefined }, Math.random);
+            if (arm) { res.gear.push(arm); res.armament = arm; }
+        }
         // Materials first (they never overflow), then the gear.
         const gainedMats = res.mats || {}, gainedGems = res.gems || {};
         u.mats = ECON.mergeMats(mats, gainedMats);
@@ -363,6 +369,7 @@ module.exports = function createProgress(deps) {
             delver: { xp: d.xp, gained: xp, rank: rank1.rank, up, perks: newPerks.map(p => p.id), prestige: rank1.prestige },
             codexNew: cx.newIds, achievements: got, weekly, pityHit: res.pityHit || null,
             arts: crownOut ? crownOut.arts : [], crownShards: crownOut ? crownOut.crownShards : 0, artPity: !!(crownOut && crownOut.artPity),
+            armament: res.armament ? res.armament.id : null,
         };
     }
 

@@ -34,7 +34,7 @@ test("legacy lists and the parts archetype are untouched", () => {
   assert.equal(E.GUILD_MINIS.length, 7);
   assert.equal(E.GUILD_DUNGEON_ORDER.length, 7);
   for (const id of L.bosses) { assert.equal(C.archetypeOf(id), "parts"); assert.equal(C.isMobile(id), false); assert.equal(E.bossArchetype(id), "parts"); }
-  for (let lvl = 1; lvl <= 10; lvl++) assert.ok(E.GEAR_BASES.filter(b => b.lvl === lvl && !b.unique && !b.set).every(b => E.GEAR_BASES.indexOf(b) < 184), "no new base joins the L" + lvl + " random pool");
+  for (let lvl = 1; lvl <= 10; lvl++) assert.ok(E.GEAR_BASES.filter(b => b.lvl === lvl && !b.unique && !b.set && !b.armament).every(b => E.GEAR_BASES.indexOf(b) < 184), "no new base joins the L" + lvl + " random pool");
   // the quest board and legacy loot rolls never see a Crown base
   for (let s = 1; s <= 200; s++) for (const t of ["guild_crypt", "guild_dragon", "guild_rime"]) for (const it of E.rollGearDrops(t, E.mulberry32(s))) assert.ok(E.GEAR_BASES.indexOf(E.GEAR_BASE_BY_ID[it.base]) < 184);
 });
@@ -75,7 +75,7 @@ test("the four Crown tiers are complete and slot into the ladder", () => {
   assert.deepEqual(E.GEAR_POWER.slice(0, 11), [0, 9, 15, 24, 38, 56, 78, 104, 126, 150, 176]);
   assert.ok(E.GEAR_POWER[11] > E.GEAR_POWER[10] && E.GEAR_POWER[12] > E.GEAR_POWER[11] && E.GEAR_BASE_VALUE.length === 13);
   for (const lvl of [11, 12]) for (const slot of ["weapon", "helmet", "chest", "legs", "ring"])
-    assert.equal(E.GEAR_BASES.filter(b => b.lvl === lvl && b.slot === slot && !b.unique && !b.set).length, 3, "L" + lvl + " " + slot);
+    assert.equal(E.GEAR_BASES.filter(b => b.lvl === lvl && b.slot === slot && !b.unique && !b.set && !b.armament).length, 3, "L" + lvl + " " + slot);
 });
 test("every Crown tier builds a valid, deterministic expedition with its new enemies", () => {
   for (const t of TIERS) {

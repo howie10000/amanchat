@@ -17,7 +17,7 @@
 
 module.exports = function createCrownEngine(deps) {
     const { ECON, CROWN, pushMany, runBroadcast, presenceOf, attackPayload, bossHpOf, pendingThreshold, checkBossPhase,
-        userRec, masteryLevelOf, gearStatsOf, gearFxOf, swingBuffMult, bossProcs } = deps;
+        userRec, masteryLevelOf, gearStatsOf, gearFxOf, swingBuffMult, bossProcs, weaponOf } = deps;
     const T = deps.testKnobs || {};
 
     const PLAN_AHEAD_MS = 300;      // re-plan when less than this is left (§4.1)
@@ -660,16 +660,18 @@ module.exports = function createCrownEngine(deps) {
     function hit(run, user, msg, now) {
         const b = run.boss;
         const weapon = msg.weapon === 'pistol' ? 'pistol' : 'sword';
+        const u = userRec(user);
+        // WEAPONS: kind, attack power, cadence and reach of the EQUIPPED hand.
+        const wpn = weaponOf ? weaponOf(u, weapon) : { kind: weapon === 'pistol' ? 'gun' : 'sword', atk: gearStatsOf(u).atk };
         const k = user + ':' + weapon;
-        if (now - (b.hitLast.get(k) || 0) < ECON.GUILD_BOSS.HIT_MIN_MS[weapon]) throw new Error('Too fast.');
+        if (now - (b.hitLast.get(k) || 0) < ECON.kindMinMs(wpn.kind, 'boss')) throw new Error('Too fast.');
         const pres = roomPresence(run, user, now, CROWN.HIT.maxAgeMs);
         if (!pres) throw new Error('Move closer.');
-        const u = userRec(user);
-        const fx = gearFxOf(user);
-        const mult = ECON.masteryCombatMult(masteryLevelOf(u, 'combat')) * ECON.gearAttackMult(gearStatsOf(u).atk);
+        const fx = ECON.weaponFx(gearFxOf(user), wpn.kind);
+        const mult = ECON.masteryCombatMult(masteryLevelOf(u, 'combat')) * ECON.gearAttackMult(wpn.atk);
         const out = strike(run, user, now, {
-            body: msg.body, pres, geo: { x: pres.x, y: pres.y, reach: CROWN.reachFor(weapon) },
-            base: ECON.GUILD_BOSS.HIT_DMG[weapon] * mult, fx, afterDash: !!msg.afterDash,
+            body: msg.body, pres, geo: { x: pres.x, y: pres.y, reach: CROWN.reachFor(weapon, wpn.kind) },
+            base: ECON.kindHitDmg(wpn.kind, 'boss') * mult, fx, afterDash: !!msg.afterDash,
             onAccepted: () => b.hitLast.set(k, now),
         });
         return out;

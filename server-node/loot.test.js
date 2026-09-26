@@ -31,16 +31,18 @@ section('rarities, bases, mods, uniques, sets are well formed');
     const sum = Object.values(b.split).reduce((s, x) => s + x, 0);
     assert(Math.abs(sum - 1) < 1e-9, 'split sums to 1: ' + b.id);
     assert(!ids.has(b.id), 'unique base id ' + b.id); ids.add(b.id);
-    assert(['weapon', 'helmet', 'chest', 'legs', 'ring'].includes(b.slot) && b.name && (b.lvl >= 1 && b.lvl <= 12 || b.anyLvl), 'base shape ' + b.id);
+    assert(['weapon', 'helmet', 'chest', 'legs', 'ring', 'ranged'].includes(b.slot) && b.name && (b.lvl >= 1 && b.lvl <= 12 || b.anyLvl), 'base shape ' + b.id);
   }
-  const pool = ECON.GEAR_BASES.filter(b => !b.unique && !b.set);
+  const pool = ECON.GEAR_BASES.filter(b => !b.unique && !b.set && !b.armament);
   assert(pool.filter(b => b.lvl <= 10).length === 35 + 40 + 45, '120 random-pool bases at L1-10 (35 legacy + 40 + 45)');
   assert(pool.length === 120 + 30, '+30 Sundered Crown bases at L11-12');
   for (let L = 4; L <= 12; L++) for (const slot of ['weapon', 'helmet', 'chest', 'legs', 'ring'])
     assert(pool.filter(b => b.lvl === L && b.slot === slot).length === 3, `3 bases per slot at L${L} (${slot})`);
   for (const [k, m] of Object.entries(ECON.GEAR_MODS)) assert(m.label && m.slots.length && m.max >= m.min && m.min > 0 && ['server', 'client', 'both'].includes(m.side), 'mod ' + k);
   for (const slot of ['weapon', 'helmet', 'chest', 'legs', 'ring']) assert(Object.values(ECON.GEAR_MODS).filter(m => !m.fixed && m.slots.includes(slot)).length >= 3, slot + ' has at least 3 rollable mods');
-  assert(Object.keys(ECON.GEAR_UNIQUES).length === 29 + 12 && Object.keys(ECON.GEAR_UNIQUES).slice(29).every(id => ECON.GEAR_UNIQUES[id].crown), '14 legacy-boss + 15 Arcane Depths + 12 Sundered Crown uniques');
+  assert(Object.keys(ECON.GEAR_UNIQUES).length === 29 + 12 + 6 && Object.keys(ECON.GEAR_UNIQUES).slice(29, 41).every(id => ECON.GEAR_UNIQUES[id].crown) && Object.keys(ECON.GEAR_UNIQUES).slice(41).every(id => ECON.GEAR_UNIQUES[id].armament), '14 legacy-boss + 15 Arcane Depths + 12 Sundered Crown uniques + 6 signature boss weapons');
+  // WEAPONS: one boss weapon per kind per level (never in a random pool)
+  assert(ECON.GEAR_BASES.filter(b => b.armament && !b.unique).length === 10 * 12, '120 armament bases (10 kinds x 12 levels)');
   for (const [id, u] of Object.entries(ECON.GEAR_UNIQUES)) {
     const b = ECON.GEAR_BASE_BY_ID[id];
     assert(b && b.unique && b.slot === u.slot && (u.lvl ? b.lvl === u.lvl : b.anyLvl), 'unique base ' + id);

@@ -421,7 +421,7 @@
     ECON.GEAR_RARITIES.forEach((r, i) => { if (i >= LEG_IDX) w[r] *= legBoost; });
     const legW = ECON.floorWeights(w, "legendary");
     const mint = (rarity) => {
-      const pool = ECON.GEAR_BASES.filter(b => b.lvl === lvl && !b.unique && !b.set);
+      const pool = ECON.GEAR_BASES.filter(b => b.lvl === lvl && !b.unique && !b.set && !b.armament);
       if (!pool.length) return null;
       const base = pool[Math.floor(rand() * pool.length)];
       return ECON.makeGear(base.id, rarity, rand, undefined, { src: c.tier, dl: delve, now });
