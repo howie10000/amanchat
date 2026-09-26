@@ -1484,161 +1484,205 @@ h3.section.danger { color: #f87171; }
 }
 
 
-/* ===== ARCANE DEPTHS LOGIN ===== */
-/* THE ARCANE DEPTHS guild-dungeon update. The layered gradient below is the first paint (and the
-   no-WebGL fallback); js/dungeon-title.js fades the live cathedral in over it once it renders, drives
-   --arc-mx/--arc-my (mouse parallax) and sets data-ignite when the title letters should ignite. */
-#loginScreen.arcane-login{
-  --arc-cyan:#5ff3ff;--arc-violet:#9b6bff;--arc-gold:#ffcf6b;--arc-ink:#0a0718;--arc-mx:0;--arc-my:0;
+/* ===== SUNDERED CROWN LOGIN ===== */
+/* THE SUNDERED CROWN guild-dungeon update. The layered gradient below is the first paint (and the
+   no-WebGL fallback: a dusk sky torn by a crimson rift, the crown's glow, floating fragments).
+   js/crown-title.js (in a worker via js/title-background.js) fades the live realm in over it, sets
+   data-ignite when the title letters should ignite and data-shot for the set piece on screen;
+   title-background.js drives --crn-mx/--crn-my (pointer parallax). */
+#loginScreen.crown-login{
+  --crn-gold:#f2c35b;--crn-gold2:#ffe7a3;--crn-crimson:#e8263f;--crn-ember:#ff7a3d;--crn-steel:#b4bccb;--crn-ink:#0b0608;--crn-mx:0;--crn-my:0;
   background:
-    radial-gradient(circle at 50% 42%,#f4e8ff 0 2.2vmin,#b58cff99 3.4vmin,#7d4dff40 9vmin,transparent 16vmin),
-    radial-gradient(circle at 50% 42%,transparent 0 13vmin,#5ff3ff30 13.2vmin 13.6vmin,transparent 14vmin 18vmin,#9b6bff26 18.2vmin 18.5vmin,transparent 19vmin),
-    conic-gradient(from 0deg at 50% 42%,#7d4dff00,#7d4dff33,#5ff3ff22,#f472b622,#7d4dff00 40%,#7d4dff2a 60%,#5ff3ff1f 80%,#7d4dff00),
-    radial-gradient(ellipse 42% 18% at 50% 88%,#ffb34a2e,transparent 70%),
-    repeating-linear-gradient(90deg,transparent 0 11vw,#b8a8ff08 11vw 13vw,transparent 13vw 24vw),
-    linear-gradient(180deg,#04030b 0%,#0c0822 42%,#150c34 68%,#07050f 100%);
-  background-color:#0a0718;justify-content:center;align-items:center;padding:32px 5vw 36px;overflow-x:hidden;overflow-y:auto;color:#ece8ff
+    radial-gradient(ellipse 26vmin 20vmin at 50% 30%,#ffd98a40,#ff8a3d18 45%,transparent 72%),
+    radial-gradient(circle at 80% 63%,#fff1c8 0 .7vmin,#ffb45acc 1.6vmin,#ff6a3d55 4vmin,#c8282a22 14vmin,transparent 30vmin),
+    linear-gradient(161deg,transparent 0 37.4%,#ff5a4a30 38.6%,#ffd2a0c0 39.1%,#ff4a3a70 39.5%,#ff3b3b14 41%,transparent 43%),
+    radial-gradient(ellipse 34vw 7vh at 50% 88%,#0b0405 0 58%,transparent 62%),
+    radial-gradient(ellipse 18vw 5vh at 12% 74%,#130608 0 55%,transparent 60%),
+    radial-gradient(ellipse 16vw 4.5vh at 88% 78%,#120607 0 55%,transparent 60%),
+    linear-gradient(180deg,#060308 0%,#14060b 34%,#3a0d12 60%,#57171399 68%,#1a0709 80%,#070304 100%);
+  background-color:#0b0608;justify-content:center;align-items:center;padding:32px 5vw 36px;overflow-x:hidden;overflow-y:auto;color:#f6ecdf
 }
-#loginScreen.arcane-login:before{content:'';position:fixed;inset:0;z-index:1;pointer-events:none;background:linear-gradient(90deg,#060412b3 0%,#06041266 26%,transparent 44%,transparent 62%,#0604125c 78%,#060412b3 100%),radial-gradient(ellipse at 50% 50%,transparent 48%,#030208b0 100%)}
-#loginScreen.arcane-login:after{content:'';position:fixed;inset:0;z-index:1;pointer-events:none;background:linear-gradient(#030208b0,transparent 20%,transparent 80%,#030208cc)}
-#loginScreen.arcane-login #titleBg{position:fixed;inset:0;background:transparent;opacity:0;transition:opacity 1.2s ease;pointer-events:none}
-#loginScreen.arcane-login #titleBg.ready{opacity:1}
+#loginScreen.crown-login:before{content:'';position:fixed;inset:0;z-index:1;pointer-events:none;background:linear-gradient(90deg,#070305c4 0%,#07030570 26%,transparent 45%,transparent 60%,#07030566 77%,#070305c0 100%),radial-gradient(ellipse at 50% 50%,transparent 50%,#030102b8 100%)}
+#loginScreen.crown-login:after{content:'';position:fixed;inset:0;z-index:1;pointer-events:none;background:linear-gradient(#030102b0,transparent 18%,transparent 80%,#030102d0)}
+#loginScreen.crown-login #titleBg{position:fixed;inset:0;background:transparent;opacity:0;transition:opacity 1.2s ease;pointer-events:none}
+#loginScreen.crown-login #titleBg.ready{opacity:1}
 
-/* CSS mote fallback: only animates until the WebGL scene is ready. */
-.arcane-motes{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
-#titleBg.ready~.arcane-motes{display:none}
-.arcane-motes i{position:absolute;bottom:-12px;width:5px;height:5px;border-radius:50%;background:#bff9ff;box-shadow:0 0 10px 3px #5ff3ffaa;opacity:0;animation:arcRise 11s linear infinite}
-.arcane-motes i:nth-child(3n){background:#e2d2ff;box-shadow:0 0 10px 3px #9b6bffaa}
-.arcane-motes i:nth-child(4n){background:#ffe4a0;box-shadow:0 0 10px 3px #ffb84a99;width:4px;height:4px}
-.arcane-motes i:nth-child(1){left:6%;animation-delay:-1s}.arcane-motes i:nth-child(2){left:14%;animation-delay:-6s;animation-duration:14s}
-.arcane-motes i:nth-child(3){left:23%;animation-delay:-3s}.arcane-motes i:nth-child(4){left:31%;animation-delay:-9s;animation-duration:13s}
-.arcane-motes i:nth-child(5){left:39%;animation-delay:-4.5s}.arcane-motes i:nth-child(6){left:46%;animation-delay:-8s;animation-duration:9s}
-.arcane-motes i:nth-child(7){left:54%;animation-delay:-2s;animation-duration:12s}.arcane-motes i:nth-child(8){left:61%;animation-delay:-7s}
-.arcane-motes i:nth-child(9){left:69%;animation-delay:-5s;animation-duration:15s}.arcane-motes i:nth-child(10){left:77%;animation-delay:-10s}
-.arcane-motes i:nth-child(11){left:86%;animation-delay:-3.5s;animation-duration:10s}.arcane-motes i:nth-child(12){left:94%;animation-delay:-6.5s}
-@keyframes arcRise{0%{transform:translate(0,0);opacity:0}12%{opacity:.9}50%{transform:translate(18px,-50vh)}88%{opacity:.7}100%{transform:translate(-10px,-100vh);opacity:0}}
+/* CSS ember fallback: only animates until the WebGL realm is ready. */
+.crown-embers{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+#titleBg.ready~.crown-embers{display:none}
+.crown-embers i{position:absolute;bottom:-12px;width:4px;height:4px;border-radius:50%;background:#ffd08a;box-shadow:0 0 10px 3px #ff7a3daa;opacity:0;animation:crnRise 11s linear infinite}
+.crown-embers i:nth-child(3n){background:#ff8a7a;box-shadow:0 0 10px 3px #e8263faa}
+.crown-embers i:nth-child(4n){background:#fff1c8;box-shadow:0 0 9px 3px #f2c35b99;width:3px;height:3px}
+.crown-embers i:nth-child(1){left:6%;animation-delay:-1s}.crown-embers i:nth-child(2){left:14%;animation-delay:-6s;animation-duration:14s}
+.crown-embers i:nth-child(3){left:23%;animation-delay:-3s}.crown-embers i:nth-child(4){left:31%;animation-delay:-9s;animation-duration:13s}
+.crown-embers i:nth-child(5){left:39%;animation-delay:-4.5s}.crown-embers i:nth-child(6){left:46%;animation-delay:-8s;animation-duration:9s}
+.crown-embers i:nth-child(7){left:54%;animation-delay:-2s;animation-duration:12s}.crown-embers i:nth-child(8){left:61%;animation-delay:-7s}
+.crown-embers i:nth-child(9){left:69%;animation-delay:-5s;animation-duration:15s}.crown-embers i:nth-child(10){left:77%;animation-delay:-10s}
+.crown-embers i:nth-child(11){left:86%;animation-delay:-3.5s;animation-duration:10s}.crown-embers i:nth-child(12){left:94%;animation-delay:-6.5s}
+@keyframes crnRise{0%{transform:translate(0,0);opacity:0}12%{opacity:.9}50%{transform:translate(-16px,-50vh)}88%{opacity:.7}100%{transform:translate(12px,-100vh);opacity:0}}
 
-#loginScreen.arcane-login .loginStack{width:100%;max-width:1560px;margin:auto;gap:40px;display:flex;flex-direction:row;align-items:center;justify-content:space-between;position:relative;z-index:2;pointer-events:none}
-#loginScreen.arcane-login .loginStack>*{pointer-events:auto;position:relative;z-index:2}
+#loginScreen.crown-login .loginStack{width:100%;max-width:1560px;margin:auto;gap:40px;display:flex;flex-direction:row;align-items:center;justify-content:space-between;position:relative;z-index:2;pointer-events:none}
+#loginScreen.crown-login .loginStack>*{pointer-events:auto;position:relative;z-index:2}
 
 /* Brand block (drifts gently against the camera parallax) */
-.arcane-brand{flex:0 1 640px;min-width:0;text-align:left;filter:drop-shadow(0 10px 24px #000c);transform:translate3d(calc(var(--arc-mx)*-9px),calc(var(--arc-my)*-6px),0);transition:transform .25s linear}
-.arcane-brand:before{content:'';position:absolute;z-index:-1;inset:-18% -30% -22% -24%;background:radial-gradient(ellipse at 42% 50%,#05030cd9 0%,#05030c99 42%,transparent 72%);pointer-events:none}
-.arcane-eyebrow{display:inline-flex;align-items:center;gap:12px;font:700 11px/1.2 system-ui,sans-serif;letter-spacing:.34em;color:#9ff7ff;text-shadow:0 0 12px #5ff3ff88}
-.arcane-eyebrow:before{content:'';width:34px;height:1px;background:linear-gradient(90deg,transparent,#5ff3ff)}
-.arcane-eyebrow b{color:var(--arc-gold);font-weight:900}
-.arcane-title-wrap{position:relative;margin:14px 0 12px;padding:6px 0}
-.arcane-title{position:relative;z-index:1;margin:0;font-family:'Cinzel','Trajan Pro','Palatino Linotype','Book Antiqua',Palatino,Georgia,serif;font-weight:700;font-size:clamp(46px,6.8vw,100px);line-height:.94;letter-spacing:.035em;text-transform:uppercase;
-  background:linear-gradient(100deg,#9c6417 0%,#ffe6a0 18%,#ffc34d 32%,#fff8e0 46%,#f0a93a 58%,#ffe6a0 74%,#9c6417 100%);background-size:260% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;
-  filter:drop-shadow(0 2px 0 #3d1f04) drop-shadow(0 0 20px #ffb84a59) drop-shadow(0 0 42px #7d4dff55);animation:arcShimmer 7s linear infinite}
-.arcane-title small{display:block;font-size:.3em;letter-spacing:.9em;margin:0 0 .3em .1em;line-height:1}
-.arcane-word .w{white-space:nowrap}
-.arcane-word i{font-style:normal;position:relative}
-/* Ignition: a white-hot copy of each letter flares in turn, then keeps a residual arcane glow. */
-.arcane-word i:after{content:attr(data-c);position:absolute;left:0;top:0;line-height:normal;color:#fff;-webkit-text-fill-color:#fffaf0;opacity:0;pointer-events:none;
-  text-shadow:0 0 .06em #fff,0 0 .2em #e3ccff,0 0 .45em #9b6bff,0 0 .9em #5ff3ff}
-#loginScreen[data-ignite="a"] .arcane-word i:after{animation:arcIgniteA 3s cubic-bezier(.16,.8,.3,1) calc(var(--i)*70ms) both}
-#loginScreen[data-ignite="b"] .arcane-word i:after{animation:arcIgniteB 3s cubic-bezier(.16,.8,.3,1) calc(var(--i)*70ms) both}
-#loginScreen[data-ignite="still"] .arcane-word i:after{opacity:.2}
-@keyframes arcIgniteA{0%{opacity:0;transform:translateY(.1em) scale(1.3);filter:blur(10px)}12%{opacity:1;transform:none;filter:blur(0)}40%{opacity:.75}100%{opacity:.2}}
-@keyframes arcIgniteB{0%{opacity:0;transform:translateY(.1em) scale(1.3);filter:blur(10px)}12%{opacity:1;transform:none;filter:blur(0)}40%{opacity:.75}100%{opacity:.2}}
-@keyframes arcShimmer{from{background-position:130% 0}to{background-position:-130% 0}}
-/* A lens flare sweeps under the title each time it ignites. */
-.arcane-flare{position:absolute;z-index:2;left:-6%;right:-6%;bottom:-2px;height:3px;border-radius:3px;pointer-events:none;opacity:0;
-  background:linear-gradient(90deg,transparent,#5ff3ff 22%,#fff 50%,#b58cff 78%,transparent);box-shadow:0 0 18px 4px #9b6bff99,0 0 44px 10px #5ff3ff40;transform:scaleX(.1)}
-#loginScreen[data-ignite="a"] .arcane-flare{animation:arcFlareA 2.2s ease-out both}
-#loginScreen[data-ignite="b"] .arcane-flare{animation:arcFlareB 2.2s ease-out both}
-#loginScreen[data-ignite="still"] .arcane-flare{opacity:.45;transform:none}
-@keyframes arcFlareA{0%{opacity:0;transform:scaleX(.05)}18%{opacity:1;transform:scaleX(1)}100%{opacity:.4;transform:scaleX(1)}}
-@keyframes arcFlareB{0%{opacity:0;transform:scaleX(.05)}18%{opacity:1;transform:scaleX(1)}100%{opacity:.4;transform:scaleX(1)}}
-.arcane-sigil{position:absolute;z-index:0;left:clamp(90px,14vw,220px);top:50%;width:clamp(210px,24vw,340px);aspect-ratio:1;transform:translate(-50%,-50%);pointer-events:none;opacity:.85}
-.arcane-sigil i{position:absolute;inset:0;border-radius:50%}
-.arcane-sigil i:nth-child(1){border:2px solid #5ff3ff59;box-shadow:0 0 26px #5ff3ff33,inset 0 0 26px #5ff3ff26;background:repeating-conic-gradient(from 0deg,#5ff3ff99 0 1.2deg,transparent 1.2deg 7.5deg);-webkit-mask:radial-gradient(circle,transparent 0 44%,#000 44.5% 49%,transparent 49.5%);mask:radial-gradient(circle,transparent 0 44%,#000 44.5% 49%,transparent 49.5%);animation:arcSpin 40s linear infinite}
-.arcane-sigil i:nth-child(2){inset:13%;border:1px dashed #b89cff88;animation:arcSpin 26s linear infinite reverse}
-.arcane-sigil i:nth-child(3){inset:24%;border:1px solid #ffcf6b44;background:conic-gradient(from 30deg,transparent 0 30deg,#9b6bff2e 30deg 60deg,transparent 60deg 150deg,#5ff3ff24 150deg 180deg,transparent 180deg 270deg,#ffcf6b1f 270deg 300deg,transparent 300deg);animation:arcSpin 18s linear infinite,arcPulse 4s ease-in-out infinite}
-#loginScreen[data-ignite="a"] .arcane-sigil{animation:arcSigilA 2.4s ease-out}
-#loginScreen[data-ignite="b"] .arcane-sigil{animation:arcSigilB 2.4s ease-out}
-@keyframes arcSigilA{0%{opacity:.85;filter:none}15%{opacity:1;filter:brightness(2.4) drop-shadow(0 0 18px #9b6bff)}100%{opacity:.85;filter:none}}
-@keyframes arcSigilB{0%{opacity:.85;filter:none}15%{opacity:1;filter:brightness(2.4) drop-shadow(0 0 18px #9b6bff)}100%{opacity:.85;filter:none}}
-@keyframes arcSpin{to{transform:rotate(360deg)}}
-@keyframes arcPulse{0%,100%{opacity:.55}50%{opacity:1}}
-.arcane-tagline{margin:0 0 12px;font:500 clamp(14px,1.35vw,18px)/1.5 system-ui,sans-serif;color:#e4defb;letter-spacing:.02em;text-shadow:0 2px 10px #000}
-/* The three new dungeons, each with its own sigil colour. */
-.arcane-roster{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 16px;padding:0;list-style:none;font:700 11px/1.3 'Palatino Linotype','Book Antiqua',Georgia,serif;letter-spacing:.2em;text-transform:uppercase}
-.arcane-roster li{display:inline-flex;align-items:center;gap:8px;color:var(--c);text-shadow:0 0 12px var(--c),0 1px 2px #000}
-.arcane-roster li:before{content:'';width:9px;height:9px;flex:none;background:var(--c);box-shadow:0 0 10px var(--c);clip-path:polygon(50% 0,62% 38%,100% 50%,62% 62%,50% 100%,38% 62%,0 50%,38% 38%)}
-.arcane-roster .r-archive{--c:#fde68a}.arcane-roster .r-geode{--c:#f0abfc}.arcane-roster .r-rime{--c:#a5f3fc}
-.arcane-roster .r-geode:before{clip-path:polygon(50% 0,85% 30%,85% 100%,15% 100%,15% 30%)}
-.arcane-roster .r-rime:before{clip-path:polygon(50% 0,58% 42%,100% 50%,58% 58%,50% 100%,42% 58%,0 50%,42% 42%);transform:rotate(45deg)}
-.arcane-chips{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none}
-.arcane-chips li{--c:#5ff3ff;display:inline-flex;align-items:center;gap:7px;padding:7px 12px 7px 10px;border-radius:999px;font:650 12px/1 system-ui,sans-serif;letter-spacing:.03em;color:#eefcff;
-  background:linear-gradient(180deg,#1d1446e0,#0e0a26e0);border:1px solid color-mix(in srgb,var(--c) 45%,transparent);box-shadow:0 0 14px color-mix(in srgb,var(--c) 18%,transparent),inset 0 1px 0 #ffffff14;backdrop-filter:blur(4px);transition:transform .2s,box-shadow .2s}
-.arcane-chips li:hover{transform:translateY(-2px);box-shadow:0 0 22px color-mix(in srgb,var(--c) 45%,transparent),inset 0 1px 0 #ffffff24}
-.arcane-chips li:before{content:'';width:7px;height:7px;transform:rotate(45deg);background:var(--c);box-shadow:0 0 8px var(--c)}
-.arcane-chips li:nth-child(1){--c:#ffcf6b}.arcane-chips li:nth-child(2){--c:#fb7185}.arcane-chips li:nth-child(3){--c:#c084fc}.arcane-chips li:nth-child(4){--c:#5ff3ff}
-.arcane-chips li:nth-child(5){--c:#a78bfa;border-color:transparent;background:linear-gradient(180deg,#1d1446f0,#0e0a26f0) padding-box,linear-gradient(90deg,#f472b6,#a78bfa,#38bdf8,#34d399,#fde047) border-box}
-.arcane-chips li b{color:var(--arc-gold);font-weight:900}
+.crown-brand{flex:0 1 660px;min-width:0;text-align:left;filter:drop-shadow(0 10px 24px #000c);transform:translate3d(calc(var(--crn-mx)*-9px),calc(var(--crn-my)*-6px),0);transition:transform .25s linear}
+.crown-brand:before{content:'';position:absolute;z-index:-1;inset:-18% -30% -22% -24%;background:radial-gradient(ellipse at 42% 50%,#070304d9 0%,#07030499 42%,transparent 72%);pointer-events:none}
+.crown-eyebrow{display:inline-flex;align-items:center;gap:12px;font:700 11px/1.2 system-ui,sans-serif;letter-spacing:.34em;color:#ffd9a0;text-shadow:0 0 12px #ff7a3d88}
+.crown-eyebrow:before{content:'';width:34px;height:1px;background:linear-gradient(90deg,transparent,var(--crn-crimson))}
+.crown-eyebrow b{color:var(--crn-crimson);font-weight:900}
+.crown-title-wrap{position:relative;margin:14px 0 12px;padding:6px 0}
+.crown-title{position:relative;z-index:1;margin:0;font-family:'Cinzel','Trajan Pro','Palatino Linotype','Book Antiqua',Palatino,Georgia,serif;font-weight:700;font-size:clamp(44px,6.1vw,94px);line-height:.94;letter-spacing:.03em;text-transform:uppercase;
+  background:linear-gradient(100deg,#8a4d12 0%,#ffe3a0 17%,#f2b640 31%,#fff6dc 45%,#e59a2e 57%,#ffe3a0 73%,#8a4d12 100%);background-size:260% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 2px 0 #3a1204) drop-shadow(0 0 18px #ff9a3d55) drop-shadow(0 0 40px #e8263f55);animation:crnShimmer 7s linear infinite}
+.crown-title small{display:block;font-size:.3em;letter-spacing:.9em;margin:0 0 .3em .1em;line-height:1}
+.crown-word .w{white-space:nowrap}
+.crown-word i{font-style:normal;position:relative}
+/* Ignition: a white-hot copy of each letter flares in turn, then keeps a residual ember glow. */
+.crown-word i:after{content:attr(data-c);position:absolute;left:0;top:0;line-height:normal;color:#fff;-webkit-text-fill-color:#fff7ea;opacity:0;pointer-events:none;
+  text-shadow:0 0 .06em #fff,0 0 .2em #ffe0a8,0 0 .45em #ff8a3d,0 0 .9em #e8263f}
+#loginScreen[data-ignite="a"] .crown-word i:after{animation:crnIgniteA 3s cubic-bezier(.16,.8,.3,1) calc(var(--i)*65ms) both}
+#loginScreen[data-ignite="b"] .crown-word i:after{animation:crnIgniteB 3s cubic-bezier(.16,.8,.3,1) calc(var(--i)*65ms) both}
+#loginScreen[data-ignite="still"] .crown-word i:after{opacity:.2}
+@keyframes crnIgniteA{0%{opacity:0;transform:translateY(.1em) scale(1.3);filter:blur(10px)}12%{opacity:1;transform:none;filter:blur(0)}40%{opacity:.75}100%{opacity:.18}}
+@keyframes crnIgniteB{0%{opacity:0;transform:translateY(.1em) scale(1.3);filter:blur(10px)}12%{opacity:1;transform:none;filter:blur(0)}40%{opacity:.75}100%{opacity:.18}}
+@keyframes crnShimmer{from{background-position:130% 0}to{background-position:-130% 0}}
+/* A crimson-gold flare sweeps under the title each time it ignites. */
+.crown-flare{position:absolute;z-index:2;left:-6%;right:-6%;bottom:-2px;height:3px;border-radius:3px;pointer-events:none;opacity:0;
+  background:linear-gradient(90deg,transparent,#e8263f 22%,#fff4dc 50%,#f2c35b 78%,transparent);box-shadow:0 0 18px 4px #ff7a3d99,0 0 44px 10px #e8263f40;transform:scaleX(.1)}
+#loginScreen[data-ignite="a"] .crown-flare{animation:crnFlareA 2.2s ease-out both}
+#loginScreen[data-ignite="b"] .crown-flare{animation:crnFlareB 2.2s ease-out both}
+#loginScreen[data-ignite="still"] .crown-flare{opacity:.45;transform:none}
+@keyframes crnFlareA{0%{opacity:0;transform:scaleX(.05)}18%{opacity:1;transform:scaleX(1)}100%{opacity:.4;transform:scaleX(1)}}
+@keyframes crnFlareB{0%{opacity:0;transform:scaleX(.05)}18%{opacity:1;transform:scaleX(1)}100%{opacity:.4;transform:scaleX(1)}}
+/* The sigil: a gold crown split by a crimson fracture, inside turning rings. */
+.crown-sigil{position:absolute;z-index:0;left:clamp(90px,14vw,220px);top:50%;width:clamp(210px,24vw,340px);aspect-ratio:1;transform:translate(-50%,-50%);pointer-events:none;opacity:.8}
+.crown-sigil i{position:absolute;inset:0;border-radius:50%}
+.crown-sigil i:nth-child(1){border:2px solid #f2c35b52;box-shadow:0 0 26px #ff7a3d2e,inset 0 0 26px #f2c35b21;background:repeating-conic-gradient(from 0deg,#f2c35b99 0 1.2deg,transparent 1.2deg 7.5deg);-webkit-mask:radial-gradient(circle,transparent 0 44%,#000 44.5% 49%,transparent 49.5%);mask:radial-gradient(circle,transparent 0 44%,#000 44.5% 49%,transparent 49.5%);animation:crnSpin 44s linear infinite}
+.crown-sigil i:nth-child(2){inset:13%;border:1px dashed #ff8a7a70;animation:crnSpin 28s linear infinite reverse}
+.crown-sigil i:nth-child(3){inset:30%;background:radial-gradient(circle,#ff4a3a66,#e8263f22 45%,transparent 70%);animation:crnPulse 4s ease-in-out infinite}
+.crown-sigil b{position:absolute;left:31%;top:31%;width:38%;height:38%;background:linear-gradient(180deg,#fff0c0,#f2c35b 45%,#a8661c);filter:drop-shadow(0 0 8px #ff9a3d88);opacity:.55;transition:transform .6s cubic-bezier(.2,.8,.2,1)}
+.crown-sigil b:nth-of-type(1){clip-path:polygon(8% 80%,8% 34%,26% 52%,36% 22%,50% 46%,46% 56%,52% 64%,47% 72%,50% 80%);transform:translate(-5%,2%) rotate(-8deg)}
+.crown-sigil b:nth-of-type(2){clip-path:polygon(50% 46%,64% 22%,74% 52%,92% 34%,92% 80%,50% 80%,47% 72%,52% 64%,46% 56%);transform:translate(6%,-1%) rotate(7deg)}
+#loginScreen[data-ignite="a"] .crown-sigil,#loginScreen[data-ignite="b"] .crown-sigil{animation:crnSigil 2.4s ease-out}
+#loginScreen[data-ignite="a"] .crown-sigil b:nth-of-type(1){animation:crnHalfL 2.4s ease-out}
+#loginScreen[data-ignite="b"] .crown-sigil b:nth-of-type(1){animation:crnHalfL2 2.4s ease-out}
+#loginScreen[data-ignite="a"] .crown-sigil b:nth-of-type(2){animation:crnHalfR 2.4s ease-out}
+#loginScreen[data-ignite="b"] .crown-sigil b:nth-of-type(2){animation:crnHalfR2 2.4s ease-out}
+@keyframes crnSigil{0%{opacity:.8;filter:none}15%{opacity:1;filter:brightness(2.2) drop-shadow(0 0 18px #ff7a3d)}100%{opacity:.8;filter:none}}
+@keyframes crnHalfL{0%{transform:translate(-5%,2%) rotate(-8deg)}14%{transform:translate(0,0) rotate(0)}100%{transform:translate(-5%,2%) rotate(-8deg)}}
+@keyframes crnHalfL2{0%{transform:translate(-5%,2%) rotate(-8deg)}14%{transform:translate(0,0) rotate(0)}100%{transform:translate(-5%,2%) rotate(-8deg)}}
+@keyframes crnHalfR{0%{transform:translate(6%,-1%) rotate(7deg)}14%{transform:translate(0,0) rotate(0)}100%{transform:translate(6%,-1%) rotate(7deg)}}
+@keyframes crnHalfR2{0%{transform:translate(6%,-1%) rotate(7deg)}14%{transform:translate(0,0) rotate(0)}100%{transform:translate(6%,-1%) rotate(7deg)}}
+@keyframes crnSpin{to{transform:rotate(360deg)}}
+@keyframes crnPulse{0%,100%{opacity:.5}50%{opacity:1}}
+.crown-tagline{margin:0 0 14px;max-width:560px;font:500 clamp(14px,1.3vw,18px)/1.5 system-ui,sans-serif;color:#f3e6d6;letter-spacing:.01em;text-shadow:0 2px 10px #000}
+/* The four new dungeons: tier, name and boss. The card on screen in the cinematic lights up. */
+.crown-roster{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 14px;padding:0;list-style:none;max-width:580px}
+.crown-roster li{--c:#f2c35b;position:relative;display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:9px;align-items:center;padding:8px 11px 8px 10px;border-radius:10px;
+  background:linear-gradient(100deg,color-mix(in srgb,var(--c) 14%,#120709e6),#0d0607d9 70%);border:1px solid color-mix(in srgb,var(--c) 30%,transparent);border-left:3px solid var(--c);
+  box-shadow:inset 0 1px 0 #ffffff0d;backdrop-filter:blur(4px);transition:transform .35s,box-shadow .35s,border-color .35s}
+.crown-roster em{grid-row:1/3;font:800 8.5px/1 system-ui,sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#140a06;background:var(--c);padding:5px 6px;border-radius:5px;writing-mode:horizontal-tb;box-shadow:0 0 12px color-mix(in srgb,var(--c) 45%,transparent)}
+.crown-roster span{font:700 12.5px/1.25 'Palatino Linotype','Book Antiqua',Georgia,serif;letter-spacing:.06em;color:#fbf2e4;text-shadow:0 1px 2px #000}
+.crown-roster small{font:500 11px/1.3 system-ui,sans-serif;color:color-mix(in srgb,var(--c) 70%,#fff);opacity:.9}
+.crown-roster .r-thorn{--c:#8fd46a}.crown-roster .r-ash{--c:#ff8a4c}.crown-roster .r-mirror{--c:#c7b8ff}.crown-roster .r-throne{--c:#ff4d5e}
+#loginScreen[data-shot="warren"] .r-thorn,#loginScreen[data-shot="colosseum"] .r-ash,#loginScreen[data-shot="mirror"] .r-mirror,
+#loginScreen[data-shot="crown"] .r-throne,#loginScreen[data-shot="king"] .r-throne,#loginScreen[data-shot="throne"] .r-throne{transform:translateY(-2px);border-color:var(--c);box-shadow:0 0 22px color-mix(in srgb,var(--c) 38%,transparent),inset 0 1px 0 #ffffff1a}
+.crown-chips{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none;max-width:600px}
+.crown-chips li{--c:#f2c35b;display:inline-flex;align-items:center;gap:7px;padding:7px 12px 7px 10px;border-radius:999px;font:650 12px/1 system-ui,sans-serif;letter-spacing:.03em;color:#fff6ea;
+  background:linear-gradient(180deg,#2a1014e0,#130709e0);border:1px solid color-mix(in srgb,var(--c) 45%,transparent);box-shadow:0 0 14px color-mix(in srgb,var(--c) 18%,transparent),inset 0 1px 0 #ffffff14;backdrop-filter:blur(4px);transition:transform .2s,box-shadow .3s}
+.crown-chips li:hover{transform:translateY(-2px);box-shadow:0 0 22px color-mix(in srgb,var(--c) 45%,transparent),inset 0 1px 0 #ffffff24}
+.crown-chips li:before{content:'';width:7px;height:7px;transform:rotate(45deg);background:var(--c);box-shadow:0 0 8px var(--c)}
+.crown-chips li:nth-child(1){--c:#f2c35b}.crown-chips li:nth-child(2){--c:#ffb14a;border-color:transparent;background:linear-gradient(180deg,#2a1014f0,#130709f0) padding-box,linear-gradient(90deg,#ff4d5e,#f2c35b,#fff1c8,#f2c35b,#ff4d5e) border-box}
+.crown-chips li:nth-child(3){--c:#ff7a3d}.crown-chips li:nth-child(4){--c:#ff4d5e}.crown-chips li:nth-child(5){--c:#b4bccb}
+.crown-chips li b{color:var(--crn-gold);font-weight:900}
+#loginScreen[data-shot="nova"] .crown-chips li:nth-child(2){transform:translateY(-2px);box-shadow:0 0 24px #ffb14a80,inset 0 1px 0 #ffffff24}
 
-/* Glass login card */
-#loginScreen.arcane-login .loginBox{width:min(380px,100%);flex:0 0 min(380px,100%);max-width:none;padding:26px 28px 22px;margin:0;border-radius:18px;text-align:center;color:#ece8ff;isolation:isolate;
-  background:linear-gradient(165deg,#241852e8 0%,#130d33f0 55%,#0b0820f4 100%);border:1px solid #5ff3ff40;clip-path:none;filter:none;
-  box-shadow:0 0 0 1px #9b6bff1f inset,0 0 36px #36d9ff29,0 0 90px #7d4dff26,0 30px 80px #000b;backdrop-filter:blur(12px) saturate(1.2);-webkit-backdrop-filter:blur(12px) saturate(1.2);
-  transform:translate3d(calc(var(--arc-mx)*5px),calc(var(--arc-my)*4px),0);transition:transform .25s linear}
-#loginScreen.arcane-login .loginBox:before{content:'';display:block;position:absolute;inset:-1px;height:auto;z-index:0;border:0;border-radius:inherit;padding:1px;box-shadow:none;pointer-events:none;
-  background:linear-gradient(120deg,#5ff3ff,#9b6bff 30%,transparent 48%,transparent 62%,#ffcf6b 82%,#5ff3ff) 0 0/300% 300%;
-  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);animation:arcEdge 9s ease-in-out infinite alternate}
-#loginScreen.arcane-login .loginBox:after{content:'';display:block;position:absolute;left:18%;right:18%;top:-1px;bottom:auto;height:1px;border:0;border-radius:0;z-index:0;background:linear-gradient(90deg,transparent,#dffcff,transparent);box-shadow:0 0 12px #5ff3ff;pointer-events:none}
-@keyframes arcEdge{from{background-position:0 0}to{background-position:100% 100%}}
-#loginScreen.arcane-login .loginBox>*{position:relative;z-index:1}
-.arcane-new{display:inline-block;margin:0 0 10px;padding:4px 11px;border-radius:999px;font:800 10px/1.2 system-ui,sans-serif;letter-spacing:.22em;color:#1a1003;background:linear-gradient(90deg,#ffcf6b,#fff0c2,#ffcf6b);box-shadow:0 0 18px #ffcf6b66;animation:arcPulse 3.2s ease-in-out infinite}
-#loginScreen.arcane-login .loginBox h1{margin:0;font:700 15px/1.3 'Palatino Linotype','Book Antiqua',Georgia,serif;letter-spacing:.42em;color:#f4f0ff;background:none;-webkit-text-fill-color:currentColor;text-shadow:0 0 14px #9b6bff99;filter:none}
-#loginScreen.arcane-login .tagline{margin:6px 0 18px;color:#b9b0e6;font:13px/1.55 system-ui,sans-serif}
-#loginScreen.arcane-login .hint{margin-top:10px;color:#8f86bd;font:11px/1.5 system-ui,sans-serif}
-#loginScreen.arcane-login .loginBox input{display:block;width:100%;margin:8px 0;padding:12px 14px;font-size:15px;color:#f5f2ff;background:#0a0719c7;border:1px solid #4a3d8a;border-radius:9px;box-shadow:inset 0 1px 4px #0008;transition:border-color .2s,box-shadow .2s}
-#loginScreen.arcane-login .loginBox input::placeholder{color:#8c83b8}
-#loginScreen.arcane-login .loginBox input:focus{border-color:#5ff3ff;box-shadow:0 0 0 3px #5ff3ff26,inset 0 1px 4px #0008}
-#loginScreen.arcane-login .loginBtns{gap:10px;margin-top:14px}
-#loginScreen.arcane-login .loginBtns button{position:relative;overflow:hidden;padding:12px;border-radius:9px;font:800 14px/1.1 system-ui,sans-serif;letter-spacing:.06em;cursor:pointer;transition:transform .12s,filter .2s,box-shadow .2s}
-#loginScreen.arcane-login .loginBtns button:first-child{color:#1f1303;border:0;background:linear-gradient(180deg,#ffe08c,#f0ac3a 60%,#d98d1f);box-shadow:0 6px 20px #f0ac3a47,inset 0 1px 0 #fff8}
-#loginScreen.arcane-login .loginBtns button:first-child:after{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 35%,#fff9 50%,transparent 65%) -150% 0/250% 100% no-repeat;animation:arcSheen 4.5s ease-in-out infinite;pointer-events:none}
-@keyframes arcSheen{0%,55%{background-position:-150% 0}100%{background-position:150% 0}}
-#loginScreen.arcane-login .loginBtns button:nth-child(2){color:#dffbff;background:linear-gradient(180deg,#221a4f,#15103a);border:1px solid #5ff3ff59;box-shadow:0 0 14px #5ff3ff1a}
-#loginScreen.arcane-login .loginBtns button:hover{filter:brightness(1.12);transform:translateY(-1px)}
-#loginScreen.arcane-login .loginBtns button:first-child:hover{box-shadow:0 8px 28px #f0ac3a80,inset 0 1px 0 #fff8}
-#loginScreen.arcane-login .loginBtns button:active{transform:translateY(0)}
-#loginScreen.arcane-login .msg{color:#ffb8a3}
-.arcane-rarity{margin:14px 0 0;font:700 10px/1.4 system-ui,sans-serif;letter-spacing:.2em;text-transform:uppercase;color:#a79fd0}
-.arcane-rarity span:first-child{color:#5eead4;text-shadow:0 0 10px #2dd4bf99}
-.arcane-rarity span:last-child{background:linear-gradient(90deg,#f472b6,#a78bfa,#38bdf8,#34d399,#fde047,#f472b6) 0 0/200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:arcShimmer 5s linear infinite;filter:drop-shadow(0 0 6px #a78bfa99)}
+/* Glass login card with a gold-and-crimson edge */
+#loginScreen.crown-login .loginBox{width:min(380px,100%);flex:0 0 min(380px,100%);max-width:none;padding:26px 28px 22px;margin:0;border-radius:18px;text-align:center;color:#f6ecdf;isolation:isolate;
+  background:linear-gradient(165deg,#2a1216ea 0%,#170a0cf2 55%,#0c0607f6 100%);border:1px solid #f2c35b3d;clip-path:none;filter:none;
+  box-shadow:0 0 0 1px #e8263f1c inset,0 0 36px #ff7a3d24,0 0 90px #e8263f1f,0 30px 80px #000b;backdrop-filter:blur(12px) saturate(1.15);-webkit-backdrop-filter:blur(12px) saturate(1.15);
+  transform:translate3d(calc(var(--crn-mx)*5px),calc(var(--crn-my)*4px),0);transition:transform .25s linear}
+#loginScreen.crown-login .loginBox:before{content:'';display:block;position:absolute;inset:-1px;height:auto;z-index:0;border:0;border-radius:inherit;padding:1px;box-shadow:none;pointer-events:none;
+  background:linear-gradient(120deg,#f2c35b,#e8263f 30%,transparent 48%,transparent 62%,#ffe7a3 82%,#f2c35b) 0 0/300% 300%;
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);animation:crnEdge 9s ease-in-out infinite alternate}
+#loginScreen.crown-login .loginBox:after{content:'';display:block;position:absolute;left:18%;right:18%;top:-1px;bottom:auto;height:1px;border:0;border-radius:0;z-index:0;background:linear-gradient(90deg,transparent,#fff1c8,transparent);box-shadow:0 0 12px #f2c35b;pointer-events:none}
+@keyframes crnEdge{from{background-position:0 0}to{background-position:100% 100%}}
+#loginScreen.crown-login .loginBox>*{position:relative;z-index:1}
+.crown-new{display:inline-block;margin:0 0 10px;padding:4px 11px;border-radius:999px;font:800 10px/1.2 system-ui,sans-serif;letter-spacing:.22em;color:#1a0b03;background:linear-gradient(90deg,#f2c35b,#fff1c8,#f2c35b);box-shadow:0 0 18px #f2c35b66;animation:crnPulse 3.2s ease-in-out infinite}
+#loginScreen.crown-login .loginBox h1{margin:0;font:700 15px/1.3 'Palatino Linotype','Book Antiqua',Georgia,serif;letter-spacing:.42em;color:#fbf3e6;background:none;-webkit-text-fill-color:currentColor;text-shadow:0 0 14px #ff7a3d88;filter:none}
+#loginScreen.crown-login .tagline{margin:6px 0 18px;color:#dcc6b0;font:13px/1.55 system-ui,sans-serif}
+#loginScreen.crown-login .hint{margin-top:10px;color:#a48f7e;font:11px/1.5 system-ui,sans-serif}
+#loginScreen.crown-login .loginBox input{display:block;width:100%;margin:8px 0;padding:12px 14px;font-size:15px;color:#fff8ef;background:#0d0607cc;border:1px solid #6a3a2c;border-radius:9px;box-shadow:inset 0 1px 4px #0008;transition:border-color .2s,box-shadow .2s}
+#loginScreen.crown-login .loginBox input::placeholder{color:#a88f7c}
+#loginScreen.crown-login .loginBox input:focus{border-color:var(--crn-gold);box-shadow:0 0 0 3px #f2c35b2e,inset 0 1px 4px #0008}
+#loginScreen.crown-login .loginBtns{gap:10px;margin-top:14px}
+#loginScreen.crown-login .loginBtns button{position:relative;overflow:hidden;padding:12px;border-radius:9px;font:800 14px/1.1 system-ui,sans-serif;letter-spacing:.06em;cursor:pointer;transition:transform .12s,filter .2s,box-shadow .2s}
+#loginScreen.crown-login .loginBtns button:first-child{color:#1f0f03;border:0;background:linear-gradient(180deg,#ffe39a,#f0b13f 60%,#d48a1e);box-shadow:0 6px 20px #f0b13f47,inset 0 1px 0 #fff8}
+#loginScreen.crown-login .loginBtns button:first-child:after{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 35%,#fff9 50%,transparent 65%) -150% 0/250% 100% no-repeat;animation:crnSheen 4.5s ease-in-out infinite;pointer-events:none}
+@keyframes crnSheen{0%,55%{background-position:-150% 0}100%{background-position:150% 0}}
+#loginScreen.crown-login .loginBtns button:nth-child(2){color:#fde9e4;background:linear-gradient(180deg,#3a141b,#220a0f);border:1px solid #e8263f73;box-shadow:0 0 14px #e8263f1f}
+#loginScreen.crown-login .loginBtns button:hover{filter:brightness(1.12);transform:translateY(-1px)}
+#loginScreen.crown-login .loginBtns button:first-child:hover{box-shadow:0 8px 28px #f0b13f80,inset 0 1px 0 #fff8}
+#loginScreen.crown-login .loginBtns button:active{transform:translateY(0)}
+#loginScreen.crown-login .loginBtns button:focus-visible{outline:2px solid #fff1c8;outline-offset:2px}
+#loginScreen.crown-login .msg{color:#ffb4a3}
+.crown-arts{margin:14px 0 0;font:700 9.5px/1.7 system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#a48f7e}
+.crown-arts span{color:#ffd48a;text-shadow:0 0 10px #ff9a3d66;white-space:nowrap}
+.crown-arts span:nth-child(2n){color:#ff8f86;text-shadow:0 0 10px #e8263f66}
+.crown-arts span:last-child{background:linear-gradient(90deg,#ff4d5e,#f2c35b,#fff1c8,#f2c35b,#ff4d5e) 0 0/200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:crnShimmer 5s linear infinite;filter:drop-shadow(0 0 6px #ff9a3d99);text-shadow:none}
+
+/* Cinematic lower third, in step with the realm on screen. */
+.crown-caption{position:fixed;left:50%;bottom:clamp(14px,3.2vh,34px);width:min(560px,60vw);height:44px;transform:translateX(-50%);z-index:2;pointer-events:none;text-align:center}
+.crown-caption p{position:absolute;inset:0;margin:0;display:flex;flex-direction:column;align-items:center;gap:4px;opacity:0;transform:translateY(6px);transition:opacity .3s ease,transform .3s ease}
+.crown-caption b{display:inline-flex;align-items:center;gap:14px;font:700 12px/1 'Palatino Linotype','Book Antiqua',Georgia,serif;letter-spacing:.42em;text-transform:uppercase;color:#ffe3a8;text-shadow:0 0 14px #ff7a3d99,0 1px 2px #000}
+.crown-caption b:before,.crown-caption b:after{content:'';width:46px;height:1px;background:linear-gradient(90deg,transparent,#f2c35b)}
+.crown-caption b:after{background:linear-gradient(90deg,#f2c35b,transparent)}
+.crown-caption span{font:italic 500 12px/1.2 Georgia,serif;letter-spacing:.06em;color:#e9d9c6;text-shadow:0 1px 3px #000}
+#titleBg.ready~.crown-caption p{transition-delay:0s}
+#loginScreen[data-shot="crown"] #titleBg.ready~.crown-caption [data-for="crown"],#loginScreen[data-shot="colosseum"] #titleBg.ready~.crown-caption [data-for="colosseum"],
+#loginScreen[data-shot="warren"] #titleBg.ready~.crown-caption [data-for="warren"],#loginScreen[data-shot="mirror"] #titleBg.ready~.crown-caption [data-for="mirror"],
+#loginScreen[data-shot="king"] #titleBg.ready~.crown-caption [data-for="king"],#loginScreen[data-shot="nova"] #titleBg.ready~.crown-caption [data-for="nova"],
+#loginScreen[data-shot="throne"] #titleBg.ready~.crown-caption [data-for="throne"]{opacity:1;transform:none;transition:opacity .9s ease .45s,transform .9s ease .45s}
 
 /* No WebGL: the static backdrop gets a slow living glow instead. */
-#loginScreen.arcane-login.arcane-static:before{animation:arcPulse 6s ease-in-out infinite}
+#loginScreen.crown-login.crown-static:before{animation:crnPulse 6s ease-in-out infinite}
 
 @media(max-width:820px){
-  #loginScreen.arcane-login{padding:22px 16px 26px}
-  #loginScreen.arcane-login:before{background:linear-gradient(#06041280,#06041233 40%,#06041299),radial-gradient(ellipse at 50% 40%,transparent 45%,#03020899 100%)}
-  #loginScreen.arcane-login .loginStack{flex-direction:column;align-items:stretch;justify-content:center;gap:20px;max-width:440px}
-  .arcane-brand{flex:none;text-align:center;filter:drop-shadow(0 6px 14px #000c);transform:none}
-  .arcane-eyebrow{font-size:9.5px;letter-spacing:.24em;gap:8px}.arcane-eyebrow:before{display:none}
-  .arcane-title-wrap{margin:10px 0 8px}
-  .arcane-title{font-size:clamp(36px,11.5vw,60px);letter-spacing:.02em}
-  .arcane-sigil{left:50%;width:min(62vw,250px)}
-  .arcane-tagline{margin-bottom:10px;font-size:14px}
-  .arcane-roster{justify-content:center;gap:4px 12px;font-size:9.5px;letter-spacing:.14em;margin-bottom:12px}
-  .arcane-chips{justify-content:center;gap:6px}
-  .arcane-chips li{font-size:11px;padding:6px 10px 6px 8px}
-  #loginScreen.arcane-login .loginBox{width:100%;flex:none;padding:20px 18px 16px;transform:none}
-  #loginScreen.arcane-login .loginBox input{font-size:16px}
+  #loginScreen.crown-login{padding:18px 14px 20px;align-items:flex-start}
+  #loginScreen.crown-login:before{background:linear-gradient(#07030580,#07030533 40%,#070305a8),radial-gradient(ellipse at 50% 40%,transparent 45%,#03010299 100%)}
+  #loginScreen.crown-login .loginStack{flex-direction:column;align-items:stretch;justify-content:center;gap:16px;max-width:440px}
+  .crown-brand{flex:none;text-align:center;filter:drop-shadow(0 6px 14px #000c);transform:none}
+  .crown-eyebrow{font-size:9.5px;letter-spacing:.24em;gap:8px}.crown-eyebrow:before{display:none}
+  .crown-title-wrap{margin:8px 0 6px}
+  .crown-title{font-size:clamp(34px,10.4vw,58px);letter-spacing:.02em}
+  .crown-sigil{left:50%;width:min(58vw,230px)}
+  .crown-tagline{margin:0 auto 10px;font-size:13.5px}
+  .crown-roster{gap:6px;margin:0 auto 10px}
+  .crown-roster li{padding:6px 8px;column-gap:7px;text-align:left}
+  .crown-roster em{font-size:7.5px;padding:4px 5px}
+  .crown-roster span{font-size:11px}
+  .crown-roster small{font-size:9.5px}
+  .crown-chips{justify-content:center;gap:6px;margin:0 auto}
+  .crown-chips li{font-size:11px;padding:6px 10px 6px 8px}
+  #loginScreen.crown-login .loginBox{width:100%;flex:none;padding:18px 18px 14px;transform:none}
+  #loginScreen.crown-login .loginBox input{font-size:16px;padding:11px 13px;margin:6px 0}
+  #loginScreen.crown-login .tagline{margin:4px 0 12px}
+  .crown-caption{display:none}
 }
-@media(max-height:560px) and (min-width:821px){.arcane-chips,.arcane-roster{display:none}.arcane-title{font-size:clamp(40px,5.4vw,72px)}}
+/* Short phones: the login form always fits without scrolling (the shell pins scroll to the top). */
+@media(max-width:820px) and (max-height:900px){.crown-chips li:nth-child(n+4){display:none}}
+@media(max-width:820px) and (max-height:780px){.crown-chips,.crown-arts{display:none}.crown-roster small{display:none}.crown-new{margin-bottom:6px}#loginScreen.crown-login{padding-top:12px;padding-bottom:10px}#loginScreen.crown-login .loginStack{gap:10px}.crown-tagline{margin-bottom:6px}.crown-roster{margin-bottom:4px}}
+@media(max-width:820px) and (max-height:640px){.crown-roster,.crown-tagline{display:none}}
+@media(max-height:560px) and (min-width:821px){.crown-chips,.crown-roster,.crown-arts,.crown-tagline,#loginScreen.crown-login .tagline{display:none}.crown-title{font-size:clamp(40px,5.4vw,72px)}#loginScreen.crown-login{padding:10px 4vw}#loginScreen.crown-login .loginBox{padding:12px 20px 10px}#loginScreen.crown-login .loginBox input{margin:5px 0;padding:9px 12px}#loginScreen.crown-login .loginBtns{margin-top:8px}.crown-new{margin-bottom:4px}#loginScreen.crown-login .hint{margin-top:6px}}
+@media(max-height:700px) and (min-width:821px),(max-width:1100px) and (min-width:821px){.crown-caption{display:none}}
 @media(prefers-reduced-motion:reduce){
-  #loginScreen.arcane-login #titleBg{transition:none}
-  .arcane-motes,#loginScreen.arcane-login .arcane-title,.arcane-sigil,.arcane-sigil i,.arcane-new,#loginScreen.arcane-login .loginBox:before,#loginScreen.arcane-login.arcane-static:before,.arcane-word i:after,.arcane-flare,.arcane-rarity span,#loginScreen.arcane-login .loginBtns button:first-child:after{animation:none!important}
-  .arcane-motes{display:none}
-  .arcane-word i:after{opacity:.2}
-  .arcane-brand,#loginScreen.arcane-login .loginBox{transform:none;transition:none}
+  #loginScreen.crown-login #titleBg{transition:none}
+  .crown-embers,#loginScreen.crown-login .crown-title,.crown-sigil,.crown-sigil i,.crown-sigil b,.crown-new,#loginScreen.crown-login .loginBox:before,#loginScreen.crown-login.crown-static:before,.crown-word i:after,.crown-flare,.crown-arts span,#loginScreen.crown-login .loginBtns button:first-child:after{animation:none!important}
+  .crown-embers{display:none}
+  .crown-word i:after{opacity:.2}
+  .crown-brand,#loginScreen.crown-login .loginBox,.crown-roster li,.crown-caption p{transform:none;transition:none}
 }
-/* ===== END ARCANE DEPTHS LOGIN ===== */
+/* ===== END SUNDERED CROWN LOGIN ===== */
 
 /* ===== ARCANE DEPTHS UI ===== */
 /* --- AD-UI run HUD --- */

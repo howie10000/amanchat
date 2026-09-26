@@ -21,7 +21,7 @@ const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const scripts = [...html.matchAll(/<script[^>]*\ssrc="([^"?]+)(?:\?[^"]*)?"/g)].map(m => m[1])
   .filter(s => !/vendor\//.test(s)); // third-party bundles are UMD/IIFE
 // Scripts loaded later into the same page (js/sea-assets.js injects them).
-for (const lazy of ["js/dungeon-title.js"]) if (fs.existsSync(path.join(root, lazy)) && !scripts.includes(lazy)) scripts.push(lazy);
+for (const lazy of ["js/crown-title.js"]) if (fs.existsSync(path.join(root, lazy)) && !scripts.includes(lazy)) scripts.push(lazy);
 
 // Pre-existing duplicates with byte-identical bodies (harmless, not ours to
 // touch). Anything else is a failure.
