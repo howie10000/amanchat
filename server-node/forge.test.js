@@ -162,7 +162,7 @@ function seedFor(pred) {
 
         console.log('the delver panel');
         r = await boss.try('delver', { action: 'status' });
-        assert(r.ok && r.data.rank === 1 && r.data.perks.length === ECON.DELVER_PERKS.length && r.data.codexPages.length === 7, 'delver status: rank, perks, codex pages');
+        assert(r.ok && r.data.rank === 1 && r.data.perks.length === ECON.DELVER_PERKS.length && r.data.codexPages.length === ECON.GUILD_DUNGEON_ORDER.length + ECON.CROWN_DUNGEON_ORDER.length, 'delver status: rank, perks, codex pages (the 7 story tiers + the 4 Crown tiers)');
         r = await boss.try('delver', { action: 'set_title', title: 'The Unending' });
         assert(!r.ok && /earned/.test(r.err), 'an unearned title is refused');
         r = await boss.try('delver', { action: 'codex_page', tier: 'guild_crypt' });
