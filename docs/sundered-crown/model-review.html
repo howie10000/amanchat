@@ -1,0 +1,66 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Dungeon model review</title>
+<style>
+body{margin:0;background:#0d0b12;color:#e7e5e4;font:12px Georgia;overflow:hidden}
+nav{position:fixed;left:0;top:0;right:0;padding:6px;background:rgba(10,8,14,.85);z-index:2;display:flex;flex-wrap:wrap;gap:4px}
+button{background:#1a1726;color:#fde68a;border:1px solid #4c3d6b;padding:4px 8px;cursor:pointer;font:12px Georgia}
+button.on{background:#7f1d1d;border-color:#fda4af}
+#info{position:fixed;left:8px;bottom:8px;white-space:pre;color:#a8a29e}
+canvas{display:block}
+</style></head><body>
+<nav id="chars"></nav><nav id="clips" style="top:34px"></nav><nav id="weps" style="top:68px"></nav>
+<div id="info"></div>
+<script src="../../js/vendor/three.min.js"></script>
+<script>
+/* Live check of js/dungeon-models.js through the real runtime (js/dungeon-skin.js): pick a character,
+   a clip and (for the hero) a weapon; drag to orbit, wheel to zoom. Hash: #id=kael&clip=idle&yaw=30&t=0.5&weapon=sword&shot=1
+   t=<seconds> freezes the clip at that time (screenshots); without it the clip plays with a 0.25 s cross-fade. */
+const P=Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
+function load(src){return new Promise((ok,no)=>{const s=document.createElement('script');s.src=src+'?v='+Date.now();s.onload=ok;s.onerror=no;document.head.appendChild(s);});}
+(async()=>{
+  await load('../../js/dungeon-models.js');await load('../../js/dungeon-skin.js');
+  const W=innerWidth,H=innerHeight;
+  const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(W,H);renderer.setPixelRatio(Math.min(2,devicePixelRatio));
+  renderer.outputEncoding=THREE.LinearEncoding;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.shadowMap.enabled=true;
+  document.body.appendChild(renderer.domElement);
+  const scene=new THREE.Scene();scene.background=new THREE.Color(0x221e28);
+  const cam=new THREE.PerspectiveCamera(40,W/H,.05,500);
+  scene.add(new THREE.HemisphereLight(0xbfb6d6,0x2a2018,.9));
+  const key=new THREE.DirectionalLight(0xffe2c0,1.6);key.position.set(3,6,5);key.castShadow=true;key.shadow.mapSize.set(2048,2048);scene.add(key);
+  const rim=new THREE.DirectionalLight(0x9fb8ff,.8);rim.position.set(-4,4,-5);scene.add(rim);
+  const floor=new THREE.Mesh(new THREE.CircleGeometry(40,48),new THREE.MeshStandardMaterial({color:0x3a3530,roughness:.95}));floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);
+  let id=P.id||'hero',clip=P.clip||'idle',weapon=P.weapon||'sword',actor=null,yaw=+(P.yaw||25),pitch=+(P.pitch||8),dist=0;
+  const btn=(parent,text,on,fn)=>{const b=document.createElement('button');b.textContent=text;if(on)b.className='on';b.onclick=fn;parent.append(b);};
+  function ui(){
+    const C=document.getElementById('chars');C.innerHTML='';for(const c of DungeonSkin.characters())btn(C,c,c===id,()=>{id=c;clip='idle';make();});
+    const K=document.getElementById('clips');K.innerHTML='';for(const c of actor.clips)btn(K,c,c===clip,()=>{clip=c;actor.play(clip,.25);ui();});
+    const Wp=document.getElementById('weps');Wp.innerHTML='';if(id==='hero')for(const k of DungeonSkin.weaponKinds())btn(Wp,k,k===weapon,()=>{weapon=k;actor.setWeapon(k);ui();});
+    if(P.shot)for(const n of document.querySelectorAll('nav'))n.style.display='none';
+  }
+  function make(){
+    if(actor)actor.dispose();
+    actor=DungeonSkin.create(id,{});scene.add(actor.root);
+    if(id==='hero')actor.setWeapon(weapon);
+    dist=dist||actor.height*2.3;
+    if(!actor.has(clip))clip='idle';
+    if(P.t==null)actor.play(clip,0);
+    ui();
+    const m=DungeonSkin.meta(id);
+    document.getElementById('info').textContent=`${id}  height ${actor.height.toFixed(2)} m  bones ${actor.skeleton.bones.length}  tris ${(actor.mesh.geometry.index.count/3)|0}  clips ${actor.clips.length}  materials ${actor.mesh.material.length}`;
+  }
+  make();
+  let drag=null;addEventListener('pointerdown',e=>drag={x:e.clientX,y:e.clientY});addEventListener('pointerup',()=>drag=null);
+  addEventListener('pointermove',e=>{if(!drag)return;yaw-=(e.clientX-drag.x)*.4;pitch=Math.max(-10,Math.min(70,pitch+(e.clientY-drag.y)*.3));drag={x:e.clientX,y:e.clientY};});
+  addEventListener('wheel',e=>{dist*=e.deltaY>0?1.1:.9;});
+  let last=performance.now();
+  function frame(now){
+    const dt=Math.min(.05,(now-last)/1000);last=now;
+    if(P.t!=null)actor.pose([[clip,+P.t,1]]);else actor.update(dt);
+    const a=yaw*Math.PI/180,b=pitch*Math.PI/180,h=actor.height*.5;
+    cam.position.set(Math.sin(a)*Math.cos(b)*dist,h+Math.sin(b)*dist,Math.cos(a)*Math.cos(b)*dist);cam.lookAt(0,h,0);
+    renderer.render(scene,cam);requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  window.__review={actor:()=>actor};
+})();
+</script></body></html>
