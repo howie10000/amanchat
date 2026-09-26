@@ -26,7 +26,7 @@ function fmtMs(ms) {
   const s = Math.floor(ms / 1000);
   return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
 }
-const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
 // THE ARCANE DEPTHS shared module. index.html loads it before this file, but a
 // page without it must still render the old screens.
 const depthsMod = () => (typeof window !== "undefined" && window.DEPTHS) || null;
@@ -414,7 +414,7 @@ async function research(node) {
 function trophyHallHtml(g) {
   const T = ECON.TROPHY_TIERS || [];
   const tro = g.trophies || {};
-  const ids = [].concat(ECON.GUILD_BOSS_ORDER || [], ECON.GUILD_MINIS || [], ECON.GUILD_SPECIAL_BOSSES || [])
+  const ids = [].concat(ECON.GUILD_BOSS_ORDER || [], ECON.GUILD_MINIS || [], ECON.CROWN_BOSS_ORDER || [], ECON.CROWN_MINIS || [], ECON.GUILD_SPECIAL_BOSSES || [])
     .filter((id, i, a) => a.indexOf(id) === i && ECON.GUILD_BOSSES[id]);
   let html = `<p>Every boss your guild fells is counted here. Bronze at ${(T[0] || {}).kills || 25} kills, Silver at ${(T[1] || {}).kills || 100}, Gold at ${(T[2] || {}).kills || 400} — and <b>Arcane</b> for a clear at delve ${(T[3] || {}).delve || 15} or deeper. Each trophy tier adds +1% material find in that boss's dungeon for every member.</p>
     <div class="adTrophyGrid">`;
@@ -539,7 +539,7 @@ function recTable(list, kind, title) {
 }
 function recordsHtml(res, tab, tier) {
   res = res || {};
-  const order = ECON.GUILD_DUNGEON_ORDER.concat(["raid_nexus"]).filter(k => ECON.GUILD_DUNGEONS[k]);
+  const order = storyLadder().concat(["raid_nexus"]).filter(k => ECON.GUILD_DUNGEONS[k]);
   tier = tier && order.indexOf(tier) >= 0 ? tier : order[0];
   let html = `<div class="adChoice">
     <button class="menuBtn ${tab === "all" ? "gold" : ""}" onclick="gameGuild.openRecords('all')">ALL-TIME</button>
@@ -607,6 +607,8 @@ const LEADER_FAQ = [
     `Every ${ECON.GUILD_DUNGEONS_PER_POINT} guild dungeon clears earns the guild one skill point. Only the Master can spend it, on a mastery track that then trains faster for every member — not just whoever cleared the run. Once every skill is maxed, further points become research points.` },
   { q: "How do ranks work?", a: () =>
     `Master outranks Officer outranks Member. Only the Master can change tax and interest rates, spend skill points, or hand off the guild. Officers can invite and kick same as the Master, but can't touch a peer's rank or the guild's settings.` },
+  { q: "What is the Sundered Crown?", a: () =>
+    `Four new dungeons woven into the ladder. The Thornwild Warren is open from the start (item level 4): its beast, Gorehorn, charges — bait him into a pillar and he is stunned. The Ashen Colosseum opens after The Hollow Throne (item level 7): Kael is a duelist who runs, dashes, guards and ripostes — never strike his raised guard. The Mirror Court opens after The Rimeveil Abyss and The Sundered Throne after the Mirror Court (item levels 11 and 12): twin monarchs who must fall together, and a king who changes form. Their bosses drop Crown Arts — abilities you bind to F and C — and crown shards to forge them stronger. The older dungeons drop the odd art too.` },
   { q: "How much does founding or rebranding cost?", a: () =>
     `Chartering a new guild runs ${money(ECON.GUILD_CREATE_COST)}. Once you have one, the Master can rebrand it — a new name costs ${money(ECON.GUILD_RENAME_COST)}, a new tag costs ${money(ECON.GUILD_TAG_CHANGE_COST)}, charged separately since you might only want one.` },
 ];
@@ -843,6 +845,30 @@ async function declineParty(id) {
 let depthsInfo = null;          // last depths_info reply (merged over local rows)
 const delvePick = {};           // tier -> chosen delve level in the picker
 
+// THE SUNDERED CROWN: every story tier in difficulty order (ECON.STORY_LADDER,
+// 11 tiers); an older ECON only has the frozen seven.
+function storyLadder() { return (ECON.STORY_LADDER || ECON.GUILD_DUNGEON_ORDER).slice(); }
+const SC_ARCH = { beast: ["BEAST", "Bait its charges into the pillars"], duelist: ["DUELIST", "A swordsman who moves, guards and ripostes"],
+  twins: ["TWINS", "Two linked bodies — strike the exposed one"], multiform: ["MULTI-FORM", "Changes shape as it falls"],
+  parts: ["CLASSIC", "Break its weak points, then the head"] };
+function scArchBadge(id) {
+  const k = ECON.bossArchetype ? ECON.bossArchetype(id) : "parts";
+  const a = SC_ARCH[k] || SC_ARCH.parts;
+  return `<span class="scArch a-${esc(k)}" title="${esc(a[1])}">${a[0]}</span>`;
+}
+// Early / mid / late — so every player can see which cards are for them.
+function scStage(cfg) {
+  const L = (cfg && cfg.gearLvl) | 0;
+  return L <= 4 ? ["EARLY", "early"] : L <= 8 ? ["MID", "mid"] : ["LATE", "late"];
+}
+function scArtChipsHtml(k) {
+  const list = window.gameArtsUI && gameArtsUI.artsForTier ? gameArtsUI.artsForTier(k) : [];
+  if (!list.length) return "";
+  const own = (window.gameArtsUI && gameArtsUI.state && gameArtsUI.state().own) || {};
+  return `<div class="scArtChips"><small>CROWN ARTS</small>${list.map(a => {
+    const d = window.CROWN && CROWN.ARTS[a.id]; if (!d) return "";
+    return `<span class="scArtChip r-${esc(d.rarity)}${own[a.id] ? " own" : ""}" title="${esc(d.name + " — " + d.desc + " (" + (a.p * 100).toFixed(a.p < 0.01 ? 1 : 0) + "% per clear)")}">${gIco("art", a.id, 16) || "♛"}${esc(d.name)}</span>`; }).join("")}</div>`;
+}
 function tierPurse(k) {
   const d = ECON.GUILD_DUNGEONS[k]; if (!d) return 0;
   const b = ECON.GUILD_BOSSES[d.boss], mi = d.mini ? ECON.GUILD_BOSSES[d.mini] : null;
@@ -856,7 +882,7 @@ function localDepthsInfo() {
   const rec = g.depths || { tiers: {} };
   const keystone = ((g.research || {}).keystone) | 0;
   const pathf = ((g.research || {}).pathfinders) | 0;
-  const keys = ECON.GUILD_DUNGEON_ORDER.concat(["raid_nexus", "arcane_depths"]).filter(k => ECON.GUILD_DUNGEONS[k]);
+  const keys = storyLadder().concat(["raid_nexus", "arcane_depths"]).filter(k => ECON.GUILD_DUNGEONS[k]);
   const tiers = keys.map(k => {
     const cfg = ECON.GUILD_DUNGEONS[k];
     const tr = (rec.tiers && rec.tiers[k]) || {};
@@ -955,13 +981,15 @@ function tierCardHtml(r, idx) {
   const pick = Math.min(maxD, delvePick[k] | 0);
   delvePick[k] = pick;
   const raidOnly = cfg.mode === "raid";
-  let html = `<div class="adTierCard ${unlocked ? "open" : "sealed"} ${raidOnly ? "raid" : ""}" style="${themeVars(k)}">
+  const stage = raidOnly ? null : scStage(cfg);
+  const bossId = r.boss || cfg.boss;
+  let html = `<div class="adTierCard ${unlocked ? "open" : "sealed"} ${raidOnly ? "raid" : ""}${cfg.crown ? " scCrownTier" : ""}" style="${themeVars(k)}">
     <div class="adRuneBorder" aria-hidden="true"></div>
     <div class="adTierNum">${gIco("tier", k, 44) || (raidOnly ? "⚝" : ROMAN[idx + 1] || idx + 1)}</div>
     <div class="adTierMain">
-      <div class="adTierTitle"><b>${esc(cfg.name || k)}</b> <span class="adGL">ITEM LV ${r.gearLvl || cfg.gearLvl || "?"}</span>${raidOnly ? ` <span class="adPriv open">RAID · ${r.raidMin || cfg.raidMin || 1}+</span>` : ""}</div>
+      <div class="adTierTitle"><b>${esc(cfg.name || k)}</b> <span class="adGL">ITEM LV ${r.gearLvl || cfg.gearLvl || "?"}</span>${stage ? ` <span class="scStage ${stage[1]}">${stage[0]}</span>` : ""}${cfg.crown ? ` <span class="scNew" title="The Sundered Crown">♛ NEW</span>` : ""}${raidOnly ? ` <span class="adPriv open">RAID · ${r.raidMin || cfg.raidMin || 1}+</span>` : r.raidable || cfg.raidable ? ` <span class="adPriv allies" title="Can be run as a multi-guild raid">RAIDABLE</span>` : ""}</div>
       <small class="adBlurb">${esc(cfg.blurb || "")}</small>
-      <div class="adFoes">${boss ? `<span class="adBoss" style="--c:${esc(boss.accent || "#fff")}">${gIco("boss", r.boss || cfg.boss, 18) || "☠"} ${esc(boss.name)}</span>` : ""}${minis.map((m, i) => `<span class="adMini" style="--c:${esc(m.accent || "#fff")}">${gIco("boss", miniIds[i], 18) || "◆"} ${esc(m.name)}</span>`).join("")}</div>
+      <div class="adFoes">${boss ? `<span class="adBoss" style="--c:${esc(boss.accent || "#fff")}">${gIco("boss", bossId, 18) || "☠"} ${esc(boss.name)} ${scArchBadge(bossId)}</span>` : ""}${minis.map((m, i) => `<span class="adMini" style="--c:${esc(m.accent || "#fff")}">${gIco("boss", miniIds[i], 18) || "◆"} ${esc(m.name)}${m.archetype ? " " + scArchBadge(miniIds[i]) : ""}</span>`).join("")}</div>
       <div class="adStats">
         <span><small>CLEARS</small><b>${r.clears | 0}</b></span>
         <span><small>BEST DELVE</small><b>${r.best | 0}</b></span>
@@ -969,7 +997,7 @@ function tierCardHtml(r, idx) {
         <span><small>PAR</small><b>${r.parMs ? fmtMs(r.parMs) : "—"}</b></span>
         <span><small>PURSE</small><b>${money(tierPurse(k))}</b></span>
       </div>
-      ${lootPreviewHtml(k)}`;
+      ${lootPreviewHtml(k)}${scArtChipsHtml(k)}`;
   if (!unlocked) {
     html += `<div class="adSeal">🜏 SEALED — ${sealedTo ? `until your guild clears <b>${esc(sealedTo)}</b>` : esc(r.lockedWhy || "not yet open to your guild")}</div>`;
   } else {
@@ -1025,7 +1053,7 @@ function dungeonsHtml(info, invites, rates) {
   const cut = rates && rates.dungeonCut != null ? rates.dungeonCut : ECON.GUILD_DUNGEON_CUT;
   let html = `<div class="adDepthsHero">
       <div class="adRunes" aria-hidden="true">ᚦᛖ · ᚨᚱᚲᚨᚾᛖ · ᛞᛖᛈᚦᛊ</div>
-      <p>Seven dungeons beneath the town, each sealed by something the quest board will not name. Every clear tithes <b>${pct(cut)}</b> to your treasury; the rest splits between everyone who landed a hit on the boss, and each of them rolls their own loot.</p>
+      <p>${["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"][storyLadder().length] || "The"} dungeons beneath the town, each sealed by something the quest board will not name. Every clear tithes <b>${pct(cut)}</b> to your treasury; the rest splits between everyone who landed a hit on the boss, and each of them rolls their own loot.</p>
       <p class="muted">More fighters means a sturdier boss — bring people who will actually swing. <a href="#" class="adLink" onclick="gameGear.openArmory();return false;">The Armory</a> is where you wear what you find.</p>
     </div>`;
   const list = info.affixes && info.affixes.list || [];
@@ -1050,14 +1078,20 @@ function dungeonsHtml(info, invites, rates) {
   html += `<div class="adRaidBanner" style="border-color:#fde68a">
       <div><b>✦ THE DELVER'S JOURNEY</b><br/><small>Your Path, this week's Great Vault and Challenge, Mythic Hunts and artifacts.</small></div>
       <button class="menuBtn gold" onclick="window.gameJourney?gameJourney.open('week'):toast('The Journey is not open yet.')">OPEN</button></div>`;
-  html += `<h3 class="section">THE SEVEN DUNGEONS</h3>
-    <p class="muted">Opening one makes you the party leader. Invite whoever you want from the guild, then start when everyone's in.</p><div class="adTierList">`;
+  if (window.CROWN && ECON.CROWN_DUNGEON_ORDER) {
+    html += `<div class="adRaidBanner scArtsBanner">
+      <div><b>♛ THE SUNDERED CROWN — CROWN ARTS</b><br/><small>Four new dungeons, four new kinds of boss fight, and abilities you bind to <b>F</b> and <b>C</b>. Rare arts drop in the older dungeons too.</small></div>
+      <button class="menuBtn gold" onclick="window.gameArtsUI?gameArtsUI.open():toast('The Crown Arts arrive with the update.')">CROWN ARTS</button></div>`;
+  }
   const story = (info.tiers || []).filter(r => (ECON.GUILD_DUNGEONS[r.key] || {}).mode !== "raid" && (ECON.GUILD_DUNGEONS[r.key] || {}).mode !== "endless");
+  const nStory = ["", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN", "ELEVEN", "TWELVE"][story.length] || String(story.length);
+  html += `<h3 class="section">THE ${nStory} DUNGEONS</h3>
+    <p class="muted">Easiest first. Opening one makes you the party leader. Invite whoever you want from the guild, then start when everyone's in.</p><div class="adTierList">`;
   story.forEach((r, i) => { html += tierCardHtml(r, i); });
-  html += `</div><h3 class="section">BEYOND THE SEVEN</h3><div class="adTierList">`;
+  html += `</div><h3 class="section">BEYOND THE ${nStory}</h3><div class="adTierList">`;
   html += endlessCardHtml(info);
   const nexus = (info.tiers || []).find(r => r.key === "raid_nexus");
-  if (nexus) html += tierCardHtml(nexus, 7);
+  if (nexus) html += tierCardHtml(nexus, story.length);
   html += `</div>`;
   return html;
 }

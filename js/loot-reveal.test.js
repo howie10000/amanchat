@@ -51,8 +51,32 @@ ok(LR.normalize([it("rare")]).items.length === 1, "bare array");
 ok(LR.normalize({ loot: [it("rare")] }, { chestTier: 9 }).chestTier === 3, "chest tier clamped");
 ok(LR.normalize(null).items.length === 0, "null result");
 
+// THE SUNDERED CROWN (B4): Crown Art cards after the gear
+env.CROWN = require("./shared/crown.js");
+const arts = [{ id: "sundering_strike", result: "new", rank: 1 }, { id: "war_cry", result: "rank", rank: 3 }, { id: "crown_nova", result: "melt", rank: 5, shards: 36 }, { id: "bogus" }];
+const pa = LR.plan([it("epic"), it("legendary")], { arts });
+const artSteps = pa.steps.filter(s => s.isArt);
+ok(artSteps.length === 3 && pa.steps.length === 5, "three art cards after two gear cards (unknown art ids dropped) " + pa.steps.length);
+ok(pa.steps.slice(0, 2).every(s => !s.isArt) && pa.steps.slice(2).every(s => s.isArt), "arts come after the gear");
+ok(artSteps[0].art.name === "Sundering Strike" && artSteps[0].rarity === "mythic" && artSteps[0].cine === 2, "mythic art gets the big beat");
+for (let i = 1; i < pa.steps.length; i++) ok(pa.steps[i].at === pa.steps[i - 1].at + pa.steps[i - 1].dur, "art timeline contiguous");
+ok(pa.total <= pa.cap, "art beats extend the cap instead of squeezing the gear");
+const gearOnly = LR.plan([it("epic"), it("legendary")]);
+ok(gearOnly.steps.every((s, i) => s.dur === pa.steps[i].dur), "gear timing unchanged by arts");
+ok(LR.artResultText(LR.normArts([arts[1]])[0]) === "RANK UP → 3" && /\+36 crown shards/.test(LR.artResultText(LR.normArts([arts[2]])[0])) && LR.artResultText(LR.normArts([arts[0]])[0]) === "NEW CROWN ART", "art result texts");
+ok(LR.normArts(null).length === 0 && LR.normArts([null, {}]).length === 0, "normArts tolerates junk");
+const na = LR.normalize({ arts, crownShards: 6, artPity: true });
+ok(na.arts.length === 4 && na.crownShards === 6 && na.artPity, "normalize keeps arts + shards");
+
 // no DOM here: show() resolves at once through announceLoot; empty resolves empty
 (async () => {
+  const artToasts = [];
+  env.toast = (t) => artToasts.push(t);
+  const ra = await LR.show({ loot: [], arts: [arts[0]], crownShards: 3 });
+  ok(ra.fallback === true && artToasts.some(t => /Sundering Strike/.test(t)), "arts alone are not 'empty': toasted without a DOM");
+  ok((await LR.show({ loot: [], crownShards: 2 })).fallback === true, "crown shards alone show the chest");
+  delete env.toast;
+  toasts.length = 0;
   const r1 = await LR.show({ loot: [it("legendary"), it("fine")] });
   ok(r1.fallback === true && toasts[0] === 2, "fallback to gameGear.announceLoot");
   const r2 = await LR.show({ loot: [] });

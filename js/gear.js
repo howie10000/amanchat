@@ -224,7 +224,11 @@ const AD_FX_LABEL = {
   execute: "Damage to wounded (<30%)", lifesteal: "Lifesteal", thorns: "Thorns", maxHpPct: "Max HP",
   moveSpeed: "Move speed", dashDist: "Dash distance", magicFind: "Magic find", matFind: "Material find",
   defPct: "Defence", atkPct: "Attack", critIgnite: "Crits ignite for extra damage",
+  // THE SUNDERED CROWN (S16)
+  staggerDmg: "Damage to staggered bosses", artPower: "Crown Art power",
 };
+// Reductions read as a minus: "-12% Dash cooldown", "-15% Crown Art cooldown".
+const AD_FX_CD = { dashCd: "Dash cooldown", artCd: "Crown Art cooldown" };
 // Human lines for any fx object (unique signature, set bonus, rune, totals).
 function adFxLines(fx, effective = false) {
   const out = [];
@@ -234,7 +238,7 @@ function adFxLines(fx, effective = false) {
     if (v == null || v === 0 || k === "sets") continue;
     if (AD_FX_LABEL[k] && typeof v === "number") out.push("+" + adPct(v) + " " + AD_FX_LABEL[k]);
     else if (k === "regen" && typeof v === "number") out.push("+" + (Math.round(v * 10) / 10) + " HP regen /s");
-    else if (k === "dashCd" && typeof v === "number") out.push("-" + adPct(v) + " Dash cooldown");
+    else if (AD_FX_CD[k] && typeof v === "number") out.push("-" + adPct(v) + " " + AD_FX_CD[k]);
     else if (k === "vaultExtraRoll" && typeof v === "number") out.push("+" + v + " extra roll from vault chests");
     else if (k === "takenMult" && typeof v === "number") { if (v < 1) out.push("Take " + adPct(1 - v) + " less damage"); }
     else if (k === "darkSight") { if (v) out.push("See clearly in the dark"); }
@@ -316,12 +320,12 @@ function adCompare(item) {
     const cur = gearEquippedItems();
     const next = cur.filter(it => it.slot !== item.slot).concat([item]);
     const f0 = ECON.gearFx(cur), f1 = ECON.gearFx(next);
-    for (const k of Object.keys(AD_FX_LABEL).concat(["regen", "dashCd"])) {
+    for (const k of Object.keys(AD_FX_LABEL).concat(["regen"], Object.keys(AD_FX_CD))) {
       const d = (+f1[k] || 0) - (+f0[k] || 0);
       if (Math.abs(d) < 1e-4) continue;
       const good = d > 0;
       const txt = k === "regen" ? (good ? "+" : "−") + (Math.round(Math.abs(d) * 10) / 10) + " regen/s"
-        : k === "dashCd" ? (good ? "−" : "+") + adPct(Math.abs(d)) + " dash cooldown"
+        : AD_FX_CD[k] ? (good ? "−" : "+") + adPct(Math.abs(d)) + " " + AD_FX_CD[k].toLowerCase()
         : (good ? "+" : "−") + adPct(Math.abs(d)) + " " + AD_FX_LABEL[k];
       parts.push(`<span class="${good ? "up" : "dn"}">${gEsc(txt)}</span>`);
     }
@@ -431,6 +435,7 @@ function armoryNav() {
     ${tab("gear", "ARMORY")}${tab("sets", "SETS")}${tab("lost", "LOST &amp; FOUND" + (lost ? ` <span class="adPill">${lost}</span>` : ""))}
     <span class="adNavGap"></span>
     <button class="menuBtn adNavForge" onclick="window.gameForge&&gameForge.open()">⚒ ARCANE FORGE</button>
+    <button class="menuBtn scNavArts" onclick="window.gameArtsUI?gameArtsUI.open():toast('The Crown Arts arrive with the update.')">♛ CROWN ARTS</button>
     <button class="menuBtn adNavCodex" onclick="window.gameCodex&&gameCodex.open('codex')">📖 CODEX</button>
     <button class="menuBtn adNavDelver" onclick="window.gameCodex&&gameCodex.open('delver')">✧ DELVER RANK</button>
   </div>`;

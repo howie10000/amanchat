@@ -2597,5 +2597,121 @@ body.dungeon-run-collapsed #adRunHud { display:none !important; }
 /* ===== SUNDERED CROWN UI ===== */
 /* --- SC run HUD --- */
 /* --- SC items & arts --- */
+/* B4: the Crown Arts panel (js/arts-ui.js), art chips, and the art card in the loot reveal.
+   Light on the GPU: no filters on large areas, one looping animation per visible card at most,
+   everything stops under prefers-reduced-motion. */
+.scArts{display:flex;flex-direction:column;gap:12px;color:#e2e8f0}
+.scArts kbd,.scSlot kbd{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:5px;font:800 11px/1 ui-monospace,Consolas,monospace;color:#1a1204;background:linear-gradient(180deg,#fde68a,#d97706);border:1px solid #78350f;box-shadow:0 2px 0 #78350f}
+.scHero{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px 14px;border-radius:14px;border:1px solid #a16207;
+  background:radial-gradient(120% 160% at 0% 0%,rgba(250,204,21,.18),transparent 55%),linear-gradient(135deg,#221507,#0b0704);box-shadow:inset 0 0 24px rgba(0,0,0,.45)}
+.scHero>div{flex:1 1 220px;display:flex;flex-direction:column;gap:3px}
+.scHero>.scCrown{flex:0 0 auto}
+img.ii.scSil{filter:grayscale(1) brightness(.45) contrast(1.2);opacity:.75}
+.scArt.none:hover img.ii.scSil{filter:grayscale(.6) brightness(.7)}
+.scHero b{font-size:17px;letter-spacing:.1em;color:#fef3c7;text-shadow:0 0 10px rgba(250,204,21,.6)}
+.scHero small{color:#e7d7b0}
+.scCrown{font-size:30px;line-height:1;color:#fde047;text-shadow:0 0 12px rgba(253,224,71,.8);animation:scBob 3.2s ease-in-out infinite}
+.scHave{font-size:12px;color:#fde68a}.scHave b{font-size:16px;color:#fff}
+@keyframes scBob{50%{transform:translateY(-3px)}}
+.scSlots{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.scSlot{position:relative;display:flex;align-items:center;gap:10px;min-height:64px;padding:8px 12px;border-radius:12px;cursor:pointer;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--ac) 22%,#0f0a14),#07060b);border:2px dashed #475569;transition:border-color .2s,transform .15s}
+.scSlot.full{border-style:solid;border-color:var(--ac);box-shadow:0 0 14px -4px var(--ac)}
+.scSlot.ready{border-color:#fde047;animation:scReady 1.1s ease-in-out infinite}
+.scSlot:hover{transform:translateY(-1px)}
+@keyframes scReady{50%{box-shadow:0 0 16px -2px #fde047}}
+.scSlotIco{flex:0 0 44px;height:44px;display:grid;place-items:center}
+.scSlotIco.empty{border-radius:10px;border:1px dashed #64748b;color:#94a3b8;font-size:22px}
+.scSlotTxt{display:flex;flex-direction:column;gap:3px;min-width:0}
+.scSlotTxt b{font-size:13px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scSlotTxt small{font-size:10px;color:#94a3b8}
+.scSlot kbd{position:absolute;top:-9px;left:-7px}
+.scX{position:absolute;top:4px;right:6px;width:22px;height:22px;border-radius:50%;border:1px solid #475569;background:#0f172a;color:#cbd5e1;font-weight:800;cursor:pointer;line-height:1}
+.scMain{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:12px;align-items:start}
+.scGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+.scArt{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 6px 9px;border-radius:12px;cursor:pointer;color:#e2e8f0;font:inherit;text-align:center;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--rc) 16%,#11101a),#08070d);border:1px solid color-mix(in srgb,var(--rc) 55%,transparent);transition:transform .15s,box-shadow .2s}
+.scArt:hover{transform:translateY(-2px);box-shadow:0 6px 16px -8px var(--rc)}
+.scArt.sel{border-color:#fde047;box-shadow:0 0 0 1px #fde047,0 0 16px -4px #fde047}
+.scArt.none{background:#0b0b10;border-style:dashed;opacity:.8}
+.scArt.none b{color:#94a3b8}
+.scArt b{font-size:12px;line-height:1.15}
+.scArt .scRar{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--rc)}
+.scArt.r-mythic.own{background:linear-gradient(180deg,rgba(232,121,249,.22),#12060f)}
+.scArt.r-mythic.own::after,.scArt.r-legendary.own::after{content:"";position:absolute;inset:-1px;border-radius:12px;pointer-events:none;
+  background:linear-gradient(110deg,transparent 40%,rgba(255,255,255,.18) 50%,transparent 60%) no-repeat;background-size:250% 100%;animation:scSheen 3.8s linear infinite}
+@keyframes scSheen{from{background-position:130% 0}to{background-position:-130% 0}}
+.scArtIco{width:56px;height:56px;display:grid;place-items:center}
+.scGlyph{font-size:30px;color:var(--ac,#fde047)}
+.scEqTag{position:absolute;top:5px;right:5px;padding:1px 5px;border-radius:4px;font:800 10px/1.4 ui-monospace,monospace;color:#1a1204;background:#fde047}
+.scPips{display:inline-flex;gap:3px}
+.scPips i{width:9px;height:9px;transform:rotate(45deg);border:1px solid #a16207;background:#1c1406}
+.scPips i.on{background:linear-gradient(135deg,#fef9c3,#eab308);box-shadow:0 0 5px rgba(250,204,21,.7)}
+.scDupe{display:block;width:80%;height:4px;border-radius:3px;background:#1e1b2e;overflow:hidden}
+.scDupe.big{width:100%;height:7px;margin-top:4px}
+.scDupe i{display:block;height:100%;background:linear-gradient(90deg,var(--ac,#fde047),#fde047);transition:width .5s}
+.scDetail{position:sticky;top:0;display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:14px;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--ac,#64748b) 14%,#0f0d17),#07060b);border:1px solid color-mix(in srgb,var(--rc,#64748b) 60%,transparent)}
+.scDetail.empty{position:static;border-style:dashed}
+.scDHead{display:flex;gap:10px;align-items:center}
+.scDHead>div{display:flex;flex-direction:column;gap:3px}
+.scDHead b{font-size:16px;color:#fff;text-shadow:0 0 8px var(--ac)}
+.scDHead small{color:#cbd5e1;font-size:12px}
+.scLines{margin:0;padding-left:16px;font-size:12px;color:#e2e8f0;display:flex;flex-direction:column;gap:2px}
+.scLines li:first-child{list-style:none;margin-left:-16px;color:var(--rc);font-weight:700;letter-spacing:.04em}
+.scLines .scNext{list-style:none;margin-left:-16px;color:#fde68a}
+.scEquipRow{display:flex;gap:6px;flex-wrap:wrap}
+.scRankBox{display:flex;flex-direction:column;gap:8px;padding:9px 10px;border-radius:10px;background:rgba(0,0,0,.35);border:1px solid #3f2f0a}
+.scRankBox b{color:#fef3c7}.scRankBox small{color:#cbd5e1;font-size:11px}
+.scRankBox.max{border-color:#a16207;text-align:center}
+.scForge{display:flex;flex-direction:column;gap:5px}
+.scArts .menuBtn:disabled{opacity:.45;filter:grayscale(.7);cursor:not-allowed}
+.scSrc{display:flex;flex-direction:column;gap:3px;font-size:12px}
+.scSrc span{display:flex;align-items:center;gap:5px}.scSrc small{color:#94a3b8}
+.scNavArts{background:linear-gradient(180deg,#a16207,#713f12);color:#fef9c3}
+.scArtChips{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;margin-top:4px}
+.scArtChips>small{font-size:9px;font-weight:800;letter-spacing:.14em;color:#fde68a}
+.scArtChip{display:inline-flex;align-items:center;gap:4px;padding:1px 7px 1px 3px;border-radius:999px;font-size:11px;color:#f8fafc;background:rgba(0,0,0,.35);border:1px solid #3b82f6}
+.scArtChip small{color:#cbd5e1}
+.scArtChip.r-epic{border-color:#a855f7}.scArtChip.r-legendary{border-color:#fbbf24}.scArtChip.r-mythic{border-color:#e879f9;box-shadow:0 0 8px -3px #e879f9}
+.scArtChip.own::after{content:"✓";color:#86efac;font-weight:800;margin-left:2px}
+.scArtChip img.ii{width:16px;height:16px}
+.scArch{display:inline-block;padding:0 5px;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:.1em;vertical-align:middle;color:#0b0b12;background:#94a3b8;text-shadow:none}
+.scArch.a-beast{background:#f59e0b}.scArch.a-duelist{background:#fda4af}.scArch.a-twins{background:linear-gradient(90deg,#fde68a 50%,#a5b4fc 50%)}.scArch.a-multiform{background:#fde047}
+/* loot reveal: the Crown Art card */
+.scRvArt .scRvBack{background:radial-gradient(circle at 50% 45%,#3b2a06,#0f0a02 70%);border-color:#eab308;box-shadow:0 0 18px -2px #eab308}
+.scRvArt .scRvBack span{font-size:40px;color:#fde047;text-shadow:0 0 14px #fde047}
+.scRvArt .adRvBeam{background:linear-gradient(0deg,#fde047,var(--ac),transparent)}
+.scRvFace{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;padding:10px 10px 12px;border-radius:10px;min-height:150px;
+  background:radial-gradient(120% 80% at 50% 0%,color-mix(in srgb,var(--ac) 35%,transparent),transparent 70%),linear-gradient(180deg,#1b1406,#0a0703);border:2px solid #eab308;box-shadow:0 0 18px -3px var(--ac)}
+.scRvFace b{font-size:15px;color:#fff;text-shadow:0 0 10px var(--ac)}
+.scRvKind{font-size:9px;font-weight:800;letter-spacing:.2em;color:#fde68a}
+.scRvIco{width:72px;height:72px;display:grid;place-items:center}
+.scRvRes{font-size:11px;font-weight:800;letter-spacing:.06em;color:#fde047}
+.res-new .scRvRes{color:#86efac}.res-melt .scRvRes{color:#fdba74}
+.scRvHalo{position:absolute;left:50%;top:50%;width:230px;height:230px;margin:-115px 0 0 -115px;border-radius:50%;pointer-events:none;opacity:0;
+  background:conic-gradient(from 0deg,transparent 0 10%,rgba(253,224,71,.55) 14%,transparent 20% 45%,color-mix(in srgb,var(--ac) 60%,transparent) 50%,transparent 56% 80%,rgba(253,224,71,.45) 85%,transparent 90%);
+  -webkit-mask:radial-gradient(circle,transparent 52%,#000 54%,#000 64%,transparent 66%);mask:radial-gradient(circle,transparent 52%,#000 54%,#000 64%,transparent 66%)}
+.scRvArt.crowned .scRvHalo{animation:scHalo 1.6s ease-out forwards}
+.scRvArt.crowned .scRvIco{animation:scPop .7s .25s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes scHalo{0%{opacity:0;transform:scale(.4) rotate(0)}30%{opacity:1}100%{opacity:0;transform:scale(1.15) rotate(200deg)}}
+@keyframes scPop{0%{transform:scale(.6)}60%{transform:scale(1.18)}100%{transform:scale(1)}}
+@media (max-width:720px){
+  .scMain{grid-template-columns:1fr}
+  .scDetail{position:static}
+  .scSlots{grid-template-columns:1fr 1fr;gap:8px}
+  .scSlot{padding:8px;gap:6px}.scSlotIco{flex-basis:36px;height:36px}.scSlotIco img{width:36px;height:36px}
+  .scGrid{grid-template-columns:repeat(auto-fill,minmax(86px,1fr))}
+  .scArtIco,.scArtIco img{width:44px;height:44px}
+}
+@media (prefers-reduced-motion:reduce){.scCrown,.scSlot.ready,.scArt::after,.scRvArt.crowned .scRvHalo,.scRvArt.crowned .scRvIco{animation:none!important}}
 /* --- SC guild --- */
+/* B4: the dungeon picker (js/guild.js tier cards, js/raid-ui.js create screen). */
+.scStage{display:inline-block;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:800;letter-spacing:.12em;vertical-align:middle;border:1px solid}
+.scStage.early{color:#86efac;border-color:#22c55e}.scStage.mid{color:#fcd34d;border-color:#f59e0b}.scStage.late{color:#f9a8d4;border-color:#ec4899}
+.scNew{display:inline-block;padding:1px 6px;border-radius:6px;font-size:9px;font-weight:800;letter-spacing:.1em;vertical-align:middle;color:#1a1204;background:linear-gradient(90deg,#fde047,#f59e0b)}
+.adTierCard.scCrownTier{border-color:color-mix(in srgb,#fde047 45%,var(--ad-cap,#a16207))}
+.adTierCard.sealed .scArtChips{opacity:.7}
+.scArtsBanner{border-color:#eab308;background:radial-gradient(120% 160% at 0% 0%,rgba(250,204,21,.16),transparent 55%),linear-gradient(135deg,#1d1305,#0a0602)}
+.scArtsBanner b{color:#fde047}
 /* ===== END SUNDERED CROWN UI ===== */
