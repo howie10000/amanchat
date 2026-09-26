@@ -383,6 +383,33 @@
   };
   Object.assign(SET_GLYPH, { thornhide: "thorn", pit_sovereign: "swords", mirror_regalia: "sunmoon", sundered_regalia: "crown" });
 
+  // ---- WEAPONS (docs/sundered-crown/WEAPONS.md): every boss weapon (arm_<kind>_<lvl>) and the
+  // signature ranged uniques get an explicit family; the painter follows the weapon KIND.
+  const KIND_FAMILY = { sword: "sword", mace: "mace", spear: "spear", dagger: "fang", axe: "axe", scythe: "scythe",
+    gun: "gun", boomerang: "boomerang", blowdart: "blowpipe", crossbow: "crossbow" };
+  (function () {
+    const E = EC();
+    if (!E || !E.ARMAMENT_BASE) return;
+    for (const [kind, ids] of Object.entries(E.ARMAMENT_BASE)) ids.forEach((id, lvl) => {
+      if (!id) return;
+      // high-level swords are greatswords, high-level maces hammers: a little variety across the ladder
+      FAMILY[id] = kind === "sword" && lvl >= 10 ? "greatsword" : kind === "mace" && lvl % 3 === 0 ? "hammer" : kind === "dagger" && lvl % 4 === 2 ? "knives" : KIND_FAMILY[kind];
+      if (lvl >= 9 && (kind === "sword" || kind === "spear")) VARIANT[id] = { runes: 1 };
+      else if (lvl === 10) VARIANT[id] = { ice: 1 };
+    });
+  })();
+  Object.assign(FAMILY, { gorehorn_tuskrang: "boomerang", matrons_thornpipe: "blowpipe", varkaals_breath: "blowpipe", kaels_parting_shot: "gun",
+    eclipse_chakram: "boomerang", crownfall_arbalest: "crossbow" });
+  Object.assign(VARIANT, { gorehorn_tuskrang: { bone: 1 }, matrons_thornpipe: { thorn: 1 }, eclipse_chakram: { eclipse: 1 } });
+  Object.assign(UNIQUE_LOOK, {
+    gorehorn_tuskrang: { gem: "#fbbf24", glow: "#f59e0b", motif: "thorns", metal: ["#fffbeb", "#e7d8b8", "#8a7652", "#3a2c16"] },
+    matrons_thornpipe: { gem: "#bef264", glow: "#84cc16", motif: "thorns", metal: THORN_METAL },
+    varkaals_breath: { gem: "#fb923c", glow: "#f97316", motif: "flames" },
+    kaels_parting_shot: { gem: "#fda4af", glow: "#f43f5e", motif: "ash", metal: ["#ffffff", "#d7dde6", "#7b8594", "#252a33"] },
+    eclipse_chakram: { gem: "#fde68a", glow: "#fde68a", motif: "glints", metal: ["#fff8e1", "#e9c46a", "#4c3d8f", "#140f33"] },
+    crownfall_arbalest: { gem: "#fde047", glow: "#fbbf24", motif: "crown_dust", metal: ["#fff6d8", "#e2c275", "#8a5f12", "#321f04"] },
+  });
+
   function nameGuess(id, slot) {
     const s = String(id || "").toLowerCase();
     const T = [
@@ -395,7 +422,7 @@
       [/legging|trouser/, "trousers"], [/greave/, "greaves"], [/pearl|heart|amulet|pendant/, "amulet"], [/signet|seal|sigil/, "signet"], [/loop/, "twist"], [/eye/, "eyering"],
     ];
     for (const [re, f] of T) if (re.test(s)) return f;
-    return { weapon: "sword", helmet: "helm", chest: "plate", legs: "greaves", ring: "band" }[slot] || "sword";
+    return { weapon: "sword", ranged: "gun", helmet: "helm", chest: "plate", legs: "greaves", ring: "band" }[slot] || "sword";
   }
   function lookFor(baseId, slot, lvl) {
     const E = EC();
@@ -1377,6 +1404,57 @@
     c.strokeStyle = "rgba(209,250,229,.8)"; c.lineWidth = 0.6; c.beginPath(); c.moveTo(7.5, 75.5); c.lineTo(20.5, 75.5); c.stroke();
     glyph(c, g, 14, 84, 10, "#ecfdf5");
   }
+  // ---- WEAPONS (docs/sundered-crown/WEAPONS.md): the ranged kinds.
+  W.gun = function (c, p, v, rn) {
+    // a flintlock: barrel up the blade line, the stock curling down and back
+    const stock = cc => { cc.moveTo(-5, 6); cc.lineTo(5, 6); cc.quadraticCurveTo(7, 24, 17, 42); cc.quadraticCurveTo(11, 50, 3, 46); cc.quadraticCurveTo(-3, 30, -5, 6); cc.closePath(); };
+    part(c, stock, metal(c, -5, 17, WOOD), { rn, tex: 10, box: [-6, 6, 18, 50] });
+    part(c, cc => rr(cc, -4.5, -50, 9, 58, 2), metal(c, -4.5, 4.5, [p.metal[0], p.metal[1], p.metal[2], p.metal[3]]), { rn, tex: 8, box: [-5, -50, 5, 8] });
+    for (const y of [-47, -22]) part(c, cc => rr(cc, -5.6, y, 11.2, 4, 1.2), lg(c, -5, 0, 5, 0, p.trim), { tex: 0, lw: 0.9 });
+    strokeP(c, "rgba(255,255,255,.55)", 0.8, cc => { cc.moveTo(-2, -48); cc.lineTo(-2, 4); });
+    // lock + hammer + trigger guard
+    part(c, cc => rr(cc, 3, -4, 9, 11, 2), lg(c, 3, 0, 12, 0, p.trim), { tex: 0, lw: 1 });
+    part(c, cc => poly(cc, [8, -4, 13, -12, 15, -10, 11, -2]), p.metal[2], { lw: 0.9 });
+    strokeP(c, OUT, 3.2, cc => cc.arc(-1, 16, 6, -0.3, PI * 0.9));
+    strokeP(c, p.trim[0], 1.6, cc => cc.arc(-1, 16, 6, -0.3, PI * 0.9));
+    gem(c, 8, 2, 2.2, p.gem);
+    part(c, cc => circ(cc, 0, -50, 3.2), "#0f0f10", { lw: 0.8 });
+  };
+  W.boomerang = function (c, p, v, rn) {
+    // a hooked throwing-stick: two broad arms meeting at a carved elbow
+    const body = cc => { cc.moveTo(-10, -50); cc.quadraticCurveTo(14, -28, 16, 0); cc.quadraticCurveTo(14, 28, -10, 50); cc.quadraticCurveTo(-2, 50, 2, 44); cc.quadraticCurveTo(4, 20, 3, 0); cc.quadraticCurveTo(4, -20, 2, -44); cc.quadraticCurveTo(-2, -50, -10, -50); cc.closePath(); };
+    const wood = v.bone ? ["#fbf6e8", "#ded2b6", "#8a7652", "#3a2c16"] : [lt(WOOD[0], 0.15), WOOD[0], WOOD[1], WOOD[3]];
+    part(c, body, metal(c, -4, 16, wood), { rn, tex: 16, box: [-10, -50, 16, 50] });
+    strokeP(c, "rgba(255,255,255,.5)", 0.9, cc => { cc.moveTo(-6, -46); cc.quadraticCurveTo(12, -26, 13, -2); });
+    for (const y of [-30, 30]) strokeP(c, p.trim[1], 2.2, cc => { const s = y < 0 ? -1 : 1; cc.moveTo(4, y); cc.lineTo(12, y + s * 3); });
+    for (const y of [-38, 38]) strokeP(c, p.gem, 1.4, cc => { const s = y < 0 ? -1 : 1; cc.moveTo(0, y); cc.lineTo(8, y - s * 2); });
+    gem(c, 9, 0, 3.4, p.gem);
+    if (v.eclipse) { glowDot(c, 9, -16, 3, "#fde68a"); glowDot(c, 9, 16, 3, "#a78bfa"); }
+  };
+  W.blowpipe = function (c, p, v, rn) {
+    // a reed pipe with bound nodes, a brass mouthpiece and a dart peeking out
+    part(c, cc => rr(cc, -3, -50, 6, 96, 3), metal(c, -3, 3, [lt("#8fae4a", 0.2), "#8fae4a", "#4d6b1a", "#1f2e08"]), { rn, tex: 12, box: [-3, -50, 3, 46] });
+    for (let y = -40; y < 40; y += 16) part(c, cc => rr(cc, -3.8, y, 7.6, 3, 1), lg(c, -4, 0, 4, 0, [p.trim[2], p.trim[0], p.trim[1]]), { tex: 0, lw: 0.7 });
+    part(c, cc => rr(cc, -4.2, 40, 8.4, 10, 2.5), lg(c, -4, 0, 4, 0, [p.trim[2], p.trim[0], p.trim[1]]), { tex: 0, lw: 1 });
+    part(c, cc => poly(cc, [0, -56, 1.6, -50, -1.6, -50]), p.metal[0], { lw: 0.8 });
+    for (const s of [-1, 1]) strokeP(c, v.thorn ? "#bef264" : p.gem, 1.3, cc => { cc.moveTo(s * 2.5, -30); cc.quadraticCurveTo(s * 10, -24, s * 7, -12); });
+    gem(c, 0, 45, 2.2, p.gem);
+  };
+  W.crossbow = function (c, p, v, rn) {
+    // stock along the blade line, the prod across its head, a bolt nocked
+    part(c, cc => { cc.moveTo(-4, -30); cc.lineTo(4, -30); cc.lineTo(6, 30); cc.quadraticCurveTo(8, 44, 2, 50); cc.lineTo(-4, 50); cc.quadraticCurveTo(-7, 40, -5, 30); cc.closePath(); },
+      metal(c, -5, 7, WOOD), { rn, tex: 12, box: [-7, -30, 8, 50] });
+    const limb = cc => { cc.moveTo(-26, -20); cc.quadraticCurveTo(-12, -38, 0, -34); cc.quadraticCurveTo(12, -38, 26, -20); cc.lineTo(24, -17); cc.quadraticCurveTo(12, -32, 0, -29); cc.quadraticCurveTo(-12, -32, -24, -17); cc.closePath(); };
+    part(c, limb, lg(c, -26, 0, 26, 0, [p.metal[2], p.metal[0], p.metal[1], p.metal[0], p.metal[2]]), { rn, tex: 8, box: [-26, -38, 26, -17] });
+    strokeP(c, "rgba(245,245,220,.95)", 0.9, cc => { cc.moveTo(-25, -18.5); cc.lineTo(0, -6); cc.lineTo(25, -18.5); });
+    part(c, cc => rr(cc, -1.2, -52, 2.4, 46, 1), "#9ca3af", { lw: 0.7 });
+    part(c, cc => poly(cc, [0, -56, 3.6, -48, -3.6, -48]), lg(c, -3, 0, 3, 0, [p.metal[1], "#ffffff", p.metal[2]]), { lw: 0.8 });
+    for (const s of [-1, 1]) part(c, cc => poly(cc, [0, -10, s * 4, -4, 0, -7]), "#b91c1c", { lw: 0.6 });
+    part(c, cc => rr(cc, -4.6, -4, 9.2, 8, 2), lg(c, -4, 0, 4, 0, p.trim), { tex: 0, lw: 1 });
+    strokeP(c, OUT, 2.4, cc => { cc.moveTo(4, 8); cc.quadraticCurveTo(10, 12, 6, 18); });
+    gem(c, 0, 0, 2.4, p.gem);
+  };
+
   function uniqueMark(c) {
     // orange-gold double-border corners + a star in the top-left
     for (const [x, y, sx, sy] of [[10, 10, 1, 1], [90, 10, -1, 1], [10, 90, 1, -1], [90, 90, -1, -1]]) {
@@ -1395,7 +1473,7 @@
     const fam = look.fam;
     c.save();
     c.translate(50, 50);
-    if (look.slot === "weapon") { c.rotate(PI / 4); c.scale(WEAPON_W * WEAPON_BOX, WEAPON_BOX); (W[fam] || W.sword)(c, p, v, rn); }
+    if (look.slot === "weapon" || look.slot === "ranged") { c.rotate(PI / 4); c.scale(WEAPON_W * WEAPON_BOX, WEAPON_BOX); (W[fam] || W.sword)(c, p, v, rn); }
     else { c.scale(ICON_BOX, ICON_BOX); c.translate(-50, -50); const tbl = look.slot === "helmet" ? H : look.slot === "chest" ? C : look.slot === "legs" ? LG : R; (tbl[fam] || tbl[Object.keys(tbl)[0]])(c, p, v, rn); }
     c.restore();
   }

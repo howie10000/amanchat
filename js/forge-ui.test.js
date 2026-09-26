@@ -130,7 +130,7 @@ function legacyExpected(item, worn) {
       <b>${slot.emoji} ${gEsc(ECON.gearName(item))}</b>
       <span class="gearTag" style="color:${r.color};border-color:${r.color}">${r.label}</span>
       <span class="muted">Lv ${item.lvl} ${slot.label}</span><br/>
-      <small>${statLine(item)}</small><br/>
+      <small>${statLine(item)}</small><br/>${G.ui.kindHtml ? G.ui.kindHtml(item, true) : ""}
       ${worn ? `<small class="muted">worth ${gMoney(ECON.gearSellValue(item))} if sold</small>` : compareToWorn(item)}
     </div>
     <div class="flexRow">
