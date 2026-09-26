@@ -23,28 +23,31 @@ section('rarities, bases, mods, uniques, sets are well formed');
   assert(ECON.GEAR_RARITY_INFO.arcane.prism.length === 5 && ECON.GEAR_RARITY_INFO.arcane.cine === 2, 'arcane is prismatic');
   for (let i = 1; i < 8; i++) assert(ECON.GEAR_RARITY_INFO[ECON.GEAR_RARITIES[i]].power > ECON.GEAR_RARITY_INFO[ECON.GEAR_RARITIES[i - 1]].power, 'power rises with rarity');
   assert(ECON.gearRarityIdx('arcane') === 7 && ECON.gearRarityIdx('worn') === 0 && ECON.gearRarityIdx('???') === 1, 'gearRarityIdx');
-  assert(ECON.GEAR_MAX_LEVEL === 10 && ECON.GEAR_POWER.length === 11 && ECON.GEAR_BASE_VALUE.length === 11, 'levels 1-10');
+  // SUNDERED CROWN: levels 11-12 appended (docs/sundered-crown/MASTER-PLAN.md S4); 1-10 unchanged.
+  assert(ECON.GEAR_MAX_LEVEL === 12 && ECON.GEAR_POWER.length === 13 && ECON.GEAR_BASE_VALUE.length === 13
+    && ECON.GEAR_POWER.slice(0, 11).join() === '0,9,15,24,38,56,78,104,126,150,176' && ECON.GEAR_BASE_VALUE.slice(0, 11).join() === '0,25,55,130,300,650,1200,2000,2900,4000,5400', 'levels 1-10 unchanged, 11-12 appended');
   const ids = new Set();
   for (const b of ECON.GEAR_BASES) {
     const sum = Object.values(b.split).reduce((s, x) => s + x, 0);
     assert(Math.abs(sum - 1) < 1e-9, 'split sums to 1: ' + b.id);
     assert(!ids.has(b.id), 'unique base id ' + b.id); ids.add(b.id);
-    assert(['weapon', 'helmet', 'chest', 'legs', 'ring'].includes(b.slot) && b.name && (b.lvl >= 1 && b.lvl <= 10 || b.anyLvl), 'base shape ' + b.id);
+    assert(['weapon', 'helmet', 'chest', 'legs', 'ring'].includes(b.slot) && b.name && (b.lvl >= 1 && b.lvl <= 12 || b.anyLvl), 'base shape ' + b.id);
   }
   const pool = ECON.GEAR_BASES.filter(b => !b.unique && !b.set);
-  assert(pool.length === 35 + 40 + 45, '120 random-pool bases (35 legacy + 40 + 45)');
-  for (let L = 4; L <= 10; L++) for (const slot of ['weapon', 'helmet', 'chest', 'legs', 'ring'])
+  assert(pool.filter(b => b.lvl <= 10).length === 35 + 40 + 45, '120 random-pool bases at L1-10 (35 legacy + 40 + 45)');
+  assert(pool.length === 120 + 30, '+30 Sundered Crown bases at L11-12');
+  for (let L = 4; L <= 12; L++) for (const slot of ['weapon', 'helmet', 'chest', 'legs', 'ring'])
     assert(pool.filter(b => b.lvl === L && b.slot === slot).length === 3, `3 bases per slot at L${L} (${slot})`);
   for (const [k, m] of Object.entries(ECON.GEAR_MODS)) assert(m.label && m.slots.length && m.max >= m.min && m.min > 0 && ['server', 'client', 'both'].includes(m.side), 'mod ' + k);
   for (const slot of ['weapon', 'helmet', 'chest', 'legs', 'ring']) assert(Object.values(ECON.GEAR_MODS).filter(m => !m.fixed && m.slots.includes(slot)).length >= 3, slot + ' has at least 3 rollable mods');
-  assert(Object.keys(ECON.GEAR_UNIQUES).length === 29, '14 legacy-boss + 15 new uniques');
+  assert(Object.keys(ECON.GEAR_UNIQUES).length === 29 + 12 && Object.keys(ECON.GEAR_UNIQUES).slice(29).every(id => ECON.GEAR_UNIQUES[id].crown), '14 legacy-boss + 15 Arcane Depths + 12 Sundered Crown uniques');
   for (const [id, u] of Object.entries(ECON.GEAR_UNIQUES)) {
     const b = ECON.GEAR_BASE_BY_ID[id];
     assert(b && b.unique && b.slot === u.slot && (u.lvl ? b.lvl === u.lvl : b.anyLvl), 'unique base ' + id);
     assert(ECON.GUILD_BOSSES[u.boss], 'unique boss exists: ' + id);
     assert(ECON.gearRarityIdx(u.minRarity) >= 4 && u.fx && Object.keys(u.fx).length, 'unique min rarity + signature: ' + id);
   }
-  assert(Object.keys(ECON.GEAR_SETS).length === 7, '7 sets');
+  assert(Object.keys(ECON.GEAR_SETS).length === 7 + 4, '7 sets + 4 Sundered Crown sets');
   for (const [id, s] of Object.entries(ECON.GEAR_SETS)) {
     assert(ECON.DUNGEON_LOOT[s.tier] && ECON.DUNGEON_LOOT[s.tier].lvl === s.lvl && ECON.DUNGEON_LOOT[s.tier].set === id, 'set ' + id + ' belongs to its dungeon');
     assert(s.bonus[2] && s.bonus[4] && Object.keys(s.pieces).length === 5, 'set ' + id + ' has 5 pieces and 2/4 bonuses');
@@ -296,9 +299,9 @@ section('delver rank, codex, achievements');
   assert(!ECON.codexPageDone(res.codex, 'guild_crypt'), 'a page is not done early');
   const full = { i: {} }; for (const id of ECON.CODEX_PAGES.guild_crypt) full.i[id] = [1, 1, 0];
   assert(ECON.codexPageDone(full, 'guild_crypt') && ECON.CODEX_PAGES.guild_crypt.includes('tome:storms') && ECON.CODEX_PAGES.guild_crypt.includes('warden_vigil_ring') && ECON.CODEX_PAGES.guild_crypt.includes('tidebreaker'), 'a crypt page = pool + uniques + set + tomes');
-  assert(Object.keys(ECON.CODEX_PAGES).length === 7 && Object.keys(ECON.CODEX_PAGE_REWARDS).every(t => ECON.COSMETICS.hat.some(h => h.id === ECON.CODEX_PAGE_REWARDS[t].hat && h.unlock === 'codex:' + t)), 'codex pages 1-7 each unlock a hat');
+  assert(Object.keys(ECON.CODEX_PAGES).length === 7 + 4 && Object.keys(ECON.CODEX_PAGE_REWARDS).every(t => ECON.COSMETICS.hat.some(h => h.id === ECON.CODEX_PAGE_REWARDS[t].hat && h.unlock === 'codex:' + t)), 'codex pages 1-7 each unlock a hat');
   // achievements
-  assert(ECON.ACHIEVEMENTS.length === 43 && new Set(ECON.ACHIEVEMENTS.map(a => a.id)).size === 43, '43 achievements');
+  assert(ECON.ACHIEVEMENTS.length === 43 + 18 && new Set(ECON.ACHIEVEMENTS.map(a => a.id)).size === 61, '43 achievements + 18 Sundered Crown');
   for (const a of ECON.ACHIEVEMENTS) assert(typeof a.test === 'function' && a.reward && Object.keys(a.reward).length && a.label && a.cat, 'achievement has a test and a reward: ' + a.id);
   assert(ECON.checkAchievements({}, {}).length === 0, 'nothing for nobody');
   const s = { codex: { i: { x: [7, 1, 0] }, b: { warden: 120 }, d: { guild_rime: 21 } }, delve: { stats: { raids: 12, goblins: 30, maxPlus: 12 } }, last: { tier: 'guild_dragon', cleared: true, flawless: true, delve: 10, clearMs: 500000, parMs: 900000, sets: { ashen_mantle: 4 } }, depthsBest: { floor: 26 } };

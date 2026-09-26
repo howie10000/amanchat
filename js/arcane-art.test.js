@@ -89,7 +89,9 @@ for (const id of allBosses) {
 const types = new Set();
 for (const id of allBosses) for (let ph = 1; ph <= ECON.bossPhaseCount(id); ph++) for (const a of ECON.bossDeck(id, ph)) types.add(a.type);
 for (const a of Object.values(DEPTHS.RAID_OVERLAY)) if (a && a.type) types.add(a.type);
-for (const t of types) assert(B.drawsAttack(t), 'drawsAttack(' + t + ')');
+// SUNDERED CROWN (Wave A, docs/sundered-crown/MASTER-PLAN.md S19): art for these ids lands in Wave B3. B3 DELETES THIS LINE (acceptance).
+const CROWN_PENDING = new Set([].concat(ECON.CROWN_CONTENT.attackTypes, ECON.CROWN_CONTENT.enemyTypes, ECON.CROWN_CONTENT.props, ECON.CROWN_CONTENT.cosmetics));
+for (const t of types) if (!CROWN_PENDING.has(t)) assert(B.drawsAttack(t), 'drawsAttack(' + t + ')');
 function shotFor(a, fireAt) {
   const head = B.headPos(), pts = [{ x: 400, y: 460 }, { x: 600, y: 420 }, { x: 700, y: 500 }];
   const s = Object.assign({}, a, { fireAt, at: fireAt - a.warnMs, head, from: head, points: pts, x0: 60, x1: 964, y: 440, dir: 1, angle: 1.2, ang: 1.3, rot: 0.4,
@@ -125,7 +127,7 @@ assert.equal(B.drawArena(ctx, 'crypt', clock), false, 'old tiers keep combat.js 
 
 // ---------------------------------------------------------------- enemies
 const TYPES = DUNGEON.ENEMY_TYPES;
-for (const t of Object.keys(TYPES)) assert(M.hasModel(t), 'enemy model ' + t);
+for (const t of Object.keys(TYPES)) if (!CROWN_PENDING.has(t)) assert(M.hasModel(t), 'enemy model ' + t);
 assert.equal(M.THEMED, true); assert.equal(M.ELITE_OVERLAY, true);
 const AFF = Object.keys(DEPTHS.ELITE_AFFIXES);
 let enemyFrames = 0;
@@ -147,7 +149,7 @@ for (const key of Object.keys(DEPTHS.DUNGEON_THEMES).concat(ECON.GUILD_DUNGEON_O
   M.drawFloor(ctx, 0, 0, 256, 256, key); M.drawFloor(ctx, 0, 0, 128, 128, T);
   M.drawWalls(ctx, [{ x: 0, y: 0, w: 200, h: 24 }, { x: 0, y: 0, w: 24, h: 200 }], T);
   const props = (T.props || []).map((kind, i) => ({ kind, x: 50 + i * 60, y: 100, rot: 0.5, ph: i }));
-  for (const p of props) assert(M.GROUND_KINDS[p.kind] || M.THEMED_STANDING[p.kind], `theme ${key} prop ${p.kind} has its own art (not the torch fallback)`);
+  for (const p of props) if (!CROWN_PENDING.has(p.kind)) assert(M.GROUND_KINDS[p.kind] || M.THEMED_STANDING[p.kind], `theme ${key} prop ${p.kind} has its own art (not the torch fallback)`);
   M.drawGroundProps(ctx, props, clock); M.drawStandingProps(ctx, props, clock); M.drawStandingProps(ctx, props, clock, T);
   M.drawMotes(ctx, 0, 0, 400, 300, clock, T); M.drawDarkness(ctx, 100, 100, 0, 0, 400, 300, T);
 }
@@ -172,7 +174,7 @@ M.drawFloor(ctx, 0, 0, 64, 64); M.drawWalls(ctx, [{ x: 0, y: 0, w: 64, h: 16 }])
   // the new ids are drawn (not silently ignored): count canvas calls against a plain appearance
   const count = (app) => { const before = checks; GFX.drawCharacter(ctx, 200, 200, app, { facing: 'down' }); return checks - before; };
   const plain = count({});
-  for (const [kind, cid] of unlockable) if (kind !== 'nameColor') assert(count({ [kind]: cid }) > plain, `${kind}:${cid} has its own draw branch`);
+  for (const [kind, cid] of unlockable) if (kind !== 'nameColor' && !CROWN_PENDING.has(kind + ':' + cid)) assert(count({ [kind]: cid }) > plain, `${kind}:${cid} has its own draw branch`);
 }
 
 // ---------------------------------------------------------------- 3D cutscenes

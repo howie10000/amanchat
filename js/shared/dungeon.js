@@ -140,6 +140,27 @@
     mimic:    { color: "#b45309", size: 15, speed: 2.8, hp: 140, dmg: 22, ai: "mimic",   name: "Mimic",           sight: 70 },
     goblin:   { color: "#facc15", size: 11, speed: 2.9, hp: 300, dmg: 0,  ai: "flee",    name: "Glimmerthief",    sight: 360, escapeMs: 22000 },
     voidling: { color: "#4c1d95", size: 10, speed: 2.0, hp: 30,  dmg: 8,  ai: "chase",   name: "Voidling",        sight: 360 }, // boss adds / rifts
+    // ================= THE SUNDERED CROWN (docs/sundered-crown/MASTER-PLAN.md §3.4) =================
+    // New AI names (charger, spore, rooter, guard, netter, pounce, mirror, phaser) are client AI
+    // branches (B2). `blockArc` guards are enforced client-side by NOT reporting blocked swings;
+    // `resist` is enforced by the server (§4.4 of the Arcane Depths plan).
+    // ---- Thornwild Warren ----
+    thornling:     { color: "#65a30d", size: 9,  speed: 2.5, hp: 22,  dmg: 6,  ai: "chase",   name: "Thornling",        sight: 360 },
+    boar:          { color: "#78350f", size: 15, speed: 1.1, hp: 90,  dmg: 16, ai: "charger", name: "Tusked Boar",      sight: 360, chargeCd: 180, chargeWarn: 40, chargeSpeed: 7.5, chargeFrames: 26 },
+    sporecap:      { color: "#a16207", size: 13, speed: 0.5, hp: 70,  dmg: 4,  ai: "spore",   name: "Sporecap",         sight: 300, sporeCd: 200, sporeR: 80, slow: 0.5, sporeFrames: 150 },
+    vinecaller:    { color: "#15803d", size: 12, speed: 0.9, hp: 52,  dmg: 8,  ai: "rooter",  name: "Vinecaller",       sight: 420, rootCd: 240, rootWarn: 50, rootR: 44, rootFrames: 70, ideal: 220 },
+    // ---- Ashen Colosseum ----
+    hoplite:       { color: "#b45309", size: 16, speed: 0.95,hp: 140, dmg: 15, ai: "guard",   name: "Ashen Hoplite",    sight: 320, blockArc: 2.4, turn: 0.06 },
+    retiarius:     { color: "#0f766e", size: 12, speed: 1.3, hp: 58,  dmg: 9,  ai: "netter",  name: "Retiarius",        sight: 400, netCd: 220, netWarn: 40, netSpeed: 6, netFrames: 60, ideal: 200 },
+    ash_lion:      { color: "#d97706", size: 14, speed: 1.9, hp: 80,  dmg: 15, ai: "pounce",  name: "Ash Lion",         sight: 380, pounceCd: 150, pounceWarn: 28, pounceSpeed: 9, pounceFrames: 16 },
+    // ---- Mirror Court ----
+    reflection:    { color: "#e2e8f0", size: 12, speed: 1.6, hp: 60,  dmg: 11, ai: "mirror",  name: "Reflection",       sight: 420 },
+    courtier:      { color: "#7c3aed", size: 12, speed: 1.4, hp: 70,  dmg: 13, ai: "phaser",  name: "Masked Courtier",  sight: 360, phaseCd: 200, phaseFrames: 90 },
+    mirror_knight: { color: "#94a3b8", size: 17, speed: 0.8, hp: 190, dmg: 18, ai: "guard",   name: "Mirror Knight",    sight: 300, blockArc: 2.2, turn: 0.05, resist: { pistol: 0.5 } },
+    // ---- Sundered Throne ----
+    crownguard:    { color: "#a16207", size: 18, speed: 0.85,hp: 230, dmg: 22, ai: "guard",   name: "Crownguard",       sight: 300, blockArc: 2.6, turn: 0.05 },
+    oathbreaker:   { color: "#7f1d1d", size: 16, speed: 1.2, hp: 170, dmg: 20, ai: "charger", name: "Oathbreaker",      sight: 360, chargeCd: 170, chargeWarn: 36, chargeSpeed: 8.5, chargeFrames: 24 },
+    crown_wisp:    { color: "#fde047", size: 9,  speed: 2.4, hp: 40,  dmg: 10, ai: "orbiter", name: "Crown Wisp",       sight: 380, orbitR: 100, dashCd: 100, dashSpeed: 8, dashFrames: 16 },
   };
 
   // Which archetypes a tier is allowed to spawn. A guild tier carries its own
@@ -767,7 +788,7 @@
   // The Vault Keeper's type by tier (sentinel / golem / revenant).
   function vaultKeeperType(tier) {
     const th = (ECON.GUILD_DUNGEONS[tier] || {}).theme;
-    return th === 'geode' ? 'golem' : th === 'rime' ? 'revenant' : 'sentinel';
+    return th === 'geode' ? 'golem' : th === 'rime' ? 'revenant' : th === 'mirror' ? 'mirror_knight' : th === 'throne' ? 'crownguard' : 'sentinel';
   }
 
   // ---------------------------------------------------------------- ARCANE DEPTHS FLOORS

@@ -84,8 +84,10 @@ for (const sid of Object.keys(ECON.GEAR_SETS)) for (const sl of ECON.SET_SLOTS) 
 const FAM = new Set(["sword", "greatsword", "sabre", "fang", "knives", "axe", "hammer", "mace", "spear", "lance", "trident", "glaive", "scythe", "quill", "staff", "bow",
   "helm", "visor", "horned", "cap", "hood", "mask", "crown", "circlet", "bell", "plate", "mail", "robe", "jerkin", "apron", "carapace", "mantle",
   "trousers", "kilt", "greaves", "tassets", "boots", "band", "gemring", "signet", "twist", "amulet", "eyering", "knuckle", "coil", "keyring"]);
+// SUNDERED CROWN (Wave A, docs/sundered-crown/MASTER-PLAN.md S19): families for these bases land in Wave B4. B4 DELETES THIS LINE (acceptance).
+const CROWN_PENDING = new Set(ECON.CROWN_CONTENT.bases);
 for (const b of ECON.GEAR_BASES) ok(FAM.has(I.family(b.id)), `family for ${b.id} (${I.family(b.id)})`);
-ok(Object.keys(I._families).filter(k => ECON.GEAR_BASE_BY_ID[k]).length === ECON.GEAR_BASES.length, "every base has an explicit family entry");
+ok(Object.keys(I._families).filter(k => ECON.GEAR_BASE_BY_ID[k]).length === ECON.GEAR_BASES.filter(b => !CROWN_PENDING.has(b.id)).length, "every base has an explicit family entry");
 // badges: plus, sockets, gems, runes
 safe("plus + sockets", () => I.gear({ base: "rimefang", slot: "weapon", lvl: 10, rarity: "arcane", plus: 12, sockets: 3, gems: ["ruby:5", "rune_storm"] }));
 safe("legacy item", () => I.gear({ id: "x", base: "tin_band", slot: "ring", lvl: 1, rarity: "worn", stats: { atk: 1 } }));
