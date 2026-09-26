@@ -86,7 +86,7 @@
   // ---------------- rendering ----------------
   function walletHtml() {
     const m = mats();
-    const order = ["dust", "shard", "ember", "gilded_key"];
+    const order = ["dust", "shard", "ember", "gilded_key"].concat(m.crown_shard ? ["crown_shard"] : []);
     const sig = Object.keys(m).filter(k => /^sigil_/.test(k) && m[k] > 0).sort();
     const gemN = Object.values(gems()).reduce((s, n) => s + (+n || 0), 0);
     return `<div class="adWallet adForgeWallet">
@@ -346,6 +346,7 @@
     else body = `<div class="adForgeBench wide">${flashHtml()}${craftBench()}</div>`;
     return `<div id="adForgeRoot" class="adForge">
       <div class="adForgeHero"><div class="adForgeRune"></div><div><b>THE ARCANE FORGE</b><small>Every strike is rolled by the server. Materials cannot be sold or traded.</small></div>
+        <button class="menuBtn scNavArts" onclick="window.gameArtsUI?gameArtsUI.open('forge'):toast('The Crown Arts arrive with the update.')" title="Rank up Crown Arts with crown shards">♛ ARTS</button>
         <button class="menuBtn gray" onclick="gameGear.openArmory()">← ARMORY</button></div>
       ${walletHtml()}${tabsHtml()}${body}</div>`;
   }

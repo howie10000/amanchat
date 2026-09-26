@@ -568,3 +568,30 @@ cd server-node && node loot.test.js && node dungeon.test.js && node expedition.t
 - Server: loot 8132/0, chest-timing, nexus-wardens, compat, journey, presence, authority, expedition, forge, raid, depths-server, claim, redteam, persistence, guild, gear: pass.
   `dungeon.test.js`: 218 pass / **3 fail — the same 3 as the pre-change baseline** (weekly bonus / cooldown-withheld cases around `settle`; not touched by Wave A;
   baseline was 182 pass / 3 fail — the extra passes are the new decks' SHAPES checks). `authority.test.js` had 1 flaky blackjack failure at baseline and passed after.
+
+---
+
+## B4 — done (2026-09-26)
+
+**New files:** `js/arts-ui.js` (`window.gameArtsUI`: the Crown Arts panel + pure helpers `artsForTier`, `sourcesOf`, `artLines`, `rankInfo`, `codexHtml`, `onGranted`, `load`), `js/arts-ui.test.js` (170 checks).
+
+**Changed (B4 files only):**
+- `js/guild.js` (tier lists only; leave/kick/disband and the Master's settings untouched): board, records and fallback rows use `ECON.STORY_LADDER` (11 story cards + endless + Nexus, easiest first); trophy hall includes `CROWN_BOSS_ORDER`/`CROWN_MINIS`; tier cards gain archetype badges (BEAST / DUELIST / TWINS / MULTI-FORM / CLASSIC) on boss and mini, an EARLY/MID/LATE stage tag, "♛ NEW" and RAIDABLE tags, and Crown Art chips (including the rare legacy-dungeon arts, so early players see them too); a Crown Arts banner; one appended Guild-Leader FAQ ("What is the Sundered Crown?"). `ROMAN` extended to XII.
+- `js/raid-ui.js`: raidable tiers follow `STORY_LADDER` (Colosseum/Mirror/Throne appear, Thornwild does not); the create screen shows the archetype badge + art chips; the results screen shows `arts` / `crownShards` / `artPity` (§6.4).
+- `js/gear.js`: fx labels `staggerDmg` ("Damage to staggered bosses"), `artPower` ("Crown Art power"), `artCd` ("-x% Crown Art cooldown", like dashCd) in cards, set bonuses, fx chips and the compare panel; Armory nav "♛ CROWN ARTS".
+- `js/forge.js`: the wallet shows `crown_shard`; "♛ ARTS" link (arts are forged in the Crown Arts panel through the `arts` op, not the `forge` op). Crown sets are forgeable through the existing craft tab (data-driven).
+- `js/codex.js`: pages follow `STORY_LADDER` (11), boss archetype badges + Crown Art chips per page, all-kills include the crown bosses, a new "CROWN ARTS" tab (collection), achievement category `arts`, progress for `immovable_object` / `crown_collector` / `crown_master`, the weekly list over the ladder, tallies `stuns` / `artHits`.
+- `js/loot-reveal.js`: art cards after the gear (own beats of 0.9–1.9 s by rarity, outside the gear cap so gear timing is unchanged), a gold card back, a crown halo + icon pop and a particle burst; result texts NEW / RANK UP → n / +1 copy / melted into shards; a crown-shard chip; a pity toast; the no-DOM fallback toasts arts; triggers `gameArtsUI.load()`.
+- `js/item-icons.js`: themes 11 (Mirror) and 12 (Throne); families + variants for all 62 crown bases (the `CROWN_PENDING` line in `item-icons.test.js` is deleted); 12 unique palettes; 4 set palettes/glyphs; new motifs (glints, crown_dust, thorns, sand) and glyphs (thorn, sunmoon, mirror, dagger); bespoke portraits for the 8 new bosses/minis; tier emblems (XI/XII); a `crown_shard` painter; achievement medals; the 4 codex hats; and `ItemIcons.art(id)` / `html('art', id)` for all 10 arts.
+- `style.css`: the `/* --- SC items & arts --- */` and `/* --- SC guild --- */` sections only. CSS-only effects, at most one loop per card, `prefers-reduced-motion` honoured, a mobile breakpoint.
+- `index.html`: the `js/arts-ui.js` tag after `loot-reveal.js`; B4 files bumped to `?v=crown-b4`.
+
+**Tests:** every `js/*.test.js` passes (50 files, including `item-icons` 3071/0 with the `CROWN_PENDING` line deleted, `raid-ui` 319/0, `forge-ui` 170, `loot-reveal` 21850, `arts-ui` 170, `globals` 62 scripts with no collisions). B4 changed no server file, so the server suites were not re-run.
+
+**Visual check:** a worktree server on :18094 with a temp DB: the Crown Arts panel (desktop + 812×375 landscape), the guild dungeon board, an icon sheet (8 portraits, 10 arts, 4 tier emblems, crown shard, L11/L12 gear, uniques, a set piece, a hat), and the loot reveal with two art cards. Fixed after the check: unowned-art silhouettes were pure black (now dimmed greyscale), the hero layout, disabled buttons in the panel, and the "Kael, Crownbound" source label.
+
+**Integration notes for the lead:**
+1. **`net.js` needs `window.netArts = (data) => rpc("arts", data || {});`** (next to `netDelver`). No package owns net.js, so B4 left it alone. Until the line lands, the panel renders from `state.data.arts` and every action shows the toast "still being forged".
+2. The panel listens to `NET.on("arts")` (`kind:'granted'`). After an equip or forge it calls `gameCrownArts.applyStatus({arts, cds, crown_shard})` when B2's module exists. B2 may also want a dungeon-menu button that calls `gameArtsUI.open()`.
+3. Shared data nit (frozen module, not changed): `MATERIALS.sigil_kael_crownbound.name` is "Sigil of Kael", the same name as `sigil_kael`.
+4. The `arts` op `status` reply is expected to include `crown_shard`. Forge replies may carry `mats` (folded into `gameGear`) and `money`.

@@ -175,7 +175,8 @@ vm.createContext(ctx);
 const gst = { user: "aman", area: "interior_guild", data: { money: 5000 }, pos: { x: 0, y: 0 }, dungeon: null };
 ctx.__st = gst;
 vm.runInContext("const state = globalThis.__st; delete globalThis.__st;", ctx);
-for (const f of ["guild.js", "raid-ui.js"]) {
+ctx.CROWN = require("./shared/crown.js");
+for (const f of ["guild.js", "raid-ui.js", "arts-ui.js"]) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, f), "utf8"), ctx, { filename: f });
 }
 const GG = ctx.gameGuild, RU = ctx.gameRaidUI;
@@ -207,7 +208,30 @@ const tick = () => new Promise(r => setImmediate(r));
   await GG.openDungeons();
   h = last().html;
   ok(last().title === "GUILD DUNGEONS", "dungeons board opens");
-  ok(count(h, /class="adTierCard /g) === 9, "7 story cards + endless + nexus = 9 cards (got " + count(h, /class="adTierCard /g) + ")");
+  ok(count(h, /class="adTierCard /g) === 13, "11 story cards (STORY_LADDER) + endless + nexus = 13 cards (got " + count(h, /class="adTierCard /g) + ")");
+  // THE SUNDERED CROWN (B4): the ladder order, the four new cards, archetype badges, stages, lock reasons, art chips
+  {
+    const pos = ECON.STORY_LADDER.map(k => h.indexOf(ECON.GUILD_DUNGEONS[k].name.replace(/'/g, "&#39;")));
+    ok(pos.every((p, i) => p > 0 && (i === 0 || p > pos[i - 1])), "story cards follow STORY_LADDER order");
+    has(h, "THE ELEVEN DUNGEONS", "eleven dungeons header"); has(h, "Eleven dungeons beneath", "hero text counts the ladder");
+    for (const k of ECON.CROWN_DUNGEON_ORDER) {
+      const cfg = ECON.GUILD_DUNGEONS[k];
+      has(h, ECON.GUILD_BOSSES[cfg.boss].name, "crown boss " + k); has(h, ECON.GUILD_BOSSES[cfg.mini].name, "crown mini " + k);
+      has(h, "ITEM LV " + cfg.gearLvl, "crown gear level " + k);
+      for (const s of ECON.DUNGEON_LOOT[k].sets) has(h, ECON.GEAR_SETS[s].name, "crown set preview " + k);
+      for (const u of ECON.DUNGEON_LOOT[k].uniques) has(h, ECON.GEAR_UNIQUES[u].name.replace(/'/g, "&#39;"), "crown unique preview " + u);
+      for (const [art] of ctx.CROWN.ART_DROPS[cfg.boss]) has(h, ctx.CROWN.ARTS[art].name, "art chip " + art + " on " + k);
+    }
+    for (const b of ["BEAST", "DUELIST", "TWINS", "MULTI-FORM", "CLASSIC"]) has(h, `">${b}</span>`, "archetype badge " + b);
+    has(h, "scArch a-beast", "gorehorn is a beast"); has(h, "scArch a-multiform", "the king is multi-form");
+    ok(count(h, /scStage early/g) >= 2 && count(h, /scStage mid/g) >= 3 && count(h, /scStage late/g) >= 3, "early / mid / late stage tags");
+    ok(count(h, /♛ NEW/g) === 4, "four NEW crown cards");
+    has(h, "SEALED — until your guild clears <b>The Hollow Throne</b>", "colosseum lock reason");
+    has(h, "SEALED — until your guild clears <b>The Mirror Court</b>", "throne lock reason");
+    ok(/adTierCard open[^"]*scCrownTier[\s\S]{0,400}The Thornwild Warren/.test(h), "the Thornwild is open from the start");
+    has(h, ctx.CROWN.ARTS.war_cry.name, "the Crypt shows its rare art chances");
+    has(h, "gameArtsUI.open()", "Crown Arts banner opens the panel");
+  }
   for (const k of ECON.GUILD_DUNGEON_ORDER) {
     const cfg = ECON.GUILD_DUNGEONS[k];
     has(h, ECON.GUILD_DUNGEONS[k].name.replace(/'/g, "&#39;"), "tier name " + k);
@@ -217,7 +241,7 @@ const tick = () => new Promise(r => setImmediate(r));
     has(h, `par`, "par label");
   }
   ok(count(h, /adTierCard open/g) >= 6, "unlocked tiers get the open (shimmer) class");
-  ok(count(h, /adTierCard[^"]*sealed/g) === 3, "geode, rime and depths are sealed (got " + count(h, /adTierCard[^"]*sealed/g) + ")");
+  ok(count(h, /adTierCard[^"]*sealed/g) === 6, "geode, rime, depths + colosseum, mirror, throne are sealed (got " + count(h, /adTierCard[^"]*sealed/g) + ")");
   has(h, "SEALED — until your guild clears <b>The Starlit Archive</b>", "geode lock reason");
   has(h, "SEALED — until your guild clears <b>The Singing Geode</b>", "rime lock reason");
   has(h, "SEALED — until your guild clears <b>The Rimeveil Abyss</b>", "depths lock reason");
@@ -249,7 +273,7 @@ const tick = () => new Promise(r => setImmediate(r));
   failDepthsInfo = true;
   await GG.openDungeons();
   h = last().html;
-  ok(count(h, /class="adTierCard /g) === 9, "fallback still renders all cards");
+  ok(count(h, /class="adTierCard /g) === 13, "fallback still renders all cards");
   has(h, "SEALED — until your guild clears <b>The Starlit Archive</b>", "fallback: roost cleared so archive open, geode sealed");
   hasNot(h, "until your guild clears <b>The Ashen Roost</b>", "fallback: archive open after roost clears");
   failDepthsInfo = false;
@@ -352,6 +376,11 @@ const tick = () => new Promise(r => setImmediate(r));
   hasNot(h, "gameRaidUI.openCreate(&quot;arcane_depths&quot;)", "endless is not a raid-lobby tier");
   has(h, "gameRaidUI.openCreate(&quot;guild_void&quot;)", "void raidable");
   hasNot(h, "gameRaidUI.openCreate(&quot;guild_crypt&quot;)", "crypt not raidable");
+  for (const k of ["guild_colosseum", "guild_mirror", "guild_throne"]) has(h, `gameRaidUI.openCreate(&quot;${k}&quot;)`, "crown tier raidable " + k);
+  hasNot(h, "gameRaidUI.openCreate(&quot;guild_thornwild&quot;)", "thornwild is not raidable");
+  ok(h.indexOf("guild_void&quot;") < h.indexOf("guild_colosseum&quot;") && h.indexOf("guild_colosseum&quot;") < h.indexOf("guild_dragon&quot;"), "raid picker follows the ladder");
+  const kh = RU.renderCreate("guild_colosseum");
+  has(kh, "scArch a-duelist", "raid create shows the duelist badge"); has(kh, ctx.CROWN.ARTS.blade_dash.name, "raid create lists the arts");
   els.rcDelve = makeEl("rcDelve"); els.rcDelve.value = "2";
   els.rcMin = makeEl("rcMin"); els.rcMin.value = "5";
   await RU.create("raid_nexus");
@@ -453,6 +482,9 @@ const tick = () => new Promise(r => setImmediate(r));
   h = RU.renderResults(subset, "aman", GG.myGuild());
   has(h, "SANCTUARY REACHED", "segment header"); has(h, "—", "missing amounts render as dashes");
   ok(RU.renderResults(undefined, "", null).length > 50, "empty result renders");
+  h = RU.renderResults(Object.assign({}, settleFx, { tier: "guild_colosseum", arts: [{ id: "blade_dash", result: "new", rank: 1, shards: 0 }, { id: "riposte", result: "rank", rank: 3 }, { id: "nope" }], crownShards: 5, artPity: true }), "aman", GG.myGuild());
+  has(h, "CROWN ARTS", "results list crown arts"); has(h, "Blade Dash <b>NEW</b>", "new art"); has(h, "Riposte <b>RANK 3</b>", "rank-up art");
+  has(h, "Crown Shard ×5", "crown shards"); has(h, "owed you one", "pity note"); hasNot(h, "nope", "unknown art ids are dropped");
   // B9: gems by name
   h = RU.renderResults(Object.assign({}, settleFx, { gems: { "emerald:1": 1, "ruby:3": 2 } }), "aman", GG.myGuild());
   hasNot(h, "emerald g1", "no raw gem ids (B9)"); has(h, "×2", "gem counts");
