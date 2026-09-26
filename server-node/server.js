@@ -48,6 +48,7 @@ if (!JS_DIR) {
 const ECON = require(path.join(JS_DIR, 'shared', 'economy.js'));
 const DEPTHS = require(path.join(JS_DIR, 'shared', 'depths.js'));
 const DUNGEON = require(path.join(JS_DIR, 'shared', 'dungeon.js'));
+const CROWN = require(path.join(JS_DIR, 'shared', 'crown.js'));   // THE SUNDERED CROWN rules (docs/sundered-crown/MASTER-PLAN.md §5.4); B1 wires it
 const createFeatureHandlers = require('./guild-features.js');
 const createRaids = require('./guild-raids.js');
 const createProgress = require('./guild-progress.js');

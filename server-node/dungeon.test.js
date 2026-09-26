@@ -117,7 +117,9 @@ async function tryRpc(c, op, args) { try { return { ok: true, data: await c.rpc(
         const pp = [0, 1, 2, 3].map(i => ECON.guildBossPylonPos(i, 1024, 640));
         assert(JSON.stringify(pp) === JSON.stringify([{ x: 90, y: 90 }, { x: 934, y: 90 }, { x: 90, y: 550 }, { x: 934, y: 550 }]), 'pylons in the four corners, 90px in');
         const SHAPES = ['slam', 'spit', 'rift', 'bolt', 'divebomb', 'sweep', 'firewall', 'roar', 'wave', 'chain', 'breath', 'whirlpool', 'ring', 'cross', 'orbit', 'meteor',
-            'pillars', 'safezone', 'charge', 'grasp', 'constellation', 'lance', 'sigils', 'spiral', 'hazard', 'collapse', 'summon', 'ward', 'soak'];
+            'pillars', 'safezone', 'charge', 'grasp', 'constellation', 'lance', 'sigils', 'spiral', 'hazard', 'collapse', 'summon', 'ward', 'soak']
+            // SUNDERED CROWN body moves and casts (docs/sundered-crown/MASTER-PLAN.md §3.4)
+            .concat(ECON.CROWN_CONTENT.attackTypes);
         for (const id of Object.keys(ECON.GUILD_BOSSES)) {
             for (let ph = 1; ph <= ECON.bossPhaseCount(id); ph++) {
                 const deck = ECON.bossDeck(id, ph);

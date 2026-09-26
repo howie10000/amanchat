@@ -29,10 +29,16 @@
     // leyline look used around the stair, sanctuary and in the UI.
     depths:  { floor: [20, 14, 36], shade: 14, joint: "rgba(139,92,246,.25)", wall: "#1e1036", cap: "#8b5cf6", fog: "#05030b", torch: "#8b5cf6", motes: "ley",      props: ["leyline_vein"], sightMult: 1, cycles: true },
     nexus:   { floor: [18, 14, 40], shade: 14, joint: "rgba(139,92,246,.25)", wall: "#1e1036", cap: "#8b5cf6", fog: "#05030b", torch: "#a78bfa", motes: "ley",      props: ["ley_pylon", "rune_circle", "floating_stone"], sightMult: 1 },
+    // ---- THE SUNDERED CROWN (docs/sundered-crown/MASTER-PLAN.md §3.2). Not in THEME_CYCLE: the endless floors never use them.
+    thornwild: { floor: [26, 34, 20], shade: 14, joint: "rgba(132,204,22,.2)",  wall: "#2f3b1f", cap: "#4d7c0f", fog: "#050803", torch: "#bef264", motes: "pollen",     props: ["bramble", "mushroom_ring", "root_arch"], sightMult: 0.95 },
+    colosseum: { floor: [52, 40, 30], shade: 14, joint: "rgba(251,146,60,.18)", wall: "#4a3527", cap: "#9a3412", fog: "#0b0604", torch: "#fb923c", motes: "ash",        props: ["broken_column", "weapon_rack", "sand_drift"], sightMult: 1 },
+    mirror:    { floor: [30, 28, 40], shade: 14, joint: "rgba(226,232,240,.22)", wall: "#27243a", cap: "#e2e8f0", fog: "#040308", torch: "#f5d0fe", motes: "glints",    props: ["mirror_pane", "candelabra", "checker_tile"], sightMult: 0.9 },
+    throne:    { floor: [28, 22, 20], shade: 14, joint: "rgba(250,204,21,.2)",  wall: "#2b211b", cap: "#ca8a04", fog: "#050302", torch: "#fde047", motes: "crown_dust", props: ["shattered_banner", "crown_shard_pile", "throne_rubble"], sightMult: 0.9 },
   };
   const THEME_CYCLE = ["crypt", "forge", "void", "dragon", "archive", "geode", "rime"];
   const THEME_TIER = { crypt: "guild_crypt", forge: "guild_forge", void: "guild_void", dragon: "guild_dragon",
-    archive: "guild_archive", geode: "guild_geode", rime: "guild_rime", nexus: "raid_nexus", depths: "arcane_depths" };
+    archive: "guild_archive", geode: "guild_geode", rime: "guild_rime", nexus: "raid_nexus", depths: "arcane_depths",
+    thornwild: "guild_thornwild", colosseum: "guild_colosseum", mirror: "guild_mirror", throne: "guild_throne" };
   // A theme key or a tier key -> Theme; null for anything else (the quest
   // board keeps today's look).
   function themeFor(tierOrTheme) {
