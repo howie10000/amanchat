@@ -498,7 +498,9 @@
       let t = now, p = { x: pos.x, y: pos.y }, f = face;
       (a.hits || [{}]).forEach((h, i) => {
         const w2 = Math.max(100, Math.round(num(h.warnMs, 260) * wm));
-        const lunge = num(h.lunge, 30);
+        // Never step past the target: at close range a full lunge would carry
+        // the swing's origin beyond a player standing against him and whiff.
+        const lunge = Math.min(num(h.lunge, 30), Math.max(0, Math.hypot(tgt.x - p.x, tgt.y - p.y) - B.r));
         const to = arenaClamp({ x: p.x + Math.cos(f) * lunge, y: p.y + Math.sin(f) * lunge }, B.r, ctx.arena);
         steps.push(step("windup", t, w2, p, p, { face: f, atk: payload({ phase: "tell", hit: i, shape: "cone", x: p.x, y: p.y, ang: f, arc: num(h.arc, 2.2), r: num(h.r, 120), dmg: h.dmg != null ? h.dmg : a.dmg }) }));
         const act = num(a.activeMs, 120);
