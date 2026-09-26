@@ -134,7 +134,7 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     assert(!(await tryRpc(bob, 'patch', { path: 'users/bob/mastery/combat', value: { xp: 1e9 } })).ok, 'mastery/combat patch rejected');
     assert(!(await tryRpc(bob, 'patch', { path: 'users/bob', value: { mastery: { combat: { xp: 1e9 } } } })).ok, 'record patch containing mastery rejected');
     assert(!(await tryRpc(bob, 'put', { path: 'users/bob', value: { friends: {}, mastery: { combat: { xp: 1e9 } } } })).ok, 'whole-record put containing mastery rejected');
-    for (const f of ['mats', 'gems', 'delve', 'codex', 'overflow', 'depthsBest']) {
+    for (const f of ['mats', 'gems', 'delve', 'codex', 'overflow', 'depthsBest', 'arts']) {
         const v = f === 'overflow' ? [{ id: 'x' }] : { x: 99 };
         assert(!(await tryRpc(bob, 'put', { path: 'users/bob/' + f, value: v })).ok, `${f} put (field path) rejected`);
         assert(!(await tryRpc(bob, 'patch', { path: 'users/bob', value: { [f]: v } })).ok, `record patch containing ${f} rejected`);
