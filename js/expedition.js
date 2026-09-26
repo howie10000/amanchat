@@ -96,6 +96,7 @@
       // (story, Depths guardian floors) or the Heart's (Depths, every 10th).
       const room = prev === 'final' && p.final ? p.final : (p.mini || p.final);
       if (room === p.mini) d.miniDone=!!msg.miniDone || d.miniDone;
+      if(window.gameCrownBoss)gameCrownBoss.reset();
       d.encounter=null; d.boss=null; d.cine=null; d.phaseCine=null; d.phaseShift=null; d.arenaEnemies=[];
       if (typeof setArenaOpen === 'function') setArenaOpen(false);
       setup(p,room.exit || {x:room.x+512,y:room.y-96});
@@ -236,9 +237,12 @@
     if(e.ai==='mimic'&&!e.awake&&g){g.drawMimicAsleep(ctx,e,t);return;}
     if(e.gone)return;
     if(g)g.drawEnemyUnder(ctx,e,t);
+    const C=window.gameCombat;
+    ctx.globalAlpha=C&&C.enemyAlpha?C.enemyAlpha(e):1;
     if(e.escaping){ctx.globalAlpha=Math.max(0,1-(Date.now()-e.escaping)/1200);}
     gameMobs.drawEnemy(ctx,e,t,ENEMY_TYPES);
     ctx.globalAlpha=1;
+    if(C&&C.drawEnemyTells)C.drawEnemyTells(ctx,e,t);
     if(g)g.drawEnemyOver(ctx,e,t);
   }
   function draw() {
@@ -281,6 +285,7 @@
     try{DungeonSight.draw(ctx,state.pos.x,state.pos.y,d.walls,p.width,p.height,v,litRoom);}finally{if(ds)window.DungeonScenes=ds;}
     if(d.chest)(typeof drawRunChest==='function'?drawRunChest:gameBosses.drawChest)(ctx,d.chest,t);
     if(G())G().drawWorldTop(ctx,t);
+    if(window.gameCrownArts)gameCrownArts.drawEffects(ctx,t);
     ctx.restore();
     // Title + objective, top-centre: the top-left corner belongs to the DOM HUD
     // (money card + run HUD), which used to cover this panel (QA B7).
@@ -294,6 +299,7 @@
     if(state.tomeCine){ctx.save();ctx.translate(VIEW_OX,VIEW_OY);gameBosses.drawTomeCinematic(ctx,state.tomeCine,t);ctx.restore();}
     if(G())G().drawScreen(ctx,t);
     minimap();
+    if(window.gameCrownArts)gameCrownArts.drawSlots(ctx,canvas.width-134,canvas.height-70,t);
   }
   window.gameExpedition={setup,tick,draw,minimap,flowTarget,apply,leave,inside};
   if(window.NET)NET.on('guild_dungeon',m=>{if(m.kind==='expedition')apply(m);});

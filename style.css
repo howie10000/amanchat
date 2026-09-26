@@ -2596,6 +2596,14 @@ body.dungeon-run-collapsed #adRunHud { display:none !important; }
 
 /* ===== SUNDERED CROWN UI ===== */
 /* --- SC run HUD --- */
+/* Crown Art touch buttons (js/mobile.js): a conic cooldown sweep from --cd (1 = just used, 0 = ready). */
+.touchBtns button.touchArt{position:relative;overflow:hidden;border-color:#fde047;color:#fef3c7;background:rgba(40,28,6,.82)}
+.touchBtns button.touchArt::after{content:"";position:absolute;inset:0;pointer-events:none;background:conic-gradient(rgba(2,6,23,.68) calc(var(--cd,0) * 360deg),transparent 0)}
+.touchBtns button.touchArt.ready{box-shadow:0 0 12px rgba(253,224,71,.55)}
+.touchBtns button.touchArt[hidden]{display:none}
+/* Crown Arts panel shortcut in a run (js/dungeon-hud.js), under the side-timer toggle. */
+#dungeonArtsBtn{position:absolute;top:calc(50% + 24px);left:14px;height:30px;padding:0 8px;z-index:25;border:1px solid #ca8a04;border-radius:6px;background:#1a1405ee;color:#fde68a;font:700 11px/1 system-ui;cursor:pointer}
+#dungeonArtsBtn[hidden]{display:none}
 /* --- SC items & arts --- */
 /* --- SC guild --- */
 /* ===== END SUNDERED CROWN UI ===== */

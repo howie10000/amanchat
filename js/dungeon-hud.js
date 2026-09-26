@@ -1,5 +1,5 @@
 (function(){'use strict';
- let button=null,runButton=null,lastDungeon=null,lastQuest=null,lastRun=null;
+ let button=null,runButton=null,artsButton=null,lastDungeon=null,lastQuest=null,lastRun=null,lastArts=null;
  window.dungeonQuestCollapsed=false;
  window.dungeonRunCollapsed=false;
  function label(){
@@ -37,6 +37,18 @@
   }
   if(runButton&&run!==lastRun)runButton.hidden=!run;
   lastRun=run;
+  // The Sundered Crown: open the Crown Arts panel (B4) from a run, outside fights.
+  const artsUI=window.gameArtsUI&&typeof window.gameArtsUI.open==='function';
+  const arts=!!(artsUI&&run&&!d.bossRoom);
+  if(arts&&!artsButton){
+   artsButton=document.createElement('button');artsButton.id='dungeonArtsBtn';artsButton.type='button';
+   artsButton.textContent='✦ Arts';artsButton.setAttribute('aria-label','Crown Arts (equip F / C)');
+   artsButton.addEventListener('pointerdown',e=>e.stopPropagation());
+   artsButton.addEventListener('click',e=>{e.stopPropagation();artsButton.blur();try{window.gameArtsUI.open();}catch(err){}});
+   document.getElementById('stage').appendChild(artsButton);
+  }
+  if(artsButton&&arts!==lastArts)artsButton.hidden=!arts;
+  lastArts=arts;
  }
  window.gameDungeonHud={sync};
 })();
