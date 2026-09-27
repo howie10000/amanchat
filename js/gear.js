@@ -258,7 +258,7 @@ function adModText(m) {
   if (!def) return "";
   if (m.k === "resonance") return "Resonance: +5% to every other mod";
   if (m.k === "dashCd") return "-" + adPct(m.v) + " Dash cooldown";
-  const effective = (m.k === "lifesteal" || m.k === "regen") ? m.v * ECON.ITEM_HEALING_MULT : m.v;
+  const effective = m.k === "lifesteal" ? m.v * (ECON.LIFESTEAL_MULT != null ? ECON.LIFESTEAL_MULT : ECON.ITEM_HEALING_MULT) : m.k === "regen" ? m.v * ECON.ITEM_HEALING_MULT : m.v;
   if (!def.pct) return "+" + (Math.round((+effective || 0) * 100) / 100) + " " + def.label;
   return "+" + adPct(effective) + " " + def.label;
 }
@@ -277,7 +277,7 @@ function adFxLines(fx, effective = false) {
   const out = [];
   if (!fx || typeof fx !== "object") return out;
   for (const k of Object.keys(fx)) {
-    const v = !effective && (k === "lifesteal" || k === "regen") ? fx[k] * ECON.ITEM_HEALING_MULT : fx[k];
+    const v = effective ? fx[k] : k === "lifesteal" ? fx[k] * (ECON.LIFESTEAL_MULT != null ? ECON.LIFESTEAL_MULT : ECON.ITEM_HEALING_MULT) : k === "regen" ? fx[k] * ECON.ITEM_HEALING_MULT : fx[k];
     if (v == null || v === 0 || k === "sets") continue;
     if (AD_FX_LABEL[k] && typeof v === "number") out.push("+" + adPct(v) + " " + AD_FX_LABEL[k]);
     else if (k === "regen" && typeof v === "number") out.push("+" + (Math.round(v * 10) / 10) + " HP regen /s");

@@ -8,8 +8,9 @@ assert.deepEqual(boss.phases[0].attacks.filter(a=>a.dmg).map(a=>a.dmg),[88,24,52
 assert.deepEqual(boss.phases[1].attacks.filter(a=>a.dmg).map(a=>a.dmg),[36,26,52,52,60]);
 assert.deepEqual([boss.attacks[3].backlash,boss.phases[0].attacks[3].backlash,boss.phases[1].attacks[3].backlash],[90,100,110]);
 const item={v:2,slot:'weapon',mods:[{k:'lifesteal',v:.03},{k:'regen',v:1.5},{k:'bossDmg',v:.1}],gems:[]};
-const fx=E.gearFx([item]);assert.equal(fx.lifesteal,.0075);assert.equal(fx.regen,.375);assert.equal(fx.bossDmg,.1);
-const capped=E.gearFx(Array(20).fill(item));assert.equal(capped.lifesteal,.03);assert.equal(capped.regen,1.5);
-const unique=E.gearFx([{v:2,slot:'ring',uq:'concord_band',mods:[],gems:[]}]);assert.equal(unique.lifesteal,.0075);
+// Lifesteal has its own multiplier since the boss-balance pass (BALANCE.md): x0.10, regen stays x0.25.
+const fx=E.gearFx([item]);assert.equal(fx.lifesteal,.003);assert.equal(fx.regen,.375);assert.equal(fx.bossDmg,.1);
+const capped=E.gearFx(Array(20).fill(item));assert.equal(capped.lifesteal,.012);assert.equal(capped.regen,1.5);
+const unique=E.gearFx([{v:2,slot:'ring',uq:'concord_band',mods:[],gems:[]}]);assert.equal(unique.lifesteal,.003);
 assert.equal(D.SHRINES.renewal.regen,6,'Shrine regeneration remains unchanged');
 console.log('PASS Concordant 1–4 pylons, triple HP, double attacks/backlash, item-only healing reduction and caps');

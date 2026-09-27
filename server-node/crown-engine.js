@@ -674,6 +674,8 @@ module.exports = function createCrownEngine(deps) {
             base: ECON.kindHitDmg(wpn.kind, 'boss') * mult, fx, afterDash: !!msg.afterDash,
             onAccepted: () => b.hitLast.set(k, now),
         });
+        // Lifesteal vs a boss (BALANCE.md): the server's capped heal.
+        if (deps.lifestealFor && out.dmg > 0) out.heal = deps.lifestealFor(run, user, out.dmg, true, now);
         return out;
     }
     // Tomes and other non-swing damage: one pool (twins: the exposed body; the
