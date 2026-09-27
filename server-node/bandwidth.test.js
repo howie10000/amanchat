@@ -55,6 +55,13 @@ function check(name, value, max, unit) {
         assert(!/\.blend|sheet-|-review\./.test(u), 'source or review file referenced by the client: ' + u);
         if (u !== 'index.html') assert(/[?&]v=/.test(u), 'shipped URL without a ?v= cache tag (it could never be cached as immutable): ' + u);
     }
+    // The release tarball is a `git archive`: nothing the client requests may be export-ignored (.gitattributes).
+    try {
+        const files = m.boot.concat(m.lazy, m.css).map(u => u.split('?')[0]).concat(['server-node/server.js', 'server-node/static-serve.js', 'js/shared/economy.js', 'js/furniture.js']);
+        const out = require('child_process').execFileSync('git', ['check-attr', 'export-ignore', '--'].concat(files), { cwd: path.join(__dirname, '..'), encoding: 'utf8' });
+        const dropped = out.split(/\r?\n/).filter(l => /: export-ignore: set$/.test(l));
+        assert.deepEqual(dropped, [], 'a file the game needs is excluded from the release archive');
+    } catch (e) { if (e.code === 'ENOENT') console.log('(git not available: release-archive check skipped)'); else throw e; }
     await report.prewarm(m.boot.concat(m.lazy));
     const inv = report.inventory(m);
     const maxOf = (l) => l.reduce((a, r) => (r.br > a.br ? r : a), { br: 0, url: '-' });
