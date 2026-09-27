@@ -1533,7 +1533,7 @@
     if(rig){rig.body.emissive.copy(rig.color);if(rig.dragon&&rig.dragon.crown){rig.dragon.crown.visible=false;rig.dragon.crown.rotation.set(0,0,0);rig.dragon.crown.position.set(0,2.1,-.6);}}
     if(R.backWall)R.backWall.position.y=ROOM.wallH/2;
     for(const w of R.sideWalls){w.position.y=ROOM.wallH/2;w.rotation.z=0;}
-    for(const p of R.pillars){p.g.position.y=0;p.g.rotation.set(0,0,0);}
+    for(const p of R.pillars){p.g.position.set(p.sx*(ROOM.halfW-1.8),0,p.z);p.g.rotation.set(0,0,0);}
     fx.sky.visible=false;fx.flood.visible=false;fx.tear.visible=fx.tearGlow.visible=false;
     fx.shaft.material.opacity=0;fx.wash.material.opacity=0;coalLight.intensity=0;scene.fog.density=.012;
   }
@@ -3448,9 +3448,13 @@
     if (window.DungeonSkin && DungeonSkin.ready && DungeonSkin.ready()) { SKIN.state = "ready"; return true; }
     return false;
   }
-  function loadSkins() {
-    if (skinReady()) return Promise.resolve(true);
-    if (SKIN.promise) return SKIN.promise;
+  // `id`: the boss about to be shown. Its Blender pack part (js/dungeon-models-<dungeon>.js) and its film
+  // direction (js/cutscenes/<boss>.js) are fetched alongside the core; until they land the built-in beats
+  // and procedural rigs cover the frame.
+  function loadSkins(id) {
+    if (id && window.DungeonCutscenes && DungeonCutscenes.ensure) { try { DungeonCutscenes.ensure(id); } catch (e) {} }
+    if (skinReady()) { if (id) loadPart(id); return Promise.resolve(true); }
+    if (SKIN.promise) { if (id) SKIN.promise.then((ok) => { if (ok) loadPart(id); }); return SKIN.promise; }
     if (!SCRIPT_URL || typeof document === "undefined" || !document.head || typeof URL === "undefined") return Promise.resolve(false);
     const one = (name) => new Promise((ok, no) => {
       const el = document.createElement("script"); el.src = new URL(name + "?v=skin-1", SCRIPT_URL).href; el.async = true;
@@ -3459,9 +3463,16 @@
     SKIN.state = "loading";
     SKIN.promise = one("dungeon-models.js").then(() => one("dungeon-skin.js")).then(() => {
       SKIN.state = (window.DungeonSkin && DungeonSkin.ready && DungeonSkin.ready()) ? "ready" : "failed";
-      SKIN.fresh = SKIN.state === "ready"; return SKIN.state === "ready";
+      SKIN.fresh = SKIN.state === "ready"; if (SKIN.fresh && id) loadPart(id); return SKIN.state === "ready";
     }).catch((e) => { SKIN.state = "failed"; console.warn("Dungeon models unavailable; using procedural rigs", e); return false; });
     return SKIN.promise;
+  }
+  function loadPart(id) {
+    const S = SKINNED[id] || SKINNED[artOf(id)];
+    if (!S || !window.DungeonSkin || !DungeonSkin.ensure) return;
+    const cids = S.actors.map((a) => a.cid).concat(S.colossus ? [S.colossus.cid] : []).filter((c) => !DungeonSkin.has(c));
+    if (!cids.length) return;
+    Promise.all(cids.map((c) => DungeonSkin.ensure(c))).then((r) => { if (r.every(Boolean)) SKIN.fresh = true; }).catch(() => {});
   }
   // game height of each actor (the procedural rigs' sizes), and which clip plays each beat
   const SKINNED = {
@@ -3593,7 +3604,7 @@
     }
     const A0 = actors[0];
     return { eyes, eyeY, limbs: [], parts: [], idle, rise, miniPose, deathPose, phase2Pose, phaseKing: spec.colossus ? phaseKing : null,
-      colossus: spec.colossus ? colossus : null, colGroup: col, colEyes, torso: A0.bones.chest || A0.bones.body || A0.root, head: A0.bones.head || A0.root,
+      colossus: spec.colossus ? colossus : null, colGroup: col, colActor: colA, colEyes, torso: A0.bones.chest || A0.bones.body || A0.root, head: A0.bones.head || A0.root,
       sculpted: true, skinned: true, crownHuman: true, actors, trim: trimMat || trim };
   }
 
@@ -3723,8 +3734,76 @@
     }
     for (const e of rig.eyes) { e.userData.restY=e.position.y; e.userData.baseScale=e.scale.clone(); }
     rig.root.traverse(o=>{if(o.isMesh){o.castShadow=!o.material.transparent;o.receiveShadow=true;}});
+    rigBounds(rig);
     currentId = id;
     return rig;
+  }
+  // World-space boxes the camera must stay out of (js/cutscenes/director.js `clear`). Measured once at
+  // the rest pose with the root at the boss mark; bounds() re-offsets them by wherever the root is now,
+  // so a boss that charges across the room carries its no-fly zone with it. The colossus is its own box,
+  // counted only while it is up.
+  // The room's own no-fly zones: the pillars, the braziers and whatever tall dressing the theme adds
+  // (the Thornwild's trunks, the Colosseum's columns). Cached per theme; the low stuff is ignored.
+  const STATIC_BOUNDS={key:null,list:[]};
+  function staticBounds(){
+    const key=themeNow||"";
+    if(STATIC_BOUNDS.key===key)return STATIC_BOUNDS.list;
+    const out=[],R=room.userData,T=new THREE.Box3();
+    for(const p of R.pillars)out.push({min:[p.g.position.x-1.4,0,p.z-1.4],max:[p.g.position.x+1.4,ROOM.wallH,p.z+1.4]});
+    for(const b of R.braziers)out.push({min:[b.g.position.x-0.9,0,b.g.position.z-0.9],max:[b.g.position.x+0.9,4.2,b.g.position.z+0.9]});
+    const D=key&&decor[key];
+    if(D&&D.group){D.group.updateMatrixWorld(true);D.group.traverse(o=>{ if(!o.isMesh||!o.geometry)return; if(!o.geometry.boundingBox)o.geometry.computeBoundingBox();
+      T.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld); const h=T.max.y-T.min.y,w=Math.max(T.max.x-T.min.x,T.max.z-T.min.z);
+      if(!isFinite(h)||h<3||w>20||(o.material&&o.material.transparent))return; out.push({min:[T.min.x,T.min.y,T.min.z],max:[T.max.x,T.max.y,T.max.z]}); });}
+    STATIC_BOUNDS.key=key;STATIC_BOUNDS.list=out;return out;
+  }
+  function rigBounds(rig){
+    const home=new THREE.Vector3(0,0,ROOM.bossZ);
+    const measure=(obj)=>{
+      const box=new THREE.Box3(),tmp=new THREE.Box3();
+      obj.updateMatrixWorld(true);
+      obj.traverse(o=>{ if(!o.isMesh||!o.geometry||o.material&&o.material.transparent&&!o.isSkinnedMesh)return;
+        if(!o.geometry.boundingBox)o.geometry.computeBoundingBox(); tmp.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld); if(isFinite(tmp.min.x))box.union(tmp); });
+      if(box.isEmpty())box.set(new THREE.Vector3(-3,0,ROOM.bossZ-3),new THREE.Vector3(3,12,ROOM.bossZ+3));
+      // fatten a little: the rest pose is narrower than a swing
+      box.expandByVector(new THREE.Vector3(0.8,0.4,0.8));
+      return {min:[box.min.x-home.x,box.min.y,box.min.z-home.z],max:[box.max.x-home.x,box.max.y,box.max.z-home.z]};
+    };
+    const prevPos=rig.root.position.clone(),prevRot=rig.root.rotation.clone(),prevScale=rig.root.scale.clone();
+    rig.root.position.copy(home);rig.root.rotation.set(0,0,0);rig.root.scale.setScalar(1);
+    if(rig.colGroup)rig.colGroup.visible=false;
+    const body=measure(rig.shell.children.length?rig.shell:rig.root);
+    let col=null;
+    if(rig.colGroup){rig.colGroup.visible=true;rig.colGroup.position.y=0;col=measure(rig.colGroup);rig.colGroup.visible=false;}
+    rig.root.position.copy(prevPos);rig.root.rotation.copy(prevRot);rig.root.scale.copy(prevScale);
+    rig.boundsLocal={body,col};
+    if(rig.skinned&&rig.actors){
+      // skinned rigs: a pose-accurate hull each frame — every bone's world position plus the rigid
+      // attachments (the weapons), padded by a body's thickness. Close-ups can get close; nothing gets in.
+      const V=new THREE.Vector3(),T=new THREE.Box3();
+      const hull=(a)=>{
+        const box=new THREE.Box3();a.root.updateMatrixWorld(true);
+        for(const b of a.skeleton.bones){b.getWorldPosition(V);box.expandByPoint(V);}
+        for(const m of a.attached||[]){if(!m.geometry.boundingBox)m.geometry.computeBoundingBox();T.copy(m.geometry.boundingBox).applyMatrix4(m.matrixWorld);if(isFinite(T.min.x))box.union(T);}
+        if(box.isEmpty())return null;
+        box.expandByScalar(0.07*a.height);
+        return {min:[box.min.x,box.min.y,box.min.z],max:[box.max.x,box.max.y,box.max.z]};
+      };
+      rig.bounds=function(){
+        const out=[];
+        if(rig.shell.visible!==false)for(const a of rig.actors){const h=hull(a);if(h)out.push(h);}
+        if(rig.colActor&&rig.colGroup&&rig.colGroup.visible){const h=hull(rig.colActor);if(h)out.push(h);}
+        return out;
+      };
+      return;
+    }
+    rig.bounds=function(){
+      const p=rig.root.position,s=rig.root.scale.x||1,out=[];
+      const off=(b)=>({min:[p.x+b.min[0]*s,p.y+b.min[1]*s,p.z+b.min[2]*s],max:[p.x+b.max[0]*s,p.y+b.max[1]*s,p.z+b.max[2]*s]});
+      if(rig.shell.visible!==false)out.push(off(body));
+      if(col&&rig.colGroup&&rig.colGroup.visible){const c=rig.colGroup.position,b=off(col);b.min[1]+=c.y;b.max[1]+=c.y;out.push(b);}
+      return out;
+    };
   }
 
   // ---------------------------------------------------------------
@@ -4003,15 +4082,21 @@
     let i=0;while(i<keys.length-2&&k>keys[i+1][0])i++;
     const u=clamp01((k-keys[i][0])/Math.max(.0001,keys[i+1][0]-keys[i][0]));
     const v=axis=>cameraValue(keys,i,u,axis);
-    const s=reducedMotion.matches?0:Math.min(.7,shake||0);
+    placeCamera(v(1),v(2),v(3),v(4),v(5),v(6),v(7),shake);
+  }
+  // Put the camera somewhere and look at something. The one place every
+  // cutscene (built-in or js/cutscenes/*) sets the lens, so shake, the gate
+  // rule and the depth-of-field focus stay consistent.
+  function placeCamera(x,y,z,lx,ly,lz,fov,shake){
+    const s=reducedMotion.matches?0:Math.min(1.2,shake||0);
     const t=cinematicTime/1000;
-    camera.position.set(v(1)+Math.sin(t*31)*s*.45,v(2)+Math.sin(t*37+.7)*s*.3,v(3));
-    camera.lookAt(v(4),v(5),v(6));
+    camera.position.set(x+Math.sin(t*31)*s*.45,y+Math.sin(t*37+.7)*s*.3,z+Math.sin(t*23+1.3)*s*.12);
+    camera.lookAt(lx,ly,lz);
     // Wide reverse shots may back through the entrance; its bars must not
     // obscure the subject after the seal beat has already been established.
-    room.userData.gate.visible=!(v(6)<0 && camera.position.z>ROOM.doorZ-3);
-    focusDistance=camera.position.distanceTo(new THREE.Vector3(v(4),v(5),v(6)));
-    const fov=v(7);if(Math.abs(camera.fov-fov)>.001){camera.fov=fov;camera.updateProjectionMatrix();}
+    room.userData.gate.visible=!(lz<0 && camera.position.z>ROOM.doorZ-3);
+    focusDistance=camera.position.distanceTo(new THREE.Vector3(lx,ly,lz));
+    if(Math.abs(camera.fov-fov)>.001){camera.fov=fov;camera.updateProjectionMatrix();}
   }
 
   // ---------------------------------------------------------------
@@ -5289,10 +5374,72 @@
     flyCamera([[0,-9,9,4,0,mini?8:13,ROOM.bossZ,43],[.32,-5,5,0,0,mini?5:8,ROOM.bossZ,46],[.62,8,6,5,0,3,ROOM.bossZ,54],[.82,11,7,0,0,5,ROOM.doorZ,58],[1,8,5,-6,0,5,ROOM.doorZ,50]],p.k,.28*Math.sin(collapse*Math.PI));
     if(p.id==='dragon')flyCamera([[0,-25,12,28,0,19,ROOM.bossZ,58],[.5,30,10,22,0,8,ROOM.bossZ,62],[1,25,12,-8,0,12,52,55]],p.k,.2*Math.sin(collapse*Math.PI));
   }
+  // ---------------------------------------------------------------
+  //  the director bridge — js/cutscenes/*.js
+  // ---------------------------------------------------------------
+  // A boss with registered film direction draws its own frames through the
+  // context below; everything it needs from this file is handed over here, so
+  // the per-boss files never reach into the closure. A direction that throws
+  // is retired for the session and the built-in beats take the frame.
+  const DIR = { ctx: null, state: {}, kept: {}, failed: {} };
+  function posePhaseBuiltin(q) {
+    if (q.id === "dragon") posePhase2(q); else if (q.id === "iskarra") posePhaseIskarra(q); else if (q.id === "sundered_king" && rig.colossus) posePhaseKing(q); else posePhaseGeneric(q);
+  }
+  function resetDirector() {
+    DIR.state = {};
+    for (const k in DIR.kept) { const o = DIR.kept[k]; if (o && typeof o.hide === "function") { try { o.hide(); } catch (e) {} } }
+  }
+  function directorCtx(q, p, mode) {
+    let cx = DIR.ctx;
+    if (!cx) {
+      cx = DIR.ctx = {
+        THREE, ROOM, E, RW, RH, scene, camera, room, fx, WHITE,
+        lights: { ambient, hemi, key: keyLight, eye: eyeLight, coal: coalLight, door: doorLight, rim: rimLight },
+        beat, lerp, clamp01, easeIn, easeOut, easeInOut, easeOutBack, smoothW, smooth,
+        // the camera: audited against the rig's boxes, the floor and the walls before it is placed
+        place(pos, look, fov, shake) {
+          const DC = window.DungeonCutscenes, pp = pos.slice(), ll = look.slice();
+          if (DC && rig && rig.bounds) DC.clear(pp, ll, rig.bounds().concat(staticBounds()), ROOM, cx.margin == null ? 1.6 : cx.margin);
+          placeCamera(pp[0], pp[1], pp[2], ll[0], ll[1], ll[2], fov || 52, shake || 0);
+          return pp;
+        },
+        // the built-in beats, callable as building blocks
+        arrival(k) { return poseArrival(Object.assign({}, cx.q, { k: k == null ? cx.q.k : k })); },
+        awake(id, k) { const fn = AWAKE[id || cx.id]; return fn ? (fn(Object.assign({}, cx.q, { k: k == null ? cx.q.k : k })) || 0) : 0; },
+        awakeCam(id) { return AWAKE_CAM[id || cx.id] || null; },
+        entrance(k) { poseEntrance(Object.assign({}, cx.q, { k: k == null ? cx.q.k : k })); },
+        mini(k) { poseMini(Object.assign({}, cx.q, { k: k == null ? cx.q.k : k })); },
+        victory(k) { poseVictory(Object.assign({}, cx.q, { k: k == null ? cx.q.k : k })); },
+        phase(k) { posePhaseBuiltin(Object.assign({}, cx.q, { k: k == null ? cx.q.k : k })); },
+        phaseGeneric(k) { posePhaseGeneric(Object.assign({}, cx.q, { k: k == null ? cx.q.k : k })); },
+        braziers: litBraziers, sigil: sigilGlow, shockwaves, hideWaves, mote: spawnMote, party: poseParty, eyesOpen, flyCamera,
+        decor: () => decor, theme: () => themeNow, isMini: (id) => !!((window.ECON && ECON.isMiniBoss) ? ECON.isMiniBoss(id) : 0),
+        // long-lived scene objects owned by the directions (instanced debris, light cones): created once, hidden between scenes
+        keep(name, factory) { if (!DIR.kept[name]) DIR.kept[name] = factory(); return DIR.kept[name]; },
+        margin: null,
+      };
+    }
+    cx.rig = rig; cx.q = q; cx.k = q.k; cx.t = q.t; cx.id = q.id; cx.mode = mode; cx.people = q.people; cx.phase = q.phase;
+    cx.accent = rig.accent; cx.color = rig.color; cx.state = DIR.state; cx.mini = !!p.mini; cx.time = cinematicTime; cx.frameStep = frameStep;
+    cx.lights.rim = rimLight;
+    return cx;
+  }
+  function directed(q, p) {
+    const DC = window.DungeonCutscenes;
+    if (!DC || !DC.get) return false;
+    const def = DC.get(p.id);
+    if (!def) return false;
+    const mode = p.mode === "victory" ? "victory" : p.mode === "phase2" ? "phase2" : p.mini ? "mini" : "entrance";
+    const fn = def[mode];
+    if (typeof fn !== "function" || DIR.failed[p.id + "|" + mode]) return false;
+    try { return fn(directorCtx(q, p, mode)) === true; }
+    catch (e) { console.warn("Cutscene direction failed for " + p.id + "/" + mode + "; built-in beats used", e); DIR.failed[p.id + "|" + mode] = true; return false; }
+  }
+
   let lastMode = null, lastProgress=-1, lastTime=0;
   function render(p) {
     if (dead) return null;
-    loadSkins();
+    loadSkins(p && p.id);
     if (!renderer && !init()) return null;
     try { poseScene(p); }
     catch (e) { renderer.setRenderTarget(null);console.warn('Dungeon cinematic failed',e);dead = true; return null; }
@@ -5323,7 +5470,7 @@
     if (SKIN.fresh) { SKIN.fresh = false; currentId = null; if (fx && fx.party) for (const m of fx.party) m.skinTried = false; }
     if (!rig || currentId !== p.id) buildRig(p.id, p.color, p.accent);
     const modeKey = p.mode + "|" + p.id + "|" + (p.sceneId || "");
-    if (modeKey !== lastMode || p.k < lastProgress) { lastMode = modeKey; t0=p.t;lastTime=p.t;clearMotes();moteHead=0;resetStage(); }
+    if (modeKey !== lastMode || p.k < lastProgress) { lastMode = modeKey; t0=p.t;lastTime=p.t;clearMotes();moteHead=0;resetStage();resetDirector(); }
     frameStep=Math.max(.1,Math.min(3,(p.t-lastTime)/(1000/60)||1));lastTime=p.t;lastProgress=p.k;cinematicTime=p.t-t0;
 
     const people = (p.people && p.people.length) ? p.people.slice(0, PARTY_MAX) : [{ appearance: null }];
@@ -5340,8 +5487,9 @@
     applyTheme(TH);
     if (rig.idle) rig.idle(q.t, q.k);
     {
-      if (p.mode === "victory") poseVictory(q);
-      else if (p.mode === "phase2") { if (p.id === "dragon") posePhase2(q); else if (p.id === "iskarra") posePhaseIskarra(q); else if (p.id === "sundered_king" && rig.colossus) posePhaseKing(q); else posePhaseGeneric(q); }
+      if (directed(q, p)) { /* js/cutscenes/<boss>.js drew this frame */ }
+      else if (p.mode === "victory") poseVictory(q);
+      else if (p.mode === "phase2") posePhaseBuiltin(q);
       else if (p.mini) poseMini(q);
       else poseEntrance(q);
       if(rig.stormRings && p.mode!=='victory'){
@@ -5370,7 +5518,7 @@
   // Gameplay owns this independent model; no cutscene camera or renderer is
   // initialized, and disposal cannot invalidate an active cinematic rig.
   function createModel(id,color,accent) {
-    loadSkins();
+    loadSkins(id);
     const root=new THREE.Group(),shell=new THREE.Group();root.add(shell);
     const body=new THREE.MeshStandardMaterial({color:color||'#65596b',roughness:.8});
     const trim=new THREE.MeshStandardMaterial({color:accent||'#ffc976',emissive:accent||'#ffc976',emissiveIntensity:.25});
@@ -5382,6 +5530,7 @@
   }
   function warmup(stage) {
     loadSkins();
+    if (window.DungeonCutscenes && DungeonCutscenes.preload) { try { DungeonCutscenes.preload(); } catch (e) {} }
     if (dead) return false;
     if (!renderer && !init()) return false;
     if (stage !== 'build' && renderer.compile) renderer.compile(scene, camera);
@@ -5391,5 +5540,7 @@
   // and pose any frame. Not used by the game.
   function headless() { if (!scene) buildScene(); return { pose: poseScene, rig: () => rig, scene: () => scene, camera: () => camera }; }
   window.DungeonGL = { render, createModel, warmup, available: () => !dead, _headless: headless, BOSS_THEME,
-    skins: { load: loadSkins, ready: skinReady, state: () => SKIN.state, skinned: (id) => !!skinKey(id) } };
+    skins: { load: loadSkins, ready: skinReady, state: () => SKIN.state, skinned: (id) => !!skinKey(id) },
+    // js/cutscenes: which directions have been retired after throwing, and the live context (tests, review pages)
+    director: { failed: () => Object.keys(DIR.failed), ctx: () => DIR.ctx, bounds: () => (rig && rig.bounds ? rig.bounds().concat(staticBounds()) : []), renderer: () => renderer } };
 })();
