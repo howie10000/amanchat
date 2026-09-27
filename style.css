@@ -2730,6 +2730,7 @@ img.ii.scSil{filter:grayscale(1) brightness(.45) contrast(1.2);opacity:.75}
 .scArtChip img.ii{width:16px;height:16px}
 .scArch{display:inline-block;padding:0 5px;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:.1em;vertical-align:middle;color:#0b0b12;background:#94a3b8;text-shadow:none}
 .scArch.a-beast{background:#f59e0b}.scArch.a-duelist{background:#fda4af}.scArch.a-twins{background:linear-gradient(90deg,#fde68a 50%,#a5b4fc 50%)}.scArch.a-multiform{background:#fde047}
+.scArch.a-reshaper{background:#67e8f9}.scArch.a-phaser{background:#e9d5ff}.scArch.a-summoner{background:#fde68a}.scArch.a-duo{background:linear-gradient(90deg,#fca5a5 50%,#cbd5e1 50%)}
 /* loot reveal: the Crown Art card */
 .scRvArt .scRvBack{background:radial-gradient(circle at 50% 45%,#3b2a06,#0f0a02 70%);border-color:#eab308;box-shadow:0 0 18px -2px #eab308}
 .scRvArt .scRvBack span{font-size:40px;color:#fde047;text-shadow:0 0 14px #fde047}

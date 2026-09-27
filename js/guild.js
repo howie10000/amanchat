@@ -850,9 +850,13 @@ const delvePick = {};           // tier -> chosen delve level in the picker
 function storyLadder() { return (ECON.STORY_LADDER || ECON.GUILD_DUNGEON_ORDER).slice(); }
 const SC_ARCH = { beast: ["BEAST", "Bait its charges into the pillars"], duelist: ["DUELIST", "A swordsman who moves, guards and ripostes"],
   twins: ["TWINS", "Two linked bodies — strike the exposed one"], multiform: ["MULTI-FORM", "Changes shape as it falls"],
-  parts: ["CLASSIC", "Break its weak points, then the head"] };
+  parts: ["CLASSIC", "Break its weak points, then the head"],
+  reshaper: ["ARENA-SHIFTER", "Raises walls and sinks the floor — punish it when it tires"],
+  phaser: ["PHASER", "Fades out; stand in its tether to bind it"],
+  summoner: ["SUMMONER", "Kill its summons to break the shield"],
+  duo: ["DUO", "Two partners who swap roles — hit the exposed one"] };
 function scArchBadge(id) {
-  const k = ECON.bossArchetype ? ECON.bossArchetype(id) : "parts";
+  const k = window.gameGuide && gameGuide.styleOf ? gameGuide.styleOf(id) : ECON.bossArchetype ? ECON.bossArchetype(id) : "parts";
   const a = SC_ARCH[k] || SC_ARCH.parts;
   return `<span class="scArch a-${esc(k)}" title="${esc(a[1])}">${a[0]}</span>`;
 }

@@ -81,6 +81,10 @@
     twins: ["TWINS fight", "Two bosses. Only the exposed one (bright outline) takes damage. Kill both close together or the first one gets back up."],
     multiform: ["MULTI-FORM fight", "Changes shape as it loses health. Each form has a different weak spot — follow the prompt under its health bar."],
     classic: ["CLASSIC fight", "Break the glowing weak points first. When they are gone, the head opens up."],
+    reshaper: ["ARENA-SHIFTER fight", "It raises new walls and sinks the floor. Glowing marks show where walls rise: step off them. It tires after each rebuild — hit it then."],
+    phaser: ["PHASER fight", "It fades out and crosses the room where it can't be hurt. Stand in its glowing tether when it comes back to BIND it, then hit hard."],
+    summoner: ["SUMMONER fight", "Its summons shield it: while any is alive it takes a quarter damage. Kill them all, then hit it while it is SNUFFED."],
+    duo: ["DUO fight", "Two partners who swap roles. The hunting one can't be hurt — hit the exposed one, and keep both low together or one revives the other."],
     exposed: ["Exposed / Veiled", "The Twin Monarchs swap every few seconds. Only the EXPOSED one can be hurt. The VEILED one ignores your hits."],
     set: ["Set piece (✦)", "Part of a gear set. Wearing 2 or 4 pieces of the same set turns on extra bonuses."],
     unique: ["Unique (◈)", "A one-of-a-kind item with a special effect that no other gear has."],
@@ -321,12 +325,30 @@
     twin_monarchs: ["Only the EXPOSED twin (bright outline) can be hurt. The VEILED one ignores hits.", "They swap every few seconds — the prompt counts down the swap.", "When one falls, kill the other within 15 seconds or the first one gets back up."],
     veiled_assassin: ["She turns invisible, then appears BEHIND you.", "Keep moving, and turn around when she vanishes.", "Hit her right after her strike lands."],
     kael_crownbound: ["Kael again, stronger — same rules.", "Never hit his white guard; strike after his dashes and combos.", "At half health he brings his copies back: find the one with a shadow."],
+    vaughn: ["Mounted: bait his lance charge into a barricade — the horse is thrown and he is STUNNED.", "Below 55% he fights on foot and his riderless horse keeps charging: dodge sideways.", "On foot, hit him after his combos, never into his guard."],
+    mordaunt: ["Glowing marks on the floor are where new walls rise — step off them.", "After each rebuild 'the mortar sets' and he is EXHAUSTED: that is your window.", "Sunk floor sectors become pools that hurt: fight on solid stone."],
+    candlemas: ["While any wick burns she takes a quarter damage — kill the wicks first.", "When the last wick dies she is SNUFFED: hit her hard before she relights.", "In the second phase the room goes dark: stay close to the light."],
+    ilse_grim: ["Ilse the huntress and Grim the hound swap roles: the hunter can't be hurt.", "Hit the exposed one; watch the swap countdown.", "Step out of the CROSSFIRE line between them, and bring both down close together."],
+    seraphine: ["She fades out and crosses the room where you can't touch her.", "Stand in the glowing tether where she will reappear: she is BOUND (×1.8) when she comes back.", "If nobody is in the tether, she strikes out on arrival — move!"],
+    aurelion: ["Four forms: Herald (guards like a duelist), Tempest (reshapes the arena), Legion (echoes shield him), Apotheosis (phases out).", "Each form uses the same answer as its smaller cousin: punish combos, dodge wall marks, kill echoes, stand in the tether.", "Bring a full party — this is a raid boss."],
     sundered_king: ["Knight form: like Kael — don't hit the guard, punish the combos.", "At 60% he becomes a giant: hit a HAND while it rests on the floor, or him when he KNEELS.", "At 25% crown shards circle him: break them all to SUNDER him (×1.5 damage)."],
   };
-  const STYLE_OF = { beast: "BEAST", duelist: "DUELIST", twins: "TWINS", multiform: "MULTI-FORM", parts: "CLASSIC" };
+  const STYLE_OF = { beast: "BEAST", duelist: "DUELIST", twins: "TWINS", multiform: "MULTI-FORM", parts: "CLASSIC",
+    reshaper: "ARENA-SHIFTER", phaser: "PHASER", summoner: "SUMMONER", duo: "DUO" };
+  // The style a player should read: the server archetype, refined by the
+  // Sundered Crown II engine drivers (a reshaper still plans like a duelist).
+  function styleOf(bossId) {
+    const E = EC(), b = (E.GUILD_BOSSES || {})[bossId];
+    const arch = E.bossArchetype ? E.bossArchetype(bossId) : (b && b.archetype) || "parts";
+    if (!b || arch === "multiform") return arch;
+    if (b.driver === "reshaper" || b.driver === "phaser") return b.driver;
+    if (b.summoner) return "summoner";
+    if (arch === "twins" && b.twins && b.twins.melee) return "duo";
+    return arch;
+  }
   function fightHelp(bossId) {
     const E = EC(), b = (E.GUILD_BOSSES || {})[bossId];
-    const style = E.bossArchetype ? E.bossArchetype(bossId) : (b && b.archetype) || "parts";
+    const style = styleOf(bossId);
     const g = GLOSSARY[style === "parts" ? "classic" : style] || GLOSSARY.classic;
     const partName = (b && b.partName) || "weak point";
     const steps = FIGHT[bossId] || [`Break its glowing ${partName}s first — click or swing at them.`, "When the last one breaks, the head opens: now it takes full damage.", "Red shapes on the floor are attacks: step out before they fill."];
@@ -383,7 +405,7 @@
   W.gameGuide = {
     GLOSSARY, CUES, TOURS, term, explain, cueHtml, legendHtml,
     tour, autoTour, replay, stepTour, endTour, helpBtn, seen, markSeen, forget,
-    nextDungeon, unlockChain, chainHtml, fightHelp, bossIntro, closeBoss, cosmeticName, prettyLabel,
+    nextDungeon, unlockChain, chainHtml, fightHelp, styleOf, STYLE_OF, bossIntro, closeBoss, cosmeticName, prettyLabel,
     _t: { showTerm, hideTerm, install, tourState: () => tourState },
   };
   if (typeof module !== "undefined" && module.exports) module.exports = W.gameGuide;
