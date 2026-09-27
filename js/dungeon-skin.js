@@ -57,7 +57,14 @@
   const files = {};            // id -> { promise, state, bytes, ms }
   const arriveFns = [];
   let base = "";
-  const inMemory = (id) => { const L = lib(); return !!(L && L.characters && L.characters[id]); };
+  // a character is usable once its own file AND its shared clip files (deps) have run
+  const inMemory = (id) => {
+    const L = lib(), ch = L && L.characters && L.characters[id];
+    if (!ch) return false;
+    if (ch.deps) for (const ref in ch.clips) if (!L.clips[ch.clips[ref]]) return false;
+    return true;
+  };
+  const fileKnown = (f) => { const L = lib(); return !!(L && ((L.characters && L.characters[f]) || (/^clips-/.test(f) && files[f] && files[f].state === "ready"))); };
   function fetchScript(url, low) {
     return new Promise((ok, no) => {
       if (typeof document === "undefined" || !document.head) { no(new Error("no document")); return; }
@@ -67,26 +74,39 @@
       document.head.appendChild(el);
     });
   }
+  // one file (a character or a shared clip file), fetched once
+  function loadFile(name, low) {
+    const f = files[name];
+    if (f && f.promise && f.state !== "failed") return f.promise;
+    if (fileKnown(name)) return Promise.resolve(true);
+    const idx = (G.DungeonModelIndex || {})[name];
+    if (!base) return Promise.resolve(false);
+    if (G.DungeonModelIndex && !idx) { files[name] = { state: "failed", promise: Promise.resolve(false) }; return files[name].promise; }
+    const t0 = (typeof performance !== "undefined" ? performance.now() : Date.now());
+    const rec = files[name] = { state: "loading", bytes: idx ? idx.bytes : 0, ms: 0 };
+    // ?v= is the file's content hash: the URL changes only when the bytes do, so it can be cached forever
+    rec.promise = fetchScript(base + name + ".js" + (idx ? "?v=" + idx.v : ""), low).then(() => {
+      rec.ms = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
+      rec.state = "ready"; return true;
+    }, (e) => { rec.state = "failed"; rec.promise = null; console.warn("Dungeon model file " + name + " unavailable", e); return false; });
+    return rec.promise;
+  }
+  // a character: its file plus the shared clip files it depends on, all in parallel
   function loadOne(id, low) {
     if (inMemory(id)) return Promise.resolve(true);
-    const f = files[id];
-    if (f && f.promise && f.state !== "failed") return f.promise;
     const idx = (G.DungeonModelIndex || {})[id];
-    if (!base) return Promise.resolve(false);
-    if (G.DungeonModelIndex && !idx) { files[id] = { state: "failed", promise: Promise.resolve(false) }; return files[id].promise; }
-    const t0 = (typeof performance !== "undefined" ? performance.now() : Date.now());
-    const rec = files[id] = { state: "loading", bytes: idx ? idx.bytes : 0, ms: 0 };
-    rec.promise = fetchScript(base + id + ".js" + (idx ? "?v=" + idx.v : ""), low).then(() => {
-      rec.ms = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
-      rec.state = inMemory(id) ? "ready" : "failed"; return rec.state === "ready";
-    }, (e) => { rec.state = "failed"; rec.promise = null; console.warn("Dungeon model " + id + " unavailable", e); return false; });
-    return rec.promise;
+    const names = [id].concat((idx && idx.deps) || []);
+    return Promise.all(names.map((n) => loadFile(n, low))).then((ok) => {
+      const ready = ok.every(Boolean) && inMemory(id);
+      if (ready) for (const fn of arriveFns) { try { fn([id]); } catch (e) { console.warn(e); } }
+      return ready;
+    });
   }
   function load(ids, low) {
     const list = (Array.isArray(ids) ? ids : [ids]).filter(Boolean);
     return Promise.all(list.map((id) => loadOne(id, low))).then((r) => r.every(Boolean));
   }
-  function stateOf(id) { if (inMemory(id)) return "ready"; const f = files[id]; return f ? f.state : "absent"; }
+  function stateOf(id) { if (inMemory(id)) return "ready"; const f = files[id]; return f ? (f.state === "ready" ? "loading" : f.state) : "absent"; }
   const decoded = {};          // per mesh key -> typed arrays (kept for rebuilding geometry)
   const clipCache = {};        // per character id + clip -> THREE.AnimationClip
 
@@ -98,12 +118,38 @@
   const i16 = (s) => { const b = bytes(s); return new Int16Array(b.buffer, b.byteOffset, b.byteLength >> 1); };
   const u32 = (s) => { const b = bytes(s); return new Uint32Array(b.buffer, b.byteOffset, b.byteLength >> 2); };
   const i8 = (s) => { const b = bytes(s); return new Int8Array(b.buffer, b.byteOffset, b.byteLength); };
+  // packed streams (format z:2, written by tools/split-dungeon-models.cjs): zigzag varints of deltas
+  function unvarint(s, n) {
+    const b = bytes(s), out = new Int32Array(n);
+    let v = 0, sh = 0, k = 0;
+    for (let i = 0; i < b.length && k < n; i++) {
+      const c = b[i]; v += (c & 127) * Math.pow(2, sh);
+      if (c & 128) sh += 7; else { out[k++] = (v % 2) ? -(v + 1) / 2 : v / 2; v = 0; sh = 0; }
+    }
+    return out;
+  }
+  function positions(m) {
+    const n = m.vc, pos = new Float32Array(n * 3), b = m.b;
+    if (m.P) {
+      const d = unvarint(m.P, n * 3), top = Math.pow(2, m.pb || 13) - 1;
+      for (let a = 0; a < 3; a++) { let q = 0; for (let i = 0; i < n; i++) { q += d[a * n + i]; pos[i * 3 + a] = b[a] + (b[a + 3] - b[a]) * q / top; } }
+    } else {
+      const q = u16(m.p);
+      for (let i = 0; i < n; i++) for (let a = 0; a < 3; a++) pos[i * 3 + a] = b[a] + (b[a + 3] - b[a]) * q[i * 3 + a] / 65535;
+    }
+    return pos;
+  }
+  function indices(m) {
+    if (!m.I) return m.w === 4 ? u32(m.i) : u16(m.i);
+    const d = unvarint(m.I, m.ic), out = m.vc > 65535 ? new Uint32Array(m.ic) : new Uint16Array(m.ic);
+    let v = 0; for (let i = 0; i < m.ic; i++) { v += d[i]; out[i] = v; }
+    return out;
+  }
 
   function decodeMesh(key, m) {
     if (decoded[key]) return decoded[key];
-    const q = u16(m.p), n = m.vc, pos = new Float32Array(n * 3), b = m.b;
-    for (let i = 0; i < n; i++) for (let a = 0; a < 3; a++) pos[i * 3 + a] = b[a] + (b[a + 3] - b[a]) * q[i * 3 + a] / 65535;
-    const out = { pos, nrm: m.n ? i8(m.n) : null, idx: m.w === 4 ? u32(m.i) : u16(m.i), groups: m.g };
+    const pos = positions(m);
+    const out = { pos, nrm: m.n ? i8(m.n) : null, idx: indices(m), groups: m.g };
     if (!out.nrm) {
       // normals are not shipped: hard edges are split vertices, so per-index averaging rebuilds them
       const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setIndex(new THREE.BufferAttribute(out.idx, 1));
@@ -157,10 +203,20 @@
       const bi = tr[0], R = rest[bi], bone = names[bi];
       rq.set(R[3], R[4], R[5], R[6]);
       if (tr.length === 1) { tracks.push(new THREE.QuaternionKeyframeTrack(bone + ".quaternion", [0], [R[3], R[4], R[5], R[6]])); continue; }
-      const fr = u16(tr[1]), qs = i16(tr[2]), times = new Float32Array(fr.length), vals = new Float32Array(fr.length * 4);
+      let fr, qs, qn = 32767;
+      if (c.z === 2) {
+        // packed: frame deltas; x/y/z streams quantised to c.qn (w rebuilt, >= 0)
+        const nb = bytes(tr[1]); let n = 0; for (let i = 0; i < nb.length; i++) if (!(nb[i] & 128)) n++;
+        const fd = unvarint(tr[1], n), qd = unvarint(tr[2], n * 3);
+        fr = new Float32Array(n); qs = new Float32Array(n * 4); qn = c.qn || 2047;
+        let f = 0; for (let i = 0; i < n; i++) { f += fd[i]; fr[i] = f; }
+        for (let a = 0; a < 3; a++) { let q = 0; for (let i = 0; i < n; i++) { q += qd[a * n + i]; qs[i * 4 + a] = q; } }
+        for (let i = 0; i < n; i++) { const x = qs[i * 4] / qn, y = qs[i * 4 + 1] / qn, z = qs[i * 4 + 2] / qn; qs[i * 4 + 3] = Math.sqrt(Math.max(0, 1 - x * x - y * y - z * z)) * qn; }
+      } else { fr = u16(tr[1]); qs = i16(tr[2]); }
+      const times = new Float32Array(fr.length), vals = new Float32Array(fr.length * 4);
       for (let i = 0; i < fr.length; i++) {
         times[i] = fr[i] / fps;
-        bq.set(qs[i * 4] / 32767, qs[i * 4 + 1] / 32767, qs[i * 4 + 2] / 32767, qs[i * 4 + 3] / 32767).normalize();
+        bq.set(qs[i * 4] / qn, qs[i * 4 + 1] / qn, qs[i * 4 + 2] / qn, qs[i * 4 + 3] / qn).normalize();
         bq.premultiply(rq);
         vals[i * 4] = bq.x; vals[i * 4 + 1] = bq.y; vals[i * 4 + 2] = bq.z; vals[i * 4 + 3] = bq.w;
       }

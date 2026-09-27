@@ -13,7 +13,7 @@ const ECON = require('./shared/economy.js');
 // one self-contained file per character (see the LOADER API in dungeon-skin.js)
 const path = require('node:path');
 const PART_DIR = path.join(__dirname, 'dungeon-models');
-const PARTS = fs.readdirSync(PART_DIR).filter((f) => f.endsWith('.js') && f !== 'index.js').sort();
+const PARTS = fs.readdirSync(PART_DIR).filter((f) => f.endsWith('.js') && f !== 'index.js').sort();   // characters + shared clip files
 let bytes = 0;
 for (const f of PARTS) { const b = fs.statSync(path.join(PART_DIR, f)).size; bytes += b; assert(b < 420e3, f + ' stays under 420 KB (' + b + ')'); }
 assert(bytes < 3.0e6, 'library stays under 3 MB before compression (' + bytes + ')');
@@ -62,7 +62,7 @@ for (const cid of CHARS) {
     assert(c.d > 0.2 && c.d <= 8, cid + '/' + n + ' duration ' + c.d);
     for (const t of c.t) assert(t[0] >= 0 && t[0] < sk.bones.length, 'track bone index');
   }
-  const t = ch.mesh.i ? Buffer.from(ch.mesh.i, 'base64').length / (ch.mesh.w * 3) : 0;
+  const t = ch.mesh.ic ? ch.mesh.ic / 3 : ch.mesh.i ? Buffer.from(ch.mesh.i, 'base64').length / (ch.mesh.w * 3) : 0;
   tris += t;
   assert(t > 1500 && t < 12000, cid + ' triangle budget ' + t);
   const k = Buffer.from(ch.mesh.k, 'base64');

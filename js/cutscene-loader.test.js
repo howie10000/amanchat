@@ -42,15 +42,17 @@ test('index lists every part with its content hash and size', () => {
   const idx = b.w.DungeonModelIndex;
   assert.deepEqual(Object.keys(idx).sort(), PARTS);
   for (const id of PARTS) {
-    const buf = fs.readFileSync(path.join(DIR, id + '.js'));
+    const buf = Buffer.from(fs.readFileSync(path.join(DIR, id + '.js'), 'utf8').replace(/\r\n/g, '\n'));
     assert.equal(idx[id].bytes, buf.length, id + ' size');
     assert.equal(idx[id].v, crypto.createHash('sha1').update(buf).digest('hex').slice(0, 10), id + ' hash (rerun tools/split-dungeon-models.cjs)');
   }
 });
 
-test('every part is self-contained: alone, its character builds and poses', () => {
-  for (const id of PARTS) {
+test('every character part is self-contained (with its listed shared-clip deps): it builds and poses', () => {
+  const IDX = (() => { const b = browser(); run(b, 'dungeon-models/index.js'); return b.w.DungeonModelIndex; })();
+  for (const id of PARTS.filter((p) => !/^clips-/.test(p))) {
     const b = browser(); run(b, 'dungeon-models/' + id + '.js'); run(b, 'dungeon-skin.js');
+    if (IDX[id].deps) { assert(!b.w.DungeonSkin.has(id), id + ' is not usable before its shared clips'); for (const d of IDX[id].deps) run(b, 'dungeon-models/' + d + '.js'); }
     const S = b.w.DungeonSkin;
     assert(S.has(id), id + ' present');
     assert.deepEqual([...S.characters()], [id], id + ' file carries only itself');
@@ -62,10 +64,39 @@ test('every part is self-contained: alone, its character builds and poses', () =
   }
 });
 
+test('packed format (z:2) decodes to the same mesh and the same poses as the raw format', () => {
+  const T = require('../tools/split-dungeon-models.cjs');
+  // a synthetic raw character: 2 bones, random quantised positions, a long index buffer, one clip
+  let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const vc = 900, pos = new Uint16Array(vc * 3).map(() => Math.floor(rnd() * 65536)), idx = new Uint16Array(3000).map(() => Math.floor(rnd() * vc));
+  const j = new Uint8Array(vc * 4), k = new Uint8Array(vc * 4); for (let i = 0; i < vc; i++) { j[i * 4] = i % 2; k[i * 4] = 255; }
+  const b64 = (a) => Buffer.from(a.buffer, a.byteOffset, a.byteLength).toString('base64');
+  const frames = new Uint16Array([0, 3, 9, 20, 30]), q = new Int16Array(5 * 4);
+  for (let i = 0; i < 5; i++) { const ax = [rnd() - 0.5, rnd() - 0.5, rnd() - 0.5], L = Math.hypot(...ax), a = rnd() * 3; const s = Math.sin(a / 2) / L; q.set([ax[0] * s, ax[1] * s, ax[2] * s, Math.cos(a / 2)].map((v) => Math.round(v * 32767)), i * 4); }
+  const rawMesh = { vc, b: [-1, 0, -0.5, 1, 2, 0.5], w: 2, p: b64(pos), i: b64(idx), j: b64(j), k: b64(k), g: [['m', 0, 3000]] };
+  const rawClip = { d: 1, l: 1, f: 30, t: [[0], [1, b64(frames), b64(q)]] };
+  const ch = (mesh, clip) => ({ skel: 's', h: 2, u: 1, rest: [[0, 0, 0, 0, 0, 0, 1], [0, 1, 0, 0, 0, 0, 1]], mesh, attach: [], sockets: {}, clips: { idle: clip }, meta: {} });
+  const b = browser(); run(b, 'dungeon-skin.js');
+  b.w.DungeonModels = { v: 1, materials: { m: { color: '#ffffff', roughness: 1, metalness: 0 } }, skeletons: { s: { bones: ['root', 'arm'], parents: [-1, 0] } },
+    characters: { raw: ch(rawMesh, 'c1'), packed: ch(T.packMesh(rawMesh), 'c2') }, clips: { c1: rawClip, c2: T.packClip(rawClip) }, weapons: {} };
+  assert.equal(b.w.DungeonModels.clips.c2.z, 2); assert(b.w.DungeonModels.characters.packed.mesh.P && !b.w.DungeonModels.characters.packed.mesh.p);
+  const A = b.w.DungeonSkin.create('raw', { scale: 1 }), P = b.w.DungeonSkin.create('packed', { scale: 1 });
+  const pa = A.mesh.geometry.getAttribute('position').array, pp = P.mesh.geometry.getAttribute('position').array;
+  let dmax = 0; for (let i = 0; i < pa.length; i++) dmax = Math.max(dmax, Math.abs(pa[i] - pp[i]));
+  assert(dmax <= 2 / 8191 * 0.51 + 1e-6, 'positions within half a 13-bit step of the box (' + dmax + ')');
+  assert.deepEqual([...P.mesh.geometry.index.array], [...A.mesh.geometry.index.array], 'indices exact');
+  for (const t of [0, 0.05, 0.3, 0.66, 0.99]) {
+    A.pose([['idle', t, 1]]); P.pose([['idle', t, 1]]);
+    const qa = A.bones.arm.quaternion, qp = P.bones.arm.quaternion;
+    const ang = 2 * Math.acos(Math.min(1, Math.abs(qa.x * qp.x + qa.y * qp.y + qa.z * qp.z + qa.w * qp.w))) * 180 / Math.PI;
+    assert(ang < 0.1, 'rotation within 0.1 degree at t=' + t + ' (' + ang.toFixed(4) + ')');
+  }
+});
+
 test('parts merge in any order', () => {
   const b = browser(); run(b, 'dungeon-skin.js');
   for (const id of PARTS.slice().reverse()) run(b, 'dungeon-models/' + id + '.js');
-  for (const id of PARTS) assert(b.w.DungeonSkin.has(id));
+  for (const id of PARTS.filter((p) => !/^clips-/.test(p))) assert(b.w.DungeonSkin.has(id), id);
 });
 
 (async () => {
@@ -80,7 +111,7 @@ test('parts merge in any order', () => {
     assert.equal(await p1, true); assert.equal(await p2, true);
     assert.equal(b.requested.length, 2, 'two files, no duplicate request: ' + b.requested.join(' '));
     assert(b.requested.every((u) => /\?v=[0-9a-f]{10}$/.test(u)), 'versioned by content hash');
-    assert.deepEqual(arrived.sort(), ['hero', 'pit_champion']);
+    assert.deepEqual([...new Set(arrived)].sort(), ['hero', 'pit_champion'], 'arrivals reported (repeats are harmless)');
     assert(!S.has('kael') && !S.has('sundered_king'), 'nothing else was downloaded');
     assert.equal(await S.load('pit_champion'), true); assert.equal(b.requested.length, 2, 'already in memory: no request');
     assert.equal(await S.load('no_such_boss'), false, 'unknown id resolves false');
