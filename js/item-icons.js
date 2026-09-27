@@ -2418,6 +2418,17 @@
     _stats: () => ({ draws: stats.draws, hits: stats.hits, cached: cache.size }),
     clearCache() { cache.clear(); },
     _families: FAMILY,
+    // Content waves register icon art (js/ascension-weapons.js): {families:{baseId: fam}, variants:{baseId: v},
+    // weapons:{fam: painter(c, p, v, rn)}, busts:{bossId: painter(c, col, acc, rn)}}. Helpers are handed back for painters.
+    register(o) {
+      if (!o) return null;
+      if (o.families) Object.assign(FAMILY, o.families);
+      if (o.variants) Object.assign(VARIANT, o.variants);
+      if (o.weapons) Object.assign(W, o.weapons);
+      if (o.busts) Object.assign(BUST, o.busts);
+      cache.clear();
+      return { rr, circ, poly, al, dk, lt, lg, rg, glowDot, strokeP, part, pal, theme, H };
+    },
   };
   root.ItemIcons = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;

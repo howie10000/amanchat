@@ -55,7 +55,10 @@
   // Which engine drives the boss in this phase: beast | duelist | twins | colossus | crown | parts.
   function driverOf(bossId, phase) {
     const a = archetypeOf(bossId);
-    if (a !== "multiform") return a;
+    const def = typeof bossId === "object" ? bossId : bossDef(bossId);
+    // A single-form boss may name a registered driver (`def.driver`, e.g. the
+    // Mason's 'reshaper'); its archetype still decides the engine's bookkeeping.
+    if (a !== "multiform") return (def && def.driver && DRIVERS[def.driver]) ? def.driver : a;
     const f = formOf(bossId, phase);
     return (f && f.driver) || "duelist";
   }
@@ -226,6 +229,9 @@
     pr = num(pr, 12);
     if (sh.shape === "lane") return segDist(p, { x: sh.x0, y: sh.y0 }, { x: sh.x1, y: sh.y1 }) <= sh.w / 2 + pr;
     if (sh.shape === "circle") return Math.hypot(p.x - sh.x, p.y - sh.y) <= sh.r + pr;
+    // 'marks': several circles (the Mason's rising stones); 'tether' never hits (a telegraph only)
+    if (sh.shape === "marks") return (sh.marks || []).some(m => Math.hypot(p.x - m.x, p.y - m.y) <= num(m.r, 34) + pr);
+    if (sh.shape === "tether") return false;
     if (sh.shape === "ring") { const d = Math.hypot(p.x - sh.x, p.y - sh.y); return sh.band ? Math.abs(d - sh.r) <= sh.band / 2 + pr : d <= sh.r + pr; }
     if (sh.shape === "cone") {
       const d = Math.hypot(p.x - sh.x, p.y - sh.y);
@@ -444,11 +450,16 @@
     return list[list.length - 1];
   }
   function inRange(a, d) { const r = a.range || [0, 99999]; return d >= r[0] && d <= r[1]; }
+  // Extension point: content waves register extra drivers (a multiform's
+  // form.driver or an archetype name) without forking this module.
+  const DRIVERS = {};
+  function registerDriver(name, fn) { if (name && typeof fn === "function") DRIVERS[name] = fn; return DRIVERS; }
   function planBoss(ctx, rand) {
     rand = rand || Math.random;
     const def = bossDef(ctx.bossId);
     if (!def) return { steps: [], move: null, target: null, cds: {} };
     const driver = driverOf(def, ctx.phase);
+    if (DRIVERS[driver]) return DRIVERS[driver](def, ctx, rand);
     if (driver === "beast") return planBeast(def, ctx, rand);
     if (driver === "twins") return planTwin(def, ctx, rand);
     if (driver === "colossus") return planColossus(def, ctx, rand);
@@ -636,7 +647,7 @@
     const d = Math.hypot(tgt.x - ctx.pos.x, tgt.y - ctx.pos.y);
     const T = tuning(def, ctx.phase, "duelist");
     // Phase specials first: clones and the thousand cuts ultimate.
-    const deck = deckFor(def.id || ctx.bossId, ctx.phase);
+    const deck = deckFor(def.id || ctx.bossId, ctx.phase, ctx.body);
     const special = deck.find(a => (a.kind === "clones" && !(num(ctx.clonesReadyAt) > now) && !(ctx.clonesAlive > 0)) || (a.kind === "cuts" && !(num(ctx.cutsReadyAt) > now)));
     if (special) {
       const r = buildMove(def, ctx, special, tgt, rand, B);
@@ -693,6 +704,13 @@
   }
   // Twins: each twin glides between anchors and casts from its own deck.
   function planTwin(def, ctx, rand) {
+    // Melee twins (a duo of duellists): each body plans a duelist beat from
+    // its own deck; the polarity / link rules are unchanged.
+    if (def.twins && def.twins.melee) {
+      const out = planDuelist(def, ctx, rand);
+      if (ctx.body) for (const st of out.steps) st.body = ctx.body;
+      return out;
+    }
     const now = num(ctx.now), B = bodyOf(def, ctx.phase);
     const anchors = twinAnchors(ctx.arena).filter(a => !ctx.other || Math.hypot(a.x - ctx.other.x, a.y - ctx.other.y) > 260);
     const to = anchors.length ? anchors[Math.floor(rand() * anchors.length)] : CENTER;
@@ -978,7 +996,7 @@
     HIT, reachFor, canHit, sideOf, blocked, segDist, shapeHits,
     chargePath, thousandCuts, mirrorSteps, crownShards, shardPos,
     twinPolarity, twinsAfterDamage, twinsTick, twinDamageable, twinAnchors,
-    deckFor, bodyOf, tuning, pickTarget, planBoss, planBeast, planDuelist, planTwin, planColossus, planCrown, buildMove, riposteSteps,
+    deckFor, bodyOf, tuning, pickTarget, planBoss, planBeast, planDuelist, planTwin, planColossus, planCrown, buildMove, riposteSteps, registerDriver, DRIVERS,
     ARTS, ART_ORDER, ART_RARITIES, ART_MAX_RANK, ART_SLOTS, ART_KEYS, ART_GLOBAL_MS, ART_RARITY_FACTOR, ART_PITY,
     artPower, artCooldownMs, artBaseDamage, warCryMult, artDupesForRank, artForgeCost, artMeltShards,
     normArts, grantArt, forgeArt, equipArt, ART_DROPS, LEGACY_ART_DROPS, rollArtDrops, CROWN_SHARDS, crownShardsForClear,

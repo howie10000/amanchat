@@ -5390,6 +5390,15 @@
   // Headless hook for js/arcane-art.test.js: build the scene with no renderer
   // and pose any frame. Not used by the game.
   function headless() { if (!scene) buildScene(); return { pose: poseScene, rig: () => rig, scene: () => scene, camera: () => camera }; }
-  window.DungeonGL = { render, createModel, warmup, available: () => !dead, _headless: headless, BOSS_THEME,
+  // Content waves register a boss's cutscene rig here (js/cutscenes/*.js):
+  // {build(root, shell, body, trim, accent) -> rig, awake?(p) -> shake, cam?: fly path}.
+  function registerBoss(id, o) {
+    if (!id || !o) return false;
+    if (typeof o.build === "function") BUILDERS[id] = o.build;
+    if (typeof o.awake === "function") AWAKE[id] = o.awake;
+    if (Array.isArray(o.cam)) AWAKE_CAM[id] = o.cam;
+    return true;
+  }
+  window.DungeonGL = { render, createModel, warmup, registerBoss, available: () => !dead, _headless: headless, BOSS_THEME,
     skins: { load: loadSkins, ready: skinReady, state: () => SKIN.state, skinned: (id) => !!skinKey(id) } };
 })();

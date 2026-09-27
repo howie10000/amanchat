@@ -19,6 +19,12 @@ module.exports = function createCrownEngine(deps) {
     const { ECON, CROWN, pushMany, runBroadcast, presenceOf, attackPayload, bossHpOf, pendingThreshold, checkBossPhase,
         userRec, masteryLevelOf, gearStatsOf, gearFxOf, swingBuffMult, bossProcs, weaponOf } = deps;
     const T = deps.testKnobs || {};
+    // Extension hooks (a content wave's server module, e.g. ascension-engine.js):
+    // spawn / tick / stepEvent / strikeMult / onPhase / view. Each receives the
+    // internals object `I` (declared at the end) so it can plan, push and cast
+    // through the same paths as the engine. All optional.
+    const EXT = deps.ext || {};
+    const I = {};
 
     const PLAN_AHEAD_MS = 300;      // re-plan when less than this is left (§4.1)
     const PRESENCE_TARGET_MS = 2000; // a planner target must have reported within this
@@ -89,6 +95,8 @@ module.exports = function createCrownEngine(deps) {
             const at = b.driver === 'colossus' ? (tune(b, 'colossus').home || SPAWN_POS) : SPAWN_POS;
             b.motion.main = [CROWN.step('idle', now, riseMs, at, at, { face: Math.PI / 2 })];
         }
+        b.extCtx = {};
+        if (EXT.spawn) EXT.spawn(run, b, now, I);
     }
     function syncTwinHead(b) {
         const bs = b.twin.bodies;
@@ -167,14 +175,16 @@ module.exports = function createCrownEngine(deps) {
             * (b.hardEnraged ? 0.55 : 1) * (aff.includes('arcane_storm') ? 0.85 : 1) * (aff.includes('heartbeat') ? 0.9 : 1);
         if (b.twin && b.twin.fallen) ms *= ((tune(b, 'twins').enrage || {}).cadenceMult || 0.8);
         if (bossHpOf(b) / b.maxHp < ECON.GUILD_BOSS.ENRAGE_FRAC) ms *= ECON.GUILD_BOSS.ENRAGE_SPEED;
-        return ms;
+        return ms * (b.extCadenceMult || 1);
     }
     // Damage multiplier for every body move the boss plans (casts get the
     // same through attackPayload): delve/initiate scaling, the hard enrage,
-    // and a twin whose sibling has fallen.
-    function moveDmgMult(run, b) {
-        let m = (run.bossDmgMult || 1) * (b.hardEnraged ? 1.5 : 1);
+    // a twin whose sibling has fallen, and the extension's multiplier (gear
+    // power / ascension scaling, per body).
+    function moveDmgMult(run, b, key) {
+        let m = (run.bossDmgMult || 1) * (b.hardEnraged ? 1.5 : 1) * (b.extDmgMult || 1);
         if (b.twin && b.twin.fallen) m *= ((tune(b, 'twins').enrage || {}).dmgMult || 1.25);
+        if (EXT.bodyDmgMult) m *= EXT.bodyDmgMult(run, b, key, I) || 1;
         return m;
     }
     function scaleSteps(steps, mult) {
@@ -211,6 +221,7 @@ module.exports = function createCrownEngine(deps) {
             cutsReadyAt: ai.cutsReadyAt, castReadyAt: ai.castReadyAt, footworkReadyAt: ai.footworkReadyAt,
             sunderedUntil: b.sunderedUntil, slams: ai.slams,
         };
+        if (b.extCtx) Object.assign(ctx, b.extCtx);
         let res = CROWN.planBoss(ctx, Math.random);
         const force = forcedFor(b.id);
         if (force && !force.includes(res.move)) {
@@ -219,7 +230,7 @@ module.exports = function createCrownEngine(deps) {
         if (!res.steps || !res.steps.length) {
             res.steps = [CROWN.step('idle', start, 600, pos, pos, { face: pos.f, body: b.twin ? key : undefined })];
         }
-        scaleSteps(res.steps, moveDmgMult(run, b));
+        scaleSteps(res.steps, moveDmgMult(run, b, key));
         ai.cds = Object.assign({}, ai.cds, res.cds || {});
         if (res.move) ai.last = res.move;
         else ai.footworkReadyAt = start + 900;
@@ -334,6 +345,7 @@ module.exports = function createCrownEngine(deps) {
     function fireCast(run, b, a, now, origin, extra) {
         const out = attackPayload(run, a, now);
         if (b.twin && b.twin.fallen && out.dmg) out.dmg = round(out.dmg * ((tune(b, 'twins').enrage || {}).dmgMult || 1.25));
+        if (out.dmg && (b.extDmgMult || b.extCastMult)) out.dmg = round(out.dmg * (b.extDmgMult || 1) * (b.extCastMult || 1));
         out.ox = round(origin.x); out.oy = round(origin.y);
         if (extra) Object.assign(out, extra);
         runBroadcast(run, 'attack', { attack: out });
@@ -370,6 +382,7 @@ module.exports = function createCrownEngine(deps) {
         const b = run.boss;
         if (!isMobile(b) || b.status !== 'alive') return;
         if (b.twin) twinsTick(run, b, now);
+        if (EXT.tick) EXT.tick(run, b, now, I);
         if (b.driver === 'crown' && b.sunderedUntil && now >= b.sunderedUntil && !shardsAlive(b)) {
             const C = tune(b, 'crown');
             makeShards(run, b, Math.max(C.minShards || 3, (b.shardN || 4) - 1), now);
@@ -411,12 +424,12 @@ module.exports = function createCrownEngine(deps) {
         } else if (e.kind === 'wall_hit') {
             const wf = tune(b, 'beast').wallFall;
             if (wf) fireCast(run, b, wf, now, bodyPos(b, key, now));
-        }
+        } else if (EXT.stepEvent) EXT.stepEvent(run, b, key, e, now, I);
     }
     function announceStagger(run, b, key, now) {
         const st = CROWN.stepAt(b.motion[key], now);
         if (!st || !(st.vuln > 1) || st.t0 > now || CROWN.stepEnd(st) <= now) return;
-        let reason = STAGGER_REASON[st.s];
+        let reason = st.reason || STAGGER_REASON[st.s];
         if (!reason && st.s === 'recover' && b.archetype === 'beast' && st.vuln === tune(b, 'beast').wallVuln) reason = 'wall';
         if (!reason) return;
         const k = key + ':' + st.t0;
@@ -470,6 +483,7 @@ module.exports = function createCrownEngine(deps) {
             const fighters = Math.max(1, Object.keys(b.damage).length);
             makeShards(run, b, Math.min(C.maxShards || 8, (C.shards || 4) + Math.floor(fighters / (C.perFighters || 3))), now);
         } else if (b.shards) { b.shards = null; }
+        if (EXT.onPhase) EXT.onPhase(run, b, ph, now, I);
         void def;
     }
     function onDeath(run, now) {
@@ -576,12 +590,20 @@ module.exports = function createCrownEngine(deps) {
                 return Object.assign(out, { blocked: true, hp: bossHpOf(b), maxHp: b.maxHp, dead: false, mini: !!b.mini });
             }
         }
-        const vuln = tgt.kind === 'body' ? CROWN.vulnAt(tgt.steps, now) : 1;
+        let vuln = tgt.kind === 'body' ? CROWN.vulnAt(tgt.steps, now) : 1;
+        if (b.extVulnCap > 1 && vuln > b.extVulnCap) vuln = b.extVulnCap;   // an ascension modifier
         const hpFrac = bossHpOf(b) / b.maxHp;
         const r = ECON.rollHitDamage(o.base, o.fx, { kind: 'boss', hpFrac, staggered: vuln > 1 }, Math.random, run.counters[user]);
         run.counters[user] = r.counterState;
         let mult = swingBuffMult(run, user, now, o.fx, !!o.afterDash) * vuln;
         if (o.vsStaggered && vuln > 1) mult *= o.vsStaggered;
+        // Extension: linked adds shield a summoner, etc. {mult, shielded?, refuse?}
+        if (EXT.strikeMult && tgt.kind === 'body') {
+            const x = EXT.strikeMult(run, b, tgt, now, I);
+            if (x && x.refuse) throw new Error(x.refuse);
+            if (x && x.mult != null) mult *= x.mult;
+            if (x && x.shielded) out.shielded = true;
+        }
         // Shadow Veil: the next blow lands twice as hard (consumed here).
         if (run.veilNext && run.veilNext[user]) { mult *= run.veilNext[user]; delete run.veilNext[user]; }
         let dmg = Math.max(1, round(r.dmg * mult));
@@ -722,8 +744,13 @@ module.exports = function createCrownEngine(deps) {
             for (const k of bodyKeys(b)) out.motion[k] = b.motion[k] || [];
             out.clones = cloneSteps(b);
         }
+        if (EXT.view) EXT.view(run, b, now, out, I);
         return out;
     }
+
+    // What an extension may reach into (never server.js): plan, push, cast,
+    // trim/truncate, positions, targets, per-run stats.
+    Object.assign(I, { trim, motionPush, planBody, bodyPos, fireCast, scaleSteps, moveDmgMult, targetsOf, roomPresence, statsOf, announceStagger, bodyKeys, tune, bodyR, runBroadcast, pushMany, defOf });
 
     return { isMobile, roomPresence, spawn, rescale, tick, onPhase, onDeath, hold, hit, strike, hurt, slow, view, statsOf, resolveTarget };
 };
