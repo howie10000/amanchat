@@ -88,7 +88,7 @@ function client(url) {
     }
     for (const t of trees) {
       const hash =new URLSearchParams({ ids: opt('ids', 'pit_champion,veiled_assassin,briar_matron,kael_crownbound'), mode: opt('mode', 'entrance'), ms: opt('ms', '6200'), q: opt('q', ''), warm: opt('warm') ? '1' : '0' }).toString();
-      await c.send('Page.navigate', { url: `http://127.0.0.1:${port}/${t.name}/bench.html#${hash}` });
+      await c.send('Page.navigate', { url: `http://127.0.0.1:${port}/${t.name}/${opt('page', 'bench.html')}#${hash}` });
       let res = null;
       for (let i = 0; i < 1200 && !res; i++) {
         await sleep(250);

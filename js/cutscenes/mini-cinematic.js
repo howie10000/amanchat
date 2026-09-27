@@ -65,16 +65,16 @@
   // Boss-relative: z values are offsets from ROOM.bossZ; the party stands at world z ~1.5.
   function shotAt(shots, k) { for (let i = shots.length - 1; i >= 0; i--) if (k >= shots[i][0]) return shots[i]; return shots[0]; }
   const V = new THREE.Vector3(), W = new THREE.Vector3(), Q1 = new THREE.Quaternion(), Q2 = new THREE.Quaternion(), Q3 = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0), X = new THREE.Vector3(), M4 = new THREE.Matrix4();
-  function frameCamera(api, shots, k, shake, eyeH, size) {
+  function frameCamera(api, shots, k, shake, eyeH, size, hx, hz) {
     const cam = api.camera(), BZ = api.ROOM.bossZ, s = shotAt(shots, k), u = (ease[s[8]] || ease.inOut)(beat(k, s[0], s[1])), dy = s[9] ? (eyeH || 8) - 8 : 0;
     // eye-relative shots also scale their distance with the body (the ogre lord is twice the assassin)
-    const f = s[9] ? Math.max(1, Math.min(2.4, size || 1)) : 1;
+    const f = s[9] ? Math.max(1, Math.min(3, size || 1)) : 1, ox = s[9] ? hx || 0 : 0, oz = s[9] ? hz || 0 : 0;   // centred on the head, not the body axis
     const t = api.time() / 1000, reduce = api.reducedMotion();
     const hand = reduce ? 0 : 0.06 + Math.min(0.7, shake || 0);    // a little breathing in every shot
-    cam.position.set(f * lerp(s[2][0], s[3][0], u) + Math.sin(t * 1.3) * 0.18 * hand + Math.sin(t * 31) * 0.45 * (shake || 0),
+    cam.position.set(ox + f * lerp(s[2][0], s[3][0], u) + Math.sin(t * 1.3) * 0.18 * hand + Math.sin(t * 31) * 0.45 * (shake || 0),
       dy + 8 + f * (lerp(s[2][1], s[3][1], u) - 8) + Math.sin(t * 1.7 + 1) * 0.12 * hand + Math.sin(t * 37 + 0.7) * 0.3 * (shake || 0),
-      BZ + f * lerp(s[2][2], s[3][2], u));
-    V.set(f * lerp(s[4][0], s[5][0], u), dy + 8 + f * (lerp(s[4][1], s[5][1], u) - 8), BZ + f * lerp(s[4][2], s[5][2], u));
+      BZ + oz + f * lerp(s[2][2], s[3][2], u));
+    V.set(ox + f * lerp(s[4][0], s[5][0], u), dy + 8 + f * (lerp(s[4][1], s[5][1], u) - 8), BZ + oz + f * lerp(s[4][2], s[5][2], u));
     cam.lookAt(V);
     const fov = lerp(s[6], s[7], u); if (Math.abs(cam.fov - fov) > 0.001) { cam.fov = fov; cam.updateProjectionMatrix(); }
     api.setFocus(cam.position.distanceTo(V));
@@ -262,7 +262,7 @@
         [0.00, 0.16, [-5, 2, 40], [-4.5, 2.3, 38.5], [0, 4, 0], [0, 2, 0], 56, 52, "inOut"],         // the party, the floor ahead trembling
         [0.16, 0.34, [9, 3.5, 14], [7, 3, 12], [0, 1.5, 0], [0, 3, 0], 52, 56, "out"],              // the thorns burst
         [0.34, 0.64, [-7, 3, 11], [-5, 6, 10], [0, 4, 0], [0, 8, 0], 46, 42, "sine"],               // unfurling, the camera tilts up with her
-        [0.64, 0.84, [2.2, 8.4, 7.4], [1.5, 8.8, 6.2], [0, 9, 0], [0, 9.2, 0], 32, 29, "inOut", true],
+        [0.64, 0.84, [2.2, 7.8, 7.4], [1.5, 8.1, 6.2], [0, 8, 0], [0, 8.2, 0], 32, 29, "inOut", true],
         [0.84, 1.00, [3.2, 4.4, 35], [2.4, 4.7, 33.2], [0, 6, 0], [0, 6.4, 0], 34, 31, "out"],
       ];
       return { B: { fall: 1, land: burst, rise: grow, taunt, y: lerp(-7, 0, ease.out(grow)), flash: 0, look: beat(k, 0.58, 0.72) }, shots, shake: burst > 0 && burst < 1 ? 0.5 * (1 - burst) : 0.08 * (1 - beat(k, 0, 0.16)) * beat(k, 0.04, 0.16) };
@@ -277,7 +277,7 @@
         [0.00, 0.10, [4.5, 2.5, 40], [4, 2.8, 38.5], [0, 10, 0], [0, 16, 0], 56, 54, "inOut"],
         [0.10, 0.50, [6, 4, 16], [4, 5, 13], [0, 20, 0], [0, 9, 0], 46, 44, "sine"],
         [0.50, 0.66, [-6, 5, 12], [-5, 6, 10], [0, 7, 0], [0, 8, 0], 46, 44, "out"],
-        [0.66, 0.86, [2.4, 8.8, 7.5], [1.6, 9.2, 6.4], [0, 9.4, 0], [0, 9.6, 0], 32, 29, "inOut", true],
+        [0.66, 0.86, [2.4, 7.8, 7.5], [1.6, 8.1, 6.4], [0, 8, 0], [0, 8.2, 0], 32, 29, "inOut", true],
         [0.86, 1.00, [-3.2, 4.4, 35], [-2.4, 4.7, 33.2], [0, 6, 0], [0, 6.4, 0], 34, 31, "out"],
       ];
       return { B: { fall: down, land: beat(k, 0.44, 0.52), rise, taunt, y: lerp(22, 0, ease.inOut(down)), flash: 0, look: beat(k, 0.56, 0.7) }, shots, shake: 0 };
@@ -343,9 +343,10 @@
     // the look: head and neck follow the camera during the close-up, then the party
     // eye-relative shots follow the actual head height (a crouching taunt drops it), smoothed like an operator would
     const hb = headBones(rig), hy = hb.length ? (rig.root.updateMatrixWorld(true), hb[hb.length - 1].getWorldPosition(V).y + 0.4) : rig.eyeY * 0.62 + B.y;
+    const hx = hb.length ? V.x : 0, hz = hb.length ? V.z - BZ : 0;
     if (k < follow.k || follow.id !== id) { follow.y = hy; follow.id = id; }
     follow.y += (hy - follow.y) * (1 - Math.exp(-Math.max(0, (k - follow.k)) * 6.2 * 5)); follow.k = k;
-    const cam = frameCamera(api, D.shots, k, D.shake, follow.y, bodySize(rig));
+    const cam = frameCamera(api, D.shots, k, D.shake, follow.y, bodySize(rig) * (rig.skinned ? 1 : 1.5), hx, hz);
     rig.root.updateMatrixWorld(true);
     FWD.set(Math.sin(rig.root.rotation.y), 0, Math.cos(rig.root.rotation.y));
     const lookW = smoothW(0, 0.3, B.look) ;

@@ -5577,7 +5577,7 @@
     if (warmed[sig]) return Promise.resolve(true);
     if (warming[sig]) return warming[sig];
     const steps = warmSteps(id, def), t0 = nowMs();
-    let spent = 0, worst = 0;
+    let spent = 0, worst = 0, slow = [], n = 0;
     return (warming[sig] = new Promise((done) => {
       const slice = (deadline) => {
         // a cutscene is up: stop; it compiles whatever is left itself (and marks the scene state its own)
@@ -5585,13 +5585,49 @@
         const until = nowMs() + Math.max(3, Math.min(10, deadline && deadline.timeRemaining ? deadline.timeRemaining() - 2 : 8));
         let r;
         const s0 = nowMs();
-        do { const a = nowMs(); try { r = steps.next(); } catch (e) { console.warn("cutscene warm-up failed", e); r = { done: true }; } spent += nowMs() - a; } while (!r.done && nowMs() < until);
+        do { const a = nowMs(); try { r = steps.next(); } catch (e) { console.warn("cutscene warm-up failed", e); r = { done: true }; } const d = nowMs() - a; spent += d; n++; if (d > 30) slow.push(n + ":" + Math.round(d)); } while (!r.done && r.value !== "wait" && nowMs() < until);
         worst = Math.max(worst, nowMs() - s0);
-        if (r.done) { lastMode = null; lastRenderKey = null; warmed[sig] = { ms: Math.round(spent), wall: Math.round(nowMs() - t0), worstSlice: Math.round(worst) }; warming[sig] = null; done(true); }
+        if (r.done) { lastMode = null; lastRenderKey = null; warmed[sig] = { ms: Math.round(spent), wall: Math.round(nowMs() - t0), worstSlice: Math.round(worst), steps: n, slow: slow.join(" ") }; warming[sig] = null; done(true); }
         else idle(slice);
       };
       idle(slice);
     }));
+  }
+  // three's GLSL for everything in the cutscene scene (+ wash + post), without linking anything
+  function captureSources(vis, lights) {
+    const gl = renderer.getContext(), srcOf = new Map(), att = new Map(), out = [];
+    const names = ["shaderSource", "attachShader", "linkProgram", "getProgramParameter", "getProgramInfoLog", "getShaderInfoLog"];
+    const own = names.filter((n) => Object.prototype.hasOwnProperty.call(gl, n)), saved = {};
+    for (const n of names) saved[n] = gl[n];
+    gl.shaderSource = function (sh, src) { srcOf.set(sh, src); return saved.shaderSource.call(gl, sh, src); };
+    gl.attachShader = function (p, sh) { (att.get(p) || att.set(p, []).get(p)).push(sh); return saved.attachShader.call(gl, p, sh); };
+    gl.linkProgram = function (p) { out.push((att.get(p) || []).map((sh) => srcOf.get(sh))); };
+    gl.getProgramParameter = function (p, n) { return n === gl.LINK_STATUS ? true : 0; };
+    gl.getProgramInfoLog = gl.getShaderInfoLog = () => "";
+    const mats = new Set();
+    try {
+      const on = new Set(lights);
+      scene.traverse((o) => { o.visible = o.isLight ? on.has(o) : true; if (o.material) for (const m of [].concat(o.material)) mats.add(m); });
+      fx.washScene.traverse((o) => { if (o.material) mats.add(o.material); }); finish.scene.traverse((o) => { if (o.material) mats.add(o.material); });
+      renderer.compile(scene, camera); renderer.compile(fx.washScene, fx.washCam); renderer.compile(finish.scene, finish.camera);
+    } finally {
+      for (const n of names) { if (own.includes(n)) gl[n] = saved[n]; else delete gl[n]; }
+      for (const [o, v] of vis) o.visible = v;
+      // forget the stub programs: every material re-acquires a real (now cached) one on its next compile
+      for (const m of mats) m.dispose();
+    }
+    return out;
+  }
+  function prelink(sources) {
+    const job = { done: false, ok: 0 };
+    if (!sources.length) { job.done = true; return job; }
+    let w;
+    try { w = new Worker(new URL("cutscenes/shader-warm-worker.js?v=" + SKIN_V, SCRIPT_URL).href); } catch (e) { job.done = true; return job; }
+    const end = (r) => { if (job.done) return; job.done = true; job.ok = (r && r.ok) || 0; job.ms = r && r.ms; try { w.terminate(); } catch (e) {} };
+    w.onmessage = (e) => end(e.data); w.onerror = () => end(null);
+    setTimeout(() => end(null), 20000);
+    w.postMessage({ sources });
+    return job;
   }
   function* warmSteps(id, def) {
     if (!renderer && !init()) return;
@@ -5612,18 +5648,31 @@
       const key = mats.map((m) => m.type + (m.map ? "t" : "") + (m.emissiveMap ? "e" : "") + (m.bumpMap ? "b" : "") + (m.transparent ? "a" : "") + m.side + (m.defines ? JSON.stringify(m.defines) : "")).join("|") + (o.isSkinnedMesh ? "S" : "") + (o.isInstancedMesh ? "I" : "") + (o.castShadow ? "c" : "") + (o.receiveShadow ? "r" : "");
       if (!seen.has(key)) { seen.add(key); list.push(o); }
     });
-    const lights = []; scene.traverse((o) => { if (o.isLight) lights.push(o); });
+    // the lights that actually count this frame (every ancestor visible): program sources depend on the light count
+    const lights = []; scene.traverseVisible((o) => { if (o.isLight) lights.push(o); });
+    // PRE-LINK OFF THE MAIN THREAD. A shader compile blocks the thread that asks for it (three queries the
+    // program's uniforms right after linking; on ANGLE/D3D11 one PBR program is 0.2-0.7 s). So: capture the
+    // GLSL three would build (a dry compile with linking stubbed out, ~20 ms), hand it to a worker that links it
+    // in its own OffscreenCanvas context, and only then compile for real — the GPU process's program cache
+    // makes that a hit (measured 1.3 s -> 55 ms). Without workers/OffscreenCanvas: sliced blocking compiles.
+    let pre = null;
+    if (typeof Worker !== "undefined" && typeof OffscreenCanvas !== "undefined" && SCRIPT_URL) {
+      try { pre = prelink(captureSources(vis, lights)); } catch (e) { pre = null; }
+      yield;
+      const t1 = nowMs();
+      while (pre && !pre.done && nowMs() - t1 < 20000) yield "wait";   // ends the slice: nothing to do until the worker replies
+    }
     for (let i = 0; i < list.length; i += 2) {
       scene.traverse((o) => { o.visible = false; });
       scene.visible = true;
-      for (const L of lights) if (vis.get(L)) for (let q = L; q; q = q.parent) q.visible = true;
+      for (const L of lights) for (let q = L; q; q = q.parent) q.visible = true;
       for (const o of list.slice(i, i + 2)) for (let q = o; q; q = q.parent) q.visible = true;
       renderer.compile(scene, camera);
       for (const [o, v] of vis) o.visible = v;
       yield;
     }
-    renderer.compile(fx.washScene, fx.washCam); yield;
-    renderer.compile(finish.scene, finish.camera); yield;
+    renderer.compile(fx.washScene, fx.washCam); renderer.compile(finish.scene, finish.camera);
+    yield;
     // one real frame: texture uploads, shadow-map programs, the wash and post passes
     p.k = 0.34; poseScene(p); fx.wash.material.opacity = 0.3; drawFrame(p.t); fx.wash.material.opacity = 0;
   }
