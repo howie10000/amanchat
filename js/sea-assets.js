@@ -54,6 +54,8 @@ for(const ev of ['keydown','keyup','pointerdown','pointermove','wheel','touchsta
 },{passive:true,capture:true});
 window.addEventListener('blur',()=>{held.clear();lastInput=now();});
 function saveData(){const c=navigator.connection;return !!c&&(!!c.saveData||/(^|-)2g$/.test(c.effectiveType||''));}
+// Shared with other idle prefetchers (dungeon3d.js warmup) so they honour the same data-saver rule.
+window.saveDataMode=saveData;
 function onGameEnter(){
  if(!login||!login.classList.contains('hidden'))return;
  if(!entered){entered=true;

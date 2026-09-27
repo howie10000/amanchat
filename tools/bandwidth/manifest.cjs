@@ -19,6 +19,23 @@ function read(rel) { try { return fs.readFileSync(path.join(ROOT, rel), 'utf8');
 function norm(rel) { return path.posix.normalize(rel.replace(/\\/g, '/')).replace(/^\.\//, '').replace(/^\//, ''); }
 function fileOf(url) { return norm(url.split('?')[0]); }
 
+const LAZY_DIRS = [
+    ['js', /^js\/(dungeon-models[^/]*\.js|dungeon-skin\.js)$/],
+    ['js/dungeon-models', /^js\/dungeon-models\/.+\.(js|json|bin|glb)$/],
+    ['js/cutscenes', /^js\/cutscenes\/[^/]+\.js$/],
+    ['js/bosses', /^js\/bosses\/[^/]+\.js$/],
+];
+// A content-hash file name is its own cache tag (static-serve.js serves it immutable).
+const HASHED = /[.-][0-9a-f]{8,}\.[a-z0-9]+$/i;
+function walk(dir) {
+    const out = [];
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) out.push(...walk(p)); else out.push(p);
+    }
+    return out;
+}
+
 function manifest() {
     const boot = new Map(), lazy = new Map(), css = new Map();
     const add = (map, url) => { url = norm(url); if (!/^(data|https?|blob):/.test(url) && fs.existsSync(path.join(ROOT, fileOf(url)))) map.set(fileOf(url), url); };
@@ -52,10 +69,22 @@ function manifest() {
         for (const rel of [...boot.keys()]) if (/\.(js|css)$/.test(rel)) scan(boot, rel, lazy);
         for (const rel of [...lazy.keys()]) if (/\.js$/.test(rel)) scan(lazy, rel, lazy);
     }
-    // The title worker's own fallback (main-thread dungeon-title.js) only loads if the worker fails.
+    // Files whose URLs are assembled at run time (model pack parts, per-boss
+    // cutscene directions, content-wave art) are found by directory instead.
+    // Tolerates both the per-dungeon split (js/dungeon-models-<part>.js) and
+    // packed per-id files with hashed names (js/dungeon-models/<id>[.<hash>].js).
+    for (const [dir, re] of LAZY_DIRS) {
+        let names = [];
+        try { names = walk(path.join(ROOT, dir)); } catch (e) { continue; }
+        for (const abs of names) {
+            const rel = norm(path.relative(ROOT, abs));
+            if (!re.test(rel) || /\.test\.js$|\.snap\.json$/.test(rel) || boot.has(rel) || lazy.has(rel)) continue;
+            lazy.set(rel, rel + (HASHED.test(rel) ? '' : '?v=scan'));
+        }
+    }
     for (const k of boot.keys()) lazy.delete(k);
     return { boot: [...boot.values()], lazy: [...lazy.values()], css: [...css.values()] };
 }
 
-module.exports = { manifest, fileOf, ROOT };
+module.exports = { manifest, fileOf, ROOT, HASHED };
 if (require.main === module) console.log(JSON.stringify(manifest(), null, 1));

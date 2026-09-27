@@ -14,6 +14,7 @@ const path = require('path');
 const report = require('../tools/bandwidth-report.cjs');
 const { model } = require('../tools/bandwidth/presence-model.cjs');
 const staticServe = require('./static-serve.js');
+const { HASHED } = require('../tools/bandwidth/manifest.cjs');
 
 const KB = 1024;
 const BUDGET = {
@@ -54,7 +55,7 @@ function check(name, value, max, unit) {
     for (const u of m.boot.concat(m.lazy, m.css)) {
         assert(!staticServe.isBlocked('/' + u.split('?')[0], {}), 'a shipped URL is on the never-serve list: ' + u);
         assert(!/\.blend|sheet-|-review\./.test(u), 'source or review file referenced by the client: ' + u);
-        if (u !== 'index.html') assert(/[?&]v=/.test(u), 'shipped URL without a ?v= cache tag (it could never be cached as immutable): ' + u);
+        if (u !== 'index.html') assert(/[?&]v=/.test(u) || HASHED.test(u), 'shipped URL without a ?v= tag or content-hash name (it could never be cached as immutable): ' + u);
     }
     // The release tarball is a `git archive`: nothing the client requests may be export-ignored (.gitattributes).
     try {

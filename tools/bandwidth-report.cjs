@@ -93,7 +93,7 @@ async function httpReplay(m) {
         const repeat = await fetchAll(port, revalidate, u => (etags.get(u).etag ? { 'if-none-match': etags.get(u).etag } : {}));
         const sum = l => l.reduce((s, r) => s + r.bytes, 0);
         const blocked = [];
-        for (const probe of ['assets/racing/apex-racing.blend', 'assets/dark-sea/dark-sea-models.blend', 'assets/racing/race-review.png', 'docs/crew-review.html', 'docs/dark-sea-playtest.html', 'js/core.test.js', 'tools/play-local.cjs', 'assets/dungeon/sheet-bosses.png', 'README.md', '.local-test/game.db'])
+        for (const probe of ['assets/racing/apex-racing.blend', 'assets/dark-sea/dark-sea-models.blend', 'assets/racing/race-review.png', 'docs/crew-review.html', 'docs/dark-sea-playtest.html', 'js/core.test.js', 'tools/play-local.cjs', 'assets/dungeon/sheet-kael.png', 'assets/dungeon/dungeon-models.blend', 'README.md', '.local-test/game.db'])
             blocked.push({ url: probe, status: (await fetchAll(port, [probe]))[0].status });
         return {
             cold: { requests: cold.length, bytes: sum(cold), uncompressed: cold.filter(r => !r.enc && /\.(js|css|html|json)(\?|$)/.test(r.url)).map(r => r.url), notImmutable: cold.filter(r => r.url !== 'index.html' && !/immutable/.test(r.cc)).map(r => r.url) },

@@ -56,9 +56,12 @@ function blockMiddleware(opts) {
     };
 }
 
+// A `?v=` tag or a content-hash file name (name.<hex8+>.js / name-<hex8+>.js)
+// makes a URL immutable.
 function cacheControlFor(req) {
     const q = req.url.indexOf('?');
-    return q >= 0 && /(^|&)v=[^&]/.test(req.url.slice(q + 1)) ? IMMUTABLE : REVALIDATE;
+    if (q >= 0 && /(^|&)v=[^&]/.test(req.url.slice(q + 1))) return IMMUTABLE;
+    return /[.-][0-9a-f]{8,}\.[a-z0-9]+$/i.test(req.path) ? IMMUTABLE : REVALIDATE;
 }
 
 function acceptEncoding(req) {
