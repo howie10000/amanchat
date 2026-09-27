@@ -33,6 +33,21 @@ const raf = () => new Promise((r) => requestAnimationFrame(r));
   await load('js/dungeon3d.js');
   await load('js/cutscenes/mini-cinematic.js', true);
   const bootMs = performance.now() - T0;
+  // #shot=<id>&k=0.5: fast-forward that cutscene to k (so motes/fx accumulate like in play) and hold the frame
+  if (P.shot) {
+    const id = P.shot, def = ECON.GUILD_BOSSES[id] || {}, mini = def.tier === 'mini', ms = +(P.ms || 6200), mode = P.mode || 'entrance';
+    if (DungeonGL.prefetch) await DungeonGL.prefetch(id); else { DungeonGL.warmup('build'); while (DungeonGL.skins.state() !== 'ready' && DungeonGL.skins.state() !== 'failed') await raf(); }
+    const people = [{ appearance: { shirt: '#dc2626' } }, { appearance: { shirt: '#2563eb' }, weapon: 'spear' }, { appearance: null, weapon: 'crossbow' }];
+    const ctx = document.getElementById('c').getContext('2d'), K = +P.k;
+    for (let i = 0; i <= 60; i++) {
+      const kk = K * i / 60;
+      const gl = DungeonGL.render({ mode, id, mini, k: kk, t: 5000 + kk * ms, sceneId: 'shot' + id, people, color: def.color, accent: def.accent });
+      if (gl) ctx.drawImage(gl, 0, 0, 1024, 640);
+      if (i % 6 === 0) await raf();
+    }
+    ctx.fillStyle = '#fde68a'; ctx.font = '14px Georgia'; ctx.fillText(id + ' ' + mode + ' k=' + K.toFixed(2), 14, 24);
+    window.__bench = { shot: true }; return;
+  }
   const ids = (P.ids || 'pit_champion').split(','), ms = +(P.ms || 6200), mode = P.mode || 'entrance';
   const ctx = document.getElementById('c').getContext('2d');
   const out = { bootMs, bosses: [] };
@@ -40,6 +55,17 @@ const raf = () => new Promise((r) => requestAnimationFrame(r));
   for (const id of ids) {
     const def = ECON.GUILD_BOSSES[id] || {}, mini = def.tier === 'mini';
     const people = [{ appearance: { shirt: '#dc2626' } }, { appearance: { shirt: '#2563eb' } }, { appearance: null }];
+    // #warm=1: the in-game path — the boss's assets were fetched and its shaders warmed during the floor
+    // before (DungeonGL.prefetch). The baseline tree has no prefetch; its best case is the town's background
+    // warm-up having already downloaded the whole pack and compiled the room, so that is what it gets.
+    let warmMs = null;
+    if (P.warm === '1') {
+      const w0 = performance.now();
+      if (DungeonGL.prefetch) { await new Promise((r) => setTimeout(r, 1700)); await DungeonGL.prefetch(id); }
+      else { DungeonGL.warmup('build'); while (DungeonGL.skins.state() !== 'ready' && DungeonGL.skins.state() !== 'failed') await raf(); DungeonGL.warmup('compile'); }
+      warmMs = performance.now() - w0;
+      for (let i = 0; i < 90; i++) await raf();   // the "floor": time passes before the boss
+    }
     const r0 = performance.now(); let readyMs = null, first = null;
     const frames = [], dcs = [], trs = [];
     // wait for the model to arrive (the cutscene would otherwise play with the procedural stand-in)
@@ -66,7 +92,7 @@ const raf = () => new Promise((r) => requestAnimationFrame(r));
     clock += ms + 1000;
     const s = frames.slice(5).sort((x, y) => x - y), avg = s.reduce((x, y) => x + y, 0) / Math.max(1, s.length);
     const q = window.CutsceneQuality && CutsceneQuality.current ? CutsceneQuality.current() : null;
-    out.bosses.push({ id, readyMs, firstFrameMs: first, frames: frames.length, avgMs: +avg.toFixed(2), p50: +s[(s.length * 0.5) | 0].toFixed(2), p95: +s[(s.length * 0.95) | 0].toFixed(2), max: +s[s.length - 1].toFixed(2),
+    out.bosses.push({ id, warmMs, warmStats: DungeonGL.stats ? DungeonGL.stats().warmed : null, readyMs, firstFrameMs: first, frames: frames.length, avgMs: +avg.toFixed(2), p50: +s[(s.length * 0.5) | 0].toFixed(2), p95: +s[(s.length * 0.95) | 0].toFixed(2), max: +s[s.length - 1].toFixed(2),
       drawCalls: Math.round(dcs.slice(5).reduce((x, y) => x + y, 0) / Math.max(1, dcs.length - 5)), tris: Math.round(trs.slice(5).reduce((x, y) => x + y, 0) / Math.max(1, trs.length - 5)), quality: q });
     log(JSON.stringify(out.bosses[out.bosses.length - 1]));
   }

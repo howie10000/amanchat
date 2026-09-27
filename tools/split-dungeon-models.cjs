@@ -52,8 +52,21 @@ function packClip(c) {
   return Object.assign({}, c, { t, z: 2, qn: ROT_Q });
 }
 
-function parts(pack, only) {
+// clip hash -> shared file already in the directory (so a partial rebuild keeps using it)
+function existingShared(dir) {
+  const map = {};
+  if (!dir || !fs.existsSync(dir)) return map;
+  for (const f of fs.readdirSync(dir)) {
+    if (!/^clips-.*\.js$/.test(f)) continue;
+    const ctx = {}; ctx.globalThis = ctx; ctx.window = ctx; vm.createContext(ctx);
+    try { vm.runInContext(fs.readFileSync(path.join(dir, f), 'utf8'), ctx); } catch (e) { continue; }
+    for (const ref of Object.keys((ctx.DungeonModels && ctx.DungeonModels.clips) || {})) map[ref] = f.replace(/\.js$/, '');
+  }
+  return map;
+}
+function parts(pack, only, shared) {
   const out = {};
+  shared = shared || {};
   const want = (cid) => !only || only.includes(cid);
   // who uses each clip (among the characters being written)
   const users = {};
@@ -79,7 +92,7 @@ function parts(pack, only) {
     const mats = new Set(), deps = new Set();
     for (const g of ch.mesh.g) mats.add(g[0]);
     for (const a of ch.attach || []) for (const g of a.mesh.g) mats.add(g[0]);
-    for (const ref of Object.values(ch.clips)) { if (groupOf[ref]) deps.add(groupOf[ref]); else p.clips[ref] = packClip(pack.clips[ref]); }
+    for (const ref of Object.values(ch.clips)) { if (groupOf[ref]) deps.add(groupOf[ref]); else if (shared[ref]) deps.add(shared[ref]); else p.clips[ref] = packClip(pack.clips[ref]); }
     if (deps.size) c2.deps = [...deps].sort();
     if (cid === 'hero') for (const [k, w] of Object.entries(pack.weapons || {})) { p.weapons[k] = Object.assign({}, w, { mesh: packMesh(w.mesh) }); for (const g of w.mesh.g) mats.add(g[0]); }
     for (const m of mats) if (pack.materials[m]) p.materials[m] = pack.materials[m];
@@ -125,7 +138,7 @@ function split(packFile, opts) {
   opts = opts || {};
   const dir = path.resolve(opts.dir || path.join(ROOT, 'js', 'dungeon-models'));
   fs.mkdirSync(dir, { recursive: true });
-  const P = parts(loadPack(packFile), opts.only);
+  const P = parts(loadPack(packFile), opts.only, existingShared(dir));
   for (const [cid, p] of Object.entries(P)) fs.writeFileSync(path.join(dir, cid + '.js'), fileText(cid, p));
   return { written: Object.keys(P), index: writeIndex(dir) };
 }

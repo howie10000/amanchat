@@ -211,9 +211,28 @@ function withServerHp(st) {
   return plan;
 }
 
+// Cutscene assets for the NEXT boss only (bandwidth: never the whole roster): its Blender cast is
+// fetched at low priority during the floor before it and its shaders are warmed in a quiet moment, so
+// its cutscene starts on a model that is already on the GPU. See docs/sundered-crown/CUTSCENE-PERF.md.
+function prefetchNextBoss(after) {
+  const d = state.dungeon, GL = window.DungeonGL;
+  if (!d || !d.cfg || !d.cfg.guild || !GL || !GL.prefetch) return;
+  const cfg = d.cfg;
+  let next = null;
+  if (after === 'mini') next = cfg.boss;
+  else if (d.plan && d.plan.continuous) next = cfg.mini && !d.miniDone ? cfg.mini : cfg.boss;
+  else {
+    const mf = window.ECON && ECON.miniFloorOf ? ECON.miniFloorOf(cfg) : 1;
+    if (cfg.mini && d.floor === mf - 1) next = cfg.mini;
+    else if (d.floor >= mf && d.floor === cfg.floors - 2) next = cfg.boss;
+  }
+  if (next && d._prefetched !== next) { d._prefetched = next; try { GL.prefetch(next); } catch (e) {} }
+}
+
 function setupFloor() {
   const d = state.dungeon;
   cancelDash();
+  prefetchNextBoss();
   if (!d.cfg.guild || (d.plan && d.plan.continuous)) {
     gameExpedition.setup(d.plan && d.plan.continuous ? d.plan : DUNGEON.buildExpedition(d.seedBase, d.cfg));
     return;
@@ -2127,7 +2146,7 @@ if (window.NET) NET.on("guild_boss", (m) => {
     shakeDungeon(12);
   }
   else if (m.kind === "dead") onBossDead();
-  else if (m.kind === "mini_fled" || m.kind === "mini_cleared") { d.boss = null; }
+  else if (m.kind === "mini_fled" || m.kind === "mini_cleared") { d.boss = null; if (m.kind === "mini_cleared") prefetchNextBoss('mini'); }
   else if (m.kind === "timeout") { toast("It sank back into the dark. The run is over."); endDungeon(false); }
 });
 

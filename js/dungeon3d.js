@@ -3490,12 +3490,16 @@
       el.onload = ok; el.onerror = () => { el.remove(); no(new Error("could not load " + name)); }; document.head.appendChild(el);
     });
     SKIN.state = "loading";
-    SKIN.promise = Promise.all([one("dungeon-models/index.js?v=" + SKIN_V), one("dungeon-skin.js?v=" + SKIN_V)]).then(() => {
+    // the index is < 1 KB and names every part by content hash, so it is re-checked hourly (a rebuilt model
+    // is picked up without anyone bumping a tag); the parts themselves are immutable, cache-forever URLs
+    // the mini-boss director (cutscenes/mini-cinematic.js) rides along: only cutscene viewers download it
+    if (!window.DungeonMiniCine) one("cutscenes/mini-cinematic.js?v=" + SKIN_V).catch(() => {});
+    SKIN.promise = Promise.all([one("dungeon-models/index.js?h=" + Math.floor(Date.now() / 3.6e6)), one("dungeon-skin.js?v=" + SKIN_V)]).then(() => {
       SKIN.state = "idle"; return skinReady();
     }).catch((e) => { SKIN.state = "failed"; console.warn("Dungeon models unavailable; using procedural rigs", e); return false; });
     return SKIN.promise;
   }
-  const SKIN_V = "split-1";
+  const SKIN_V = "pack2-2";   // dungeon-skin.js's own tag: bump when that file changes
   // which Blender characters a boss's cutscene shows (always with the party hero)
   function castOf(id) {
     const key = SKINNED[id] ? id : (SKINNED[artOf(id)] ? artOf(id) : null);
@@ -3710,7 +3714,18 @@
     return key ? skinnedBuilder(key, proc) : proc;
   }
 
-  function buildRig(id, color, accent) {
+  // While a boss's Blender cast is still downloading, the first beats of its cutscene (the door, the
+  // dark, the shadow) run on an empty stand-in instead of building — and compiling shaders for — the
+  // procedural rig that the skinned one would replace a moment later. Past k 0.3 it falls back for real.
+  function castPending(id) {
+    const key = SKINNED[id] ? id : (SKINNED[artOf(id)] ? artOf(id) : null);
+    if (!key || SKIN.broken[key]) return false;
+    if (SKIN.state === "loading") return true;
+    if (!skinReady()) return false;
+    return castOf(id).some((c) => { const st = DungeonSkin.state(c); return st === "loading" || st === "absent"; }) && castOf(id).every((c) => DungeonSkin.state(c) !== "failed");
+  }
+  const pendingBuilder = () => ({ eyes: [], eyeY: 12, limbs: [], parts: [], pending: true });
+  function buildRig(id, color, accent, pending) {
     if (rig) {
       const geometries = new Set(), materials = new Set();
       rig.root.traverse(o => { if (o.geometry) geometries.add(o.geometry); if (o.material) for (const m of (Array.isArray(o.material) ? o.material : [o.material])) materials.add(m); });
@@ -3741,7 +3756,7 @@
     body.bumpMap=new THREE.CanvasTexture(skinCanvas);body.bumpMap.wrapS=body.bumpMap.wrapT=THREE.RepeatWrapping;body.bumpScale=id==='dragon'?.18:.07;
     const arcane = !!ARCANE_IDS[id];
     if(id!=="dragon"&&!arcane)body.color.lerp(new THREE.Color(0x464039),.3).multiplyScalar(.72);
-    const build = builderFor(id);
+    const build = pending ? pendingBuilder : builderFor(id);
     const d = build(root, shell, body, trim, accent);
 
     if (id !== 'dragon' && !arcane && !d.sculpted) {
@@ -4962,7 +4977,20 @@
     [0.70, -7, 5, -9, 0, 7, ROOM.bossZ, 45],
     [1.00, -4, 6, -8, 0, 7, ROOM.bossZ, 48],
   ];
+  // HOOK: js/cutscenes/mini-cinematic.js directs the mini entrances when it is loaded (shots, cuts,
+  // per-mini arrivals, the head-only look). This older version below is the fallback.
+  let miniApi = null;
+  function miniCineApi() {
+    return miniApi || (miniApi = {
+      THREE, ROOM, WHITE, get rig() { return rig; }, get room() { return room; }, get fx() { return fx; },
+      scene: () => scene, camera: () => camera, time: () => cinematicTime, frameStep: () => frameStep, reducedMotion: () => reducedMotion.matches,
+      lights: () => ({ eyeLight, keyLight, rimLight, ambient, hemi, doorLight, coalLight }), artOf, glowTexture,
+      setFocus: (d) => { focusDistance = d; }, spawnMote, shockwaves, hideWaves, litBraziers, poseParty,
+    });
+  }
   function poseMini(p) {
+    const MC = window.DungeonMiniCine;
+    if (MC && MC.handles(p.id, rig)) { MC.pose(miniCineApi(), p); return; }
     const { k, t } = p;
     const R = room.userData;
     let shake = 0;
@@ -5012,7 +5040,9 @@
       l.arm.rotation.z = l.sx * lerp(-1.3, -0.3, easeOut(up));
     }
     // minis with their own 'look' beat (Halvard's sword challenge) skip the generic head-turn
-    if (!rig.miniLook) rig.root.rotation.y = Math.sin(look * Math.PI) * 0.35;
+    // (This used to swing the whole body, rotation.y = sin(look*pi)*0.35 — the "every mini looks left-right" bug.
+    // It now squares up to the party and holds still; the head-only look lives in mini-cinematic.js.)
+    if (!rig.miniLook) rig.root.rotation.y = 0;
     // half white: a saturated accent light turned the Herald's whole robe magenta
     eyeLight.color.copy(rig.accent).lerp(WHITE, 0.55);
     // held further off and a little above: 3 units from the body it flattened every mini's front
@@ -5444,6 +5474,7 @@
     if (!t0) t0 = p.t;
     // undo last frame's light-budget scaling so poses that do not touch a brazier keep its own value
     for (const b of room.userData.braziers) if (b.light.userData.raw != null) b.light.intensity = b.light.userData.raw;
+    if (window.DungeonMiniCine && DungeonMiniCine.frameStart) DungeonMiniCine.frameStart();
 
     // Rebuild the rig when the boss changes; reset the motes when a new
     // cutscene starts so the last one's ash does not bleed into it.
@@ -5454,7 +5485,8 @@
       if (SKIN.arrived.has("hero") && fx && fx.party) for (const m of fx.party) m.skinTried = false;
       SKIN.arrived.clear();
     }
-    if (!rig || currentId !== p.id) buildRig(p.id, p.color, p.accent);
+    const pend = p.k < 0.3 && !skinKey(p.id) && castPending(p.id);
+    if (!rig || currentId !== p.id || (rig.pending && !pend)) buildRig(p.id, p.color, p.accent, pend);
     const modeKey = p.mode + "|" + p.id + "|" + (p.sceneId || "");
     if (modeKey !== lastMode || p.k < lastProgress) { lastMode = modeKey; t0=p.t;lastTime=p.t;clearMotes();moteHead=0;resetStage(); }
     frameStep=Math.max(.1,Math.min(3,(p.t-lastTime)/(1000/60)||1));lastTime=p.t;lastProgress=p.k;cinematicTime=p.t-t0;
@@ -5499,6 +5531,7 @@
       for(const m of finish.mist)m.material.uniforms.time.value=q.t/1000;
       // tier light budget: surviving brazier lights carry their dropped partner's share
       for (const b of room.userData.braziers) { const u = b.light.userData; u.raw = b.light.intensity; b.light.intensity *= u.k || 1; }
+      if (rig.pending) rig.root.visible = false;
     }
   }
 
@@ -5515,52 +5548,84 @@
     if(d&&d.actors)for(const a of d.actors)for(const k in a.mats)owned.push(a.mats[k]);
     root.userData.ownedMaterials=owned;root.userData.rig=d;return root;
   }
-  // Background warm-up (js/sea-assets.js quiet slots): the runtime + the party hero only — boss casts are
-  // fetched per boss (prefetch / the cutscene itself), never the whole roster.
+  // Background warm-up (js/sea-assets.js quiet slots, in town): the renderer and the room's shaders only.
+  // Bandwidth-first: no model is downloaded speculatively here — a boss's cast (and the party hero) is
+  // fetched when a guild run reaches the floor before that boss (prefetch), or by the cutscene itself.
   function warmup(stage) {
-    loadSkins(null, true);
     if (dead) return false;
     if (!renderer && !init()) return false;
     if (stage !== 'build' && renderer.compile) renderer.compile(scene, camera);
     return true;
   }
-  // The next likely boss (called during the floor before it): download its cast at low priority, then —
-  // when no cutscene is on screen — build its rig and draw one throw-away frame of its cutscene so every
-  // shader program, shadow program and texture upload happens now instead of on the cutscene's first frame.
-  const warmed = {};
+  // The next likely boss (called during the floor before it): download its cast at low priority, then warm
+  // it — build its rig, walk its cutscene's beats, and compile every shader program it will use — in small
+  // idle-time slices (a few ms each, never while a cutscene is on screen), so the cutscene's first frame is
+  // not a 1-2 s shader-compile freeze and the warm-up itself never hitches gameplay.
+  const warmed = {}, warming = {};
   function prefetch(id, opts) {
     opts = opts || {};
     if (!id || dead) return Promise.resolve(false);
     const def = (window.ECON && ECON.GUILD_BOSSES && ECON.GUILD_BOSSES[id]) || {};
     return loadSkins(id, true).then((ok) => {
       if (opts.noWarm || typeof document === "undefined") return ok;
-      return new Promise((done) => {
-        const go = () => {
-          // never while a cutscene is playing, and wait for a quiet moment
-          if (nowMs() - lastRenderAt < 1500) { setTimeout(go, 1000); return; }
-          try { warmBoss(id, def); } catch (e) { console.warn("cutscene warm-up failed", e); }
-          done(ok);
-        };
-        if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 4000 }); else setTimeout(go, 200);
-      });
+      return warmSliced(id, def).then(() => ok, () => ok);
     });
   }
-  function warmBoss(id, def) {
-    if (!renderer && !init()) return false;
-    const mini = !!(window.ECON && ECON.isMiniBoss && ECON.isMiniBoss(id));
+  const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 2500 }) : setTimeout(() => fn({ timeRemaining: () => 8, didTimeout: true }), 50));
+  function warmSliced(id, def) {
     const sig = id + "|" + !!skinKey(id);
-    if (warmed[sig]) return true;
-    const t = nowMs();
+    if (warmed[sig]) return Promise.resolve(true);
+    if (warming[sig]) return warming[sig];
+    const steps = warmSteps(id, def), t0 = nowMs();
+    let spent = 0, worst = 0;
+    return (warming[sig] = new Promise((done) => {
+      const slice = (deadline) => {
+        // a cutscene is up: stop; it compiles whatever is left itself (and marks the scene state its own)
+        if (dead || nowMs() - lastRenderAt < 1500) { warming[sig] = null; done(false); return; }
+        const until = nowMs() + Math.max(3, Math.min(10, deadline && deadline.timeRemaining ? deadline.timeRemaining() - 2 : 8));
+        let r;
+        const s0 = nowMs();
+        do { const a = nowMs(); try { r = steps.next(); } catch (e) { console.warn("cutscene warm-up failed", e); r = { done: true }; } spent += nowMs() - a; } while (!r.done && nowMs() < until);
+        worst = Math.max(worst, nowMs() - s0);
+        if (r.done) { lastMode = null; lastRenderKey = null; warmed[sig] = { ms: Math.round(spent), wall: Math.round(nowMs() - t0), worstSlice: Math.round(worst) }; warming[sig] = null; done(true); }
+        else idle(slice);
+      };
+      idle(slice);
+    }));
+  }
+  function* warmSteps(id, def) {
+    if (!renderer && !init()) return;
+    const mini = !!(window.ECON && ECON.isMiniBoss && ECON.isMiniBoss(id));
     applyTier(tierFor(), id);
-    const p = { mode: "entrance", id, mini, k: 0.62, t: 1e7, sceneId: "warm", people: [{ appearance: null }], color: def.color || "#555", accent: def.accent || "#fff" };
-    poseScene(p);
-    // make the hidden-by-beat pieces count too: compile everything once, then draw one frame
-    if (renderer.compile) renderer.compile(scene, camera);
-    drawFrame(p.t);
-    lastMode = null; lastRenderKey = null;
-    if (window.CutsceneQuality) CutsceneQuality.finish();
-    warmed[sig] = nowMs() - t;
-    return true;
+    if (window.CutsceneQuality) CutsceneQuality.finish();      // a warm-up is not a cutscene: learn nothing from it
+    yield;
+    const p = { mode: "entrance", id, mini, k: 0, t: 1e7, sceneId: "warm", people: [{ appearance: null }], color: def.color || "#555", accent: def.accent || "#fff" };
+    // the beats: builds the rig (skinned decode) and every lazily created prop
+    for (const k of [0, 0.2, 0.35, 0.5, 0.62, 0.8, 0.95]) { p.k = k; p.t = 1e7 + k * 6200; poseScene(p); yield; }
+    // compile one material set at a time: only that object (with its ancestors) and the lights visible, so
+    // renderer.compile builds exactly its program with the same light / fog / shadow configuration
+    const vis = new Map(), list = [], seen = new Set();
+    scene.traverse((o) => {
+      vis.set(o, o.visible);
+      if (!(o.isMesh || o.isPoints || o.isSprite || o.isLine) || !o.material) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      const key = mats.map((m) => m.type + (m.map ? "t" : "") + (m.emissiveMap ? "e" : "") + (m.bumpMap ? "b" : "") + (m.transparent ? "a" : "") + m.side + (m.defines ? JSON.stringify(m.defines) : "")).join("|") + (o.isSkinnedMesh ? "S" : "") + (o.isInstancedMesh ? "I" : "") + (o.castShadow ? "c" : "") + (o.receiveShadow ? "r" : "");
+      if (!seen.has(key)) { seen.add(key); list.push(o); }
+    });
+    const lights = []; scene.traverse((o) => { if (o.isLight) lights.push(o); });
+    for (let i = 0; i < list.length; i += 2) {
+      scene.traverse((o) => { o.visible = false; });
+      scene.visible = true;
+      for (const L of lights) if (vis.get(L)) for (let q = L; q; q = q.parent) q.visible = true;
+      for (const o of list.slice(i, i + 2)) for (let q = o; q; q = q.parent) q.visible = true;
+      renderer.compile(scene, camera);
+      for (const [o, v] of vis) o.visible = v;
+      yield;
+    }
+    renderer.compile(fx.washScene, fx.washCam); yield;
+    renderer.compile(finish.scene, finish.camera); yield;
+    // one real frame: texture uploads, shadow-map programs, the wash and post passes
+    p.k = 0.34; poseScene(p); fx.wash.material.opacity = 0.3; drawFrame(p.t); fx.wash.material.opacity = 0;
   }
   // Headless hook for js/arcane-art.test.js: build the scene with no renderer
   // and pose any frame. Not used by the game.

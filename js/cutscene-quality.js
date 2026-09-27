@@ -101,7 +101,7 @@
   }
 
   // ---- the governor: frame times in, render scale (and tier advice) out
-  // Windows of 24 frames; > 19.5 ms average = over the 60 fps budget, < 13.5 = headroom.
+  // Windows of 24 frames; a typical frame (60th percentile) > 19.5 ms = over the 60 fps budget, < 13.5 = headroom.
   function Governor(tier, opts) {
     opts = opts || {};
     this.T = TIERS[tier] || TIERS.medium;
@@ -115,7 +115,8 @@
     this.frames++; this.sum += dt;
     this.win.push(dt);
     if (this.win.length < 24) return false;
-    let s = 0; for (const v of this.win) s += v; const avg = s / this.win.length; this.win.length = 0;
+    // the window's 60th percentile, not its mean: one hitch (a texture upload, GC) must not cost resolution
+    const sorted = this.win.slice().sort((a, b) => a - b), avg = sorted[Math.floor(sorted.length * 0.6)]; this.win.length = 0;
     let changed = false;
     if (avg > this.budget * 1.17) {
       this.good = 0; this.bad++;

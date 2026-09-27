@@ -70,8 +70,24 @@ function client(url) {
     if (opt('cpu')) await c.send('Emulation.setCPUThrottlingRate', { rate: +opt('cpu') });
     const gpuInfo = (await c.send('SystemInfo.getInfo')).result;
     const gpu = gpuInfo && gpuInfo.gpu && gpuInfo.gpu.devices ? gpuInfo.gpu.devices.map((d) => d.deviceString).join(' | ') : '?';
+    // --shots id:k1,k2,...[;id2:...] --outdir DIR : PNG stills of frozen cutscene frames, one per tree/id/k
+    if (opt('shots')) {
+      const outdir = path.resolve(opt('outdir', 'cutscene-shots')); fs.mkdirSync(outdir, { recursive: true });
+      for (const t of trees) for (const spec of String(opt('shots')).split(';')) {
+        const [id, ks] = spec.split(':');
+        for (const k of ks.split(',')) {
+          await c.send('Page.navigate', { url: 'about:blank' }); await sleep(150);
+          await c.send('Page.navigate', { url: `http://127.0.0.1:${port}/${t.name}/bench.html#` + new URLSearchParams({ shot: id, k, mode: opt('mode', 'entrance') }).toString() });
+          for (let i = 0; i < 240; i++) { await sleep(250); const r = await c.send('Runtime.evaluate', { expression: '!!window.__bench', returnByValue: true }); if (r.result && r.result.result && r.result.result.value) break; }
+          const shot = await c.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 1024, height: 640, scale: 1 } });
+          const file = path.join(outdir, `${t.name}-${id}-${opt('mode', 'entrance')}-${k}.png`);
+          fs.writeFileSync(file, Buffer.from(shot.result.data, 'base64')); console.log('SHOT', file);
+        }
+      }
+      c.close(); return;
+    }
     for (const t of trees) {
-      const hash = new URLSearchParams({ ids: opt('ids', 'pit_champion,veiled_assassin,briar_matron,kael_crownbound'), mode: opt('mode', 'entrance'), ms: opt('ms', '6200'), q: opt('q', '') }).toString();
+      const hash =new URLSearchParams({ ids: opt('ids', 'pit_champion,veiled_assassin,briar_matron,kael_crownbound'), mode: opt('mode', 'entrance'), ms: opt('ms', '6200'), q: opt('q', ''), warm: opt('warm') ? '1' : '0' }).toString();
       await c.send('Page.navigate', { url: `http://127.0.0.1:${port}/${t.name}/bench.html#${hash}` });
       let res = null;
       for (let i = 0; i < 1200 && !res; i++) {

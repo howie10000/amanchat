@@ -53,6 +53,7 @@ document.querySelectorAll(".actBtn").forEach(b => {
     else if (a === "bugs") phoneApp(openBugReport);
     else if (a === "staff") openStaffPanel();
     else if (a === "help") phoneApp(openHelp);
+    else if (a === "graphics") { if (window.CutsceneQuality) { phoneView("Graphics", CutsceneQuality.settingsHtml()); CutsceneQuality.bindSettings(document.getElementById("spBody")); } else toast("Graphics settings are still loading."); }
     else if (a === "race-qualifier") phoneApp(openRaceQualifier);
   };
 });

@@ -142,10 +142,12 @@ test('parts merge in any order', () => {
     assert(got.includes('dungeon-skin.js') && got.includes('dungeon-models/index.js'), 'runtime + index: ' + got);
     assert.deepEqual(got.filter((u) => /dungeon-models\/(?!index)/.test(u)).sort(), ['dungeon-models/hero.js', 'dungeon-models/veiled_assassin.js']);
     assert(GL.skins.skinned('veiled_assassin') && !GL.skins.skinned('kael'));
-    // the background warm-up never pulls a boss
+    // the town's background warm-up downloads no model at all (bandwidth: nothing speculative)
     const b2 = browser(); run(b2, 'dungeon3d.js');
     b2.w.DungeonGL.warmup('build'); for (let i = 0; i < 20; i++) await tick();
-    assert.deepEqual(b2.requested.map((u) => new URL(u).pathname.replace('/js/', '')).filter((u) => /dungeon-models\/(?!index)/.test(u)), ['dungeon-models/hero.js']);
+    assert.deepEqual(b2.requested.filter((u) => /dungeon-models\/(?!index)/.test(u)), []);
+    // the mini-boss director rides with the cutscene runtime, not with the page boot
+    assert(got.some((u) => /^cutscenes\/mini-cinematic\.js/.test(u)), 'director loaded with the runtime: ' + got);
     passed++;
   }
   console.log('PASS cutscene loader: ' + passed + ' checks, ' + PARTS.length + ' parts');

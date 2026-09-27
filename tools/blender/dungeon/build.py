@@ -4,6 +4,7 @@ from pathlib import Path
 from mathutils import Vector, Matrix
 from . import core, rig as R, weapons as W, export as X, review, characters as CH, clips_hero as CHero
 from . import characters_boss as CB, clips_boss as KB, beast
+from . import clips_mini as MC   # mini-boss animation overhaul (idles + taunts); major bosses untouched
 
 REGISTRY = ['hero', 'kael', 'kael_crownbound', 'pit_champion', 'veiled_assassin', 'sol', 'umbra', 'sundered_king', 'colossus', 'briar_matron', 'gorehorn']
 
@@ -13,11 +14,11 @@ def build_boss(cid):
     if cid == 'kael':
         ch = CB.kael(); PA(ch); KB.kael(ch)
     elif cid == 'kael_crownbound':
-        ch = CB.kael('kael_crownbound', True); PA(ch); KB.kael(ch)
+        ch = CB.kael('kael_crownbound', True); PA(ch); KB.kael(ch); MC.crownbound(ch)
     elif cid == 'pit_champion':
-        ch = CB.pit_champion(); PA(ch); KB.pit_champion(ch, ch.supports.get('spear'))
+        ch = CB.pit_champion(); PA(ch); KB.pit_champion(ch, ch.supports.get('spear')); MC.pit_champion(ch, ch.supports.get('spear'))
     elif cid == 'veiled_assassin':
-        ch = CB.veiled_assassin(); PA(ch); KB.assassin(ch)
+        ch = CB.veiled_assassin(); PA(ch); KB.assassin(ch); MC.assassin(ch)
     elif cid in ('sol', 'umbra'):
         ch = CB.monarch(cid); PA(ch); KB.monarch(ch, cid == 'umbra')
     elif cid == 'sundered_king':
@@ -25,7 +26,7 @@ def build_boss(cid):
     elif cid == 'colossus':
         ch = CB.colossus(); KB.colossus(ch)
     elif cid == 'briar_matron':
-        ch = CB.briar_matron(); KB.matron(ch)
+        ch = CB.briar_matron(); KB.matron(ch); MC.matron(ch)
     elif cid == 'gorehorn':
         ch = beast.gorehorn(); beast.clips(ch)
     else:
