@@ -3416,7 +3416,7 @@ function rewardPush(run, m, S, res, cash, extra) {
         chestTier: res ? res.chestTier : 0, mats: res ? res.mats : {}, gems: res ? res.gems : {}, overflow: res ? res.overflow : [], packFull: res ? res.packFull : false,
         delver: res ? res.delver : null, codexNew: res ? res.codexNew : [], achievements: res ? res.achievements : [],
         weekly: !!(res && res.weekly),
-        arts: res && res.arts ? res.arts : [], crownShards: res ? res.crownShards | 0 : 0, artPity: !!(res && res.artPity),
+        arts: res && res.arts ? res.arts : [], crownShards: res ? res.crownShards | 0 : 0, artPity: !!(res && res.artPity), ascend: res && res.ascend ? res.ascend : null,
     }, extra || {}));
 }
 
@@ -3521,7 +3521,7 @@ function settleRun(run, user, now) {
         chestTier: mine.chestTier, mats: mine.mats, gems: mine.gems, overflow: mine.overflow, packFull: mine.packFull,
         delver: mine.delver, codexNew: mine.codexNew, achievements: mine.achievements,
         delve: delveOut, records: { guildBest: delveOut.record, weekly: !!mine.weekly }, tier: run.tier,
-        arts: mine.arts || [], crownShards: mine.crownShards | 0, artPity: !!mine.artPity,
+        arts: mine.arts || [], crownShards: mine.crownShards | 0, artPity: !!mine.artPity, ascend: mine.ascend || null,
     };
 }
 // Nobody loses a chest by being slow: a final boss that died but whose chest
@@ -3617,7 +3617,7 @@ function settleSegment(run, user, kind, now) {
         delver: mine.delver, codexNew: mine.codexNew, achievements: mine.achievements,
         delve: { level: 0, floor: f }, records: { guildBest: false, weekly: !!run.weekly }, segment: true, floor: f, tier: run.tier,
         reward: { gained: myPu ? myPu.each : 0, gross },
-        arts: mine.arts || [], crownShards: mine.crownShards | 0, artPity: !!mine.artPity,
+        arts: mine.arts || [], crownShards: mine.crownShards | 0, artPity: !!mine.artPity, ascend: mine.ascend || null,
     };
     if (leave) endGuildRun(run, 'left');
     return out;
