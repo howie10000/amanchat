@@ -12,7 +12,7 @@
   const esc = (s) => U().esc(s);
 
   const C = { tab: "codex", page: null, data: null, loading: false };
-  const TABS = [["codex", "COLLECTION"], ["arts", "CROWN ARTS"], ["achievements", "ACHIEVEMENTS"], ["delver", "DELVER RANK"]];
+  const TABS = [["codex", "COLLECTION"], ["weapons", "WEAPONS"], ["arts", "CROWN ARTS"], ["achievements", "ACHIEVEMENTS"], ["delver", "DELVER RANK"]];
   const ACH_CATS = { bane: "Bosses", feat: "Feats", loot: "Loot", codex: "Collection", delve: "Delving", depths: "The Arcane Depths", raid: "Raids", forge: "The Forge", arts: "Crown Arts" };
   // Every story dungeon in difficulty order (THE SUNDERED CROWN adds four); an older ECON has only the seven.
   const LADDER = () => (ECON.STORY_LADDER || ECON.GUILD_DUNGEON_ORDER);
@@ -121,6 +121,34 @@
       <h3 class="section">BOSS KILLS</h3><div class="adKills all">${allKills}</div>`;
   }
 
+  // ---------------- weapons (docs/sundered-crown/WEAPONS.md) ----------------
+  // Every weapon kind (what it does) and the boss-weapon collection: one of
+  // each kind per item level plus the bosses' signature ranged weapons.
+  function renderWeapons() {
+    const d = data(), codex = d.codex || {}, have = codex.i || {};
+    if (!ECON.WEAPON_KINDS || !ECON.ARMAMENT_BASE) return `<p class="muted">Weapon kinds arrive with the update.</p>`;
+    const ui = U();
+    const kinds = ECON.MELEE_KINDS.concat(ECON.RANGED_KINDS);
+    const rows = kinds.map(k => {
+      const n = ui.kindNumbers ? ui.kindNumbers(k) : null, K = ECON.WEAPON_KINDS[k];
+      return `<tr class="h-${K.hand}"><td>${ui.kindChip ? ui.kindChip(k) : esc(K.label)}</td><td>${K.hand === "melee" ? "1 · melee" : "2 · ranged"}</td>
+        <td><b>${n ? n.hit : ""}</b></td><td>${n ? n.speed : ""}/s</td><td>${n ? n.reach : ""}${K.hand === "melee" ? "" : " · boss " + K.bossReach}</td><td>${K.targets}</td>
+        <td class="sp">${esc(K.special)}</td></tr>`;
+    }).join("");
+    const table = `<table class="scWkTable"><thead><tr><th>Kind</th><th>Hand</th><th>Hit</th><th>Speed</th><th>Reach</th><th>Foes</th><th>Special</th></tr></thead><tbody>${rows}</tbody></table>`;
+    const all = [].concat(...kinds.map(k => ECON.ARMAMENT_BASE[k].filter(Boolean)));
+    const sig = Object.keys(ECON.ARMAMENT_UNIQUES || {});
+    const found = all.concat(sig).filter(id => have[id]).length;
+    const grid = kinds.map(k => `<h4 class="adCxGroup">${ui.kindChip ? ui.kindChip(k) : esc(k)} <small>${ECON.ARMAMENT_BASE[k].filter(id => id && have[id]).length}/12</small></h4>
+      <div class="adCxGrid">${ECON.ARMAMENT_BASE[k].filter(Boolean).map(id => tile(id, codex)).join("")}</div>`).join("");
+    const sigs = sig.map(id => { const u = ECON.GEAR_UNIQUES[id]; return `<div class="scWkSig">${tile(id, codex)}<small>${esc(ui.bossName(u.boss))} · ${ui.kindChip ? ui.kindChip(u.kind) : ""}</small></div>`; }).join("");
+    return `<p class="muted">Two hands: key <b>1</b> is your melee weapon, key <b>2</b> your ranged one (empty = a plain sword and the old pistol). Every weapon is a kind — the numbers below are one hit before attack power. Boss chests can hold a boss weapon of any kind at the dungeon's item level.</p>
+      ${table}
+      <div class="adCxTop"><b>${found}</b> of ${all.length + sig.length} boss weapons found.</div>
+      <h3 class="section">SIGNATURE WEAPONS</h3><div class="adCxGrid scWkSigs">${sigs}</div>
+      <h3 class="section">BOSS WEAPONS</h3>${grid}`;
+  }
+
   // ---------------- achievements ----------------
   function achProgress(a, s) {
     const cx = (s.codex) || {}, st = (s.delve && s.delve.stats) || {};
@@ -226,6 +254,7 @@
 
   function render() {
     const body = C.tab === "achievements" ? renderAchievements() : C.tab === "delver" ? renderDelver()
+      : C.tab === "weapons" ? renderWeapons()
       : C.tab === "arts" ? (window.gameArtsUI && gameArtsUI.codexHtml ? gameArtsUI.codexHtml() : `<p class="muted">The Crown Arts arrive with the update.</p>`) : renderCodex();
     return `<div id="adCodexRoot" class="adCodex">
       <div class="adNav">${TABS.map(([id, l]) => `<button class="menuBtn ${C.tab === id ? "gold" : "gray"}" onclick="gameCodex.tab('${id}')">${l}</button>`).join("")}
@@ -233,7 +262,7 @@
       ${data().local && !C.loading ? `<p class="muted adOffline">Showing your saved record — live numbers arrive with the Delver service.</p>` : ""}
       ${body}</div>`;
   }
-  function title() { return C.tab === "delver" ? "DELVER RANK" : C.tab === "arts" ? "CROWN ARTS" : C.tab === "achievements" ? "ACHIEVEMENTS" : "THE CODEX"; }
+  function title() { return C.tab === "delver" ? "DELVER RANK" : C.tab === "weapons" ? "WEAPONS" : C.tab === "arts" ? "CROWN ARTS" : C.tab === "achievements" ? "ACHIEVEMENTS" : "THE CODEX"; }
   function paint() {
     const root = typeof document !== "undefined" && document.getElementById && document.getElementById("adCodexRoot");
     // Closed while the status load was in flight: don't re-open over another menu.

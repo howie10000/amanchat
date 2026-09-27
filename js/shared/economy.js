@@ -1903,14 +1903,17 @@
   // decides the slot, the flavour and how its power is split between the three
   // stats, the rarity multiplies that power, and a +/-15% roll makes two of
   // the same thing worth comparing.
-  const GEAR_SLOTS = ["weapon", "helmet", "chest", "legs", "ring", "tome"];
+  // WEAPONS (docs/sundered-crown/WEAPONS.md): the slot id "weapon" stays the
+  // MELEE hand so every stored save keeps working; "ranged" is appended.
+  const GEAR_SLOTS = ["weapon", "helmet", "chest", "legs", "ring", "tome", "ranged"];
   const GEAR_SLOT_INFO = {
-    weapon: { label: "Weapon",     emoji: "⚔️" },
+    weapon: { label: "Melee Weapon", emoji: "⚔️" },
     helmet: { label: "Helmet",     emoji: "⛑️" },
     chest:  { label: "Chestplate", emoji: "🧥" },
     legs:   { label: "Leggings",   emoji: "👖" },
     ring:   { label: "Ring",       emoji: "💍" },
     tome:   { label: "Tome",       emoji: "📕" },
+    ranged: { label: "Ranged Weapon", emoji: "🏹" },
   };
   const GEAR_STATS = ["atk", "def", "vit"];
   const GEAR_STAT_INFO = {
@@ -2270,6 +2273,131 @@
       GEAR_BASES.push({ id: bid, slot, lvl: s.lvl, name: s.names[i], split: Object.assign({}, SET_SLOT_SPLITS[slot]), set: id });
     });
   }
+  // ================================================================
+  // WEAPONS (docs/sundered-crown/WEAPONS.md). Two hands: MELEE (the legacy
+  // "weapon" slot) and RANGED (the appended "ranged" slot). Every weapon is
+  // a KIND; the kind decides the attack pattern and its numbers, the item
+  // decides the power. The wire keeps 'sword' (melee hand) / 'pistol' (ranged
+  // hand); the SERVER resolves the kind from the equipped item.
+  //
+  // Everything here is appended: no legacy base, unique, set or seeded roll
+  // moves (js/crown-legacy.js). Kinds of existing bases live in a side map.
+  // ================================================================
+  const WEAPON_HANDS = {
+    melee:  { label: "Melee",  key: "1", wire: "sword",  slot: "weapon", fallback: "sword" },
+    ranged: { label: "Ranged", key: "2", wire: "pistol", slot: "ranged", fallback: "gun" },
+  };
+  // dmg: x the hand's base hit (sword 55 / pistol 22). rate: x the hand's
+  // server min interval (DUNGEON_HIT_MIN_MS / GUILD_BOSS.HIT_MIN_MS /
+  // KRAKEN.HIT_MIN_MS). cd: client cooldown in frames [maze, boss room] —
+  // always >= the server interval so no legitimate swing is refused.
+  // reach: maze reach from your centre (melee) · bossReach: to the edge of a
+  // boss's hit disc (GUILD_BOSS.REACH) · krakenReach (KRAKEN.REACH).
+  // targets: most enemies one swing / one projectile leg may strike.
+  // fx: added to the gear fx for this hand's hits (rollHitDamage keys).
+  // sword and gun ARE today's sword and pistol, number for number.
+  const WEAPON_KINDS = {
+    sword:     { hand: "melee", label: "Sword", emoji: "🗡️", shape: "arc", dmg: 1, rate: 1, cd: [14, 12], reach: 70, bossReach: 58, krakenReach: 110,
+                 arc: Math.PI / 1.6, targets: 6, knock: 4, fx: {},
+                 special: "Balanced slash that sweeps a wide arc (up to 6 foes)." },
+    mace:      { hand: "melee", label: "Mace", emoji: "🔨", shape: "smash", dmg: 1.55, rate: 1.5, cd: [21, 18], reach: 64, bossReach: 54, krakenReach: 100,
+                 arc: Math.PI / 1.6, smashR: 40, targets: 6, knock: 9, fx: { staggerDmg: 0.30 },
+                 special: "Slow overhead smash: a crater at the impact, huge knockback, +30% vs staggered bosses." },
+    spear:     { hand: "melee", label: "Spear", emoji: "🔱", shape: "line", dmg: 1.05, rate: 1.1, cd: [15, 13], reach: 118, bossReach: 96, krakenReach: 160,
+                 arc: Math.PI / 7, width: 30, targets: 3, knock: 5, fx: { eliteDmg: 0.10 },
+                 special: "Long, narrow thrust that pierces 3 foes in a line. +10% vs elites." },
+    dagger:    { hand: "melee", label: "Dagger", emoji: "🔪", shape: "arc", dmg: 0.55, rate: 0.55, cd: [8, 7], reach: 54, bossReach: 44, krakenReach: 90,
+                 arc: Math.PI / 3, targets: 2, knock: 1.5, fx: { crit: 0.12, critDmg: 0.25 },
+                 special: "Lightning-quick stabs at close range: +12% crit chance, +25% crit damage." },
+    axe:       { hand: "melee", label: "Axe", emoji: "🪓", shape: "arc", dmg: 1.4, rate: 1.35, cd: [19, 16], reach: 74, bossReach: 60, krakenReach: 112,
+                 arc: Math.PI / 1.9, targets: 4, knock: 6, fx: { execute: 0.35 },
+                 special: "Heavy cleave (up to 4 foes): +35% damage to the wounded (<30% HP)." },
+    scythe:    { hand: "melee", label: "Scythe", emoji: "🌙", shape: "arc", dmg: 0.82, rate: 1.2, cd: [17, 14], reach: 92, bossReach: 66, krakenReach: 124,
+                 arc: Math.PI * 0.85, targets: 8, knock: 3, fx: {},
+                 special: "Huge sweeping arc all around you that reaps up to 8 foes." },
+    gun:       { hand: "ranged", label: "Gun", emoji: "🔫", shape: "bullet", dmg: 1, rate: 1, cd: [18, 16], speed: 8, life: 80, bossReach: 420, krakenReach: 340,
+                 targets: 1, pierce: 0, knock: 1.5, fx: {},
+                 special: "Quick, reliable shots at long range." },
+    boomerang: { hand: "ranged", label: "Boomerang", emoji: "🪃", shape: "boomerang", dmg: 1.4, rate: 1.3, cd: [30, 30], speed: 9, range: 260, life: 40,
+                 bossReach: 300, krakenReach: 260, targets: 4, pierce: 99, knock: 2.5, fx: {},
+                 special: "Flies out and back, striking up to 4 foes on each leg. One in the air at a time." },
+    blowdart:  { hand: "ranged", label: "Blowdart", emoji: "🎯", shape: "dart", dmg: 1.9, rate: 1.9, cd: [34, 29], speed: 12, life: 55, bossReach: 520, krakenReach: 420,
+                 targets: 1, pierce: 0, knock: 0.5, fx: { bossDmg: 0.25, eliteDmg: 0.25 },
+                 special: "Very long reach, slow to reload. Venom: +25% vs bosses and elites." },
+    crossbow:  { hand: "ranged", label: "Crossbow", emoji: "🏹", shape: "bolt", dmg: 2.0, rate: 2.1, cd: [38, 32], speed: 14, life: 40, bossReach: 460, krakenReach: 380,
+                 targets: 2, pierce: 1, knock: 5, fx: {},
+                 special: "Slow draw, heavy bolt that pierces through 2 foes and knocks them back." },
+  };
+  const MELEE_KINDS = ["sword", "mace", "spear", "dagger", "axe", "scythe"];
+  const RANGED_KINDS = ["gun", "boomerang", "blowdart", "crossbow"];
+  for (const [id, k] of Object.entries(WEAPON_KINDS)) k.id = id;
+  // Kinds of every weapon base that existed before this update (never stored
+  // on the base record itself: GEAR_BASES[0..] is fingerprinted).
+  const WEAPON_KIND_BY_BASE = {
+    // legacy L1-7
+    chipped_sword: "sword", iron_cleaver: "axe", hunters_edge: "dagger", crypt_fang: "dagger", emberbrand: "sword",
+    hollow_glaive: "spear", ashen_maw: "scythe",
+    // Arcane Depths L4-7
+    brinehook_sabre: "sword", chapel_maul: "mace", bellows_hammer: "mace", rivet_knives: "dagger",
+    riftpiercer: "spear", sigil_scythe: "scythe", emberwing_lance: "spear", cinderfang: "dagger",
+    // L8-10
+    starwrit_blade: "sword", comet_quill: "dagger", orrery_mace: "mace",
+    resonant_edge: "sword", shardspitter: "axe", geode_maul: "mace",
+    rimefang: "sword", glacier_cleaver: "axe", oathkeeper_blade: "sword",
+    // L11-12
+    gleamglass_saber: "sword", eclipse_rapier: "dagger", courtly_warhammer: "mace",
+    crownsplitter: "axe", regicide_blade: "sword", throne_maul: "mace",
+    // uniques
+    tidebreaker: "spear", quenchblade: "sword", polite_knock: "mace", kingsfire: "sword", orrery_blade: "sword",
+    eighth_leg: "spear", deep_winter: "dagger", ley_sunderer: "axe",
+    gorehorn_tusk: "spear", kaels_edge: "sword", sol_and_umbra: "sword", kingsbane: "sword",
+    // set weapons
+    warden_vigil_weapon: "spear", emberwright_weapon: "mace", hollow_regalia_weapon: "mace", ashen_mantle_weapon: "dagger",
+    starlit_codex_weapon: "dagger", choir_of_stone_weapon: "mace", rimeveil_oath_weapon: "spear",
+    thornhide_weapon: "spear", pit_sovereign_weapon: "sword", mirror_regalia_weapon: "sword", sundered_regalia_weapon: "sword",
+  };
+  // Boss weapons ("armaments"): one per kind per item level, dropped only by
+  // the armament roll on a boss chest (rollArmamentDrop) — never in a random
+  // pool, a codex page or a journey reward.
+  const ARMAMENT_PREFIX = [null, "Rusty", "Bandit", "Hunter's", "Crypt", "Forgefire", "Voidtouched", "Emberscale",
+    "Starlit", "Geodic", "Rimeveil", "Mirrorglass", "Crownbreaker"];
+  const ARMAMENT_NOUN = { sword: "Longsword", mace: "Maul", spear: "Spear", dagger: "Dirk", axe: "Axe", scythe: "Scythe",
+    gun: "Flintlock", boomerang: "Boomerang", blowdart: "Blowpipe", crossbow: "Crossbow" };
+  const ARMAMENT_SPLIT = { melee: { atk: 0.90, vit: 0.10 }, ranged: { atk: 0.90, def: 0.10 } };
+  const ARMAMENT_BASE = {};   // kind -> [null, lvl-1 id, ... lvl-12 id]
+  for (const kind of MELEE_KINDS.concat(RANGED_KINDS)) {
+    const k = WEAPON_KINDS[kind];
+    ARMAMENT_BASE[kind] = [null];
+    for (let lvl = 1; lvl <= GEAR_MAX_LEVEL; lvl++) {
+      const id = "arm_" + kind + "_" + lvl;
+      GEAR_BASES.push({ id, slot: WEAPON_HANDS[k.hand].slot, lvl, name: ARMAMENT_PREFIX[lvl] + " " + ARMAMENT_NOUN[kind],
+        split: Object.assign({}, ARMAMENT_SPLIT[k.hand]), armament: true });
+      WEAPON_KIND_BY_BASE[id] = kind;
+      ARMAMENT_BASE[kind].push(id);
+    }
+  }
+  // Boss-signature ranged uniques: they drop only from the armament roll of
+  // their boss (armament:true keeps them out of every legacy unique pool).
+  const ARMAMENT_UNIQUES = {
+    gorehorn_tuskrang:  { name: "Gorehorn's Tusk Boomerang", slot: "ranged", kind: "boomerang", lvl: 4, minRarity: "legendary", boss: "gorehorn", split: { atk: 0.88, vit: 0.12 },
+                          fx: { staggerDmg: 0.20, onHitKnock: { chance: 0.12 } } },
+    matrons_thornpipe:  { name: "The Matron's Thornpipe", slot: "ranged", kind: "blowdart", lvl: 4, minRarity: "legendary", boss: "briar_matron", split: { atk: 0.90, vit: 0.10 },
+                          fx: { eliteDmg: 0.12, onHitSlow: { chance: 0.20, pct: 0.35, ms: 1800 } } },
+    varkaals_breath:    { name: "Varkaal's Breath", slot: "ranged", kind: "blowdart", lvl: 7, minRarity: "mythic", boss: "dragon", split: { atk: 0.92, vit: 0.08 },
+                          fx: { bossDmg: 0.10, critIgnite: 0.15 } },
+    kaels_parting_shot: { name: "Kael's Parting Shot", slot: "ranged", kind: "gun", lvl: 7, minRarity: "mythic", boss: "kael", split: { atk: 0.92, def: 0.08 },
+                          fx: { crit: 0.06, afterDashHit: { mult: 1.4, ms: 1200 } } },
+    eclipse_chakram:    { name: "The Eclipse Chakram", slot: "ranged", kind: "boomerang", lvl: 11, minRarity: "mythic", boss: "twin_monarchs", split: { atk: 0.90, vit: 0.10 },
+                          fx: { bossDmg: 0.12, procs: [{ id: "eclipse", chance: 0.10, frac: 0.6, n: 3, shape: "nova" }] } },
+    crownfall_arbalest: { name: "Crownfall Arbalest", slot: "ranged", kind: "crossbow", lvl: 12, minRarity: "mythic", boss: "sundered_king", split: { atk: 0.93, vit: 0.07 },
+                          fx: { staggerDmg: 0.30, critDmg: 0.25 } },
+  };
+  for (const [id, u] of Object.entries(ARMAMENT_UNIQUES)) {
+    u.id = id; u.armament = true;
+    GEAR_UNIQUES[id] = u;
+    WEAPON_KIND_BY_BASE[id] = u.kind;
+    GEAR_BASES.push({ id, slot: u.slot, lvl: u.lvl, name: u.name, split: Object.assign({}, u.split), unique: true, armament: true });
+  }
   const GEAR_BASE_BY_ID = {};
   for (const b of GEAR_BASES) GEAR_BASE_BY_ID[b.id] = b;
 
@@ -2318,7 +2446,9 @@
   function rollMod(slot, lvl, rand, excludeKeys) {
     rand = rand || Math.random;
     const ex = new Set(excludeKeys || []);
-    const pool = Object.keys(GEAR_MODS).filter(k => !GEAR_MODS[k].fixed && GEAR_MODS[k].slots.includes(slot) && !ex.has(k));
+    // A ranged weapon rolls the weapon pool (GEAR_MODS itself is fingerprinted).
+    const ms = slot === "ranged" ? "weapon" : slot;
+    const pool = Object.keys(GEAR_MODS).filter(k => !GEAR_MODS[k].fixed && GEAR_MODS[k].slots.includes(ms) && !ex.has(k));
     if (!pool.length) return null;
     const k = pool[Math.floor(rand() * pool.length) % pool.length];
     const m = GEAR_MODS[k];
@@ -2589,6 +2719,90 @@
     return { dmg: Math.max(0, Math.round((+base || 0) * mult)), crit, procs, counterState: { hits }, counterFired };
   }
 
+  // ---------------------------------------------------------------- WEAPON KINDS
+  // The kind of a weapon item. A ranged-slot item is a ranged kind (default
+  // 'gun'); anything else reads as a melee kind (default 'sword').
+  function weaponKindOf(item) {
+    if (typeof item === "string") return WEAPON_KIND_BY_BASE[item] || "sword";   // a base id
+    if (!item || typeof item !== "object") return "sword";
+    const k = WEAPON_KIND_BY_BASE[item.base];
+    if (item.slot === "ranged") return k && WEAPON_KINDS[k].hand === "ranged" ? k : "gun";
+    return k && WEAPON_KINDS[k].hand === "melee" ? k : "sword";
+  }
+  function weaponKind(kind) { return WEAPON_KINDS[kind] || WEAPON_KINDS.sword; }
+  // The wire name ('sword' | 'pistol') -> hand. Anything else is the melee hand.
+  function handOfWire(w) { return w === "pistol" || w === "ranged" ? "ranged" : "melee"; }
+  // The worn melee / ranged pieces out of a list of equipped items.
+  function weaponItems(items) {
+    let melee = null, ranged = null;
+    for (const it of (items || [])) {
+      if (!it || typeof it !== "object") continue;
+      if (it.slot === "weapon" && !melee) melee = it;
+      else if (it.slot === "ranged" && !ranged) ranged = it;
+    }
+    return { melee, ranged };
+  }
+  // {melee:{kind,item}, ranged:{kind,item}}: an empty ranged slot is the
+  // default gun (today's pistol); an empty melee slot is the default sword.
+  function weaponLoadout(items) {
+    const w = weaponItems(items);
+    return {
+      melee: { kind: w.melee ? weaponKindOf(w.melee) : "sword", item: w.melee },
+      ranged: { kind: w.ranged ? weaponKindOf(w.ranged) : "gun", item: w.ranged },
+    };
+  }
+  // Attack power of one hand: the melee hand never counts the ranged
+  // weapon's ATK; the ranged hand never counts the melee weapon's ATK — unless
+  // the ranged slot is empty, when both hands use the full total (as before).
+  function handAtk(items, hand) {
+    const total = gearTotals(items).atk;
+    const w = weaponItems(items);
+    let minus = 0;
+    if (hand === "ranged") { if (w.ranged && w.melee) minus = gearStats(w.melee).atk; }
+    else if (w.ranged) minus = gearStats(w.ranged).atk;
+    return Math.max(0, total - Math.max(0, minus || 0));
+  }
+  function handAttackMult(items, hand) { return gearAttackMult(handAtk(items, hand)); }
+  // ctx: 'dungeon' (maze rows) | 'boss' (guild bosses) | 'kraken'.
+  function hitTable(ctx) { return ctx === "boss" ? GUILD_BOSS : ctx === "kraken" ? KRAKEN : null; }
+  function kindHitDmg(kind, ctx) {
+    const k = weaponKind(kind), wire = WEAPON_HANDS[k.hand].wire, T = hitTable(ctx);
+    return (T ? T.HIT_DMG[wire] : DUNGEON_HIT_DMG[wire]) * k.dmg;
+  }
+  function kindMinMs(kind, ctx) {
+    const k = weaponKind(kind), wire = WEAPON_HANDS[k.hand].wire, T = hitTable(ctx);
+    return Math.round((T ? T.HIT_MIN_MS[wire] : DUNGEON_HIT_MIN_MS[wire]) * k.rate);
+  }
+  // 'boss' -> to the edge of a boss's hit disc; 'kraken'; 'maze' (default).
+  function kindReach(kind, ctx) {
+    const k = weaponKind(kind);
+    if (ctx === "boss") return k.bossReach;
+    if (ctx === "kraken") return k.krakenReach;
+    return k.hand === "ranged" ? (k.range || k.speed * k.life) : k.reach;
+  }
+  function kindTargets(kind) { return Math.max(1, weaponKind(kind).targets | 0); }
+  // The gear fx with this kind's specials on top (the same keys rollHitDamage
+  // reads). A kind without specials returns the very same object.
+  const _kindFxCache = typeof WeakMap === "function" ? new WeakMap() : null;
+  function weaponFx(fx, kind) {
+    const k = WEAPON_KINDS[kind];
+    fx = fx || emptyFx();
+    if (!k || !k.fx || !Object.keys(k.fx).length) return fx;
+    let per = _kindFxCache && _kindFxCache.get(fx);
+    if (per && per[kind]) return per[kind];
+    const out = Object.assign({}, fx);
+    for (const key of Object.keys(k.fx)) out[key] = (+out[key] || 0) + k.fx[key];
+    if (_kindFxCache) { if (!per) { per = {}; _kindFxCache.set(fx, per); } per[kind] = out; }
+    return out;
+  }
+  // One line of stats for UI cards.
+  function kindStatLine(kind) {
+    const k = weaponKind(kind);
+    const hz = 60 / k.cd[0];
+    return { kind: k.id, hand: k.hand, label: k.label, emoji: k.emoji, dmg: k.dmg, speed: Math.round(hz * 10) / 10,
+      reach: Math.round(kindReach(k.id, "maze")), bossReach: k.bossReach, targets: k.targets, special: k.special };
+  }
+
 
   // ---------------------------------------------------------------- TOMES
   // A tome is not armour: it occupies its own slot, adds no stats, and does
@@ -2724,7 +2938,7 @@
   // (docs/arcane-depths/MASTER-PLAN.md §3.8-3.11, design-loot.md).
   const MIN_MS = 60000;
   const LOOT_W = (a) => ({ worn: a[0], fine: a[1], rare: a[2], epic: a[3], legendary: a[4], mythic: a[5], ancient: a[6], arcane: a[7] });
-  const uniquesOfBosses = (bosses) => Object.keys(GEAR_UNIQUES).filter(id => bosses.includes(GEAR_UNIQUES[id].boss));
+  const uniquesOfBosses = (bosses) => Object.keys(GEAR_UNIQUES).filter(id => !GEAR_UNIQUES[id].armament && bosses.includes(GEAR_UNIQUES[id].boss));
   // mats: per player, Bronze chest, delve 0 (LD §4.2).
   const DUNGEON_LOOT = {
     guild_crypt:   { lvl: 4, boss: "warden", mini: "ogrelord", set: "warden_vigil", chance: 0.72, bonus: 0.20,
@@ -2843,7 +3057,7 @@
     return out;
   }
   function randomPoolBases(lvl) {
-    return GEAR_BASES.filter(b => b.lvl === lvl && !b.unique && !b.set);
+    return GEAR_BASES.filter(b => b.lvl === lvl && !b.unique && !b.set && !b.armament);
   }
 
   // The quest-board wrapper (and the thin legacy API): delve 0, chest tier 0,
@@ -2864,6 +3078,40 @@
     if (rand() < src.chance) pull();
     if (src.bonus > 0 && rand() < src.bonus) pull();
     return out;
+  }
+
+  // ---- WEAPONS: the boss-weapon ("armament") roll. A SEPARATE roll made
+  // after every legacy roll (so none of them moves): a guild boss chest has
+  // `guild` + `perChestTier` x chest tier to hold one boss weapon of the
+  // tier's item level (half melee, half ranged, any kind); a boss with a
+  // signature armament drops it `signature` (+1%/chest tier) of those times.
+  // Quest-board chests roll the `quest` chance.
+  const ARMAMENT_DROP = { guild: 0.22, perChestTier: 0.05, signature: 0.06, rangedShare: 0.5,
+    quest: { easy: 0.05, medium: 0.07, hard: 0.09 } };
+  function rollArmamentDrop(ctx, rand) {
+    rand = rand || Math.random; ctx = ctx || {};
+    if (ctx.spectator) return null;
+    const key = String(ctx.tier || "").replace(/^quest_/, "");
+    const row = DUNGEON_LOOT[key], src = gearSourceFor(key);
+    if (!src) return null;
+    const quest = !row;
+    const chest = Math.max(0, Math.min(3, ctx.chestTier | 0));
+    let chance = quest ? (ARMAMENT_DROP.quest[key] || 0) : ARMAMENT_DROP.guild + ARMAMENT_DROP.perChestTier * chest;
+    if (ctx.chance != null && +ctx.chance >= 0) chance = +ctx.chance;   // test knob (DUNGEON_TEST_ARMAMENT)
+    if (!(chance > 0) || rand() >= chance) return null;
+    const lvl = clampGearLvl(ctx.lvl || src.lvl);
+    const delve = Math.max(0, ctx.delve | 0);
+    const opts = { src: key, dl: delve };
+    if (ctx.now != null) opts.now = +ctx.now;
+    const sig = quest ? [] : Object.keys(ARMAMENT_UNIQUES).filter(id => ARMAMENT_UNIQUES[id].boss === ctx.bossId);
+    if (sig.length && rand() < ARMAMENT_DROP.signature + 0.01 * chest) {
+      const id = sig[Math.floor(rand() * sig.length) % sig.length];
+      return makeUnique(id, ARMAMENT_UNIQUES[id].minRarity, lvl, rand, opts);
+    }
+    const kinds = rand() < ARMAMENT_DROP.rangedShare ? RANGED_KINDS : MELEE_KINDS;
+    const kind = kinds[Math.floor(rand() * kinds.length) % kinds.length];
+    const w = floorWeights(shiftWeights(src.weights, lootQualityMult(delve), { delve, lvl }), "fine");
+    return makeGear(ARMAMENT_BASE[kind][lvl], rollGearRarity(w, rand), rand, undefined, opts);
   }
 
   // ---- materials, gems, runes ----
@@ -3050,7 +3298,7 @@
     rand = rand || Math.random; ctx = ctx || {};
     const out = { gear: [], mats: {}, gems: {} };
     const row = lootRowFor(tier, ctx) || DUNGEON_LOOT.guild_crypt;
-    const pool = Object.keys(GEAR_UNIQUES).filter(id => GEAR_UNIQUES[id].boss === miniId);
+    const pool = Object.keys(GEAR_UNIQUES).filter(id => !GEAR_UNIQUES[id].armament && GEAR_UNIQUES[id].boss === miniId);
     if (pool.length && rand() < BONUS_LOOT.mini.unique) {
       const have = (ctx.codex && ctx.codex.i) || {};
       const missing = pool.filter(id => !have[id]);
@@ -3659,5 +3907,9 @@
     cosmeticUnlockOk,
     // ---- THE SUNDERED CROWN (docs/sundered-crown/MASTER-PLAN.md §5.1) ----
     CROWN_DUNGEON_ORDER, STORY_LADDER, CROWN_BOSS_ORDER, CROWN_MINIS, BOSS_ARCHETYPES, bossArchetype, CROWN_CONTENT,
+    // ---- WEAPONS (docs/sundered-crown/WEAPONS.md) ----
+    WEAPON_HANDS, WEAPON_KINDS, MELEE_KINDS, RANGED_KINDS, WEAPON_KIND_BY_BASE, ARMAMENT_BASE, ARMAMENT_UNIQUES, ARMAMENT_DROP,
+    weaponKindOf, weaponKind, handOfWire, weaponItems, weaponLoadout, handAtk, handAttackMult,
+    kindHitDmg, kindMinMs, kindReach, kindTargets, weaponFx, kindStatLine, rollArmamentDrop,
   };
 });

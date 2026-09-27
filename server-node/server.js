@@ -68,6 +68,8 @@ const TEST = {
     // THE SUNDERED CROWN: "boss:move,boss:move" makes the planner prefer those moves; a short twin link window.
     crownForce: (process.env.DUNGEON_TEST_CROWN_FORCE || '').split(',').map(x => x.trim()).filter(Boolean).map(x => { const [boss, move] = x.split(':'); return { boss, move }; }),
     twinLinkMs: +process.env.DUNGEON_TEST_TWIN_LINK_MS || 0,
+    // WEAPONS: force the boss-weapon (armament) roll's chance (0..1).
+    armament: +process.env.DUNGEON_TEST_ARMAMENT || 0,
 };
 if (!TEST.crownForce.length) TEST.crownForce = null;
 // Ops kill switch: CROWN_TIERS=0 closes the four Sundered Crown tiers.
@@ -2329,6 +2331,7 @@ const progress = createProgress({
     gearPackOf, equippedOf, saveGear, isStaff, guildRankOf,
     gearFxOf: (user) => gearFxOf(user), equippedItems: (u) => equippedItems(u),
     depositTenureMs: TEST.vestMs != null ? TEST.vestMs : null,
+    armamentChance: TEST.armament || null,
     // THE SUNDERED CROWN: art drops + crown shards, rolled after the legacy loot roll.
     crownRewards: (user, u, ctx, now) => crownArts.settleRewards(user, u, ctx, now),
 });
@@ -2436,6 +2439,15 @@ function equippedItems(u) {
     return out;
 }
 function gearStatsOf(u) { return ECON.gearTotals(equippedItems(u)); }
+// WEAPONS (docs/sundered-crown/WEAPONS.md): the client names a HAND on the
+// wire ('sword' = melee, 'pistol' = ranged); the kind, and the attack power
+// that hand swings with, come from what is actually equipped — never from
+// anything the client sends.
+function weaponOf(u, wire) {
+    const hand = ECON.handOfWire(wire);
+    const items = equippedItems(u);
+    return { hand, wire: hand === 'ranged' ? 'pistol' : 'sword', kind: ECON.weaponLoadout(items)[hand].kind, atk: ECON.handAtk(items, hand) };
+}
 // The worn gear's effect bundle (crit, procs, thorns, ...), cached per user
 // and dropped whenever the pack or the worn set is saved.
 const gearFxCache = new Map();
@@ -2456,6 +2468,8 @@ function gearView(u, user) {
         gear: pack, equipped: eq, totals,
         packMax: progress.packMaxOf(u), packUsed: Object.keys(pack).length,
         attackMult: ECON.gearAttackMult(totals.atk),
+        hands: (() => { const m = weaponOf(u, 'sword'), r = weaponOf(u, 'pistol');
+            return { melee: { kind: m.kind, atk: m.atk, attackMult: ECON.gearAttackMult(m.atk) }, ranged: { kind: r.kind, atk: r.atk, attackMult: ECON.gearAttackMult(r.atk) } }; })(),
         mitigation: ECON.gearMitigation(totals.def),
         maxHp: ECON.gearMaxHp(totals.vit),
         // THE ARCANE DEPTHS (§6.6)
@@ -2472,6 +2486,9 @@ function grantGear(user, u, tier) {
     // entry for them — which is the whole reason to run a guild dungeon.
     const tome = ECON.rollTomeDrop(tier);
     if (tome) drops.push(tome);
+    // WEAPONS: a separate, lower-chance boss-weapon roll (after the legacy rolls).
+    const arm = /^quest_/.test(String(tier)) ? ECON.rollArmamentDrop({ tier, now: Date.now(), chance: TEST.armament || undefined }, Math.random) : null;
+    if (arm) drops.push(arm);
     // A full pack no longer eats the drop: it waits in Lost & Found (§6.6).
     const placed = progress.addItems(user, u, drops, Date.now());
     const kept = placed.kept;
@@ -3683,12 +3700,12 @@ const features = createFeatureHandlers({
 // ---- THE SUNDERED CROWN modules (crown-engine.js / crown-arts.js) ----
 const crownEngine = createCrownEngine({
     ECON, CROWN, pushMany, runBroadcast, presenceOf, attackPayload, bossHpOf, pendingThreshold, checkBossPhase,
-    userRec, masteryLevelOf, gearStatsOf, gearFxOf: (user) => gearFxOf(user), swingBuffMult, bossProcs,
+    userRec, masteryLevelOf, gearStatsOf, gearFxOf: (user) => gearFxOf(user), swingBuffMult, bossProcs, weaponOf,
     rescaleGuildBoss, raidSoak: DEPTHS.RAID_OVERLAY.soak,
     testKnobs: { crownForce: TEST.crownForce, twinLinkMs: TEST.twinLinkMs },
 });
 const crownArts = createCrownArts({
-    ECON, CROWN, DUNGEON, store, userRec, runFor, presenceOf, gearFxOf: (user) => gearFxOf(user), gearStatsOf, masteryLevelOf, moneyOf, setMoney,
+    ECON, CROWN, DUNGEON, store, userRec, runFor, presenceOf, gearFxOf: (user) => gearFxOf(user), gearStatsOf, weaponOf, masteryLevelOf, moneyOf, setMoney,
     pushMany, pushTo, features, floorPlan, floorCleared, leashRefusal, engine: crownEngine, swingBuffMult, hurtBoss,
     afterBossDamage: (run, now) => { if (!checkBossPhase(run, now)) runBroadcast(run, 'hp'); },
 });
@@ -4340,9 +4357,10 @@ const ECONOMY_OPS = {
             const c = byUser.get(user), p = c && c.presence;
             if (!p || (p.area && p.area !== 'neighborhood') || !ECON.atLake(p.x, p.y)) throw new Error('You need to be at the lake.');
             const weapon = msg.weapon === 'pistol' ? 'pistol' : 'sword';
+            const wpn = weaponOf(userRec(user), weapon);
             const k = user + ':' + weapon;
             const last = kraken.hitLast.get(k) || 0;
-            if (now - last < ECON.KRAKEN.HIT_MIN_MS[weapon]) throw new Error('Too fast.');
+            if (now - last < ECON.kindMinMs(wpn.kind, 'kraken')) throw new Error('Too fast.');
             let target, pos;
             if (msg.part === 'head') {
                 if (kraken.parts.some(t => t.hp > 0)) throw new Error(kraken.kind === 'serpent' ? 'The coils guard the head — break them first!' : 'The tentacles guard the head — cut them down first!');
@@ -4353,10 +4371,10 @@ const ECONOMY_OPS = {
                 target = kraken.parts[i]; pos = ECON.beastPartPos(kraken.kind, i, kraken.parts.length);
             }
             if (target.hp <= 0) throw new Error('That part is already down.');
-            if (Math.hypot(p.x - pos.x, p.y - pos.y) > ECON.KRAKEN.REACH[weapon] + 60) throw new Error('Out of reach.');
+            if (Math.hypot(p.x - pos.x, p.y - pos.y) > ECON.kindReach(wpn.kind, 'kraken') + 60) throw new Error('Out of reach.');
             kraken.hitLast.set(k, now);
             if (!(kraken.damage[user] > 0)) { kraken.damage[user] = 0; rescaleBeast(); }
-            const dmg = Math.min(target.hp, ECON.KRAKEN.HIT_DMG[weapon]);
+            const dmg = Math.min(target.hp, Math.max(1, Math.round(ECON.kindHitDmg(wpn.kind, 'kraken'))));
             target.hp -= dmg;
             kraken.damage[user] = (kraken.damage[user] || 0) + dmg;
             const downed = target.hp <= 0;
@@ -5099,17 +5117,23 @@ const ECONOMY_OPS = {
             const hp = run.enemyHp[floor] || {}, meta = run.enemyMeta[floor] || {};
             const w = String(msg.weapon || '');
             const weapon = w === 'pistol' ? 'pistol' : w === 'thorns' ? 'thorns' : w === 'burst' ? 'burst' : 'sword';
-            const fx = gearFxOf(user);
-            if (weapon === 'thorns' && !(fx.thorns > 0)) throw new Error('You have no thorns.');
-            if (weapon === 'burst' && !(fx.onDashBurst && now - (run.dashAt[user] || 0) <= 600)) throw new Error('No dash to burst from.');
-            const minMs = weapon === 'thorns' ? 350 : weapon === 'burst' ? 2000 : ECON.DUNGEON_HIT_MIN_MS[weapon];
+            const gfx = gearFxOf(user);
+            if (weapon === 'thorns' && !(gfx.thorns > 0)) throw new Error('You have no thorns.');
+            if (weapon === 'burst' && !(gfx.onDashBurst && now - (run.dashAt[user] || 0) <= 600)) throw new Error('No dash to burst from.');
+            // WEAPONS: the swing's kind comes from the equipped item of that
+            // hand (thorns and the dash burst are the melee hand's).
+            const wpn = weaponOf(u, weapon === 'pistol' ? 'pistol' : 'sword');
+            const swing = weapon === 'sword' || weapon === 'pistol';
+            const fx = swing ? ECON.weaponFx(gfx, wpn.kind) : gfx;
+            const minMs = weapon === 'thorns' ? 350 : weapon === 'burst' ? 2000 : ECON.kindMinMs(wpn.kind, 'dungeon');
             const k = user + ':swing:' + weapon;
             if (now - (run.hitLast.get(k) || 0) < minMs) throw new Error('Too fast.');
             run.hitLast.set(k, now);
             const ids = (Array.isArray(msg.enemies) ? msg.enemies : [])
-                .slice(0, ECON.DUNGEON_HIT_MAX_TARGETS).map(x => String(x || ''));
-            const mult = ECON.masteryCombatMult(masteryLevelOf(u, 'combat')) * ECON.gearAttackMult(gearStatsOf(u).atk);
-            const legacyDmg = Math.max(1, Math.round(ECON.DUNGEON_HIT_DMG[weapon === 'pistol' ? 'pistol' : 'sword'] * mult));
+                .slice(0, swing ? ECON.kindTargets(wpn.kind) : ECON.DUNGEON_HIT_MAX_TARGETS).map(x => String(x || ''));
+            const mult = ECON.masteryCombatMult(masteryLevelOf(u, 'combat')) * ECON.gearAttackMult(wpn.atk);
+            const swingBase = ECON.kindHitDmg(wpn.kind, 'dungeon');
+            const legacyDmg = Math.max(1, Math.round((swing ? swingBase : ECON.DUNGEON_HIT_DMG.sword) * mult));
             const cfg = rowCfg(run, floor);
             const extra = swingBuffMult(run, user, now, fx, !!msg.afterDash);
             const pres = runPresence(run, user);
@@ -5132,7 +5156,7 @@ const ECONOMY_OPS = {
                 let base;
                 if (weapon === 'thorns') base = Math.round(fx.thorns * (t.dmg || 8) * (cfg.hpMult || 1) * 3);
                 else if (weapon === 'burst') base = ECON.DUNGEON_HIT_DMG.sword * mult * (+fx.onDashBurst.frac || 0);
-                else base = ECON.DUNGEON_HIT_DMG[weapon] * mult;
+                else base = swingBase * mult;
                 base *= scale;
                 const r = ECON.rollHitDamage(base, fx, { kind: m.elite ? 'elite' : 'enemy', hpFrac: hp[id] / (m.maxHp || hp[id]) }, Math.random, run.counters[user]);
                 run.counters[user] = r.counterState;
@@ -5346,8 +5370,9 @@ const ECONOMY_OPS = {
             // authoritative motion (crown-engine.js, MASTER-PLAN §4.4).
             if (crownEngine.isMobile(b)) return crownEngine.hit(run, user, msg, now);
             const weapon = msg.weapon === 'pistol' ? 'pistol' : 'sword';
+            const wpn = weaponOf(u, weapon);
             const k = user + ':' + weapon;
-            if (now - (b.hitLast.get(k) || 0) < ECON.GUILD_BOSS.HIT_MIN_MS[weapon]) throw new Error('Too fast.');
+            if (now - (b.hitLast.get(k) || 0) < ECON.kindMinMs(wpn.kind, 'boss')) throw new Error('Too fast.');
             let target, idx = null;
             if (msg.part === 'head') {
                 if (realParts(b).some(p => p.hp > 0)) throw new Error('Break its guard first!');
@@ -5368,10 +5393,10 @@ const ECONOMY_OPS = {
             if (!(b.damage[user] > 0)) { b.damage[user] = 0; rescaleGuildBoss(run); }
             // Combat mastery and equipped attack scale the swing; the gear's
             // effects (crit, boss damage, counters) roll on top of it.
-            const fx = gearFxOf(user);
+            const fx = ECON.weaponFx(gearFxOf(user), wpn.kind);
             const mult = ECON.masteryCombatMult(masteryLevelOf(u, 'combat'))
-                * ECON.gearAttackMult(gearStatsOf(u).atk);
-            const r = ECON.rollHitDamage(ECON.GUILD_BOSS.HIT_DMG[weapon] * mult, fx, { kind: msg.part === 'head' ? 'boss' : 'part', hpFrac: bossHpOf(b) / b.maxHp }, Math.random, run.counters[user]);
+                * ECON.gearAttackMult(wpn.atk);
+            const r = ECON.rollHitDamage(ECON.kindHitDmg(wpn.kind, 'boss') * mult, fx, { kind: msg.part === 'head' ? 'boss' : 'part', hpFrac: bossHpOf(b) / b.maxHp }, Math.random, run.counters[user]);
             run.counters[user] = r.counterState;
             let dmg = Math.min(target.hp, Math.round(r.dmg * swingBuffMult(run, user, now, fx, !!msg.afterDash)));
             if (target === b.head && pendingThreshold(b) && dmg >= target.hp) dmg = target.hp - 1;

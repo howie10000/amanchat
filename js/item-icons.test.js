@@ -81,7 +81,7 @@ for (const sid of Object.keys(ECON.GEAR_SETS)) for (const sl of ECON.SET_SLOTS) 
   safe(`set ${sid} ${sl}`, () => I.gear(it, 64));
 }
 // families: every base has a real painter family
-const FAM = new Set(["sword", "greatsword", "sabre", "fang", "knives", "axe", "hammer", "mace", "spear", "lance", "trident", "glaive", "scythe", "quill", "staff", "bow",
+const FAM = new Set(["sword", "greatsword", "sabre", "fang", "knives", "axe", "hammer", "mace", "spear", "lance", "trident", "glaive", "scythe", "quill", "staff", "bow", "gun", "boomerang", "blowpipe", "crossbow",
   "helm", "visor", "horned", "cap", "hood", "mask", "crown", "circlet", "bell", "plate", "mail", "robe", "jerkin", "apron", "carapace", "mantle",
   "trousers", "kilt", "greaves", "tassets", "boots", "band", "gemring", "signet", "twist", "amulet", "eyering", "knuckle", "coil", "keyring"]);
 for (const b of ECON.GEAR_BASES) ok(FAM.has(I.family(b.id)), `family for ${b.id} (${I.family(b.id)})`);
