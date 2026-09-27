@@ -2015,6 +2015,6 @@
     THEMED: true, ELITE_OVERLAY: true,
     // THE SUNDERED CROWN: models for the 13 new enemies, the 4 themes and their props
     CROWN_THEMED: true,
-    // Content waves register their own enemy models here (js/bosses/*.js): fn(ctx, e, t, C, sw, scale), base = authored size.
+    // Content waves register their own enemy models here (js/bosses/*.js): fn(ctx, e, t, sw, C, TYPES) drawn facing right at the feet, base = authored size.
     registerModel: (type, fn, base) => { if (type && typeof fn === "function") { MODEL[type] = fn; if (base > 0) BASE[type] = base; } } };
 })();

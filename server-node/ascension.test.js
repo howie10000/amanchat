@@ -85,8 +85,10 @@ async function killAdds(c, runId, enc, type, ms) {
         assert(st.tiers.guild_bastion.guildMax === 0 && st.max === 20 && st.prestige && st.prestige.name === 'Wanderer' && st.essence === 0, 'ascend status: fresh ladder, no essence');
         r = await p1.try('ascend', { action: 'craft', recipe: 'ascendants_edge' });
         assert(!r.ok && /Essence/.test(r.err), 'crafting without essence is refused');
+        await sleep(350);
         r = await p1.try('ascend', { action: 'sunder', piece: 'nope' });
         assert(!r.ok && /No such item/.test(r.err), 'sundering a missing item is refused');
+        await sleep(350);
         const pv = await p1.rpc('ascend', { action: 'preview', tier: 'guild_bastion', level: 1 });
         assert(pv.scale && pv.scale.mods.length === 1 && pv.allowed.ok, 'preview shows level 1\'s modifier and that it is allowed');
 
