@@ -118,7 +118,8 @@ const keys = {};
 document.addEventListener("keydown", e => {
   if (e.key === "F11") return; // Preserve the browser fullscreen shortcut.
   keys[e.key.toLowerCase()] = true;
-  handleKey(e);
+  // game.js defines handleKey; keys typed on the login screen can land first.
+  if (typeof handleKey === "function") handleKey(e);
 });
 document.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
 canvas.addEventListener("mousemove", e => {
@@ -186,6 +187,12 @@ async function doAuth(register) {
     if (!data) throw new Error("Server returned no user record.");
     if (!data.fishInventory) data.fishInventory = {};
     if (!data.appearance) data.appearance = GFX.DEFAULT_APPEARANCE;
+    // A quick login can beat the boot chain (index.html loads the game scripts
+    // one per task); entering before game.js exists leaves an empty world.
+    if (window.__gameBoot) {
+      msg.textContent = "Loading the world...";
+      try { await window.__gameBoot; } catch (e) { /* startup already reported it */ }
+    }
     msg.textContent = "";
     enterGame(user, data, res && res.role, res && res.mute);
   } catch (e) {
@@ -881,6 +888,8 @@ function loop(now) {
   if (dt < 0) dt = 0;
   if (dt > 250) dt = 250;
   _loopAcc += dt;
+  // Boot still loading game.js: nothing to simulate or draw yet.
+  if (typeof update !== "function" || typeof draw !== "function") { _loopAcc = 0; requestAnimationFrame(loop); return; }
   let ticks = 0;
   // One thrown error in a draw or update used to end the animation loop for
   // good (the game "froze" until a reload). Log it and keep the loop alive.
