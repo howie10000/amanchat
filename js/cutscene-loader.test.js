@@ -136,12 +136,18 @@ test('parts merge in any order', () => {
     assert.deepEqual([...GL.castOf('pit_champion')], ['hero', 'pit_champion']);
     assert.deepEqual([...GL.castOf('sundered_king')], ['hero', 'sundered_king', 'colossus']);
     assert.deepEqual([...GL.castOf('twin_monarchs')], ['hero', 'sol', 'umbra']);
-    assert.deepEqual([...GL.castOf('warden')], ['hero'], 'procedural bosses only need the party');
+    assert.deepEqual([...GL.castOf('warden')], ['hero', 'warden'], 'the rebuilt legacy majors are skinned too');
+    assert.deepEqual([...GL.castOf('astraea')], ['hero'], 'procedural bosses only need the party');
     assert.equal(await GL.prefetch('veiled_assassin', { noWarm: true }), true);
     const got = b.requested.map((u) => new URL(u).pathname.replace('/js/', ''));
     assert(got.includes('dungeon-skin.js') && got.includes('dungeon-models/index.js'), 'runtime + index: ' + got);
     assert.deepEqual(got.filter((u) => /dungeon-models\/(?!index)/.test(u)).sort(), ['dungeon-models/hero.js', 'dungeon-models/veiled_assassin.js']);
     assert(GL.skins.skinned('veiled_assassin') && !GL.skins.skinned('kael'));
+    // DungeonSkin.ensure (the directions' and dungeon3d's name) goes through the same loader: one file, once
+    const before = b.requested.length;
+    assert.equal(await b.w.DungeonSkin.ensure('warden'), true); assert.equal(await b.w.DungeonSkin.ensure('warden'), true);
+    assert.equal(b.requested.length, before + 1, 'ensure fetched exactly warden.js');
+    assert(/dungeon-models\/warden\.js\?v=/.test(b.requested[b.requested.length - 1]));
     // the town's background warm-up downloads no model at all (bandwidth: nothing speculative)
     const b2 = browser(); run(b2, 'dungeon3d.js');
     b2.w.DungeonGL.warmup('build'); for (let i = 0; i < 20; i++) await tick();

@@ -33,6 +33,7 @@
                                      in memory. Fetches only missing files,
                                      de-duplicated; a failed file can retry later.
      DungeonSkin.prefetch(ids)       the same at low fetch priority; never rejects
+     DungeonSkin.ensure(id)          load() for one character (used by js/cutscenes/*.js and dungeon3d loadPart)
      DungeonSkin.state(id)           'absent' | 'loading' | 'ready' | 'failed'
      DungeonSkin.has(id)             in memory and creatable right now
      DungeonSkin.available(id)       a file exists for it (index) or it is loaded
@@ -50,7 +51,7 @@
 (function () {
   "use strict";
   const G = typeof globalThis !== "undefined" ? globalThis : window;
-  if (typeof THREE === "undefined") { G.DungeonSkin = { ready: () => false, has: () => false, load: () => Promise.resolve(false), prefetch: () => Promise.resolve(false), state: () => "failed", available: () => false }; return; }
+  if (typeof THREE === "undefined") { G.DungeonSkin = { ready: () => false, has: () => false, load: () => Promise.resolve(false), prefetch: () => Promise.resolve(false), ensure: () => Promise.resolve(false), state: () => "failed", available: () => false }; return; }
 
   const lib = () => G.DungeonModels || null;
   // ---- the split-pack loader

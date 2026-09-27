@@ -119,4 +119,24 @@ test('dungeon3d applies a tier: shadows, light budget, motes, post variant, fram
   const [fw, fh] = G.frame(); assert(fw === 1536 && fh === 960, 'high = the old 1536x960 supersample');
 });
 
+test('film directions (js/cutscenes/director.js) spend by tier: debris count, god rays, motes', () => {
+  const THREE = require('./vendor/three.min.js'), ECON = require('./shared/economy.js');
+  const noop = () => {};
+  const ctx2d = () => new Proxy({}, { get: (o, k) => (k === 'measureText' ? () => ({ width: 10 }) : k === 'createLinearGradient' || k === 'createRadialGradient' ? () => ({ addColorStop: noop }) : noop), set: () => true });
+  const w = { THREE, Math, console, JSON, Object, Array, Number, String, Set, Map, Float32Array, Int8Array, Int16Array, Uint8Array, Uint16Array, Uint32Array, Int32Array, Error, Promise, atob, Buffer,
+    document: { createElement: () => ({ width: 0, height: 0, getContext: () => ctx2d(), addEventListener: noop, style: {} }) }, ECON, performance: { now: () => 0 } };
+  w.window = w; w.globalThis = w; vm.createContext(w);
+  for (const f of ['./cutscene-quality.js', './cutscenes/director.js', './dungeon3d.js', './cutscenes/gorehorn.js']) vm.runInContext(fs.readFileSync(require.resolve(f), 'utf8'), w);
+  const G = w.DungeonGL._headless(), T = w.CutsceneQuality.TIERS, def = ECON.GUILD_BOSSES.gorehorn;
+  const run = (tier) => { G.applyTier(tier, 'gorehorn'); for (let i = 0; i <= 30; i++) G.pose({ mode: 'entrance', id: 'gorehorn', k: i / 30, t: 5000 + i * 200, sceneId: 'q' + tier.name, color: def.color, accent: def.accent, people: [] }); return w.DungeonGL.director.ctx(); };
+  const hi = run(T.high); assert.equal(hi.quality.particles, 1); assert.equal(hi.quality.godRays, 1);
+  const D = w.DungeonCutscenes, deb = D.debris(hi, 'qtest', 50, {});
+  deb.set(() => ({ x: 0, y: 0, z: 0 })); assert.equal(deb.mesh.count, 50);
+  const rays = D.godrays(hi, 'qrays'); rays.set([0, 20, -30], [0, 0, -30], 3, 0.5, 0.3, 0); assert(rays.mat.opacity > 0.49);
+  const lo = run(T.low); assert.equal(lo.quality.tier, 'low');
+  deb.set(() => ({ x: 0, y: 0, z: 0 })); assert.equal(deb.mesh.count, 20, 'debris thinned to 40% on low');
+  rays.set([0, 20, -30], [0, 0, -30], 3, 0.5, 0.3, 0); assert.equal(rays.mat.opacity, 0, 'no god rays on low'); assert(!rays.group.visible);
+  run(T.medium); rays.set([0, 20, -30], [0, 0, -30], 3, 0.5, 0.3, 0); assert(Math.abs(rays.mat.opacity - 0.35) < 1e-9, 'dimmer on medium');
+});
+
 console.log('PASS cutscene quality: ' + passed + ' checks');
