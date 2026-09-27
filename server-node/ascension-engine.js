@@ -158,10 +158,24 @@ module.exports = function createAscensionEngine(deps) {
             I.runBroadcast(run, 'pillar', { layout: 0, pillars: b.pillars.map(p => ({ i: p.i, x: p.x, y: p.y, r: p.r, hits: p.hits })) });
         }
     }
-    function view(run, b, now, out, I) {
+    // Bandwidth: the `hp` view rides every 150 ms broadcast, so the per-tick
+    // part is a few short numeric keys and only when non-zero; the static part
+    // (gear ratio, modifiers, ascension, dark) goes out with the FULL view only
+    // (status / encounter_enter / spawn / stage).
+    function view(run, b, now, out, I, full) {
         if (!b.ext) return;
-        out.ascend = { gear: round(b.ext.gear.ratio * 100) / 100, mods: b.ext.mods, linked: b.ext.linked, layout: b.ext.layoutIdx,
-            snuffedUntil: b.ext.snuffedUntil || 0, dark: !!b.ext.dark, ascension: run.ascension | 0, challenge: !!run.challenge };
+        const x = {};
+        if (b.ext.linked) x.l = b.ext.linked;
+        if (b.ext.layoutIdx) x.ly = b.ext.layoutIdx;
+        if (b.ext.snuffedUntil > now) x.s = b.ext.snuffedUntil;
+        if (full) {
+            x.g = round(b.ext.gear.ratio * 100) / 100;
+            if (b.ext.mods.length) x.m = b.ext.mods;
+            if (b.ext.dark) x.d = 1;
+            if (run.ascension) x.a = run.ascension | 0;
+            if (run.challenge) x.c = 1;
+        }
+        if (Object.keys(x).length) out.x = x;
     }
 
     return { spawn, tick, stepEvent, strikeMult, bodyDmgMult, onPhase, view, liveAdds };

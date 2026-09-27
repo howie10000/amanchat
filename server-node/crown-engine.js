@@ -744,7 +744,7 @@ module.exports = function createCrownEngine(deps) {
             for (const k of bodyKeys(b)) out.motion[k] = b.motion[k] || [];
             out.clones = cloneSteps(b);
         }
-        if (EXT.view) EXT.view(run, b, now, out, I);
+        if (EXT.view) EXT.view(run, b, now, out, I, full);
         return out;
     }
 

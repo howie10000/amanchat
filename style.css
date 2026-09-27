@@ -2788,3 +2788,37 @@ img.ii.scSil{filter:grayscale(1) brightness(.45) contrast(1.2);opacity:.75}
 .scWkSig > small{font-size:10px;color:#94a3b8;text-align:center}
 @media (max-width:640px){.scWkTable td.sp,.scWkTable th:last-child{display:none}}
 /* ===== END WEAPONS ===== */
+
+/* ===== SUNDERED CROWN II — ASCENSION (docs/sundered-crown/NEW-CONTENT.md) ===== */
+#dungeonAscendBtn{position:absolute;top:calc(50% + 58px);left:14px;height:30px;padding:0 8px;z-index:25;border:1px solid #06b6d4;border-radius:6px;background:#041318ee;color:#a5f3fc;font:700 11px/1 system-ui;cursor:pointer}
+#dungeonAscendBtn[hidden]{display:none}
+.ascPanel{color:#e2e8f0;font:13px/1.45 system-ui;max-width:760px}
+.ascTabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.ascTab{border:1px solid #155e75;background:#0b1a20;color:#a5f3fc;border-radius:6px;padding:5px 10px;font:700 11px/1 system-ui;cursor:pointer}
+.ascTab.on{background:#0e7490;color:#ecfeff}
+.ascLead,.ascHint{color:#cbd5e1;margin:6px 0}
+.ascTable{width:100%;border-collapse:collapse;margin-top:6px}
+.ascTable th{font-size:10px;letter-spacing:.06em;color:#67e8f9;text-align:left;padding:4px 6px;border-bottom:1px solid #164e63}
+.ascTable td{padding:6px;border-bottom:1px solid #0f2a33;vertical-align:top}
+.ascTable small{color:#94a3b8}
+.ascMod{display:inline-block;border:1px solid #7c3aed;background:#1e1b4b;color:#e9d5ff;border-radius:999px;padding:1px 8px;margin:1px 3px 1px 0;font-size:11px}
+.ascPick,.ascSunder input{background:#0b1a20;color:#ecfeff;border:1px solid #155e75;border-radius:5px;padding:4px 6px;font:12px system-ui}
+.ascBtn{border:1px solid #06b6d4;background:#0e7490;color:#ecfeff;border-radius:6px;padding:5px 10px;font:700 11px/1 system-ui;cursor:pointer}
+.ascBtn.on{background:#a16207;border-color:#fde047}
+.ascBtn[disabled]{opacity:.4;cursor:default}
+.ascCard{border:1px solid #7c3aed;border-radius:10px;padding:12px;background:linear-gradient(180deg,#1e1b4b,#0b1a20)}
+.ascCard.done{border-color:#22c55e}
+.ascCardTitle{font-size:10px;letter-spacing:.1em;color:#c4b5fd}
+.ascCardBoss{font:800 18px/1.2 system-ui;color:#fef08a;margin:4px 0 8px}
+.ascCardPay{margin:8px 0;color:#cbd5e1}
+.ascDone{color:#86efac;font-weight:700}
+.ascBar{height:4px;background:#0f2a33;border-radius:2px;overflow:hidden;margin-top:3px}
+.ascBar i{display:block;height:100%;background:#22d3ee}
+.ascFlash{border-radius:6px;padding:6px 10px;margin-bottom:8px}
+.ascFlash.success{background:#052e16;color:#86efac}
+.ascFlash.warn{background:#3f1d1d;color:#fecaca}
+.ascSunder{margin-top:10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.ascSunder small{color:#94a3b8;flex-basis:100%}
+@media (max-width:640px){.ascTable th:nth-child(2),.ascTable td:nth-child(2){display:none}}
+@media (prefers-reduced-motion: reduce){.ascBar i{transition:none}}
+/* ===== END ASCENSION ===== */

@@ -1788,7 +1788,7 @@ function handleMessage(c, msg) {
         // ----- server-authoritative economy ops (docs/SERVER-AUTHORITY.md) -----
         case 'car': case 'bank': case 'buy': case 'furniture_set': case 'earn': case 'fish': case 'casino': case 'home': case 'treasury': case 'staff_finance':
         case 'sea': case 'farm': case 'cook': case 'kraken': case 'guild': case 'mastery': case 'guild_dungeon': case 'gear':
-        case 'forge': case 'delver': case 'journey': case 'arts': {
+        case 'forge': case 'delver': case 'journey': case 'arts': case 'ascend': {
             if (!c.user) return replyErr('not authed');
             let out;
             try { out = ECONOMY_OPS[op](c.user, msg); }

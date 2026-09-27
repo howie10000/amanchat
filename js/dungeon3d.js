@@ -5395,8 +5395,9 @@
   function registerBoss(id, o) {
     if (!id || !o) return false;
     if (typeof o.build === "function") BUILDERS[id] = o.build;
-    if (typeof o.awake === "function") AWAKE[id] = o.awake;
-    if (Array.isArray(o.cam)) AWAKE_CAM[id] = o.cam;
+    // default entrance: the Crown "it stands and draws" beat (uses rig.rise when the rig has one)
+    AWAKE[id] = typeof o.awake === "function" ? o.awake : awakeCrown;
+    AWAKE_CAM[id] = Array.isArray(o.cam) ? o.cam : CAM_CROWN;
     return true;
   }
   window.DungeonGL = { render, createModel, warmup, registerBoss, available: () => !dead, _headless: headless, BOSS_THEME,

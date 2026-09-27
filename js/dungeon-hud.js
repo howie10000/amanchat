@@ -1,5 +1,5 @@
 (function(){'use strict';
- let button=null,runButton=null,artsButton=null,lastDungeon=null,lastQuest=null,lastRun=null,lastArts=null;
+ let button=null,runButton=null,artsButton=null,lastDungeon=null,lastQuest=null,lastRun=null,lastArts=null,ascButton=null,lastAsc=null;
  window.dungeonQuestCollapsed=false;
  window.dungeonRunCollapsed=false;
  function label(){
@@ -49,6 +49,18 @@
   }
   if(artsButton&&arts!==lastArts)artsButton.hidden=!arts;
   lastArts=arts;
+  // The Sundered Crown II: the Ascension panel (ladder / weekly challenge / mastery / crafting), outside fights.
+  const ascUI=window.gameAscensionUI&&typeof window.gameAscensionUI.open==='function';
+  const asc=!!(ascUI&&run&&!d.bossRoom);
+  if(asc&&!ascButton){
+   ascButton=document.createElement('button');ascButton.id='dungeonAscendBtn';ascButton.type='button';
+   ascButton.textContent='▲ Ascend';ascButton.setAttribute('aria-label','Ascension ladder, weekly challenge, mastery');
+   ascButton.addEventListener('pointerdown',e=>e.stopPropagation());
+   ascButton.addEventListener('click',e=>{e.stopPropagation();ascButton.blur();try{window.gameAscensionUI.open();}catch(err){}});
+   document.getElementById('stage').appendChild(ascButton);
+  }
+  if(ascButton&&asc!==lastAsc)ascButton.hidden=!asc;
+  lastAsc=asc;
  }
  window.gameDungeonHud={sync};
 })();
