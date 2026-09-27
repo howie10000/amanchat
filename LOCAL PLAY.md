@@ -48,7 +48,9 @@ If a player leaves, their carried chest is lost. Remaining crew can continue and
 
 Progress: `.local-test/game.db`. Node dependencies install automatically on first launch. Client edits need a browser refresh; server edits need a launcher restart. Use `node tools/play-local.cjs --no-browser` to skip opening a browser, `--share` to start a Quick Tunnel, or `LOCAL_PORT` to change the starting port.
 
-`/docs/crew-review.html` is a visual fixture for deck, captain, hold and map views, not a live multiplayer session.
+`/docs/crew-review.html` is a visual fixture for deck, captain, hold and map views, not a live multiplayer session. Review pages under `/docs/` are not served to players; start the server with `SERVE_DOCS=1` to open them locally.
+
+Scripts and styles loaded with a `?v=` tag are cached by browsers for a year, so after editing one, bump its `?v=` in `index.html` (a plain refresh will not pick up the change). See `docs/BANDWIDTH.md`.
 
 Run checks from the game folder:
 

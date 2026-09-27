@@ -215,7 +215,7 @@ async function run(opts) {
     return out;
 }
 
-module.exports = { run, findBrowser };
+module.exports = { run, findBrowser, launch, openTab };
 
 if (require.main === module) {
     run().then(r => console.log(JSON.stringify(r, null, 1))).catch(e => { console.error(e); process.exit(1); });
