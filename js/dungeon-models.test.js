@@ -1,5 +1,5 @@
 'use strict';
-// The Blender-authored cutscene characters (js/dungeon-models.js, built by
+// The Blender-authored cutscene characters (js/dungeon-models/<id>.js, built by
 // tools/blender/build-dungeon-models.py) and their runtime (js/dungeon-skin.js):
 // library integrity, every character / clip / weapon present, bone budgets,
 // clip durations, finite data, weapons held in the fist, and dungeon3d.js
@@ -10,19 +10,22 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), vm = requ
 const THREE = require('./vendor/three.min.js');
 const ECON = require('./shared/economy.js');
 
-const zlib = require('node:zlib'), path = require('node:path');
-const libPath = require.resolve('./dungeon-models.js');
-// the pack is split per dungeon: the core plus js/dungeon-models-<part>.js, merged into the core when loaded
-const PART_FILES = fs.readdirSync(__dirname).filter((f) => /^dungeon-models-[a-z_]+\.js$/.test(f)).sort();
-assert(PART_FILES.length >= 7, 'one pack part per dungeon (' + PART_FILES.join(',') + ')');
+// one self-contained file per character (see the LOADER API in dungeon-skin.js)
+const path = require('node:path');
+const PART_DIR = path.join(__dirname, 'dungeon-models');
+const PARTS = fs.readdirSync(PART_DIR).filter((f) => f.endsWith('.js') && f !== 'index.js').sort();   // characters + shared clip files
+let bytes = 0;
+// sizes as served (LF text; the host compresses): raw, gzip -9, brotli 11 per file
+const zlib = require('node:zlib');
 const sizes = {};
-for (const f of ['dungeon-models.js'].concat(PART_FILES)) {
-  const buf = fs.readFileSync(path.join(__dirname, f));
-  sizes[f] = { raw: buf.length, gzip: zlib.gzipSync(buf, { level: 9 }).length, brotli: zlib.brotliCompressSync(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } }).length };
+for (const f of PARTS.concat(['index.js'])) {
+  const buf = Buffer.from(fs.readFileSync(path.join(PART_DIR, f), 'utf8').replace(/\r\n/g, '\n'));
+  sizes[f.replace(/\.js$/, '')] = { raw: buf.length, gzip: zlib.gzipSync(buf, { level: 9 }).length, brotli: zlib.brotliCompressSync(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } }).length };
 }
-const bytes = Object.values(sizes).reduce((a, s) => a + s.raw, 0);
-assert(sizes['dungeon-models.js'].raw < 1.0e6, 'core pack stays under 1 MB raw (' + sizes['dungeon-models.js'].raw + ')');
-for (const f of PART_FILES) assert(sizes[f].gzip < 300e3, f + ' stays under 300 KB gzipped (' + sizes[f].gzip + ')');
+assert(!fs.readdirSync(__dirname).some((f) => /^dungeon-models-[a-z_]+\.js$/.test(f)), 'no per-dungeon pack parts: one packaging system');
+for (const f of PARTS) { const k = f.replace(/\.js$/, ''); bytes += sizes[k].raw; assert(sizes[k].gzip < 110e3, f + ' stays under 110 KB gzipped (' + sizes[k].gzip + ')'); }
+assert(bytes < 3.0e6, 'library stays under 3 MB before compression (' + bytes + ')');
+assert(!fs.existsSync(path.join(__dirname, 'dungeon-models.js')), 'the monolithic pack is gone: the runtime loads js/dungeon-models/<id>.js');
 
 const noop = () => {};
 function ctx2d() { return new Proxy({}, { get: (o, k) => (k === 'measureText' ? () => ({ width: 10 }) : k === 'getImageData' ? () => ({ data: new Uint8ClampedArray(4) }) : k === 'createLinearGradient' || k === 'createRadialGradient' ? () => ({ addColorStop: noop }) : noop), set: () => true }); }
@@ -31,7 +34,7 @@ function world(withLib) {
   const w = { THREE, Math, console, JSON, Object, Array, Number, String, Set, Map, Float32Array, Int8Array, Int16Array, Uint8Array, Uint16Array, Uint32Array, Int32Array, Error, Promise,
     atob, Buffer, document: { createElement: canvasStub }, ECON, performance: { now: () => 0 } };
   w.window = w; w.globalThis = w; vm.createContext(w);
-  if (withLib) for (const f of ['./dungeon-models.js'].concat(PART_FILES.map((p) => './' + p), ['./dungeon-skin.js'])) vm.runInContext(fs.readFileSync(require.resolve(f), 'utf8'), w, { filename: f });
+  if (withLib) for (const f of PARTS.map((p) => './dungeon-models/' + p).concat(['./dungeon-models/index.js', './dungeon-skin.js'])) vm.runInContext(fs.readFileSync(require.resolve(f), 'utf8'), w, { filename: f });
   return w;
 }
 
@@ -41,9 +44,8 @@ const L = W.DungeonModels, SK = W.DungeonSkin;
 assert(SK.ready(), 'runtime sees the library');
 const CHARS = ['hero', 'kael', 'kael_crownbound', 'pit_champion', 'veiled_assassin', 'sol', 'umbra', 'sundered_king', 'colossus', 'briar_matron', 'gorehorn', 'warden', 'smith', 'tyrant'];
 for (const c of CHARS) assert(SK.has(c), c + ' is in the library');
-for (const c of CHARS) if (c !== 'hero') assert(typeof L.parts[c] === 'string' && fs.existsSync(path.join(__dirname, 'dungeon-models-' + L.parts[c] + '.js')), c + ' is in a pack part');
-assert(L.parts.hero == null, 'the hero rides in the core');
-for (const p of new Set(Object.values(L.parts))) assert(L.loaded && L.loaded[p], 'part ' + p + ' merged into the core');
+for (const c of CHARS) assert(fs.existsSync(path.join(PART_DIR, c + '.js')) && W.DungeonModelIndex[c], c + ' has its own file, listed in the index');
+for (const c of CHARS) assert.equal(SK.partOf(c), c, c + ' partOf');
 const KINDS = ['sword', 'mace', 'spear', 'dagger', 'axe', 'scythe', 'gun', 'boomerang', 'blowdart', 'crossbow'];
 assert.deepEqual(SK.weaponKinds().slice().sort(), KINDS.slice().sort(), 'all ten weapon kinds have a mesh');
 const NEED = {
@@ -73,7 +75,7 @@ for (const cid of CHARS) {
     assert(c.d > 0.2 && c.d <= 8, cid + '/' + n + ' duration ' + c.d);
     for (const t of c.t) assert(t[0] >= 0 && t[0] < sk.bones.length, 'track bone index');
   }
-  const t = ch.mesh.i ? Buffer.from(ch.mesh.i, 'base64').length / (ch.mesh.w * 3) : 0;
+  const t = ch.mesh.ic ? ch.mesh.ic / 3 : ch.mesh.i ? Buffer.from(ch.mesh.i, 'base64').length / (ch.mesh.w * 3) : 0;
   tris += t;
   assert(t > 1500 && t < 12000, cid + ' triangle budget ' + t);
   const k = Buffer.from(ch.mesh.k, 'base64');
@@ -225,5 +227,17 @@ vm.runInContext(fs.readFileSync(require.resolve('./dungeon3d.js'), 'utf8'), W4, 
 const G4 = W4.DungeonGL._headless();
 for (const id of CROWN) { poseAll(G4, id, 'entrance', ECON.GUILD_BOSSES[id].tier === 'mini'); assert(!G4.rig().skinned, id + ' falls back to the procedural rig'); }
 
+// ------------------------------------------------------------------ per-download guard: what ONE boss cutscene fetches
+// (index + dungeon-skin.js are shared and tiny; then the boss's cast = the party hero + its characters + their shared clips)
+const IDX = W.DungeonModelIndex, perBoss = {};
+for (const id of Object.keys(ECON.GUILD_BOSSES)) {
+  const cast = W3.DungeonGL.castOf(id); if (cast.length < 2) continue;
+  const files = new Set(['index']); for (const c of cast) { files.add(c); for (const d of (IDX[c] && IDX[c].deps) || []) files.add(d); }
+  const t = { raw: 0, gzip: 0, brotli: 0 }; for (const k of files) for (const m in t) t[m] += sizes[k][m];
+  perBoss[id] = t;
+  assert(t.gzip < 240e3, id + ' cutscene downloads under 240 KB gzipped (' + t.gzip + ')');
+}
+for (const id of ['kael', 'kael_crownbound', 'pit_champion', 'veiled_assassin', 'twin_monarchs', 'sundered_king', 'briar_matron', 'gorehorn', 'warden', 'smith', 'tyrant']) assert(perBoss[id], id + ' download measured');
+for (const [id, t] of Object.entries(perBoss)) console.log(`  download ${id.padEnd(18)} raw ${String(t.raw).padStart(8)}  gzip ${String(t.gzip).padStart(7)}  brotli ${String(t.brotli).padStart(7)}`);
 for (const [f, s] of Object.entries(sizes)) console.log(`  ${f.padEnd(32)} raw ${String(s.raw).padStart(8)}  gzip ${String(s.gzip).padStart(7)}  brotli ${String(s.brotli).padStart(7)}`);
-console.log(`PASS dungeon models: ${CHARS.length} characters, ${KINDS.length} weapons, ${Object.keys(L.clips).length} clips (${clipsChecked} poses), ${tris} triangles, ${(bytes / 1e6).toFixed(2)} MB raw in ${1 + PART_FILES.length} files, ${directedFrames} directed frames audited`);
+console.log(`PASS dungeon models: ${CHARS.length} characters, ${KINDS.length} weapons, ${Object.keys(L.clips).length} clips (${clipsChecked} poses), ${tris} triangles, ${(bytes / 1e6).toFixed(2)} MB raw in ${PARTS.length + 1} files, ${directedFrames} directed frames audited`);

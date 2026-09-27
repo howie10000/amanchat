@@ -962,7 +962,8 @@
       lhand(T, lerp(-5, -13, o), lerp(17, 4, o), lerp(-3, -14, o));
       if (type === "spear_thrust") rhand(T, 7, lerp(-2, 26, o), lerp(7, 0, o));
       if (type === "shield_charge") { T[CH.LEAN] = -0.2 * o; T[CH.HEADP] = 0.3 * o + Math.sin(t / 120) * 0.08 * o; }
-      if (type === "spear_sweep") { T[CH.ROLL] = Math.sin(t / 140) * 0.1 * o; T[CH.HEADY] = Math.sin(t / 180) * 0.3 * o; }
+      // dizzy after the spin: a wobble of the whole trunk and a sagging head, not a left-right head shake
+      if (type === "spear_sweep") { T[CH.ROLL] = Math.sin(t / 140) * 0.1 * o; T[CH.HEADP] = 0.12 * o + Math.sin(t / 180) * 0.06 * o; }
     } else if (s === "cast") {
       const up = inOut(k / 0.4);
       rhand(T, 13, 4, lerp(7, 22, up)); bl(T, 0.1, lerp(-0.12, 1.4, up)); lhand(T, lerp(-5, -15, up), lerp(17, 4, up), lerp(-3, 16, up));
@@ -1016,7 +1017,8 @@
     T[CH.SPREAD] = 0.2;
     if (s === "idle" || s === "move" || s === "run" || s === "strafe") {
       loco(a, T, 3);
-      T[CH.ROLL] += Math.sin(t / 900) * 0.06; T[CH.HEADY] = Math.sin(t / 1300) * 0.25;
+      // a slow breath and tilt, the face held on her target (this used to sweep the head left-right)
+      T[CH.ROLL] += Math.sin(t / 900) * 0.05; T[CH.HEADP] += Math.sin(t / 1300) * 0.05;
     } else if (s === "vanish") {
       T[CH.SINK] = 70 * inCubic(k); T[CH.FADE] = 1 - smooth((k - 0.4) / 0.6); hands(T, 16, 2, 14 * k, -16, 2, 14 * k); T[CH.AURA] = 1;
     } else if (s === "hidden") { T[CH.SINK] = 70; T[CH.FADE] = 0; a.footMode = 1; }

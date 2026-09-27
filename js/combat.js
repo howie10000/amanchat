@@ -211,9 +211,28 @@ function withServerHp(st) {
   return plan;
 }
 
+// Cutscene assets for the NEXT boss only (bandwidth: never the whole roster): its Blender cast is
+// fetched at low priority during the floor before it and its shaders are warmed in a quiet moment, so
+// its cutscene starts on a model that is already on the GPU. See docs/sundered-crown/CUTSCENE-PERF.md.
+function prefetchNextBoss(after) {
+  const d = state.dungeon, GL = window.DungeonGL;
+  if (!d || !d.cfg || !d.cfg.guild || !GL || !GL.prefetch) return;
+  const cfg = d.cfg;
+  let next = null;
+  if (after === 'mini') next = cfg.boss;
+  else if (d.plan && d.plan.continuous) next = cfg.mini && !d.miniDone ? cfg.mini : cfg.boss;
+  else {
+    const mf = window.ECON && ECON.miniFloorOf ? ECON.miniFloorOf(cfg) : 1;
+    if (cfg.mini && d.floor === mf - 1) next = cfg.mini;
+    else if (d.floor >= mf && d.floor === cfg.floors - 2) next = cfg.boss;
+  }
+  if (next && d._prefetched !== next) { d._prefetched = next; try { GL.prefetch(next); } catch (e) {} }
+}
+
 function setupFloor() {
   const d = state.dungeon;
   cancelDash();
+  prefetchNextBoss();
   if (!d.cfg.guild || (d.plan && d.plan.continuous)) {
     gameExpedition.setup(d.plan && d.plan.continuous ? d.plan : DUNGEON.buildExpedition(d.seedBase, d.cfg));
     return;
@@ -750,6 +769,7 @@ function reapDead(list, arena) {
 function onEnemyDeath(e) {
   if (e._deathFx) return;
   addParticles(e.x, e.y, e.color, 16);
+  if (window.gameMobs && gameMobs.onDeath) gameMobs.onDeath(e);   // the body topples instead of vanishing
   if (window.gameDepths) gameDepths.onEnemyDeath(e);
   e._deathFx = true;
 }
@@ -2144,7 +2164,7 @@ if (window.NET) NET.on("guild_boss", (m) => {
     shakeDungeon(12);
   }
   else if (m.kind === "dead") onBossDead();
-  else if (m.kind === "mini_fled" || m.kind === "mini_cleared") { d.boss = null; }
+  else if (m.kind === "mini_fled" || m.kind === "mini_cleared") { d.boss = null; if (m.kind === "mini_cleared") prefetchNextBoss('mini'); }
   else if (m.kind === "timeout") { toast("It sank back into the dark. The run is over."); endDungeon(false); }
 });
 
@@ -3469,6 +3489,7 @@ function drawBossStatusHud(ctx, b, t, x0, w, accent, y0) {
 function drawArenaAdds(ctx, t) {
   const d = state.dungeon, G = window.gameDepths;
   const adds = (d.arenaEnemies || []).slice().sort((a, b) => a.y - b.y);
+  if (gameMobs.drawCorpses) gameMobs.drawCorpses(ctx, t, ENEMY_TYPES);
   for (const e of adds) {
     if (G) G.drawEnemyUnder(ctx, e, t);
     ctx.globalAlpha = enemyAlpha(e);
@@ -3954,6 +3975,7 @@ function drawDungeon() {
   // Enemies — real models, sorted so the ones lower down overlap the ones
   // behind them instead of z-fighting at random.
   const order = state.enemies.slice().sort((a, b) => a.y - b.y);
+  if (gameMobs.drawCorpses) gameMobs.drawCorpses(ctx, t, ENEMY_TYPES);
   for (const e of order) { ctx.globalAlpha = enemyAlpha(e); gameMobs.drawEnemy(ctx, e, t, ENEMY_TYPES); ctx.globalAlpha = 1; drawEnemyTells(ctx, e, t); }
 
   drawPartyMembers(t);

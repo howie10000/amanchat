@@ -1,0 +1,104 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cutscene bench</title>
+<style>html,body{margin:0;background:#050308;color:#e5e7eb;font:13px system-ui}canvas{display:block}</style></head>
+<body><canvas id="c" width="1024" height="640"></canvas><pre id="log"></pre>
+<script>
+/* Cutscene load + frame-cost bench. Served by tools/cutscene-bench/run.cjs at /<tree>/bench.html so the
+   relative js/ paths resolve into whichever tree (baseline or current) is under test.
+   #ids=a,b&mode=entrance&q=auto|low|medium|high&ms=6200
+   Per boss: cold-load time until the Blender rig is in use, then one real-time pass of the cutscene.
+   Every frame is synchronised with a 1 px readPixels so the recorded cost includes the GPU work. */
+const P = Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
+const state = { pos: { x: 512, y: 540 }, appearance: {}, area: 'dungeon' };
+const log = (s) => { document.getElementById('log').textContent += s + '\n'; };
+try { if (P.q) localStorage.setItem('cutsceneQuality', P.q); else localStorage.removeItem('cutsceneQuality'); localStorage.removeItem('cutsceneQualityLearned'); } catch (e) {}
+// count draw calls on every context
+let calls = 0, tris = 0;
+for (const C of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) {
+  if (!C) continue;
+  for (const f of ['drawElements', 'drawArrays', 'drawElementsInstanced', 'drawArraysInstanced']) {
+    const o = C.prototype[f]; if (!o) continue;
+    C.prototype[f] = function (mode, count) { calls++; if (f.indexOf('Elements') >= 0 || f === 'drawArrays') tris += (count / 3) | 0; return o.apply(this, arguments); };
+  }
+}
+function load(src, optional) {
+  return new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => (optional ? ok() : no(new Error(src))); document.head.appendChild(s); });
+}
+const raf = () => new Promise((r) => requestAnimationFrame(r));
+(async function () {
+  const T0 = performance.now();
+  await load('js/vendor/three.min.js');
+  await load('js/shared/economy.js');
+  await load('js/cutscene-quality.js', true);
+  await load('js/dungeon3d.js');
+  await load('js/cutscenes/director.js', true);
+  await load('js/cutscenes/mini-cinematic.js', true);
+  const bootMs = performance.now() - T0;
+  // #shot=<id>&k=0.5: fast-forward that cutscene to k (so motes/fx accumulate like in play) and hold the frame
+  if (P.shot) {
+    const id = P.shot, def = ECON.GUILD_BOSSES[id] || {}, mini = def.tier === 'mini', ms = +(P.ms || 6200), mode = P.mode || 'entrance';
+    if (DungeonGL.prefetch) await DungeonGL.prefetch(id); else { DungeonGL.warmup('build'); while (DungeonGL.skins.state() !== 'ready' && DungeonGL.skins.state() !== 'failed') await raf(); }
+    const people = [{ appearance: { shirt: '#dc2626' } }, { appearance: { shirt: '#2563eb' }, weapon: 'spear' }, { appearance: null, weapon: 'crossbow' }];
+    const ctx = document.getElementById('c').getContext('2d'), K = +P.k;
+    for (let i = 0; i <= 60; i++) {
+      const kk = K * i / 60;
+      const gl = DungeonGL.render({ mode, id, mini, k: kk, t: 5000 + kk * ms, sceneId: 'shot' + id, people, color: def.color, accent: def.accent });
+      if (gl) ctx.drawImage(gl, 0, 0, 1024, 640);
+      if (i % 6 === 0) await raf();
+    }
+    ctx.fillStyle = '#fde68a'; ctx.font = '14px Georgia'; ctx.fillText(id + ' ' + mode + ' k=' + K.toFixed(2), 14, 24);
+    window.__bench = { shot: true }; return;
+  }
+  const ids = (P.ids || 'pit_champion').split(','), ms = +(P.ms || 6200), mode = P.mode || 'entrance';
+  const ctx = document.getElementById('c').getContext('2d');
+  const out = { bootMs, bosses: [] };
+  let clock = 0;
+  for (const id of ids) {
+    const def = ECON.GUILD_BOSSES[id] || {}, mini = def.tier === 'mini';
+    const people = [{ appearance: { shirt: '#dc2626' } }, { appearance: { shirt: '#2563eb' } }, { appearance: null }];
+    // #warm=1: the in-game path — the boss's assets were fetched and its shaders warmed during the floor
+    // before (DungeonGL.prefetch). The baseline tree has no prefetch; its best case is the town's background
+    // warm-up having already downloaded the whole pack and compiled the room, so that is what it gets.
+    let warmMs = null;
+    if (P.warm === '1') {
+      const w0 = performance.now();
+      if (DungeonGL.prefetch) { await new Promise((r) => setTimeout(r, 1700)); await DungeonGL.prefetch(id); }
+      else { DungeonGL.warmup('build'); while (DungeonGL.skins.state() !== 'ready' && DungeonGL.skins.state() !== 'failed') await raf(); DungeonGL.warmup('compile'); }
+      warmMs = performance.now() - w0;
+      for (let i = 0; i < 90; i++) await raf();   // the "floor": time passes before the boss
+    }
+    const r0 = performance.now(); let readyMs = null, first = null;
+    const frames = [], dcs = [], trs = [];
+    // wait for the model to arrive (the cutscene would otherwise play with the procedural stand-in)
+    const t0 = performance.now();
+    let k = 0;
+    while (true) {
+      await raf();
+      const now = performance.now();
+      k = Math.min(1, (now - t0) / ms);
+      calls = 0; tris = 0;
+      const a = performance.now();
+      const gl = DungeonGL.render({ mode, id, mini, k, t: 100000 + clock + (now - t0), sceneId: 'bench' + id + mode, people, color: def.color, accent: def.accent });
+      if (gl) {
+        ctx.drawImage(gl, 0, 0, 1024, 640);
+        const g = gl.getContext('webgl2') || gl.getContext('webgl'); const px = new Uint8Array(4); g.readPixels(0, 0, 1, 1, g.RGBA, g.UNSIGNED_BYTE, px);
+      }
+      const cost = performance.now() - a;
+      if (first == null) first = cost;
+      const ready = DungeonGL.skins && DungeonGL.skins.skinned ? DungeonGL.skins.skinned(id) : true;
+      if (ready && readyMs == null) readyMs = performance.now() - r0;
+      frames.push(cost); dcs.push(calls); trs.push(tris);
+      if (k >= 1) break;
+    }
+    clock += ms + 1000;
+    const s = frames.slice(5).sort((x, y) => x - y), avg = s.reduce((x, y) => x + y, 0) / Math.max(1, s.length);
+    const q = window.CutsceneQuality && CutsceneQuality.current ? CutsceneQuality.current() : null;
+    out.bosses.push({ id, warmMs, warmStats: DungeonGL.stats ? DungeonGL.stats().warmed : null, readyMs, firstFrameMs: first, frames: frames.length, avgMs: +avg.toFixed(2), p50: +s[(s.length * 0.5) | 0].toFixed(2), p95: +s[(s.length * 0.95) | 0].toFixed(2), max: +s[s.length - 1].toFixed(2),
+      drawCalls: Math.round(dcs.slice(5).reduce((x, y) => x + y, 0) / Math.max(1, dcs.length - 5)), tris: Math.round(trs.slice(5).reduce((x, y) => x + y, 0) / Math.max(1, trs.length - 5)), quality: q });
+    log(JSON.stringify(out.bosses[out.bosses.length - 1]));
+  }
+  try { const g = document.createElement('canvas').getContext('webgl'), e = g.getExtension('WEBGL_debug_renderer_info'); out.gpu = e ? g.getParameter(e.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER); } catch (e) {}
+  out.resources =performance.getEntriesByType('resource').filter((e) => /dungeon-models|dungeon-skin|dungeon3d|cutscene/.test(e.name)).map((e) => ({ name: e.name.replace(location.origin, ''), bytes: e.encodedBodySize || e.transferSize || 0, ms: +(e.responseEnd - e.startTime).toFixed(1) }));
+  window.__bench = out; log('DONE');
+})().catch((e) => { window.__bench = { error: String(e && e.stack || e) }; log('ERR ' + e); });
+</script></body></html>

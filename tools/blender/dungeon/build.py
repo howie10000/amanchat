@@ -4,13 +4,12 @@ from pathlib import Path
 from mathutils import Vector, Matrix
 from . import core, rig as R, weapons as W, export as X, review, characters as CH, clips_hero as CHero
 from . import characters_boss as CB, clips_boss as KB, beast, characters_legacy as CL, clips_legacy as KL
+from . import clips_mini as MC   # mini-boss animation overhaul (idles + taunts); major bosses untouched
 
 REGISTRY = ['hero', 'kael', 'kael_crownbound', 'pit_champion', 'veiled_assassin', 'sol', 'umbra', 'sundered_king', 'colossus', 'briar_matron', 'gorehorn',
             'warden', 'smith', 'tyrant']
-# The pack is split so a run only downloads its own dungeon's cast: the core (hero, weapons, skeletons,
-# shared materials) plus one part per dungeon. Every character not listed here lands in the core.
-PARTS = {'thornwild': ['gorehorn', 'briar_matron'], 'colosseum': ['kael', 'pit_champion'], 'mirror': ['sol', 'umbra', 'veiled_assassin'],
-         'throne': ['sundered_king', 'colossus', 'kael_crownbound'], 'crypt': ['warden'], 'forge': ['smith'], 'void': ['tyrant']}
+# Packaging: export_pack writes ONE monolithic pack; tools/split-dungeon-models.cjs turns it into packed per-character
+# files (js/dungeon-models/<id>.js + index.js) so a cutscene downloads exactly its cast. See docs/sundered-crown/CUTSCENE-PERF.md.
 
 
 def build_boss(cid):
@@ -24,11 +23,11 @@ def build_boss(cid):
     elif cid == 'kael':
         ch = CB.kael(); PA(ch); KB.kael(ch)
     elif cid == 'kael_crownbound':
-        ch = CB.kael('kael_crownbound', True); PA(ch); KB.kael(ch)
+        ch = CB.kael('kael_crownbound', True); PA(ch); KB.kael(ch); MC.crownbound(ch)
     elif cid == 'pit_champion':
-        ch = CB.pit_champion(); PA(ch); KB.pit_champion(ch, ch.supports.get('spear'))
+        ch = CB.pit_champion(); PA(ch); KB.pit_champion(ch, ch.supports.get('spear')); MC.pit_champion(ch, ch.supports.get('spear'))
     elif cid == 'veiled_assassin':
-        ch = CB.veiled_assassin(); PA(ch); KB.assassin(ch)
+        ch = CB.veiled_assassin(); PA(ch); KB.assassin(ch); MC.assassin(ch)
     elif cid in ('sol', 'umbra'):
         ch = CB.monarch(cid); PA(ch); KB.monarch(ch, cid == 'umbra')
     elif cid == 'sundered_king':
@@ -36,7 +35,7 @@ def build_boss(cid):
     elif cid == 'colossus':
         ch = CB.colossus(); KB.colossus(ch)
     elif cid == 'briar_matron':
-        ch = CB.briar_matron(); KB.matron(ch)
+        ch = CB.briar_matron(); KB.matron(ch); MC.matron(ch)
     elif cid == 'gorehorn':
         ch = beast.gorehorn(); beast.clips(ch)
     else:
@@ -185,30 +184,7 @@ def export_pack(result, path):
         payload['materials'][m] = core.SPECS.get(m, {'color': '#888888', 'roughness': 0.8, 'metalness': 0})
     stats['clips'] = len(payload['clips'])
     stats['weapons'] = wst
-    # split: the core keeps the hero, the weapons, every skeleton and the material specs the core needs;
-    # each part carries its characters, their clips and their materials, and merges into the core at load
-    part_of = {cid: part for part, cids in PARTS.items() for cid in cids}
-    core_chars = {cid: c for cid, c in payload['characters'].items() if cid not in part_of}
-    payload['parts'] = {cid: part for cid, part in part_of.items() if cid in payload['characters']}
-    path = Path(path)
-    stats['files'] = {}
-    parts_written = set()
-    for part in PARTS:
-        cids = [c for c in PARTS[part] if c in payload['characters']]
-        if not cids:
-            continue
-        chars = {c: payload['characters'][c] for c in cids}
-        clip_keys = set(k for c in chars.values() for k in c['clips'].values())
-        mats = set(g[0] for c in chars.values() for g in c['mesh']['g']) | set(g[0] for c in chars.values() for a in c['attach'] for g in a['mesh']['g'])
-        sub = {'part': part, 'characters': chars, 'clips': {k: payload['clips'][k] for k in clip_keys}, 'materials': {m: payload['materials'][m] for m in sorted(mats) if m in payload['materials']}}
-        p = path.with_name(path.stem + '-' + part + path.suffix)
-        stats['files'][p.name] = X.write_part(p, sub)
-        parts_written.add(part)
-    core_clip_keys = set(k for c in core_chars.values() for k in c['clips'].values())
-    core_mats = set(g[0] for c in core_chars.values() for g in c['mesh']['g']) | set(g[0] for w in payload['weapons'].values() for g in w['mesh']['g'])
-    core_payload = dict(payload, characters=core_chars, clips={k: payload['clips'][k] for k in core_clip_keys}, materials={m: payload['materials'][m] for m in sorted(core_mats) if m in payload['materials']})
-    stats['files'][path.name] = X.write(path, core_payload)
-    stats['bytes'] = sum(stats['files'].values())
+    stats['bytes'] = X.write(Path(path), payload)
     return stats
 
 

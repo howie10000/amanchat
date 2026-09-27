@@ -47,7 +47,7 @@ function go(){location.hash=new URLSearchParams(Object.assign({id,mode,speed},fr
 window.__cine={ready:false,k:0,perf:()=>DungeonCutscenes.perf.stats(),director:()=>DungeonGL.director.failed(),bounds:()=>DungeonGL.director.bounds(),cam:()=>{const c=DungeonGL._headless().camera();return [c.position.x,c.position.y,c.position.z];}};
 if(P.nodir)DungeonCutscenes.get=()=>null;
 async function boot(){
-  if(P.models!=='0'){await DungeonGL.skins.load(id);if(window.DungeonSkin&&DungeonSkin.ensure)await Promise.all(['sol','umbra','colossus'].concat(Object.keys(DungeonModels.characters)).map(c=>DungeonSkin.ensure(c)));}
+  if(P.models!=='0'){await DungeonGL.skins.load(id);if(window.DungeonSkin&&DungeonSkin.ensure)await Promise.all(DungeonGL.castOf(id).map(c=>DungeonSkin.ensure(c)));}
   if(!P.nodir){await DungeonCutscenes.ensure(id);for(const b of IDS)await DungeonCutscenes.ensure(b);}
   ui();requestAnimationFrame(frame);
 }

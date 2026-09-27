@@ -183,9 +183,12 @@
       const seeds = []; for (let i = 0; i < n; i++) { const a = i * 2.399963, r = Math.sin(i * 12.9898) * 43758.5453; seeds.push({ a, r1: r - Math.floor(r), r2: Math.abs(Math.sin(i * 78.233)), r3: Math.abs(Math.cos(i * 37.719)) }); }
       const h = { mesh: m, n, seeds,
         // fn(i, seed) -> { x, y, z, rx, ry, rz, s } or null (hidden)
+        // the quality tier (cx.quality, from js/cutscene-quality.js) scales how many are drawn
         set(fn) {
           m.visible = true;
-          for (let i = 0; i < n; i++) {
+          const q = cx.quality, cnt = q && q.particles < 1 ? Math.max(1, Math.ceil(n * q.particles)) : n;
+          m.count = cnt;
+          for (let i = 0; i < cnt; i++) {
             const d = fn(i, seeds[i]);
             if (!d) { S.set(0, 0, 0); P.set(0, -50, 0); Q.identity(); }
             else { P.set(d.x, d.y, d.z); E.set(d.rx || 0, d.ry || 0, d.rz || 0); Q.setFromEuler(E); const s = d.s == null ? 1 : d.s; S.set(d.sx || s, d.sy || s, d.sz || s); }
@@ -213,6 +216,7 @@
       const h = { group: g, cones, mat,
         // top: where the light comes from; foot: where it lands; r: radius at the foot; spread: angle between cones
         set(top, foot, r, opacity, spread, t) {
+          const q = cx.quality; if (q && q.godRays != null) opacity *= q.godRays;   // off on the low tier, dimmer on medium
           mat.opacity = opacity; g.visible = opacity > 0.002; if (!g.visible) return;
           const n = cones.length;
           for (let i = 0; i < n; i++) {
