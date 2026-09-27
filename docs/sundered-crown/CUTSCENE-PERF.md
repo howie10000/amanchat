@@ -58,6 +58,7 @@ Full comment block at the top of `js/dungeon-skin.js`. In short:
 DungeonSkin.setBase(url)        // dungeon3d.js sets it from its own URL
 DungeonSkin.load(ids)           // Promise<boolean>: fetches only missing files (+ their shared-clip deps), de-duplicated
 DungeonSkin.prefetch(ids)       // same, low fetch priority, never rejects
+DungeonSkin.ensure(id)          // load() for one character (js/cutscenes/*.js and dungeon3d loadPart use it)
 DungeonSkin.state(id)           // 'absent' | 'loading' | 'ready' | 'failed'
 DungeonSkin.has(id)             // in memory (file + deps) and creatable now
 DungeonSkin.available(id)       // the index lists it
@@ -67,6 +68,7 @@ DungeonSkin.stats()             // [{id, bytes, ms, ok}] per fetched file
 DungeonGL.castOf(bossId)        // ['hero', ...the boss's Blender characters]  (from SKINNED in dungeon3d.js)
 DungeonGL.prefetch(bossId)      // download the cast (low priority) + time-sliced shader warm-up; Promise
 DungeonGL.stats()               // {tier, frame:[w,h], lastRenderMs, warmed:{...}, files:[...]}
+DungeonGL.registerBoss(id, {build, awake, cam})   // procedural cutscene rigs (Ascension content)
 ```
 
 Adding a character: author it in `tools/blender/dungeon/`, add it to `REGISTRY` in `build.py`, run
@@ -75,11 +77,22 @@ writes `js/dungeon-models/<id>.js` and refreshes `index.js`, keeping every other
 clip files), then name it in the boss's `SKINNED` entry in `dungeon3d.js`. Nothing else: `castOf`, `prefetch`,
 the cutscene and the tests pick it up.
 
-**Merging with a branch that still has the monolithic `js/dungeon-models.js`** (modify/delete conflict): take
-their file, run `node tools/split-dungeon-models.cjs js/dungeon-models.js --only <the ids they changed>`, then
-delete `js/dungeon-models.js`. The Blender build is not bit-reproducible, so rebuilt characters no longer share
-clip bytes with ones that were not rebuilt (e.g. Kael Crownbound rebuilt alone embeds its Kael clips, +17 KB gz);
-rebuilding both together restores the shared file.
+**One packaging system.** The major-cutscene branch had split the pack per dungeon (a core
+`js/dungeon-models.js` + `js/dungeon-models-<dungeon>.js`, loaded by `DungeonSkin.ensure`). On the merge (2026-09-27)
+that was replaced by this system: the whole roster (their more detailed Kael / King / Monarchs, the new skinned
+Warden, Smith and Tyrant, the mini taunts) was rebuilt from the merged Blender source in one pass and split with
+`tools/split-dungeon-models.cjs`; mesh triangle counts match their pack exactly. `DungeonSkin.ensure(cid)` is kept as
+the one-character form of `load()`, and `loadPart(id)` in dungeon3d.js delegates to `loadSkins(id)`. The per-dungeon
+grouping (`PARTS` in build.py) and the core file are gone.
+
+If a branch still produces a monolithic pack: `node tools/split-dungeon-models.cjs <pack.js> --only <ids>`. The Blender
+build is not bit-reproducible, so rebuild characters that share clips (Kael + Kael Crownbound) together.
+
+The film directions (`js/cutscenes/director.js` + per-boss files) spend by tier: `cx.quality` = {particles 1 / 0.7 / 0.4,
+godRays 1 / 0.7 / 0, post}; `debris()` draws that fraction of its instances, `godrays()` scales its opacity (off on
+low), `cx.mote()` thins spawns (the tier's mote ring cap is the hard limit). The mini-boss director
+(`cutscenes/mini-cinematic.js`) routes its camera through the same clipping audit (`DungeonCutscenes.clear`).
+Directions are fetched with their boss (`loadSkins` / `prefetch`), never all at once from the town warm-up.
 
 ## 3. Quality tiers (`js/cutscene-quality.js`)
 
@@ -122,7 +135,29 @@ Every frame is synchronised with a 1 px `readPixels`, so frame times include GPU
 "Cold" = the cutscene starts with nothing downloaded; "warm" = the in-game path (old: the town warm-up had
 already pulled the whole pack and compiled the room; new: `DungeonGL.prefetch` during the floor before).
 
-### Download (bytes a player fetches for one mini cutscene, first visit)
+### Download per boss cutscene after the merge (first visit: index + the cast + shared clips; `dungeon-skin.js` 7 KB gz on top)
+
+Guarded by `js/dungeon-models.test.js` (every boss < 240 KB gz, every file < 110 KB gz).
+
+| boss | raw | gzip | brotli | major agent's per-dungeon pack (core + part), gzip |
+|---|---|---|---|---|
+| Gorehorn | 336,420 | 132,155 | 122,723 | 304,122 (thornwild) |
+| Briar Matron | 359,715 | 146,328 | 136,556 | 304,122 (thornwild) |
+| Kael | 394,768 | 159,064 | 148,396 | 364,333 (colosseum) |
+| Pit Champion | 385,263 | 152,242 | 141,700 | 364,333 (colosseum) |
+| Twin Monarchs (Sol + Umbra) | 494,965 | 207,413 | 194,067 | 390,572 (mirror) |
+| Veiled Assassin | 350,422 | 143,819 | 134,122 | 390,572 (mirror) |
+| Sundered King (+ colossus) | 483,109 | 198,427 | 184,749 | 421,603 (throne) |
+| Kael Crownbound | 410,162 | 163,512 | 152,663 | 421,603 (throne) |
+| Warden | 390,012 | 157,673 | 146,947 | 254,623 (crypt) |
+| Smith | 399,475 | 157,741 | 147,079 | 252,615 (forge) |
+| Tyrant | 363,013 | 145,276 | 135,732 | 230,966 (void) |
+
+Whole roster: 2.25 MB raw / 0.98 MB gz in 16 files (the per-dungeon split: 2.99 MB / 1.37 MB gz in 8), and nobody
+downloads the whole roster. A full guild run (mini + boss + hero, cached between them) is e.g. Thornwild ~197 KB gz,
+Sundered Throne ~280 KB gz.
+
+### Download (bytes a player fetches for one mini cutscene, first visit) — before the merge
 
 | | raw | gzip -9 | brotli 11 |
 |---|---|---|---|
