@@ -33,10 +33,10 @@ const BUDGET = {
     // (permessage-deflate is off by default).
     presence: {
         'town-1': { down: 0, up: 750 },            // measured 0 / 630 (walking; idle is a 1 s keepalive)
-        'town-5': { down: 1650, up: 750 },         // measured 1383 / 402 (baseline 8513 / 2903)
-        'town-20': { down: 4500, up: 750 },        // measured 3841 / 346 (baseline 27975 / 3045)
-        'dungeon-5': { down: 2200, up: 750 },      // measured 1875 / 628 (baseline 14822 / 3187)
-        'dungeon-20': { down: 8000, up: 750 },     // measured 6835 / 629 (baseline 57845 / 3332)
+        'town-5': { down: 1450, up: 750 },         // measured 1226 / 402 (baseline 8513 / 2903)
+        'town-20': { down: 4400, up: 750 },        // measured 3713 / 346 (baseline 27975 / 3045)
+        'dungeon-5': { down: 2050, up: 750 },      // measured 1719 / 628 (baseline 14822 / 3187)
+        'dungeon-20': { down: 7900, up: 750 },     // measured 6707 / 629 (baseline 57845 / 3332)
     },
 };
 
