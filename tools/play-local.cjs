@@ -79,7 +79,7 @@ async function main(){
  let port;for(const candidate of ports)if(await free(candidate)){port=candidate;break;}
  if(!port)throw new Error('Local ports '+firstPort+' through '+(firstPort+9)+' are busy. Close the other local servers and try again.');
  const dataDir=path.join(root,'.local-test');fs.mkdirSync(dataDir,{recursive:true});
- Object.assign(process.env,{PORT:String(port),HOST:'0.0.0.0',STATIC_DIR:root,GAME_JS:path.join(root,'js'),DB_PATH:path.join(dataDir,'game.db'),OWNERS:'aman,localtester',LOCAL_DEV_ID:localId});
+ Object.assign(process.env,{PORT:String(port),HOST:'0.0.0.0',STATIC_DIR:root,GAME_JS:path.join(root,'js'),DB_PATH:path.join(dataDir,'game.db'),OWNERS:'aman,localtester',LOCAL_DEV_ID:localId,STATIC_WARM:'1',STATIC_CACHE_DIR:path.join(dataDir,'static-cache')});
  const url='http://127.0.0.1:'+port;
  console.log('\nNEIGHBORHOOD - LOCAL PLAY\n');
  console.log('Game: '+url+'\nSave: '+path.join(dataDir,'game.db'));

@@ -1,0 +1,17 @@
+# Release packaging (docs/BANDWIDTH.md): the VM release tarball is a
+# `git archive` of the tree. Source files, review renders, contact sheets and
+# documentation are never loaded by the game, so they stay out of it.
+# server-node/bandwidth.test.js fails if a file the client actually requests
+# is ever listed here.
+*.blend export-ignore
+*.blend1 export-ignore
+**/sheet-*.png export-ignore
+**/*-review.png export-ignore
+**/*-review.html export-ignore
+assets/racing/apex-car-*.png export-ignore
+js/title-models.js export-ignore
+docs/** export-ignore
+goals export-ignore
+amanchat-old-firebase export-ignore
+server/** export-ignore
+tools/blender/** export-ignore

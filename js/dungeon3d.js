@@ -5746,6 +5746,9 @@
     opts = opts || {};
     if (!id || dead) return Promise.resolve(false);
     const def = (window.ECON && ECON.GUILD_BOSSES && ECON.GUILD_BOSSES[id]) || {};
+    // Save-Data / 2G (window.saveDataMode, js/sea-assets.js, docs/BANDWIDTH.md): no speculative download at all;
+    // the cast then loads when its cutscene starts (the procedural stand-in covers the first beats)
+    if (!opts.force && window.saveDataMode && window.saveDataMode()) return Promise.resolve(false);
     return loadSkins(id, true).then((ok) => {
       if (opts.noWarm || typeof document === "undefined") return ok;
       return warmSliced(id, def).then(() => ok, () => ok);

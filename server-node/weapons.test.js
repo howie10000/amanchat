@@ -12,6 +12,7 @@
 const H = require('./testlib/depths-harness.js');
 const C = require('./testlib/crown-harness.js');
 const { ECON, sleep } = H;
+require('../js/shared/ascension.js');   // the server loads it too: registers the greatsword / wand boss-weapon bases
 const { CROWN } = C;
 const PORT = +(process.argv[2] || 18471);
 const T = H.makeAsserts();

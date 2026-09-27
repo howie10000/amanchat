@@ -32,6 +32,12 @@
       (eventHandlers[event] = eventHandlers[event] || []).push(fn);
     },
     isConnected() { return connected; },
+    // Fire-and-forget frame (no RPC id, no reply). Returns false when it could
+    // not be sent right now, so the caller can try again next tick.
+    send(frame) {
+      if (!connected || reauthing || !ws || ws.readyState !== 1) return false;
+      try { ws.send(frame); return true; } catch (e) { return false; }
+    },
   };
   window.NET = NET;
 
@@ -47,6 +53,10 @@
     ws = new WebSocket(WS_URL);
     ws.onopen = async () => {
       connected = true;
+      NET.caps = {};   // what this server supports; it says so in a `caps` event
+      // What this client understands: position-only presence changes as
+      // [name, x, y] triples (m.xy). An older server just ignores it.
+      try { ws.send('{"op":"hello","presenceXY":1}'); } catch (e) {}
       console.log("[net] connected", WS_URL);
       if (lastAuth && !reauthing) {
         // Re-auth before releasing anything queued, so the first call out of
@@ -72,7 +82,11 @@
         else p.resolve(msg.data);
         return;
       }
+      if (msg.event === "caps") NET.caps = msg;
       if (msg.event) emit(msg.event, msg);
+      // A fire-and-forget presence frame has no id; an older server still
+      // answers it, and that answer may ask for our appearance again.
+      else if (msg.id == null && msg.data && msg.data.needAppearance) emit("needAppearance", msg);
     };
     ws.onclose = () => {
       connected = false;
@@ -227,7 +241,8 @@
           }
         } catch (e) {}
       }
-      const response = await fetch(entry.href, { cache: 'no-store' });
+      // Revalidate rather than refetch: an unchanged index.html costs a 304.
+      const response = await fetch(entry.href, { cache: 'no-cache' });
       if (!response.ok) return false;
       const live = new DOMParser().parseFromString(await response.text(), 'text/html');
       if (!live.querySelector('script[data-boot][src*="js/net.js"]')) return false;
