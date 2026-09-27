@@ -2754,10 +2754,10 @@
       // (a bucket filled in the maze does not carry into a boss swing).
       b.avail = Math.min(depth, b.avail + Math.max(0, now - (+b.at || 0)) / 1000 * rate);
       b.at = now;
-      heal = Math.min(heal, b.avail);
+      heal = Math.floor(Math.min(heal, b.avail) * 10) / 10;
       b.avail -= heal;
     }
-    return Math.max(0, Math.round(heal * 10) / 10);
+    return Math.max(0, Math.floor(heal * 10) / 10);
   }
 
   // A fighter's power, from what they wear: max HP, mitigation, effective HP

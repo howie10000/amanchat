@@ -1,5 +1,5 @@
 {
- "note": "recorded from the pre-Sundered-Crown tree",
+ "note": "recorded from the pre-Sundered-Crown tree; fx re-recorded for the boss-balance lifesteal cut (ECON.LIFESTEAL_MULT 0.25 -> 0.10, docs/sundered-crown/BALANCE.md) - with 0.25 restored every hash, fx included, matches the original",
  "meta": {
   "fxKeys": [
    "chain",
@@ -66,7 +66,7 @@
   "themes": "d9ffd8ff80b91337fd23b02c5eebbfcb3699bb4c",
   "drops": "65ea5c941cb5e0f6fad091c2bf60235133d525d1",
   "runs": "b54a4262ad53d6ad7c88ac3ed82d3b1eee428f11",
-  "fx": "2051c08c6ab10770e5e2aa6290018092f4be13f1",
+  "fx": "f54449f7b9085c26390e970dbdf3470c311b1c7c",
   "plans": "73502a46be6d4f23bacd82f521227d3cbb71ae91",
   "settle": "cf426bb4094d51b34e0bc5dd99ae07aa13004cd0",
   "raidDecks": "a819dd8718167b4127488a521ce3ccf692196e7c"

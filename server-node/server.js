@@ -3236,7 +3236,7 @@ function startGuildRun(leader, tier, members, opts) {
     return {
         runId: run.id, tier, seed: run.seed, members: [...set], state,
         cfg: { name: cfg.name, floors: cfg.floors, boss: cfg.boss, mini: cfg.mini },
-        delve, affixes: run.affixes, kind: run.kind, theme: run.theme, guilds, weekly, initiate: run.initiate || null,
+        delve, affixes: run.affixes, kind: run.kind, theme: run.theme, guilds, weekly, initiate: run.initiate || null, bossScale: run.bossScale || null,
     };
 }
 
