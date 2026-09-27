@@ -128,8 +128,11 @@ const assert = T.assert;
         assert(far >= 2, `a sword swing from ${G}px is out of reach (${far}/${tries})`);
         await equip(spear);
         tries = 0;
-        for (let i = 0; i < 3; i++) { const r = await reachProbe(G); tries++; if (process.env.WDEBUG) console.log("   spear", JSON.stringify(r).slice(0, 160)); if (r.ok) near++; }
-        assert(near >= 2, `the same swing with a spear lands (${near}/${tries})`);
+        let spearFar = 0, beyond = 0;
+        for (let i = 0; i < 2; i++) { const r = await reachProbe(150); if (!r.ok && /out of reach/i.test(r.err)) beyond++; }
+        assert(beyond >= 1, `...but even a spear cannot reach from 150px (${beyond}/2)`);
+        for (let i = 0; i < 6 && near < 1; i++) { const r = await reachProbe(G); tries++; if (process.env.WDEBUG) console.log("   spear", JSON.stringify(r).slice(0, 160)); if (r.ok) near++; else if (/out of reach/i.test(r.err)) spearFar++; }
+        assert(near >= 1 && spearFar === 0, `the same swing with a spear lands (${near}/${tries}, out of reach ${spearFar})`);
 
         // ------------------------------------------------------------ boss weapons in the chest
         console.log('armaments: a boss chest holds a boss weapon (forced by the test knob)');
