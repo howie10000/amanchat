@@ -5,7 +5,7 @@
 //  * field deltas are merged onto the last complete frame, `unset` removes fields,
 //    and what other players see is identical to sending complete frames;
 //  * a delta with no complete frame to merge onto asks the client to resync;
-//  * a viewer never receives its own entry; permessage-deflate is negotiated.
+//  * a viewer never receives its own entry; permessage-deflate stays off by default.
 const assert = require('node:assert/strict');
 const { spawnServer, sleep } = require('../tools/bandwidth/ws-sim.cjs');
 const path = require('path');
@@ -32,7 +32,7 @@ function sock(port) {
     try {
         const a = sock(port), b = sock(port);
         await Promise.all([a.open, b.open]);
-        assert(a.ws.extensions.includes('permessage-deflate'), 'permessage-deflate negotiated');
+        assert(!a.ws.extensions.includes('permessage-deflate'), 'permessage-deflate is off unless WS_DEFLATE=1 (latency: docs/BANDWIDTH.md)');
         await sleep(100);
         assert(a.msgs.some(m => m.event === 'caps' && m.presenceDelta === 1), 'caps announced on connect');
         await a.rpc('auth', { user: 'wirea', pass: 'pw123456', register: true });
@@ -82,6 +82,6 @@ function sock(port) {
         await sleep(200); pump();
         assert.equal(held.wirea.x, 150); assert.equal(held.wirea.floor, 2); assert.equal(held.wirea.appearance.shirt, 'red', 'appearance carried forward');
         a.ws.close(); b.ws.close();
-        console.log('PASS presence wire: caps, fire-and-forget, orphan-delta resync, field deltas + unset merge to the same view, no self echo, keepalive silence, legacy RPC compatibility, deflate negotiated');
+        console.log('PASS presence wire: caps, fire-and-forget, orphan-delta resync, field deltas + unset merge to the same view, no self echo, keepalive silence, legacy RPC compatibility, no deflate by default');
     } finally { await srv.kill(); }
 })().catch(e => { console.error(e); process.exit(1); });

@@ -1394,17 +1394,19 @@ function afterWrite(pathStr, val) {
 
 // ---------------------------------------------------------------- WS HANDLER
 
-// permessage-deflate (docs/BANDWIDTH.md). Every browser offers it. The stream
-// is small JSON with the same keys 15x a second, so keeping the compression
-// context between messages (context takeover) is where the win is; a 13-bit
-// window and memLevel 7 hold that at ~100 KB of zlib state per socket, and
-// level 1 keeps the CPU cost negligible at 15 Hz. Messages under `threshold`
-// bytes go out as-is. WS_DEFLATE=0 turns it off.
-const WS_DEFLATE = process.env.WS_DEFLATE === '0' ? false : {
+// permessage-deflate is OFF by default (docs/BANDWIDTH.md). After the presence
+// trimming the per-tick frames are tens of bytes, and deflate would push every
+// frame in both directions (browsers compress everything once it is
+// negotiated) through the async zlib threadpool: measured p95 +10-100 ms and
+// 200-350 ms spikes on a loaded host, for a 15 Hz movement stream. WS_DEFLATE=1
+// turns it on (context takeover, 13-bit window, ~100 KB zlib state per socket,
+// level 1; server messages under WS_DEFLATE_THRESHOLD bytes, default 1024, stay
+// raw) for deployments that value bytes over latency.
+const WS_DEFLATE = process.env.WS_DEFLATE !== '1' ? false : {
     zlibDeflateOptions: { level: +process.env.WS_DEFLATE_LEVEL || 1, memLevel: 7 },
     serverMaxWindowBits: 13,
     clientMaxWindowBits: 13,
-    threshold: process.env.WS_DEFLATE_THRESHOLD != null ? +process.env.WS_DEFLATE_THRESHOLD : 32,
+    threshold: process.env.WS_DEFLATE_THRESHOLD != null ? +process.env.WS_DEFLATE_THRESHOLD : 1024,
     concurrencyLimit: 16,
 };
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024, perMessageDeflate: WS_DEFLATE });
