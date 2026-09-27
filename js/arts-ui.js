@@ -90,6 +90,31 @@
     if (a.vsStaggered) L.push(`×${a.vsStaggered} against a stunned, exhausted or sundered boss`);
     return L;
   }
+  // Is a dungeon open to the player's guild? true / false, or null when unknown (no guild loaded).
+  function tierOpen(tier) {
+    try {
+      const g = W.gameGuild && W.gameGuild.myGuild ? W.gameGuild.myGuild() : null;
+      const cfg = (EC().GUILD_DUNGEONS || {})[tier];
+      if (!cfg) return null;
+      if (!g) return null;
+      if (W.DEPTHS && W.DEPTHS.tierUnlocked) return !!W.DEPTHS.tierUnlocked(g.depths || { tiers: {} }, tier);
+      return !cfg.unlockAfter;
+    } catch (e) { return null; }
+  }
+  // The best open dungeon to hunt arts in: the highest single-art chance, easiest first on ties.
+  function bestHunt() {
+    const ladder = EC().STORY_LADDER || [];
+    let best = null;
+    for (const t of ladder) {
+      const o = tierOpen(t), cfg = (EC().GUILD_DUNGEONS || {})[t] || {};
+      if (o === false || (o == null && cfg.unlockAfter)) continue;
+      const list = artsForTier(t);
+      if (!list.length) continue;
+      const p = Math.max(...list.map(a => a.p));
+      if (!best || p > best.p + 1e-9) best = { tier: t, p, list };
+    }
+    return best;
+  }
   // What the next rank costs and how close the copies are.
   function rankInfo(id, own) {
     const C = CR(), max = MAX_RANK();
@@ -135,12 +160,17 @@
     const id = R.eq[i], a = id && def(id), own = id && R.own[id];
     const key = ((CR() && CR().ART_KEYS) || ["f", "c"])[i].toUpperCase();
     const sel = A.sel && R.own[A.sel] && A.sel !== id;
-    return `<div class="scSlot${a ? " full" : ""}${sel ? " ready" : ""}" style="--ac:${esc(a ? a.color : "#64748b")}" data-slot="${i}"
-        onclick="gameArtsUI.slotClick(${i})" ondragover="event.preventDefault()" ondrop="gameArtsUI.drop(event, ${i})" title="${a ? esc(artLines(id, own.r, gearFx()).join("\n")) : "Empty — pick an art, then tap here"}">
+    const anyOwned = Object.keys(R.own || {}).length > 0;
+    const emptyTxt = sel ? "Equip " + esc(def(A.sel).name) + " here" : "Empty slot";
+    const emptySub = sel ? `tap to put it on ${key}` : anyOwned ? "pick an art below, then tap here" : "find an art first — see below";
+    // role=button + keys: the slot is a drop target and a tap target, and holds its own × button.
+    return `<div class="scSlot${a ? " full" : ""}${sel ? " ready" : ""}" style="--ac:${esc(a ? a.color : "#64748b")}" data-slot="${i}" role="button" tabindex="0"
+        aria-label="${a ? esc(a.name + " on " + key + (sel ? ". Press to swap in " + def(A.sel).name : "")) : esc("Slot " + key + ": " + (sel ? "equip " + def(A.sel).name : "empty"))}"
+        onclick="gameArtsUI.slotClick(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();gameArtsUI.slotClick(${i})}" ondragover="event.preventDefault()" ondrop="gameArtsUI.drop(event, ${i})" title="${a ? esc(artLines(id, own.r, gearFx()).join("\n")) : "Empty — pick an art, then tap here"}">
       <kbd>${key}</kbd>
-      ${a ? `<span class="scSlotIco">${ico("art", id, 44) || "♛"}</span><span class="scSlotTxt"><b>${esc(a.name)}</b>${pips(own.r, MAX_RANK())}</span>
-        <button class="scX" title="Unequip" onclick="event.stopPropagation();gameArtsUI.equip(null, ${i})">×</button>`
-        : `<span class="scSlotIco empty">+</span><span class="scSlotTxt"><b class="muted">${sel ? "Equip " + esc(def(A.sel).name) + " here" : "Empty slot"}</b><small>press ${key} in a dungeon</small></span>`}
+      ${a ? `<span class="scSlotIco">${ico("art", id, 44) || "♛"}</span><span class="scSlotTxt"><b>${esc(a.name)}</b>${pips(own.r, MAX_RANK())}<small>press ${key} in a dungeon</small></span>
+        <button class="scX" title="Unequip" aria-label="Unequip ${esc(a.name)}" onclick="event.stopPropagation();gameArtsUI.equip(null, ${i})">×</button>`
+        : `<span class="scSlotIco empty">+</span><span class="scSlotTxt"><b class="muted">${emptyTxt}</b><small>${emptySub}</small></span>`}
     </div>`;
   }
   function cardHtml(id, R) {
@@ -154,7 +184,7 @@
       <span class="scArtIco">${ico("art", id, 56, own ? "" : "scSil") || `<span class="scGlyph">♛</span>`}</span>
       <b>${esc(a.name)}</b>
       <small class="scRar">${RAR_LABEL[a.rarity]}</small>
-      ${own ? `${pips(own.r, ri.max)}<span class="scDupe" title="${ri.need ? `${ri.dupes}/${ri.need} copies to rank ${own.r + 1}` : "Max rank"}"><i style="width:${prog}%"></i></span>` : `<small class="muted">not found</small>`}
+      ${own ? `${pips(own.r, ri.max)}<span class="scDupe" title="${ri.need ? `${ri.dupes}/${ri.need} copies to rank ${own.r + 1}` : "Max rank"}"><i style="width:${prog}%"></i></span>` : `<small class="muted">not found yet</small>`}
       ${slot >= 0 ? `<span class="scEqTag">${((CR() && CR().ART_KEYS) || ["f", "c"])[slot].toUpperCase()}</span>` : ""}
     </button>`;
   }
@@ -167,7 +197,7 @@
     const nextTxt = nr ? `Rank ${nr}: cooldown ${secs(C.artCooldownMs(id, nr, fx))}` + (a.power > 0 ? `, damage ×${(C.artPower(id, nr) * (1 + Math.min(0.6, Math.max(0, +fx.artPower || 0)))).toFixed(2)}` : "") + (a.buff ? `, +${pct(C.warCryMult(nr) - 1)} rally` : "") : "";
     const srcs = sourcesOf(id);
     let h = `<div class="scDetail r-${esc(a.rarity)}" style="--ac:${esc(a.color)};--rc:${esc(rarColor(a.rarity))}">
-      <div class="scDHead">${ico("art", id, 72, own ? "" : "scSil")}<div><b>${esc(a.name)}</b><small>${esc(a.desc || "")}</small>${own ? pips(own.r, ri.max) : ""}</div></div>
+      <div class="scDHead">${ico("art", id, 72, own ? "" : "scSil")}<div><b>${esc(a.name)}</b><small>${esc(a.desc || "")}</small>${own ? `<span class="gdRankLine">${pips(own.r, ri.max)} rank ${own.r} of ${ri.max}${R.eq.indexOf(id) >= 0 ? ` · on <kbd>${R.eq.indexOf(id) ? "C" : "F"}</kbd>` : ""}</span>` : `<span class="gdNotYet">🔒 Not found yet — see where it drops below</span>`}</div></div>
       <ul class="scLines">${lines.map(l => `<li>${esc(l)}</li>`).join("")}${nextTxt ? `<li class="scNext">▲ ${esc(nextTxt)}</li>` : ""}</ul>`;
     if (own) {
       h += `<div class="scEquipRow"><button class="menuBtn ${R.eq[0] === id ? "gray" : "gold"}" onclick="gameArtsUI.equip('${esc(id)}', 0)">${R.eq[0] === id ? "ON F" : "EQUIP → F"}</button>
@@ -176,17 +206,19 @@
         const c = ri.forge || { gold: 0, crown_shard: 0 };
         const okG = gold() >= c.gold, okS = shards() >= c.crown_shard;
         h += `<div class="scRankBox"><div><b>Rank ${own.r} → ${own.r + 1}</b>
-            <small>Merge: <b>${ri.dupes}/${ri.need}</b> duplicate ${ri.need === 1 ? "copy" : "copies"} — copies merge by themselves when they drop.</small>
+            <small>Find it again: <b>${ri.dupes}/${ri.need}</b> duplicate ${ri.need === 1 ? "copy" : "copies"} found. Copies rank it up by themselves when they drop.</small>
             <span class="scDupe big"><i style="width:${Math.min(100, Math.round(100 * ri.dupes / ri.need))}%"></i></span></div>
-          <div class="scForge"><small>…or forge it now:</small>
+          <div class="scForge"><small>…or skip the wait and forge it now with gold + ${W.gameGuide && W.gameGuide.term ? W.gameGuide.term("crown_shard", "crown shards") : "crown shards"}:</small>
             <div class="adCost"><span class="${okG ? "ok" : "short"}" style="--mc:#fbbf24"><i></i>Gold <b>${money(c.gold)}</b><small>/ ${money(gold())}</small></span>
               <span class="${okS ? "ok" : "short"}" style="--mc:#fde047">${ico("mat", "crown_shard", 16) || "<i></i>"}Crown Shard <b>${c.crown_shard}</b><small>/ ${shards()}</small></span></div>
             <button class="menuBtn gold scForgeBtn" ${A.busy || !okG || !okS ? "disabled" : ""} onclick="gameArtsUI.forge('${esc(id)}')">⚒ FORGE RANK ${own.r + 1}</button></div></div>`;
       } else h += `<div class="scRankBox max"><b>MAX RANK</b><small>Every further copy melts into ${ri.melt} crown shards.</small></div>`;
     }
     h += `<h4 class="adCxGroup">Where it drops</h4>`;
-    h += srcs.length ? `<div class="scSrc">${srcs.slice(0, 6).map(s => `<span>${ico("boss", s.who, 18)}<b>${esc(bossLabel(s.who))}</b> <small>${esc(tierLabel(s.tier))} · ${s.kind === "chest" ? "rare chest roll " : ""}${(s.p * 100).toFixed(s.p < 0.01 ? 1 : 0)}%</small></span>`).join("")}</div>
-      <small class="muted">Better chests and deeper delves raise the odds. Twelve Crown boss clears without an art guarantee one.</small>` : `<p class="muted">Unknown.</p>`;
+    // Open sources first, each marked open / locked, so "where do I go" has an answer you can act on.
+    const srcsOrd = srcs.map(s => Object.assign({ open: tierOpen(s.tier) }, s)).sort((x, y) => (x.open === false) - (y.open === false) || y.p - x.p);
+    h += srcs.length ? `<div class="scSrc">${srcsOrd.slice(0, 6).map(s => `<span class="${s.open === false ? "gdLocked" : s.open ? "gdOpen" : ""}">${ico("boss", s.who, 18)}<b>${esc(bossLabel(s.who))}</b> <small>${esc(tierLabel(s.tier))} · ${s.kind === "chest" ? "rare chest roll " : ""}${(s.p * 100).toFixed(s.p < 0.01 ? 1 : 0)}%${s.open === false ? " · 🔒 not open to your guild yet" : s.open ? " · open now" : ""}</small></span>`).join("")}</div>
+      <small class="muted">The % is the chance per clear for each player. Better chests and higher delve levels raise it, and twelve ♛ Crown boss clears without an art guarantee one.</small>` : `<p class="muted">Unknown.</p>`;
     return h + `</div>`;
   }
   function askHtml() {
@@ -197,17 +229,37 @@
     const R = rec(), ids = order();
     if (!CR()) return `<div id="scArtsRoot" class="scArts"><p class="muted">The Crown Arts have not reached this town yet.</p></div>`;
     const owned = ids.filter(id => R.own[id]).length;
+    const G = W.gameGuide;
+    const T = (k, l) => (G && G.term ? G.term(k, l) : esc(l));
     return `<div id="scArtsRoot" class="scArts">
       <div class="scHero"><div class="scCrown" aria-hidden="true">♛</div><div><b>THE CROWN ARTS</b>
-        <small>Abilities torn from the Sundered Crown's champions. Two ride with you into every dungeon: <kbd>F</kbd> and <kbd>C</kbd>.</small></div>
+        <small>Special abilities dropped by bosses. Equip two, then use them in any dungeon with <kbd>F</kbd> and <kbd>C</kbd>.</small>
+        ${G && G.helpBtn ? G.helpBtn("arts") : ""}</div>
         <span class="scHave"><b>${owned}</b>/${ids.length} found</span>
-        <span class="adMat" style="--mc:#fde047">${ico("mat", "crown_shard", 16) || "<i></i>"}Crown Shards <b>${shards().toLocaleString()}</b></span></div>
+        <span class="adMat" style="--mc:#fde047">${ico("mat", "crown_shard", 16) || "<i></i>"}${T("crown_shard", "Crown Shards")} <b>${shards().toLocaleString()}</b></span></div>
+      <ol class="gdSteps" aria-label="How Crown Arts work">
+        <li class="${owned ? "done" : "now"}"><b>1 · FIND</b><small>Bosses drop them — most often in the four ♛ Sundered Crown dungeons.</small></li>
+        <li class="${R.eq[0] || R.eq[1] ? "done" : owned ? "now" : ""}"><b>2 · EQUIP</b><small>Pick an art you own, then tap slot <kbd>F</kbd> or <kbd>C</kbd>.</small></li>
+        <li class="${R.eq[0] || R.eq[1] ? "now" : ""}"><b>3 · USE</b><small>Press <kbd>F</kbd> / <kbd>C</kbd> in a dungeon (on a phone: the two round buttons).</small></li>
+        <li><b>4 · ${T("art_rank", "RANK UP")}</b><small>Finding the same art again makes it stronger, up to rank 5.</small></li>
+      </ol>
       ${A.ask ? askHtml() : A.flash ? `<div class="adFlash ${esc(A.flash.kind)}">${A.flash.html}</div>` : ""}
+      ${owned ? "" : emptyHtml()}
       <div class="scSlots">${slotHtml(0, R)}${slotHtml(1, R)}</div>
       <div class="scMain"><div class="scGrid">${ids.map(id => cardHtml(id, R)).join("")}</div>${detailHtml(R)}</div>
       <div class="flexRow"><button class="menuBtn gray" onclick="window.gameGear&&gameGear.openArmory()">← ARMORY</button>
         <button class="menuBtn gray" onclick="window.gameForge&&gameForge.open()">⚒ ARCANE FORGE</button></div>
     </div>`;
+  }
+  // Nothing owned yet: say where to go, with a button that goes there.
+  function emptyHtml() {
+    const b = bestHunt();
+    if (!b) return `<div class="gdEmpty"><b>No Crown Arts yet</b><small>Clear guild dungeons — their bosses drop them.</small></div>`;
+    const cfg = (EC().GUILD_DUNGEONS || {})[b.tier] || {};
+    const top = b.list.slice(0, 3).map(a => `${esc(def(a.id).name)} ${(a.p * 100).toFixed(a.p < 0.01 ? 1 : 0)}%`).join(" · ");
+    return `<div class="gdEmpty"><div><b>No Crown Arts yet — here's where to start</b>
+        <small><b>${esc(cfg.name || b.tier)}</b>${cfg.unlockAfter ? "" : " is open to every guild"}. Its bosses drop: ${top} (chance per clear).</small></div>
+      <button class="menuBtn gold" onclick="window.gameGuild&&gameGuild.openDungeons?gameGuild.openDungeons():toast('Guild dungeons need a guild — see the Broker.')">GO TO GUILD DUNGEONS</button></div>`;
   }
   // Read-only collection for the Codex tab.
   function codexHtml() {
@@ -228,6 +280,7 @@
     if (!A.sel) { const R = rec(); A.sel = order().find(id => R.own[id]) || order()[0] || null; }
     A.flash = null; A.ask = null;
     if (typeof W.openMenu === "function") W.openMenu("CROWN ARTS", render(), true);
+    if (W.gameGuide && W.gameGuide.autoTour) W.gameGuide.autoTour("arts");
     return load().then(ok => { if (ok) paint(); return ok; });
   }
   function pick(id) { if (def(id)) { A.sel = id; A.flash = null; paint(); } }
@@ -296,6 +349,6 @@
 
   W.gameArtsUI = {
     open, render, codexHtml, pick, slotClick, dragStart, drop, equip, forge, confirmYes, confirmNo, onGranted, load,
-    artsForTier, sourcesOf, artLines, rankInfo, state: () => rec(), _state: A,
+    artsForTier, sourcesOf, artLines, rankInfo, tierOpen, bestHunt, state: () => rec(), _state: A,
   };
 })();

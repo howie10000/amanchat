@@ -257,6 +257,36 @@ const tick = () => new Promise(r => setImmediate(r));
   has(h, ECON.GEAR_SETS.starlit_codex.name, "loot preview: set"); has(h, ECON.GEAR_UNIQUES.orrery_blade.name, "loot preview: unique");
   has(h, "adRuneBorder", "rune border element");
   has(h, "--ad-cap:", "theme palette vars on cards");
+  // Without js/ui-guide.js the board still reads (plain labels, no next-dungeon call-out).
+  hasNot(h, "gdNext", "no guide: no call-out"); has(h, "TARGET (par)", "plain par label"); has(h, "PAYOUT", "payout label");
+  hasNot(h, "🜏", "one lock glyph (🔒) everywhere");
+  has(h, "delve 2+", "affix chips say 'delve N+' instead of 'LN+'"); hasNot(h, "· week 2900", "no internal week counter");
+
+  // ---- GUI clarity: the same board with the guide loaded (docs/sundered-crown/GUI-AUDIT.md)
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "ui-guide.js"), "utf8"), ctx, { filename: "ui-guide.js" });
+  ok(ctx.gameGuide && typeof ctx.gameGuide.nextDungeon === "function", "gameGuide loads into the same page");
+  await GG.openDungeons();
+  h = last().html;
+  ok(count(h, /class="adTierCard /g) === 13, "guide: still 13 cards");
+  has(h, 'class="gdNext"', "next-dungeon call-out");
+  // fixture: crypt + dragon cleared; the Thornwild (open to all, second on the ladder) is the easiest uncleared tier
+  ok(/gdNext[\s\S]{0,600}The Thornwild Warren/.test(h), "next dungeon = the easiest open, uncleared tier (the Thornwild)");
+  ok(count(h, /★ NEXT/g) === 1 && /adTierCard open[^"]*gdRec[^"]*" style="[^"]*" id="adTier-guild_thornwild"/.test(h), "exactly one card is marked NEXT, and it is that tier");
+  has(h, 'data-gd-term="par"', "par explains itself"); has(h, 'data-gd-term="delve"', "delve explains itself"); has(h, 'data-gd-term="ilvl"', "item level explains itself");
+  ok(count(h, /class="gdHow"/g) >= 11, "every story card says how its boss fights");
+  has(h, "gameGuide.bossIntro(&quot;gorehorn&quot;, {force:true})", "HOW TO FIGHT opens the Gorehorn primer");
+  has(h, "clears away, in order", "sealed cards show the unlock chain");
+  has(h, "How this board works", "a replayable tour");
+  has(h, "MORE TO DO", "side systems grouped after the list");
+  ok(h.indexOf("MORE TO DO") > h.indexOf("THE ELEVEN DUNGEONS"), "the dungeon list comes before raids / journey / arts banners");
+  has(h, "SEALED — until your guild clears <b>The Hollow Throne</b>", "lock reason unchanged with the guide");
+  delete ctx.gameGuide;
+  // Raid creation marks tiers the guild has not opened (the server refuses them: "sealed to your guild").
+  RU.openCreate("guild_colosseum");
+  h = last().html;
+  has(h, "🔒 SEALED — your guild must clear", "raid create: sealed tier explained");
+  has(h, "🔒 The Mirror Court", "raid create: sealed tiers carry a lock"); hasNot(h, "🔒 The Ashen Roost", "raid create: an open tier has no lock");
+  has(h, "0 = normal difficulty", "raid create: delve explained"); has(h, "0 = anyone", "raid create: mastery explained");
 
   // delve picker updates the info box live
   els["adDelve-guild_crypt"] = makeEl("adDelve-guild_crypt");

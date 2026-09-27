@@ -106,17 +106,17 @@
     const artRow = arts.length ? `<div class="scArtChips"><small>CROWN ARTS</small>${arts.map(a => { const d = window.CROWN && CROWN.ARTS[a.id];
       return `<span class="scArtChip r-${esc(d ? d.rarity : "rare")}" title="${esc(d ? d.desc : "")}">${U().icon("art", a.id, 16, "", "♛")}${esc(d ? d.name : a.id)} <small>${(a.p * 100).toFixed(a.p < 0.01 ? 1 : 0)}%</small></span>`; }).join("")}</div>` : "";
     const main = `<div class="adCxHead">
-        <div><h3>${esc(U().dungeonName(tier))}</h3><small class="muted">iLvl ${row.lvl || "?"} · fastest ${fmtMs((codex.f || {})[tier])} · deepest delve ${(codex.d || {})[tier] | 0}</small></div>
+        <div><h3>${esc(U().dungeonName(tier))}</h3><small class="muted">item level ${row.lvl || "?"} · your fastest clear ${fmtMs((codex.f || {})[tier])} · deepest delve ${(codex.d || {})[tier] | 0}</small></div>
         <div class="adCxPct"><b>${ps.total ? Math.round(100 * ps.have / ps.total) : 0}%</b><small>${ps.have}/${ps.total}</small></div>
       </div>
-      <div class="adKills">${bossRow}</div>${artRow}
-      ${reward ? `<div class="adCxReward ${ps.done ? "done" : ""}"><b>${ps.done ? "PAGE COMPLETE" : "Complete the page"}</b> —
+      <div class="adKills"><small class="gdRowLabel">YOUR KILLS</small>${bossRow}</div>${artRow}
+      ${reward ? `<div class="adCxReward ${ps.done ? "done" : ""}"><b>${ps.done ? "PAGE COMPLETE" : "Find every item on this page"}</b> ${ps.done ? "— earned:" : "to earn:"}
         ${hat ? `hat <i>${esc(hat.name)}</i>, ` : ""}title <i>“${esc(reward.title)}”</i>${reward.sigil ? `, ${reward.sigil.n} ${esc(U().matName(reward.sigil.id))}` : ""}</div>` : ""}
       ${groups.map(([label, list]) => `<h4 class="adCxGroup">${label} <small>${list.filter(id => (codex.i || {})[id]).length}/${list.length}</small></h4>
         <div class="adCxGrid">${list.map(id => tile(id, codex)).join("")}</div>`).join("")}`;
     const allKills = ECON.GUILD_BOSS_ORDER.concat(ECON.GUILD_MINIS, ECON.CROWN_BOSS_ORDER || [], ECON.CROWN_MINIS || [], ECON.GUILD_SPECIAL_BOSSES || [])
       .map(b => `<span class="adKill ${kills[b] ? "" : "zero"}">${U().icon("boss", b, 20, "", "")}<b>${(kills[b] | 0).toLocaleString()}</b> ${esc(U().bossName(b))}</span>`).join("");
-    return `<div class="adCxTop"><b>${found}</b> of ${total} entries found. Silhouettes are pieces you have never looted. Staff-granted pieces never count.</div>
+    return `<div class="adCxTop"><b>${found}</b> of ${total} entries found. Dark tiles are items you have not found yet — loot one from that dungeon to fill it in. Finish a page for a hat, a title and sigils.</div>
       <div class="adCxLayout"><div class="adCxSide">${side}</div><div class="adCxMain">${main}</div></div>
       <h3 class="section">BOSS KILLS</h3><div class="adKills all">${allKills}</div>`;
   }

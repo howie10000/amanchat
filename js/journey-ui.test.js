@@ -255,6 +255,15 @@ const last = () => menus[menus.length - 1];
   // ---- awakening cinematic (pure)
   const aw = R.awakeningHtml({ id: "awakening", name: "The Arcane Awakening", blurb: "open", xp: 0.5, gift: [{ kind: "mat", label: "100× Arcane Dust" }] });
   has(aw, "THE ARCANE AWAKENING", "awakening title"); has(aw, "+50% Delver XP", "awakening xp");
+  // GUI clarity: with js/ui-guide.js loaded, cosmetic keys become names; paragon says when it unlocks.
+  ctx.ECON = ctx.ECON || require("./shared/economy.js");
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "ui-guide.js"), "utf8"), ctx, { filename: "ui-guide.js" });
+  const aw2 = R.awakeningHtml({ id: "awakening", name: "The Arcane Awakening", blurb: "open", xp: 0.5, gift: [{ kind: "cosmetic", label: "Cosmetic aura:awakened_sigil" }] });
+  has(aw2, "Aura: Awakening Sigil", "no raw cosmetic key in gift chips");
+  const locked = R.paragonHtml({ paragon: { active: false, toStart: 1000 } });
+  has(locked, "unlocks at Delver Rank 60", "paragon: locked tag");
+  has(R.tabsHtml("path", Object.assign({}, GJ.state(), { paragon: { active: false } })), "PARAGON 🔒", "paragon tab carries a lock until rank 60");
+  delete ctx.gameGuide;
 
   // ---- degrade without the net line
   const saved = ctx.netJourney; ctx.netJourney = undefined;

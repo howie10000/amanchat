@@ -1218,12 +1218,12 @@ function openQuestBoard() {
     <div class="shopItem"><div class="info"><b>Demon Lair</b><br/><small>Hard • Connected dungeon + guardian • Reward $1800</small></div>
       <button class="menuBtn red" onclick="gameCombat.startDungeon('hard')">START</button></div>
     <h3 class="section">GUILD DUNGEONS</h3>
-    <p class="muted">Four harder runs are posted where the board can't reach — longer, denser, and each sealed at the end by a boss well past anything in the pond. They need a guild. Talk to the man leaning against the wall.</p>
+    <p class="muted">The real dungeons are guild dungeons: eleven of them, easiest first, plus the endless Arcane Depths and raids. They drop gear, forge materials and ♛ Crown Arts (special abilities on F and C). You need a guild — found one or join one with the Broker.</p>
     <button class="menuBtn gold" onclick="gameGuild.openBroker()">TALK TO THE BROKER</button>
     <h3 class="section">WEAPONS</h3>
     <div class="weaponInfo">
-      <div><b>1 — Sword</b>: 55 dmg • wide arc hits multiple enemies • knockback • short range</div>
-      <div><b>2 — Pistol</b>: 22 dmg • long range projectile • slower fire</div>
+      <div><b>1 — Melee weapon</b>: a sword to start • wide arc hits several enemies • short range</div>
+      <div><b>2 — Ranged weapon</b>: a pistol to start • long range • slower fire. Boss chests drop ten weapon kinds (maces, spears, crossbows…): see the Codex → WEAPONS tab.</div>
     </div>
     <p class="muted">Combat mastery scales both. <a href="#" onclick="gameGuild.openMastery();return false;">See your mastery levels</a>.</p>
     <h3 class="section">GEAR</h3>

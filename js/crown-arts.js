@@ -420,6 +420,10 @@
     if (!S.rec.eq || (!S.rec.eq[0] && !S.rec.eq[1] && !Object.keys(S.rec.own || {}).length)) return;
     t = t || now();
     ctx.save();
+    // A caption so the two squares read as "your Crown Arts" (GUI-AUDIT A6).
+    ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(x, y - 15, SZ * 2 + 8, 13);
+    ctx.fillStyle = '#fde68a'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('CROWN ARTS · F / C', x + SZ + 4, y - 5);
     for (let i = 0; i < 2; i++) {
       const o = slotInfo(i), bx = x + i * (SZ + 8), by = y;
       ctx.globalAlpha = 1;
