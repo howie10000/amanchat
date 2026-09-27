@@ -68,7 +68,7 @@ console.log('PASS idle presence reuse, movement deltas, car replication, bounded
  tick();pump();
  w1.presence={...w1.presence,x:21};w2.presence={...w2.presence,x:31,y:6};tick();
  const toN=sent.find(m=>m.to==='nv'),toO=sent.find(m=>m.to==='ov'),toW2=sent.find(m=>m.to==='w2');
- assert.deepEqual(toN.xy,['w1',21,5,'w2',31,6]);assert.deepEqual(toN.users,{},'moves travel only as triples');
+ assert.deepEqual(toN.xy,['w1',21,5,'w2',31,6]);assert(!('users' in toN),'moves travel only as triples (no empty users map)');
  assert.deepEqual(toO.users,{w1:{x:21},w2:{x:31,y:6}});assert(!('xy' in toO),'an old client gets the field form');
  assert.deepEqual(toW2.xy,['w1',21,5],'still never your own entry');
  pump();

@@ -915,7 +915,7 @@ function broadcastPresence() {
                     if (!mine && xyShared !== null) { sendRaw(c, xyShared); continue; }
                     const users = [], xy = [];
                     for (const [u, f] of delta) { if (u === c.user) continue; const m = moved.get(u); if (m) xy.push(m); else users.push(f); }
-                    const msg = '{"event":"presence","users":{' + users.join(',') + '},"xy":[' + xy.join(',') + ']' + goneJson + '}';
+                    const msg = '{"event":"presence",' + (users.length ? '"users":{' + users.join(',') + '},' : '') + '"xy":[' + xy.join(',') + ']' + goneJson + '}';
                     if (!mine) xyShared = msg;
                     sendRaw(c, msg);
                     continue;
