@@ -236,7 +236,8 @@
           }
         } catch (e) {}
       }
-      const response = await fetch(entry.href, { cache: 'no-store' });
+      // Revalidate rather than refetch: an unchanged index.html costs a 304.
+      const response = await fetch(entry.href, { cache: 'no-cache' });
       if (!response.ok) return false;
       const live = new DOMParser().parseFromString(await response.text(), 'text/html');
       if (!live.querySelector('script[data-boot][src*="js/net.js"]')) return false;

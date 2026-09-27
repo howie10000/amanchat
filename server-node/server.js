@@ -77,12 +77,23 @@ if (process.env.LOCAL_DEV_ID) {
     app.get('/__local/invite',(req,res)=>{let url;try{const share=JSON.parse(require('fs').readFileSync(path.join(STATIC_DIR,'.local-test','share-link.json'),'utf8'));if(String(share.port)===String(PORT)&&/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(share.url)){process.kill(share.pid,0);url=share.url;}}catch{}if(!url){const ip=Object.values(require('os').networkInterfaces()).flat().find(a=>a.family==='IPv4'&&!a.internal)?.address;url='http://'+(ip||'127.0.0.1')+':'+PORT;}res.json({url});});
     app.get('/__local/health', (req, res) => res.json({ id: process.env.LOCAL_DEV_ID, host: process.env.HOST, crewVersion: 1 }));
 }
+// Static client files: compression, cache policy and the never-serve list
+// live in static-serve.js (docs/BANDWIDTH.md).
+const staticServe = require('./static-serve.js');
+const staticFiles = staticServe.createStaticServer(STATIC_DIR, {
+    cacheDir: process.env.STATIC_CACHE_DIR || undefined,
+    fallback: express.static(STATIC_DIR, { cacheControl: false }),
+});
+app.use(staticServe.blockMiddleware({ serveDocs: process.env.SERVE_DOCS === '1' }));
+// Shipped assets added after the allow-list below was written.
+app.get(['/assets/dark-sea/title-scroll.webp'], staticFiles);
+if (process.env.STATIC_WARM === '1') setTimeout(() => { staticFiles.warm(staticServe.shippedFiles(STATIC_DIR)).catch(() => {}); }, 1500).unref();
 app.use((req,res,next)=>{
     let asset;try{asset=path.posix.normalize(decodeURIComponent(req.path).replace(/\\/g,'/'));}catch{return res.sendStatus(400);}
     if(!['/','/index.html','/style.css','/lake.js','/assets/dark-sea/blender-meshes.js','/assets/dark-sea/legendary-models.js','/assets/dark-sea/blender-animations.js','/assets/dark-sea/title-crest.png','/assets/dark-sea/title-wordmark.png','/assets/dark-sea/title-scroll.png'].includes(asset)&&!/^\/(js|docs)\//.test(asset)&&!/^\/assets\/racing\/[a-z0-9-]+\.(?:png|webp)$/.test(asset))return res.sendStatus(404);
     next();
 });
-app.use(express.static(STATIC_DIR));
+app.use(staticFiles);
 
 const server = http.createServer(app);
 
