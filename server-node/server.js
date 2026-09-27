@@ -786,6 +786,11 @@ function presenceAreaKey(p, user) {
 // Exactly the fields other clients render. Kept as full names (not one-letter
 // keys) so the client merge stays a plain Object.assign — the win here is in
 // not sending idle players at all, not in shaving field names.
+// A bad gear record must never stop the presence stream; the cutscene falls
+// back to a sword without it.
+function presenceWeaponKind(user) {
+    try { return ECON.weaponLoadout(equippedItems(userRec(user))).melee.kind; } catch (e) { return undefined; }
+}
 function presenceView(c) {
     const p = c.presence;
     return {
@@ -799,6 +804,9 @@ function presenceView(c) {
         // client's claim, so nobody can walk into a run they aren't in.
         run: p.area === 'dungeon' ? (guildRunOf.get(c.user) || undefined) : undefined,
         dfloor: p.area === 'dungeon' ? (p.dfloor | 0) : undefined,
+        // The melee kind the party's 3D cutscene puts in this hero's hand
+        // (dungeon3d.js heroWeapon), from the worn gear, never the client.
+        weaponKind: p.area === 'dungeon' ? presenceWeaponKind(c.user) : undefined,
         car: p.car,
         facing: p.facing,
         hp: p.hp,
