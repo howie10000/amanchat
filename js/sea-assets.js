@@ -53,17 +53,22 @@ for(const ev of ['keydown','keyup','pointerdown','pointermove','wheel','touchsta
  lastInput=now();if(ev==='keydown')held.add(e.code||e.key);if(ev==='keyup')held.delete(e.code||e.key);
 },{passive:true,capture:true});
 window.addEventListener('blur',()=>{held.clear();lastInput=now();});
+function saveData(){const c=navigator.connection;return !!c&&(!!c.saveData||/(^|-)2g$/.test(c.effectiveType||''));}
+// Shared with other idle prefetchers (dungeon3d.js warmup) so they honour the same data-saver rule.
+window.saveDataMode=saveData;
 function onGameEnter(){
  if(!login||!login.classList.contains('hidden'))return;
  if(!entered){entered=true;
   const add=window.scheduleBackgroundWarmup;
-  for(const [key,url] of SEA)add(()=>key==='DarkSeaAnimationClips'&&window[key]?null:script(url),'sea');
-  add(()=>window.loadRacingAssets(),'racing');
+  // Speculative model downloads (~2.8 MB) are skipped when the browser asks to save data;
+  // the sea and the race still fetch them on demand (docs/BANDWIDTH.md).
+  for(const [key,url] of SEA)add(()=>saveData()||key==='DarkSeaAnimationClips'&&window[key]?null:script(url),'sea');
+  add(()=>saveData()?null:window.loadRacingAssets(),'racing');
   for(const [key,name] of [['dungeon','DungeonGL'],['lake','LakeGL'],['activity','Activity3D'],['sea','SeaGL']]){
    add(()=>window[name]?.warmup?.('build'),key);
    if(name!=='Activity3D')add(()=>window[name]?.warmup?.('compile'),key);
   }
-  add(()=>window.gameRace?.preload?.(),'racing');
+  add(()=>saveData()?null:window.gameRace?.preload?.(),'racing');
  }
  pump();
 }

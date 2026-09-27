@@ -507,7 +507,11 @@ window.onlineCount = onlineCount;
 // only rides along when it actually changed (the server keeps the last one and
 // asks for it back with `needAppearance` if it ever finds itself without one).
 let _sentAppearance = null;
-if (window.NET) NET.on("open", () => { _sentAppearance = null; });
+// Upload only what changed (plus a 1 s keepalive), without an RPC reply per
+// tick: js/shared/presence-wire.js. Falls back to the RPC if it is missing.
+const _presenceSender = window.PresenceWire ? PresenceWire.createSender() : null;
+if (window.NET) NET.on("open", () => { _sentAppearance = null; if (_presenceSender) _presenceSender.reset(); });
+if (window.NET) NET.on("needAppearance", () => { _sentAppearance = null; if (_presenceSender) _presenceSender.reset(); });
 
 async function pushPresence() {
   if (!state.user) return;
@@ -546,6 +550,13 @@ async function pushPresence() {
     if (dp) { data.run = dp.run; data.dfloor = dp.dfloor; }
   }
   if (look !== _sentAppearance) { data.appearance = state.appearance; _sentAppearance = look; }
+  if (_presenceSender && NET.send) {
+    _presenceSender.enableDelta(!!(NET.caps && NET.caps.presenceDelta));
+    _presenceSender.enableXY(!!(NET.caps && NET.caps.presenceXY));
+    const frame = _presenceSender.frame(data, now);
+    if (frame && !NET.send(frame)) { _presenceSender.reset(); _sentAppearance = null; }
+    return;
+  }
   netPresence(data).then(r => {
     // The server has no look on file for this socket — send it again next tick.
     if (r && r.needAppearance) _sentAppearance = null;
@@ -589,12 +600,22 @@ if (window.NET) {
       // only the raw target (x/y) changes; interpolateOthers() eases toward it
       // each frame so other players glide instead of teleporting between ticks.
       const next = Object.assign({}, prev, p);
+      // A field-level delta clears a field with null; drop it so it reads as
+      // absent, exactly as when the whole view was resent without it.
+      for (const k in p) if (p[k] === null && k !== "emote") delete next[k];
       if (prev && typeof prev.dispX === "number") {
         next.dispX = prev.dispX;
         next.dispY = prev.dispY;
       }
       next.msgs = mergeRemoteMsgs(u, prev && prev.msgs, (p.msgs != null ? p.msgs : p.msg), now);
       state.others[u] = next;
+    }
+    // Position-only changes arrive packed as [name, x, y, name, x, y, ...].
+    const xy = Array.isArray(m.xy) ? m.xy : null;
+    if (xy) for (let i = 0; i + 2 < xy.length; i += 3) {
+      const u = xy[i], prev = state.others[u];
+      if (u === state.user || !prev) continue;
+      state.others[u] = Object.assign({}, prev, { x: xy[i + 1], y: xy[i + 2] });
     }
     // Players who didn't change still need their bubbles aged out, which
     // mergeRemoteMsgs does off each line's local receive stamp.

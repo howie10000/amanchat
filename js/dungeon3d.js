@@ -5544,8 +5544,12 @@
     root.userData.ownedMaterials=owned;root.userData.rig=d;return root;
   }
   function warmup(stage) {
-    loadSkins();
-    if (window.DungeonCutscenes && DungeonCutscenes.preload) { try { DungeonCutscenes.preload(); } catch (e) {} }
+    // Idle prefetch of the model pack and cutscene directions; skipped under data saver
+    // (docs/BANDWIDTH.md). They still load on demand when a boss is shown.
+    if (!(window.saveDataMode && window.saveDataMode())) {
+      loadSkins();
+      if (window.DungeonCutscenes && DungeonCutscenes.preload) { try { DungeonCutscenes.preload(); } catch (e) {} }
+    }
     if (dead) return false;
     if (!renderer && !init()) return false;
     if (stage !== 'build' && renderer.compile) renderer.compile(scene, camera);
