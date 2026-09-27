@@ -171,7 +171,7 @@
     for (let i = 1; i <= max; i++) pipsHtml += `<i class="${i <= a.rank ? "on" : ""}"></i>`;
     return `<div class="scRvFace"><small class="scRvKind">CROWN ART</small><div class="scRvIco">${img || `<span class="scGlyph">♛</span>`}</div>
       <b>${esc(a.name)}</b><span class="adRBadge">${esc(rInfo(a.rarity).label)}</span>
-      <span class="scPips">${pipsHtml}</span><span class="scRvRes">${esc(artResultText(a))}</span></div>`;
+      <span class="scPips">${pipsHtml}</span><span class="scRvRes">${esc(artResultText(a))}</span>${a.result === "new" ? `<small class="scRvNext">Equip it in Crown Arts, then press F or C in a dungeon</small>` : ""}</div>`;
   }
 
   // ---- particles (one canvas for the whole overlay) ----

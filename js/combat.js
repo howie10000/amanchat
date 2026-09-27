@@ -1590,6 +1590,27 @@ function findEnemy(id) {
   return state.enemies.find(x => x.id === id) || (d.arenaEnemies || []).find(x => x.id === id)
     || (d.continuous && d.bossRoom ? (d.worldEnemies || []).find(x => x.id === id) : null) || null;
 }
+// Lifesteal (docs/sundered-crown/BALANCE.md). In a guild run the server's
+// reply carries the heal it allowed (`heal`: boss efficiency and the per-second
+// cap already applied); the quest board (no server) runs the same shared rule
+// on a local bucket. Returns the HP actually restored.
+let _lsBucket = null;
+function applyLifesteal(res, dealt, boss) {
+  const G = window.gameDepths;
+  if (G && G.isDowned()) return 0;
+  let heal;
+  if (res && res.heal != null) heal = +res.heal || 0;
+  else {
+    const fx = playerFx();
+    if (!(fx.lifesteal > 0) || !(dealt > 0) || !ECON.lifestealHeal) return 0;
+    _lsBucket = _lsBucket || ECON.lifestealBucket();
+    heal = ECON.lifestealHeal(fx.lifesteal, dealt, { boss: !!boss, maxHp: state.maxHp, bucket: _lsBucket, now: Date.now() });
+  }
+  if (!(heal > 0)) return 0;
+  const before = state.hp;
+  state.hp = Math.min(state.maxHp, state.hp + heal);
+  return Math.max(0, state.hp - before);
+}
 // The server's answer to a swing: authoritative HP, crits and procs to show,
 // lifesteal to take, and whatever the hit set loose (split children, drops,
 // trial waves).
@@ -1612,13 +1633,11 @@ function handleHitReply(res, weapon) {
     }
     if (res.crit) shakeDungeon(4);
   }
-  // Lifesteal heals off the damage the server says actually landed.
-  if (fx.lifesteal > 0 && res.dmg > 0 && weapon !== "thorns" && !(G && G.isDowned())) {
-    const heal = fx.lifesteal * res.dmg * Math.max(1, changed.length);
-    if (heal >= 0.5) {
-      state.hp = Math.min(state.maxHp, state.hp + heal);
-      if (G && Math.random() < 0.6) G.floatText(state.pos.x, state.pos.y - 36, "+" + Math.round(heal), "#4ade80", { size: 11, dur: 700 });
-    }
+  // Lifesteal: the server decides the heal (`heal`, capped per second —
+  // ECON.lifestealHeal); an older server's reply falls back to the same rule.
+  if (weapon !== "thorns") {
+    const heal = applyLifesteal(res, (res.dmg || 0) * Math.max(1, changed.length), false);
+    if (heal >= 0.5 && G && Math.random() < 0.6) G.floatText(state.pos.x, state.pos.y - 36, "+" + Math.round(heal), "#4ade80", { size: 11, dur: 700 });
   }
   if (res.procs) showProcs(res.procs);
   if (res.spawned && res.spawned.length) adoptSpawned(res.spawned, {});
@@ -1665,7 +1684,7 @@ function onLocalHit(e, dmg, showNumber) {
   if (showNumber) {
     G.floatText(e.x, e.y - 22, (e._lastCrit ? "✦" : "") + Math.round(dmg), e._lastCrit ? "#fde047" : "#fff", { size: e._lastCrit ? 19 : 12, crit: !!e._lastCrit });
     const fx = playerFx();
-    if (fx.lifesteal > 0) state.hp = Math.min(state.maxHp, state.hp + fx.lifesteal * dmg);
+    applyLifesteal(null, dmg, false);
     if (fx.onHitSlow && Math.random() < (fx.onHitSlow.chance || 0)) { e.slowUntil = Date.now() + (fx.onHitSlow.ms || 1500); e.slowMult = 1 - (fx.onHitSlow.pct || 0.3); }
   }
   G.burst(e.x, e.y, [e.color || "#fff", "#fde68a"], 5, { speed: 2.6, life: 20 });
@@ -1903,8 +1922,7 @@ function applyBossHit(res, tg) {
   if (res.crit || vuln > 1) shakeDungeon(5);
   if (res.procs) showProcs(res.procs);
   if (res.reflected > 0) { takePlayerDamage(res.reflected); playerDead(); }
-  const fx = playerFx();
-  if (fx.lifesteal > 0 && dealt > 0 && !(G && G.isDowned())) state.hp = Math.min(state.maxHp, state.hp + fx.lifesteal * dealt);
+  applyLifesteal(res, dealt, true);
 }
 
 // Arena setup, shared by the mini fight halfway through a run and the sealed
@@ -2755,8 +2773,7 @@ async function bossAttackAt(mx, my, handOverride) {
       shakeDungeon(6);
       playerDead();
     }
-    const fx = playerFx();
-    if (fx.lifesteal > 0 && dealt > 0 && !(G && G.isDowned())) state.hp = Math.min(state.maxHp, state.hp + fx.lifesteal * dealt);
+    applyLifesteal(res, dealt, true);
   } catch (e) {
     if (!/Too fast/.test(e.message)) toast(escapeHtml(e.message), 1200);
   }

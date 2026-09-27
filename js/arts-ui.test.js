@@ -149,6 +149,40 @@ function sandbox(opts) {
     ok(/<b>4<\/b> of 10 Crown Arts found/.test(UI.codexHtml()), "codex collection view");
   }
 
+  // ---------------- GUI clarity (docs/sundered-crown/GUI-AUDIT.md): steps, empty state, open/locked sources, keyboard slots ----------------
+  {
+    const { UI, S, env } = sandbox();
+    await UI.open();
+    const h = S.menus[0].html;
+    clean(h, "empty panel");
+    ok(h.includes("gdSteps") && h.includes("1 · FIND") && h.includes("2 · EQUIP") && h.includes("3 · USE"), "how-it-works strip");
+    ok(h.includes("No Crown Arts yet") && h.includes("The Thornwild Warren") && h.includes("GO TO GUILD DUNGEONS"), "empty state points at the open Crown dungeon");
+    ok(UI.bestHunt().tier === "guild_thornwild", "best open hunt with no guild = the Thornwild (open to everyone)");
+    ok(/scSlot[^>]*role="button" tabindex="0"/.test(h) && h.includes("onkeydown="), "slots are keyboard-operable");
+    ok(h.includes("find an art first"), "empty slot says what to do");
+    ok(h.includes("not found yet"), "unowned cards say 'not found yet'");
+    ok(UI.tierOpen("guild_mirror") === null, "no guild loaded: open/locked unknown");
+    // With a guild that has cleared only the Crypt: the Colosseum and Mirror are locked, the Thornwild open.
+    env.DEPTHS = require("./shared/depths.js");
+    env.gameGuild = { myGuild: () => ({ depths: { v: 1, tiers: { guild_crypt: { clears: 2 } } } }) };
+    ok(UI.tierOpen("guild_thornwild") === true && UI.tierOpen("guild_colosseum") === false && UI.tierOpen("guild_mirror") === false, "tierOpen follows the guild's clears");
+    UI.pick("blade_dash");
+    const d = UI.render();
+    ok(d.includes("not open to your guild yet") && d.includes("open now"), "sources are marked open / locked");
+    ok(d.indexOf("open now") < d.indexOf("not open to your guild yet"), "open sources come first");
+    ok(d.includes("chance per clear for each player"), "the % is explained");
+    env.gameGuild = { myGuild: () => ({ depths: { v: 1, tiers: { guild_void: { clears: 1 } } } }) };
+    ok(UI.bestHunt().tier === "guild_thornwild" && UI.bestHunt().p === 0.08, "the best open art hunt is the highest single-art chance (War Cry 8%), not a sealed tier");
+  }
+  {
+    const { UI } = sandbox({ localArts: { own: { war_cry: { r: 1, d: 0 } }, eq: ["war_cry", null] } });
+    const h = UI.render();
+    ok(!h.includes("No Crown Arts yet"), "no empty state once an art is owned");
+    ok(/<li class="done"><b>1 · FIND/.test(h) && /<li class="done"><b>2 · EQUIP/.test(h) && /<li class="now"><b>3 · USE/.test(h), "the strip tracks progress (found, equipped, now use it)");
+    UI.pick("war_cry");
+    ok(UI.render().includes("rank 1 of 5") && UI.render().includes("on <kbd>F</kbd>"), "detail says the rank and the slot in words");
+  }
+
   // ---------------- no CROWN module: never throws ----------------
   {
     const { UI, S } = sandbox({ noCrown: true });

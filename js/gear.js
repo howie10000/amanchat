@@ -258,7 +258,7 @@ function adModText(m) {
   if (!def) return "";
   if (m.k === "resonance") return "Resonance: +5% to every other mod";
   if (m.k === "dashCd") return "-" + adPct(m.v) + " Dash cooldown";
-  const effective = (m.k === "lifesteal" || m.k === "regen") ? m.v * ECON.ITEM_HEALING_MULT : m.v;
+  const effective = m.k === "lifesteal" ? m.v * (ECON.LIFESTEAL_MULT != null ? ECON.LIFESTEAL_MULT : ECON.ITEM_HEALING_MULT) : m.k === "regen" ? m.v * ECON.ITEM_HEALING_MULT : m.v;
   if (!def.pct) return "+" + (Math.round((+effective || 0) * 100) / 100) + " " + def.label;
   return "+" + adPct(effective) + " " + def.label;
 }
@@ -277,7 +277,7 @@ function adFxLines(fx, effective = false) {
   const out = [];
   if (!fx || typeof fx !== "object") return out;
   for (const k of Object.keys(fx)) {
-    const v = !effective && (k === "lifesteal" || k === "regen") ? fx[k] * ECON.ITEM_HEALING_MULT : fx[k];
+    const v = effective ? fx[k] : k === "lifesteal" ? fx[k] * (ECON.LIFESTEAL_MULT != null ? ECON.LIFESTEAL_MULT : ECON.ITEM_HEALING_MULT) : k === "regen" ? fx[k] * ECON.ITEM_HEALING_MULT : fx[k];
     if (v == null || v === 0 || k === "sets") continue;
     if (AD_FX_LABEL[k] && typeof v === "number") out.push("+" + adPct(v) + " " + AD_FX_LABEL[k]);
     else if (k === "regen" && typeof v === "number") out.push("+" + (Math.round(v * 10) / 10) + " HP regen /s");
@@ -385,7 +385,16 @@ function adCompare(item) {
   } catch (e) { /* ECON without gearFx — stats alone */ }
   parts.unshift(...wkCompare(item, worn));
   if (!worn) parts.unshift(`<span class="up">empty slot</span>`);
-  return `<div class="adCmp"><small class="muted">vs worn:</small> ${parts.length ? parts.join(" ") : `<span class="muted">same</span>`}</div>`;
+  // A one-word verdict first (GUI-AUDIT C4): is this an upgrade over what you wear in that slot?
+  let verdict = "";
+  try {
+    const pa = ECON.gearPower(item), pb = worn ? ECON.gearPower(worn) : -1;
+    verdict = !worn ? `<span class="gdVerdict up" title="Nothing is worn in this slot">▲ FILLS AN EMPTY SLOT</span>`
+      : pa > pb ? `<span class="gdVerdict up" title="Higher total power than what you wear">▲ UPGRADE</span>`
+      : pa < pb ? `<span class="gdVerdict dn" title="Lower total power than what you wear">▼ WEAKER</span>`
+      : `<span class="gdVerdict eq">= SAME POWER</span>`;
+  } catch (e) { verdict = ""; }
+  return `<div class="adCmp">${verdict}<small class="muted">vs worn:</small> ${parts.length ? parts.join(" ") : `<span class="muted">same</span>`}</div>`;
 }
 // The v2 item card. opts: {worn, compact, actions:false, extraActions, reveal}
 function adCard(item, opts) {
@@ -419,8 +428,9 @@ function adCard(item, opts) {
   let acts = "";
   if (opts.actions === "extra") acts = opts.extraActions || "";
   else if (opts.actions !== false) {
-    const forge = `<button class="menuBtn adBtnForge" onclick="gameForge&&gameForge.open('${id}')" title="Enhance, reforge, socket">⚒</button>`;
-    const lock = `<button class="menuBtn gray adLockBtn" onclick="gameGear.toggleLock('${id}')" title="${it.lock ? "Unlock" : "Lock: it can't be sold or salvaged"}">${it.lock ? "🔒" : "🔓"}</button>`;
+    // Icon + word: the bare ⚒ / 🔓 buttons were unreadable to new players (GUI-AUDIT C4).
+    const forge = `<button class="menuBtn adBtnForge" onclick="gameForge&&gameForge.open('${id}')" title="Enhance, reforge, socket" aria-label="Upgrade this piece in the Forge">⚒<span class="gdBtnTxt">FORGE</span></button>`;
+    const lock = `<button class="menuBtn gray adLockBtn" onclick="gameGear.toggleLock('${id}')" title="${it.lock ? "Unlock" : "Lock: it can't be sold or salvaged"}" aria-label="${it.lock ? "Unlock this piece" : "Lock this piece so it can't be sold or salvaged"}">${it.lock ? "🔒" : "🔓"}<span class="gdBtnTxt">${it.lock ? "LOCKED" : "LOCK"}</span></button>`;
     acts = worn
       ? `<button class="menuBtn gray" onclick="gameGear.unequip('${gEsc(it.slot)}')">TAKE OFF</button>${forge}${lock}`
       : `<button class="menuBtn green" onclick="gameGear.equip('${id}')">EQUIP</button>
@@ -440,7 +450,7 @@ function adCard(item, opts) {
         <span class="adRBadge">${r.label}</span>
         ${uq ? `<span class="adUqBadge">UNIQUE</span>` : ""}
         ${set ? `<span class="adSetBadge">SET ${setN}/5</span>` : ""}
-        <span class="adIlvl">iLvl ${it.lvl} ${gEsc(slot.label)}</span>
+        <span class="adIlvl"${window.gameGuide && gameGuide.explain ? ` role="button" tabindex="0" data-gd-term="ilvl"` : ""}>iLvl ${it.lvl} ${gEsc(slot.label)}</span>
       </div>
       <div class="adIStats">${statHtml}</div>
       ${wkHtml(it, !!opts.compact)}
@@ -519,7 +529,7 @@ function renderArmory(tab) {
   const junk = loose.filter(isJunk);
   const junkValue = junk.reduce((s, it) => s + ECON.gearSellValue(it), 0);
 
-  let html = `<p>Everything the dungeons dropped. One piece per slot; the rest sits in your pack until you sell it.</p>
+  let html = `<p>Everything the dungeons dropped. Wear one piece per slot; the rest waits in your pack until you equip, forge or sell it. ${window.gameGuide && gameGuide.helpBtn ? gameGuide.helpBtn("armory") : ""}</p>
     <div class="statRow">
       <div class="statBox"><small>ATTACK</small><b>+${t.atk} <span class="muted">(x${attackMult().toFixed(2)} dmg)</span></b>${wkHandsLine()}</div>
       <div class="statBox"><small>DEFENCE</small><b>+${t.def} <span class="muted">(-${Math.round(mitigation() * 100)}% taken)</span></b></div>
@@ -629,6 +639,7 @@ function renderLostTab() {
 function openArmory(tab) {
   if (typeof tab !== "string") tab = undefined;
   openMenu("THE ARMORY", renderArmory(tab));
+  if (window.gameGuide && gameGuide.autoTour && Object.keys(gearView.gear || {}).length) gameGuide.autoTour("armory");
 }
 
 // ---------------- the staff bench ----------------

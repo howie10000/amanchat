@@ -3,15 +3,24 @@ import bpy, math, json
 from pathlib import Path
 from mathutils import Vector, Matrix
 from . import core, rig as R, weapons as W, export as X, review, characters as CH, clips_hero as CHero
-from . import characters_boss as CB, clips_boss as KB, beast
+from . import characters_boss as CB, clips_boss as KB, beast, characters_legacy as CL, clips_legacy as KL
 from . import clips_mini as MC   # mini-boss animation overhaul (idles + taunts); major bosses untouched
 
-REGISTRY = ['hero', 'kael', 'kael_crownbound', 'pit_champion', 'veiled_assassin', 'sol', 'umbra', 'sundered_king', 'colossus', 'briar_matron', 'gorehorn']
+REGISTRY = ['hero', 'kael', 'kael_crownbound', 'pit_champion', 'veiled_assassin', 'sol', 'umbra', 'sundered_king', 'colossus', 'briar_matron', 'gorehorn',
+            'warden', 'smith', 'tyrant']
+# Packaging: export_pack writes ONE monolithic pack; tools/split-dungeon-models.cjs turns it into packed per-character
+# files (js/dungeon-models/<id>.js + index.js) so a cutscene downloads exactly its cast. See docs/sundered-crown/CUTSCENE-PERF.md.
 
 
 def build_boss(cid):
     from .assemble import parent_attachments as PA
-    if cid == 'kael':
+    if cid == 'warden':
+        ch = CL.warden(); PA(ch); KL.warden(ch)
+    elif cid == 'smith':
+        ch = CL.smith(); PA(ch); KL.smith(ch, ch.supports.get('hammer'))
+    elif cid == 'tyrant':
+        ch = CL.tyrant(); PA(ch); KL.tyrant(ch)
+    elif cid == 'kael':
         ch = CB.kael(); PA(ch); KB.kael(ch)
     elif cid == 'kael_crownbound':
         ch = CB.kael('kael_crownbound', True); PA(ch); KB.kael(ch); MC.crownbound(ch)
@@ -48,6 +57,9 @@ SHEET_POSES = {
     'colossus': [('idle', 'idle', 0, 20), ('rising', 'rise', 40, 20), ('arms up', 'rise', 90, 20)],
     'briar_matron': [('idle', 'idle', 0, 30), ('emerging', 'entrance', 30, 30), ('unfurl', 'entrance', 70, 20), ('summon low', 'summon', 14, 40), ('summon', 'summon', 40, 20), ('death', 'death', 70, 60)],
     'gorehorn': [('idle', 'idle', 0, 60), ('paw', 'entrance', 16, 70), ('rear', 'entrance', 80, 80), ('charge', 'charge', 4, 90), ('impact', 'impact', 5, 60), ('stumble', 'impact', 16, 40), ('death', 'death', 88, 60)],
+    'warden': [('sunk', 'entrance', 0, 30), ('lantern', 'entrance', 40, 30), ('heft', 'entrance', 92, 40), ('windup', 'swing', 16, 60), ('cleave', 'swing', 26, 60), ('death', 'death', 70, 60)],
+    'smith': [('cold', 'entrance', 0, 30), ('wakes', 'entrance', 58, 30), ('overhead', 'entrance', 76, 40), ('slam', 'entrance', 90, 50), ('windup', 'smash', 16, 60), ('smash', 'smash', 24, 60), ('death', 'death', 70, 60)],
+    'tyrant': [('folded', 'entrance', 0, 30), ('unfolds', 'entrance', 60, 30), ('gather', 'cast', 14, 30), ('cast', 'cast', 24, 40), ('death', 'death', 70, 60)],
 }
 
 

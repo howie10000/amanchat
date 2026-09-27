@@ -47,7 +47,8 @@
   function linesHtml(lines, cls) {
     return `<div class="jnRewards ${cls || ""}">` + (lines || []).map(l => {
       const style = l.color ? ` style="--jn-c:${esc(l.color)}"` : "";
-      return `<span class="jnChip ${esc(l.kind)}"${style}>${esc(l.label)}</span>`;
+      const label = W.gameGuide && W.gameGuide.prettyLabel ? W.gameGuide.prettyLabel(l.label) : l.label;   // no raw "aura:awakened_sigil"
+      return `<span class="jnChip ${esc(l.kind)}"${style}>${esc(label)}</span>`;
     }).join("") + `</div>`;
   }
   function bar(have, need, cls) {
@@ -76,7 +77,7 @@
     const tabs = [
       ["path", "✦ PATH", v && (v.path.claimable || (v.ret && v.ret.pending))],
       ["week", "⌛ THIS WEEK", bountyReady || vaultReady],
-      ["paragon", "✧ PARAGON", false],
+      ["paragon", "✧ PARAGON" + (v && v.paragon && !v.paragon.active ? " 🔒" : ""), false],
       ["artifacts", "⚜ ARTIFACTS", false],
       ["season", "☾ SEASON", false],
       ["lantern", "🏮 LANTERN", false],
@@ -183,7 +184,7 @@
   function paragonHtml(v) {
     const p = v.paragon;
     if (!p.active) {
-      return `<div class="jnHero"><div class="jnSigil"></div><b>PARAGON</b><p class="jnHint">Beyond Delver Rank 60 the ranks never end. Every Paragon level pays materials; milestones bring titles and cosmetics.</p>
+      return `<div class="jnHero"><div class="jnSigil"></div><b>PARAGON</b> <span class="gdLockTag">🔒 unlocks at Delver Rank 60</span><p class="jnHint">Endgame: beyond Delver Rank 60 the ranks never end. Every Paragon level pays materials; milestones bring titles and cosmetics.</p>
         <small>${num(p.toStart)} Delver XP until Rank 60.</small></div>`;
     }
     return `<div class="jnHero paragon"><div class="jnSigil"></div><small class="jnAct">PARAGON</small>

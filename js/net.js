@@ -172,6 +172,7 @@
   window.netForge = (data) => rpc("forge", data);        // Arcane Forge: enhance / salvage / reforge / sockets / ascend
   window.netDelver = (data) => rpc("delver", data || {}); // Delver rank, codex, achievements, titles
   window.netArts = (data) => rpc("arts", data || {});     // Crown Arts: status / equip / forge
+  window.netAscend = (data) => rpc("ascend", data || {}); // Sundered Crown II: Ascension ladder / weekly / mastery / craft
   window.netJourney = (data) => rpc("journey", data || {}); // THE ARCANE DEPTHS journey & endgame
 
   // For dev console / debugging

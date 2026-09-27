@@ -260,6 +260,34 @@ function legacyExpected(item, worn) {
   ok(h.includes("Tidebreaker") && h.includes("Tome of Storms"), "found unique + tome named");
   ok(h.includes("<b>12</b> " + G.ui.bossName("warden")), "boss kill counter (" + G.ui.bossName("warden") + ")");
   ok(h.includes("of the Drowned"), "page reward");
+  // GUI clarity (docs/sundered-crown/GUI-AUDIT.md): labelled kills, plain page header
+  ok(h.includes("YOUR KILLS") && h.includes("your fastest clear") && !h.includes("iLvl 4 · fastest"), "codex page header in plain words");
+  ok(h.includes("Find every item on this page") || h.includes("PAGE COMPLETE"), "page reward says how to earn it");
+  {
+    // Forge: one sentence per tab, and the empty bench says what to do.
+    for (const t of ["enhance", "reforge", "sockets", "gems", "ascend", "craft", "transmute", "salvage"]) {
+      FO.tab(t); const fh = FO.render();
+      ok(/class="gdTabHelp"><b>[^<]+:<\/b> \S/.test(fh), "forge tab help: " + t);
+      ok(fh.includes('role="tab"') && fh.includes('aria-selected="true"'), "forge tabs are a tablist: " + t);
+    }
+    FO.tab("enhance"); FO._state.pick = null; const fh = FO.render();
+    ok(fh.includes("Pick a piece from the list") && !fh.includes(">Choose a piece.<"), "empty bench explains the next step");
+    ok(!fh.includes("rolled by the server"), "no developer wording in the forge header");
+    // Armory: upgrade verdicts and labelled icon buttons.
+    const ah = G.renderArmory("gear");
+    ok(/gdVerdict (up|dn|eq)/.test(ah), "armory cards carry an upgrade verdict");
+    ok(ah.includes('<span class="gdBtnTxt">FORGE</span>') && /<span class="gdBtnTxt">(LOCK|LOCKED)<\/span>/.test(ah), "forge / lock buttons have words");
+  }
+  {
+    // With the glossary loaded, forge materials and item levels explain themselves.
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "ui-guide.js"), "utf8"), env, { filename: "ui-guide.js" });
+    FO.tab("enhance"); const fh = FO.render();
+    ok(fh.includes('data-gd-term="dust"') && fh.includes('data-gd-term="shard"') && fh.includes('data-gd-term="gems"'), "wallet chips carry glossary terms");
+    ok(fh.includes("How this works") && fh.includes("gameGuide.replay(&quot;forge&quot;)"), "forge tour can be replayed");
+    ok(G.renderArmory("gear").includes('data-gd-term="ilvl"'), "item level explains itself on armory cards");
+    delete env.gameGuide;
+  }
+  CX.tab("codex"); CX.page("guild_crypt"); h = CX.render();
   CX.tab("achievements"); h = CX.render(); ok(h.includes("adAch done") && h.includes("7/25"), "achievements with progress");
   CX.tab("delver"); h = CX.render(); ok(h.includes("<b>21</b><small>RANK") && h.includes("adTrackNode got") && h.includes("Vaultbreaker"), "delver rank panel");
   ok(h.includes("Lantern-light") && h.includes("✓ The Sunken Crypt"), "cosmetic unlocks + weekly checklist");

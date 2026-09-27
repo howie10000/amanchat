@@ -40,7 +40,8 @@ function fingerprint(meta) {
   for (const id of L.bosses) for (let p = 1; p <= 4; p++) looks.push([id, p, E.bossDeck(id, p), E.bossLook(id, p), E.bossPhaseCount(id)]);
   out.looks = sha(looks);
   out.hp = sha(L.bosses.map(id => [1, 2, 3, 4, 8, 24].map(n => E.guildBossMaxHp(id, n))));
-  out.caps = sha(pick(E.EARN_CAPS, Object.keys(E.EARN_CAPS).filter(k => !/^guild_(thornwild|colosseum|mirror|throne)$/.test(k))));
+  // Every archetype-engine tier (Sundered Crown I and II) is appended after the legacy caps; the legacy slice is what is hashed.
+  out.caps = sha(pick(E.EARN_CAPS, Object.keys(E.EARN_CAPS).filter(k => !/^guild_(thornwild|colosseum|mirror|throne)$/.test(k) && !(E.GUILD_DUNGEONS[k] && E.GUILD_DUNGEONS[k].crown))));
   out.bases = sha(E.GEAR_BASES.slice(0, nBases));
   out.uniques = sha(pick(E.GEAR_UNIQUES, Object.keys(E.GEAR_UNIQUES).slice(0, 29)));
   out.sets = sha(pick(E.GEAR_SETS, Object.keys(E.GEAR_SETS).slice(0, 7)));

@@ -75,6 +75,7 @@
       dy + 8 + f * (lerp(s[2][1], s[3][1], u) - 8) + Math.sin(t * 1.7 + 1) * 0.12 * hand + Math.sin(t * 37 + 0.7) * 0.3 * (shake || 0),
       BZ + oz + f * lerp(s[2][2], s[3][2], u));
     V.set(ox + f * lerp(s[4][0], s[5][0], u), dy + 8 + f * (lerp(s[4][1], s[5][1], u) - 8), BZ + oz + f * lerp(s[4][2], s[5][2], u));
+    if (api.clearCam) { const pp = [cam.position.x, cam.position.y, cam.position.z]; api.clearCam(pp, [V.x, V.y, V.z]); cam.position.set(pp[0], pp[1], pp[2]); }
     cam.lookAt(V);
     const fov = lerp(s[6], s[7], u); if (Math.abs(cam.fov - fov) > 0.001) { cam.fov = fov; cam.updateProjectionMatrix(); }
     api.setFocus(cam.position.distanceTo(V));

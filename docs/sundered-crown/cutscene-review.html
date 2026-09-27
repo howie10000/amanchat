@@ -1,0 +1,77 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Boss cutscene review</title>
+<style>
+body{margin:0;background:#000;color:#e7e5e4;font:12px Georgia;overflow:hidden}
+nav{position:fixed;left:0;right:0;padding:5px 6px;background:rgba(10,8,14,.88);z-index:2;display:flex;flex-wrap:wrap;gap:4px}
+#ids{top:0}#modes{top:32px}
+button{background:#1a1726;color:#fde68a;border:1px solid #4c3d6b;padding:3px 8px;cursor:pointer;font:12px Georgia}
+button.on{background:#7f1d1d;border-color:#fda4af}
+canvas{display:block;width:1024px;height:640px;margin:70px auto 0}
+#perf{position:fixed;left:8px;bottom:8px;white-space:pre;color:#a8a29e;background:rgba(0,0,0,.5);padding:4px 6px}
+#bar{position:fixed;left:0;right:0;bottom:0;height:3px;background:#333}#bar i{display:block;height:3px;background:#fda4af}
+body.shot nav,body.shot #perf,body.shot #bar{display:none}body.shot canvas{margin:0}
+</style></head><body>
+<nav id="ids"></nav><nav id="modes"></nav>
+<canvas id="c" width="1024" height="640"></canvas>
+<div id="perf"></div><div id="bar"><i id="bari" style="width:0"></i></div>
+<script src="../../js/vendor/three.min.js"></script>
+<script src="../../js/shared/economy.js"></script>
+<script src="../../js/shared/depths.js"></script>
+<script src="../../js/shared/dungeon.js"></script>
+<script src="../../js/shared/crown.js"></script>
+<script>for(const f of ['dungeon3d','cutscenes/director'])document.write('<script src="../../js/'+f+'.js?v='+Date.now()+'"><\/script>');</script>
+<script>
+/* Every 3D boss cutscene through the real renderer (js/dungeon3d.js) and the real film direction
+   (js/cutscenes/*.js), with a frame-time readout.
+   Hash: #id=kael&mode=entrance          loop the cutscene at real speed (mode: entrance | phase2 | victory)
+         &k=0.5                          freeze one frame (screenshots)
+         &speed=0.25                     slow the loop
+         &shot=1                         hide the chrome
+         &nodir=1                        built-in beats only (no js/cutscenes direction) for A/B
+         &models=0                       do not wait for the Blender pack (procedural fallback rigs)
+   window.__cine = { ready, k, perf() } for tools/cutscene-shots.cjs. */
+const P=Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
+if(P.shot)document.body.className='shot';
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const IDS=['gorehorn','kael','twin_monarchs','sundered_king','warden','smith','tyrant','dragon','astraea','khyra','iskarra','heart','concordant','briar_matron','pit_champion','veiled_assassin','kael_crownbound'];
+let id=P.id||'kael',mode=P.mode||'entrance',speed=+(P.speed||1),freeze=P.k!=null?+P.k:null,t0=performance.now(),sceneSeq=0;
+const DUR={entrance:(m)=>m?ECON.GUILD_BOSS.MINI_RISE_MS:ECON.GUILD_BOSS.RISE_MS,victory:()=>6000,phase2:(m,bid)=>{if(bid==='dragon')return ECON.DRAGON_PHASE2.CINE_MS;const ph=(ECON.bossPhases(ECON.GUILD_BOSSES[bid])||[])[0]||{};return ph.shiftMs||3600;}};
+function btn(parent,text,on,fn){const b=document.createElement('button');b.textContent=text;if(on)b.className='on';b.onclick=fn;parent.append(b);}
+function ui(){
+  const I=document.getElementById('ids');I.innerHTML='';for(const b of IDS)btn(I,b,b===id,()=>{id=b;go();});
+  const M=document.getElementById('modes');M.innerHTML='';for(const m of ['entrance','phase2','victory'])btn(M,m,m===mode,()=>{mode=m;go();});
+  for(const s of [0.25,1])btn(M,'x'+s,s===speed,()=>{speed=s;go();});
+  btn(M,'restart',false,()=>go());
+}
+function go(){location.hash=new URLSearchParams(Object.assign({id,mode,speed},freeze!=null?{k:freeze}:{},P.shot?{shot:1}:{},P.nodir?{nodir:1}:{})).toString();t0=performance.now();sceneSeq++;DungeonCutscenes.perf.reset();ui();}
+window.__cine={ready:false,k:0,perf:()=>DungeonCutscenes.perf.stats(),director:()=>DungeonGL.director.failed(),bounds:()=>DungeonGL.director.bounds(),cam:()=>{const c=DungeonGL._headless().camera();return [c.position.x,c.position.y,c.position.z];}};
+if(P.nodir)DungeonCutscenes.get=()=>null;
+async function boot(){
+  if(P.models!=='0'){await DungeonGL.skins.load(id);if(window.DungeonSkin&&DungeonSkin.ensure)await Promise.all(DungeonGL.castOf(id).map(c=>DungeonSkin.ensure(c)));}
+  if(!P.nodir){await DungeonCutscenes.ensure(id);for(const b of IDS)await DungeonCutscenes.ensure(b);}
+  ui();requestAnimationFrame(frame);
+}
+let frames=0;
+function frame(real){
+  const def=ECON.GUILD_BOSSES[id]||{color:'#444',accent:'#fff'},mini=def.tier==='mini',dur=DUR[mode](mini,id);
+  const k=freeze!=null?Math.min(1,Math.max(0,freeze)):Math.min(1,((real-t0)*speed)/dur);
+  if(freeze==null&&k>=1&&(real-t0)*speed>dur+900){t0=real;sceneSeq++;}
+  const t=freeze!=null?t0+k*dur/speed+16*frames:real;
+  const R=DungeonGL.director.renderer();if(R){R.info.autoReset=false;R.info.reset();}   // draw calls / triangles of the whole frame (all passes)
+  const gl=DungeonGL.available()?DungeonGL.render({mode,sceneId:mode+id+sceneSeq,id,mini:mode==='entrance'&&mini,k,t,phase:2,people:[{appearance:null},{appearance:{shirt:'#dc2626'},weapon:'crossbow'}],color:def.color,accent:def.accent}):null;
+  ctx.fillStyle='#000';ctx.fillRect(0,0,1024,640);if(gl)ctx.drawImage(gl,0,0,1024,640);
+  // the letterbox and card bosses.js draws over the frame, so the shots are judged with them on
+  if(mode!=='entrance'||!mini){const h=52*(k<.06?k/.06:k>.94?(1-k)/.06:1);ctx.fillStyle='#000';ctx.fillRect(0,0,1024,h);ctx.fillRect(0,640-h,1024,h);
+    const card=mode==='entrance'?Math.min(1,Math.max(0,(k-.8)/.3)):mode==='phase2'?Math.min(1,Math.max(0,(k-.87)/.1)):0;
+    if(card>0){ctx.globalAlpha=Math.min(1,card*2);ctx.textAlign='center';ctx.font='bold 40px serif';ctx.fillStyle=def.accent;ctx.fillText(def.name||id,512,640*.63+12);ctx.strokeStyle=def.accent;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(512-300*card,640*.63-34);ctx.lineTo(512+300*card,640*.63-34);ctx.moveTo(512-300*card,640*.63+42);ctx.lineTo(512+300*card,640*.63+42);ctx.stroke();
+      if(def.title){ctx.fillStyle='rgba(226,232,240,.85)';ctx.font='italic 14px serif';ctx.fillText(def.title,512,640*.63+34);}ctx.globalAlpha=1;}}
+  frames++;
+  DungeonCutscenes.perf.tick(real,DungeonGL.director.renderer());
+  const s=DungeonCutscenes.perf.stats();
+  document.getElementById('perf').textContent=`${id} · ${mode} · k ${k.toFixed(3)}  ${DungeonCutscenes.perf.text()}\nmodels ${DungeonGL.skins.state()} · direction ${DungeonCutscenes.get(id)?'js/cutscenes':'built-in'} · retired ${DungeonGL.director.failed().join(',')||'none'}${P.nodir?' · A/B: built-in beats':''}`;
+  document.getElementById('bari').style.width=(k*100)+'%';
+  window.__cine.ready=frames>3&&(P.models==='0'||DungeonGL.skins.state()!=='loading');window.__cine.k=k;
+  requestAnimationFrame(frame);
+}
+boot();
+</script></body></html>

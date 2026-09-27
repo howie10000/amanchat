@@ -109,6 +109,9 @@
   function stateOf(id) { if (inMemory(id)) return "ready"; const f = files[id]; return f ? (f.state === "ready" ? "loading" : f.state) : "absent"; }
   const decoded = {};          // per mesh key -> typed arrays (kept for rebuilding geometry)
   const clipCache = {};        // per character id + clip -> THREE.AnimationClip
+  // ensure(cid): the one-character form of load() (the name the cutscene directions and dungeon3d use):
+  // fetches that character's file (+ shared-clip deps) once; resolves true when it can be created.
+  function ensure(cid) { return loadOne(cid, false); }
 
   function bytes(s) {
     if (typeof atob === "function") { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
@@ -352,6 +355,9 @@
     weaponKinds: () => (lib() && lib().weapons ? Object.keys(lib().weapons) : []),
     weaponInfo: (k) => (lib() && lib().weapons ? lib().weapons[k] || null : null),
     meta: (id) => (lib() && lib().characters[id]) || null,
+    // which file carries a character (one per character now): its id, when the index knows it
+    partOf: (id) => (G.DungeonModelIndex && G.DungeonModelIndex[id] ? id : null),
+    ensure,
     create,
     clip: clipFor,
   };
