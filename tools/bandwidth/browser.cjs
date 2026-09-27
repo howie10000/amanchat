@@ -126,14 +126,14 @@ function summarise(tab, phase) {
     const list = [...tab.reqs.values()].filter(r => r.phase === phase);
     const net = list.filter(r => r.cache !== 'memory' && r.cache !== 'disk');
     const byUrl = new Map();
-    for (const r of list) { const u = r.url.replace(/^https?:\/\/[^/]+/, ''); byUrl.set(u, (byUrl.get(u) || 0) + 1); }
+    for (const r of list) { const u = r.url.replace(/^https?:\/\/[^/]+/, ''); if (!byUrl.has(u)) byUrl.set(u, []); byUrl.get(u).push((r.cache ? r.cache + ':' : '') + (r.bytes || 0) + (r.worker ? '(worker)' : '')); }
     return {
         requests: list.length,
         network: net.length,
         fromCache: list.length - net.length,
         notModified: list.filter(r => r.status === 304).length,
         bytes: net.reduce((s, r) => s + (r.bytes || 0), 0),
-        duplicates: [...byUrl].filter(([, n]) => n > 1).map(([u, n]) => u + ' x' + n),
+        duplicates: [...byUrl].filter(([, n]) => n.length > 1).map(([u, n]) => u + ' [' + n.join(', ') + ']'),
         top: net.sort((a, b) => b.bytes - a.bytes).slice(0, 12).map(r => ({ url: r.url.replace(/^https?:\/\/[^/]+/, ''), bytes: r.bytes, status: r.status, enc: r.enc, worker: r.worker || undefined })),
     };
 }

@@ -85,8 +85,6 @@ const staticFiles = staticServe.createStaticServer(STATIC_DIR, {
     fallback: express.static(STATIC_DIR, { cacheControl: false }),
 });
 app.use(staticServe.blockMiddleware({ serveDocs: process.env.SERVE_DOCS === '1' }));
-// Shipped assets added after the allow-list below was written.
-app.get(['/assets/dark-sea/title-scroll.webp'], staticFiles);
 if (process.env.STATIC_WARM === '1') setTimeout(() => { staticFiles.warm(staticServe.shippedFiles(STATIC_DIR)).catch(() => {}); }, 1500).unref();
 app.use((req,res,next)=>{
     let asset;try{asset=path.posix.normalize(decodeURIComponent(req.path).replace(/\\/g,'/'));}catch{return res.sendStatus(400);}

@@ -181,6 +181,8 @@ function createStaticServer(root, opts) {
         return chain;
     };
     handler.stats = () => ({ files: entries.size, queued: upgradeQueue.length, upgrading });
+    // Resolves once every queued quality-11 upgrade has finished.
+    handler.drain = () => new Promise(ok => { const t = setInterval(() => { if (!upgrading && !upgradeQueue.length) { clearInterval(t); ok(); } }, 100); });
     return handler;
 }
 
