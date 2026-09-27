@@ -110,8 +110,8 @@ async function presence(baselineSrc) {
     const out = { current: [], baseline: [] };
     for (const scenario of ['town', 'dungeon'])
         for (const n of [1, 5, 20]) {
-            out.current.push(await model({ n, scenario, deflate: { threshold: 32 } }));
-            if (baselineSrc) out.baseline.push(await model({ src: baselineSrc, n, scenario, client: 'legacy', deflate: { threshold: 32 } }));
+            out.current.push(await model({ n, scenario, deflate: { threshold: 0 } }));
+            if (baselineSrc) out.baseline.push(await model({ src: baselineSrc, n, scenario, client: 'legacy', deflate: { threshold: 0 } }));
         }
     return out;
 }
@@ -137,7 +137,7 @@ function printReport(r) {
         L.push('  never served  : ' + r.http.blocked.map(b => b.url + '=' + b.status).join(', '));
     }
     if (r.presence) {
-        L.push('PRESENCE MODEL (bytes/s per player at 15 Hz; down raw / down with permessage-deflate / up)');
+        L.push('PRESENCE MODEL (bytes/s per player at 15 Hz, frame headers included; "deflate" = if every server frame were deflated with context takeover, reference only: it is off by default)');
         const fmt = (x) => `${x.scenario.padEnd(8)} ${String(x.players).padStart(2)}p  down ${String(x.downBps).padStart(6)}  deflate ${String(x.downBpsDeflate).padStart(6)}  up ${String(x.upBps).padStart(5)}`;
         for (let i = 0; i < r.presence.current.length; i++) L.push('  now      ' + fmt(r.presence.current[i]) + (r.presence.baseline[i] ? '   | baseline ' + fmt(r.presence.baseline[i]) : ''));
     }

@@ -859,6 +859,7 @@ function broadcastPresence() {
         const prev = areaState.get(key) || new Map();
         const next = new Map();
         const delta = new Map();   // user -> '"user":{...}'
+        const moved = new Map();   // user -> '"user",x,y' (subset of delta: position-only changes)
         const full = new Map();
         const needsFull=vs.some(c=>c.sentArea!==key && !(c.ws.bufferedAmount>256*1024));
         for (const c of here) {
@@ -881,7 +882,16 @@ function broadcastPresence() {
             }
             if (needsFull) full.set(c.user, whole);
             if (!was || was.av !== c.av) delta.set(c.user, whole);
-            else if (was.sig !== sig) delta.set(c.user, name + ':' + presenceFieldDelta(was.fields || presenceFields(JSON.parse(was.sig)), c._viewFields));
+            else if (was.sig !== sig) {
+                const wf = was.fields || presenceFields(JSON.parse(was.sig)), nf = c._viewFields;
+                delta.set(c.user, name + ':' + presenceFieldDelta(wf, nf));
+                // Only moved: clients that said `hello presenceXY` get it as a
+                // bare [name, x, y] triple instead of {"x":..,"y":..}.
+                let onlyXY = true;
+                for (const k in nf) if (k !== 'x' && k !== 'y' && wf[k] !== nf[k]) { onlyXY = false; break; }
+                if (onlyXY) for (const k in wf) if (!(k in nf)) { onlyXY = false; break; }
+                if (onlyXY) moved.set(c.user, name + ',' + nf.x + ',' + nf.y);
+            }
         }
         const gone = [];
         for (const u of prev.keys()) if (!next.has(u)) gone.push(u);
@@ -889,7 +899,7 @@ function broadcastPresence() {
 
         const areaJson = JSON.stringify(key);
         const goneJson = gone.length ? ',"gone":' + JSON.stringify(gone) : '';
-        let fullShared = null, deltaShared = null;
+        let fullShared = null, deltaShared = null, xyShared = null;
         for (const c of vs) {
             // Do not accumulate obsolete movement behind a slow connection.
             // Once it drains, send a complete reset so no skipped delta is lost.
@@ -901,6 +911,15 @@ function broadcastPresence() {
             } else {
                 const mine = delta.has(c.user);
                 if (!gone.length && delta.size <= (mine ? 1 : 0)) continue;
+                if (c.presenceXY && moved.size) {
+                    if (!mine && xyShared !== null) { sendRaw(c, xyShared); continue; }
+                    const users = [], xy = [];
+                    for (const [u, f] of delta) { if (u === c.user) continue; const m = moved.get(u); if (m) xy.push(m); else users.push(f); }
+                    const msg = '{"event":"presence","users":{' + users.join(',') + '},"xy":[' + xy.join(',') + ']' + goneJson + '}';
+                    if (!mine) xyShared = msg;
+                    sendRaw(c, msg);
+                    continue;
+                }
                 if (!mine && deltaShared !== null) { sendRaw(c, deltaShared); continue; }
                 const msg = '{"event":"presence","users":{' + presenceUsersJson(delta, mine ? c.user : null).join(',') + '}' + goneJson + '}';
                 if (!mine) deltaShared = msg;
@@ -1433,7 +1452,7 @@ wss.on('connection', (ws, req) => {
     clients.add(c);
     // Wire features a current client may use (js/shared/presence-wire.js).
     // An older client ignores unknown events.
-    try { ws.send('{"event":"caps","presenceDelta":1}'); } catch (e) {}
+    try { ws.send('{"event":"caps","presenceDelta":1,"presenceXY":1}'); } catch (e) {}
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
 
@@ -1666,6 +1685,11 @@ function handleMessage(c, msg) {
         case 'presence': {
             if (!c.user) return replyErr('not authed');
             let p = (msg.data && typeof msg.data === 'object' && !Array.isArray(msg.data)) ? msg.data : null;
+            // A bare position change (caps.presenceXY) is a delta of just x/y.
+            if (!p && msg.xy !== undefined) {
+                if (!(Array.isArray(msg.xy) && msg.xy.length === 2 && Number.isFinite(msg.xy[0]) && Number.isFinite(msg.xy[1]))) return;   // malformed: ignore
+                p = { x: msg.xy[0], y: msg.xy[1] }; msg.delta = 1;
+            }
             // A field delta (presence-wire caps) is merged onto the last complete
             // picture this socket sent, then handled exactly like a full frame.
             if (p && msg.delta) {
@@ -1843,6 +1867,14 @@ function handleMessage(c, msg) {
             try { out = ECONOMY_OPS[op](c.user, msg); }
             catch (e) { return replyErr(e && e.message ? e.message : String(e)); }
             reply(out);
+            break;
+        }
+
+        // A current client says which compact wire forms it understands
+        // (js/net.js). Sent without an id; an older server ignores it.
+        case 'hello': {
+            c.presenceXY = !!msg.presenceXY;
+            if (id != null) reply({ presenceXY: true });
             break;
         }
 

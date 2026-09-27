@@ -67,6 +67,7 @@ function player(port, user, opts) {
         ws.send(JSON.stringify(Object.assign({}, args, { id: i, op })));
     });
     p.ready = new Promise((r, j) => { ws.on('open', r); ws.on('error', j); });
+    if (!(opts && opts.legacy)) ws.on('open', () => ws.send('{"op":"hello","presenceXY":1}'));   // as js/net.js does
     p.bytes = () => { const s = ws._socket; return s ? { down: s.bytesRead, up: s.bytesWritten } : { down: 0, up: 0 }; };
     p.sentLook = null;
     p.sender = WIRE && !(opts && opts.legacy) ? WIRE.createSender() : null;
@@ -81,6 +82,7 @@ function player(port, user, opts) {
         if (look !== p.sentLook) { data.appearance = DEFAULT_APPEARANCE; p.sentLook = look; }
         if (p.sender) {
             p.sender.enableDelta(!!(p.caps && p.caps.presenceDelta));
+            p.sender.enableXY(!!(p.caps && p.caps.presenceXY));
             const frame = p.sender.frame(data, now);
             if (frame) ws.send(frame);
             return;

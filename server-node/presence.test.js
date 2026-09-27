@@ -57,6 +57,26 @@ console.log('PASS idle presence reuse, movement deltas, car replication, bounded
  clients.clear();tick();
  console.log('PASS field-level presence deltas: changed fields only, null clears, chat on change, msg dropped, look resends, client merge reproduces the full view');
 }
+// Packed positions: a viewer that said `hello presenceXY` gets position-only
+// changes as [name, x, y] triples; an older viewer in the same area keeps the
+// plain field form. Both end up holding the same state.
+{
+ const mk=(user,x,xy)=>({user,presenceXY:xy,ws:{OPEN:1,readyState:1,bufferedAmount:0},av:1,appearanceStr:'{"shirt":"red"}',presence:{area:'neighborhood',x,y:5,facing:'up',hp:100,emote:null,msgs:[],appearance:{shirt:'red'}}});
+ const nv=mk('nv',0,true),ov=mk('ov',10,false),w1=mk('w1',20,false),w2=mk('w2',30,true);[nv,ov,w1,w2].forEach(c=>clients.add(c));
+ const mergeInto=(held,msg)=>{if(msg.reset)for(const k of Object.keys(held))delete held[k];for(const u of msg.gone||[])delete held[u];for(const [u,p] of Object.entries(msg.users||{})){const n=Object.assign({},held[u],p);for(const k in p)if(p[k]===null&&k!=='emote')delete n[k];held[u]=n;}const xy=msg.xy||[];for(let i=0;i+2<xy.length;i+=3)if(held[xy[i]])held[xy[i]]=Object.assign({},held[xy[i]],{x:xy[i+1],y:xy[i+2]});};
+ const hn={},ho={};const pump=()=>{for(const m of sent){if(m.to==='nv')mergeInto(hn,m);if(m.to==='ov')mergeInto(ho,m);}};
+ tick();pump();
+ w1.presence={...w1.presence,x:21};w2.presence={...w2.presence,x:31,y:6};tick();
+ const toN=sent.find(m=>m.to==='nv'),toO=sent.find(m=>m.to==='ov'),toW2=sent.find(m=>m.to==='w2');
+ assert.deepEqual(toN.xy,['w1',21,5,'w2',31,6]);assert.deepEqual(toN.users,{},'moves travel only as triples');
+ assert.deepEqual(toO.users,{w1:{x:21},w2:{x:31,y:6}});assert(!('xy' in toO),'an old client gets the field form');
+ assert.deepEqual(toW2.xy,['w1',21,5],'still never your own entry');
+ pump();
+ w1.presence={...w1.presence,x:22,facing:'left'};tick();assert.deepEqual(sent.find(m=>m.to==='nv').users.w1,{x:22,facing:'left'},'a move plus anything else is a field delta');pump();
+ assert.deepEqual(hn.w1,ho.w1);assert.deepEqual(hn.w2,ho.w2);
+ clients.clear();tick();
+ console.log('PASS packed position triples for new clients, field form for old ones, identical merged state');
+}
 // The upload side (js/shared/presence-wire.js): unchanged presence is not
 // re-sent except as a 1 s keepalive, positions are whole pixels, deltas carry
 // only changed fields plus an unset list, appearance rides along only when
@@ -72,5 +92,7 @@ console.log('PASS idle presence reuse, movement deltas, car replication, bounded
  f=JSON.parse(s.frame({...base,x:14,appearance:{shirt:'blue'}},1330));assert.deepEqual(f.data,{appearance:{shirt:'blue'}},'a changed look alone');
  f=JSON.parse(s.frame({...base,x:14},2400));assert.deepEqual(f.data,{},'keepalive delta is empty');
  s.reset();f=JSON.parse(s.frame({...base,x:14},2466));assert(!f.delta&&f.data.area==='neighborhood','reset -> complete frame');
+ s.enableXY(true);f=JSON.parse(s.frame({...base,x:20,y:30.4},2532));assert.deepEqual(f,{op:'presence',xy:[20,30]},'position alone as a bare xy frame');
+ f=JSON.parse(s.frame({...base,x:21,y:30,facing:'left'},2598));assert.deepEqual(f.data,{x:21,facing:'left'},'anything else still goes as a field delta');
  console.log('PASS presence upload policy: change-only with keepalive, whole pixels, field deltas with unset, appearance on demand, reset');
 }

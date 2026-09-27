@@ -552,6 +552,7 @@ async function pushPresence() {
   if (look !== _sentAppearance) { data.appearance = state.appearance; _sentAppearance = look; }
   if (_presenceSender && NET.send) {
     _presenceSender.enableDelta(!!(NET.caps && NET.caps.presenceDelta));
+    _presenceSender.enableXY(!!(NET.caps && NET.caps.presenceXY));
     const frame = _presenceSender.frame(data, now);
     if (frame && !NET.send(frame)) { _presenceSender.reset(); _sentAppearance = null; }
     return;
@@ -608,6 +609,13 @@ if (window.NET) {
       }
       next.msgs = mergeRemoteMsgs(u, prev && prev.msgs, (p.msgs != null ? p.msgs : p.msg), now);
       state.others[u] = next;
+    }
+    // Position-only changes arrive packed as [name, x, y, name, x, y, ...].
+    const xy = Array.isArray(m.xy) ? m.xy : null;
+    if (xy) for (let i = 0; i + 2 < xy.length; i += 3) {
+      const u = xy[i], prev = state.others[u];
+      if (u === state.user || !prev) continue;
+      state.others[u] = Object.assign({}, prev, { x: xy[i + 1], y: xy[i + 2] });
     }
     // Players who didn't change still need their bubbles aged out, which
     // mergeRemoteMsgs does off each line's local receive stamp.

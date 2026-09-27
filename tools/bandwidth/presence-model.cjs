@@ -36,6 +36,7 @@ function loadBroadcaster(src) {
 // The server's presence op, reduced to what feeds the broadcaster.
 function applyPresence(c, msg) {
     let p = msg.data;
+    if (!p && Array.isArray(msg.xy)) { p = { x: msg.xy[0], y: msg.xy[1] }; msg.delta = 1; }
     if (msg.delta) { p = Object.assign({}, c.presenceRaw, p); for (const k of msg.unset || []) delete p[k]; }
     c.presenceRaw = Object.assign({}, p); delete c.presenceRaw.appearance;
     if (p.appearance === undefined) { if (c.presence && c.presence.appearance !== undefined) p.appearance = c.presence.appearance; }
@@ -53,7 +54,7 @@ async function model(opts) {
     const b = loadBroadcaster(src);
     const players = [];
     for (let i = 0; i < n; i++) {
-        const c = { user: 'player' + i, ws: { OPEN: 1, readyState: 1, bufferedAmount: 0 }, av: 0, appearanceStr: '', presence: null, sentArea: null };
+        const c = { user: 'player' + i, ws: { OPEN: 1, readyState: 1, bufferedAmount: 0 }, av: 0, appearanceStr: '', presence: null, sentArea: null, presenceXY: opts.client !== 'legacy' };
         const pl = { c, i, pos: { x: 1200 + random() * 400, y: 900 + random() * 300 }, walking: opts.scenario === 'dungeon' || i % 2 === 0, facing: 'down', msgs: [], sentLook: null, t: 0,
             sender: opts.client === 'legacy' ? null : WIRE.createSender(), up: 0, down: 0, deflater: null, rpc: 1 };
         if (opts.scenario === 'dungeon') b.env.guildRunOf.set(c.user, 'runA');
@@ -84,7 +85,7 @@ async function model(opts) {
             const look = JSON.stringify(APPEARANCE);
             if (look !== p.sentLook) { data.appearance = APPEARANCE; p.sentLook = look; }
             let frame;
-            if (p.sender) p.sender.enableDelta(src.includes('presenceDelta'));
+            if (p.sender) { p.sender.enableDelta(src.includes('presenceDelta')); p.sender.enableXY(src.includes('"presenceXY":1')); }
             if (p.sender) frame = p.sender.frame(data, now);
             else frame = JSON.stringify(Object.assign({}, { data }, { id: p.rpc++, op: 'presence' }));
             if (!frame) continue;

@@ -54,6 +54,9 @@
     ws.onopen = async () => {
       connected = true;
       NET.caps = {};   // what this server supports; it says so in a `caps` event
+      // What this client understands: position-only presence changes as
+      // [name, x, y] triples (m.xy). An older server just ignores it.
+      try { ws.send('{"op":"hello","presenceXY":1}'); } catch (e) {}
       console.log("[net] connected", WS_URL);
       if (lastAuth && !reauthing) {
         // Re-auth before releasing anything queued, so the first call out of

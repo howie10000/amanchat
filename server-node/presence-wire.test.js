@@ -52,7 +52,7 @@ function sock(port) {
         assert(!a.msgs.slice(before).some(m => m.event === 'needAppearance'), 'a complete frame with a look needs nothing more');
         // Replay B's view of A through the client's merge.
         const held = {};
-        const apply = (m) => { if (m.event !== 'presence') return; if (m.reset) for (const k of Object.keys(held)) delete held[k]; for (const u of m.gone || []) delete held[u]; for (const [u, p] of Object.entries(m.users || {})) { const n = Object.assign({}, held[u], p); for (const k in p) if (p[k] === null && k !== 'emote') delete n[k]; held[u] = n; } };
+        const apply = (m) => { if (m.event !== 'presence') return; if (m.reset) for (const k of Object.keys(held)) delete held[k]; for (const u of m.gone || []) delete held[u]; for (const [u, p] of Object.entries(m.users || {})) { const n = Object.assign({}, held[u], p); for (const k in p) if (p[k] === null && k !== 'emote') delete n[k]; held[u] = n; } const xy = m.xy || []; for (let i = 0; i + 2 < xy.length; i += 3) if (held[xy[i]]) held[xy[i]] = Object.assign({}, held[xy[i]], { x: xy[i + 1], y: xy[i + 2] }); };
         let seen = 0;
         const pump = () => { for (; seen < b.msgs.length; seen++) apply(b.msgs[seen]); };
         pump();
@@ -76,12 +76,25 @@ function sock(port) {
         await sleep(200);
         assert.equal(b.msgs.filter((m, i) => i >= nb && m.event === 'presence').length, 0, 'an unchanged keepalive is not rebroadcast');
 
+        // Packed positions both ways: A uploads a bare xy frame, B (after hello) receives a triple.
+        assert(a.msgs.some(m => m.event === 'caps' && m.presenceXY === 1), 'caps announce packed positions');
+        b.send({ op: 'hello', presenceXY: 1 });
+        await sleep(100);
+        a.send({ op: 'presence', xy: [145, 205] });
+        await sleep(200); pump();
+        const last = b.msgs.filter(m => m.event === 'presence').pop();
+        assert.deepEqual(last.xy, ['wirea', 145, 205], 'a position-only change arrives as a triple');
+        assert.equal(held.wirea.x, 145); assert.equal(held.wirea.y, 205); assert.equal(held.wirea.facing, 'left', 'the rest of the view is untouched');
+        a.send({ op: 'presence', xy: ['bad', 1] });
+        await sleep(150);
+        assert.equal(held.wirea.x, 145, 'a malformed xy frame is ignored');
+
         // An old client (RPC presence with an id) is still answered and still merges fine.
         const r = await a.rpc('presence', { data: { x: 150, y: 200, area: 'interior_casino', floor: 2, msgs: [], msg: '', facing: 'up', hp: 100, emote: null } });
         assert.equal(r, null, 'legacy RPC presence still gets its reply');
         await sleep(200); pump();
         assert.equal(held.wirea.x, 150); assert.equal(held.wirea.floor, 2); assert.equal(held.wirea.appearance.shirt, 'red', 'appearance carried forward');
         a.ws.close(); b.ws.close();
-        console.log('PASS presence wire: caps, fire-and-forget, orphan-delta resync, field deltas + unset merge to the same view, no self echo, keepalive silence, legacy RPC compatibility, no deflate by default');
+        console.log('PASS presence wire: caps, hello, packed xy both ways, fire-and-forget, orphan-delta resync, field deltas + unset merge to the same view, no self echo, keepalive silence, legacy RPC compatibility, no deflate by default');
     } finally { await srv.kill(); }
 })().catch(e => { console.error(e); process.exit(1); });

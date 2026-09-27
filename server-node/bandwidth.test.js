@@ -29,13 +29,14 @@ const BUDGET = {
     firstLoadWire: 1240 * KB,       // measured 1056 KB (baseline: 4266 KB in a browser)
     repeatRequests: 1,              // only index.html revalidates (304)
     repeatWire: 2 * KB,
-    // Presence, bytes/s per player at 15 Hz (tools/bandwidth/presence-model.cjs).
+    // Presence, bytes/s per player at 15 Hz (tools/bandwidth/presence-model.cjs), as served
+    // (permessage-deflate is off by default).
     presence: {
-        'town-1': { down: 0, up: 1100 },
-        'town-5': { down: 1900, up: 1100 },
-        'town-20': { down: 6000, up: 1100, deflate: 1600 },
-        'dungeon-5': { down: 2800, up: 1100 },
-        'dungeon-20': { down: 11000, up: 1100, deflate: 2800 },
+        'town-1': { down: 0, up: 750 },            // measured 0 / 630 (walking; idle is a 1 s keepalive)
+        'town-5': { down: 1650, up: 750 },         // measured 1383 / 402 (baseline 8513 / 2903)
+        'town-20': { down: 4500, up: 750 },        // measured 3841 / 346 (baseline 27975 / 3045)
+        'dungeon-5': { down: 2200, up: 750 },      // measured 1875 / 628 (baseline 14822 / 3187)
+        'dungeon-20': { down: 8000, up: 750 },     // measured 6835 / 629 (baseline 57845 / 3332)
     },
 };
 
@@ -86,10 +87,9 @@ function check(name, value, max, unit) {
 
     for (const [key, b] of Object.entries(BUDGET.presence)) {
         const [scenario, n] = key.split('-');
-        const r = await model({ scenario, n: +n, deflate: b.deflate ? { threshold: 32 } : null });
+        const r = await model({ scenario, n: +n });
         if (!check(`presence ${key} down`, r.downBps, b.down, ' B/s')) fails++;
         if (!check(`presence ${key} up`, r.upBps, b.up, ' B/s')) fails++;
-        if (b.deflate && !check(`presence ${key} down (deflate)`, r.downBpsDeflate, b.deflate, ' B/s')) fails++;
     }
     console.log(results.join('\n'));
     if (fails) { console.log(`\n${fails} BANDWIDTH BUDGET(S) EXCEEDED`); process.exit(1); }
