@@ -3508,7 +3508,7 @@
     }).catch((e) => { SKIN.state = "failed"; console.warn("Dungeon models unavailable; using procedural rigs", e); return false; });
     return SKIN.promise;
   }
-  const SKIN_V = "pack2-2";   // dungeon-skin.js's own tag: bump when that file changes
+  const SKIN_V = "pack2-3";   // dungeon-skin.js's own tag: bump when that file changes
   // which Blender characters a boss's cutscene shows (always with the party hero)
   function castOf(id) {
     const key = SKINNED[id] ? id : (SKINNED[artOf(id)] ? artOf(id) : null);

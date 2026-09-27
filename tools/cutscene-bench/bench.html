@@ -31,6 +31,7 @@ const raf = () => new Promise((r) => requestAnimationFrame(r));
   await load('js/shared/economy.js');
   await load('js/cutscene-quality.js', true);
   await load('js/dungeon3d.js');
+  await load('js/cutscenes/director.js', true);
   await load('js/cutscenes/mini-cinematic.js', true);
   const bootMs = performance.now() - T0;
   // #shot=<id>&k=0.5: fast-forward that cutscene to k (so motes/fx accumulate like in play) and hold the frame
