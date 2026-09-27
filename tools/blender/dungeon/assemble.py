@@ -106,6 +106,7 @@ def finish(ch, auto_body=True, tris=None):
                 h.add(idx, 0.4, 'REPLACE')
     parts = [body] + [o for o in ch.parts if o is not body] if body is not None else list(ch.parts)
     mesh = core.join(parts, ch.id + '.mesh')
+    core.smooth_by_angle(mesh, 42)
     Bd.finalize_skin(mesh, rig)
     ch.mesh = mesh
     for name, o, bone in ch.attach:
@@ -135,3 +136,20 @@ def move_all(ch):
             u.objects.unlink(o)
         c.objects.link(o)
     return c
+
+
+def parent_attachments(ch):
+    """Bone-parent every attachment at the REST pose (weapons are usually created after finish())."""
+    rig = ch.rig
+    rig.data.pose_position = 'REST'
+    bpy.context.view_layer.update()
+    for name, o, bone in ch.attach:
+        if o.parent is rig and o.parent_bone == bone:
+            continue
+        mw = o.matrix_world.copy()
+        o.parent = rig
+        o.parent_type = 'BONE'
+        o.parent_bone = bone
+        o.matrix_world = mw
+    rig.data.pose_position = 'POSE'
+    bpy.context.view_layer.update()

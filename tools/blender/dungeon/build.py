@@ -3,8 +3,51 @@ import bpy, math, json
 from pathlib import Path
 from mathutils import Vector, Matrix
 from . import core, rig as R, weapons as W, export as X, review, characters as CH, clips_hero as CHero
+from . import characters_boss as CB, clips_boss as KB, beast
 
-REGISTRY = ['hero']
+REGISTRY = ['hero', 'kael', 'kael_crownbound', 'pit_champion', 'veiled_assassin', 'sol', 'umbra', 'sundered_king', 'colossus', 'briar_matron', 'gorehorn']
+
+
+def build_boss(cid):
+    from .assemble import parent_attachments as PA
+    if cid == 'kael':
+        ch = CB.kael(); PA(ch); KB.kael(ch)
+    elif cid == 'kael_crownbound':
+        ch = CB.kael('kael_crownbound', True); PA(ch); KB.kael(ch)
+    elif cid == 'pit_champion':
+        ch = CB.pit_champion(); PA(ch); KB.pit_champion(ch, ch.supports.get('spear'))
+    elif cid == 'veiled_assassin':
+        ch = CB.veiled_assassin(); PA(ch); KB.assassin(ch)
+    elif cid in ('sol', 'umbra'):
+        ch = CB.monarch(cid); PA(ch); KB.monarch(ch, cid == 'umbra')
+    elif cid == 'sundered_king':
+        ch = CB.sundered_king(); PA(ch); KB.king(ch, ch.supports.get('greatsword'))
+    elif cid == 'colossus':
+        ch = CB.colossus(); KB.colossus(ch)
+    elif cid == 'briar_matron':
+        ch = CB.briar_matron(); KB.matron(ch)
+    elif cid == 'gorehorn':
+        ch = beast.gorehorn(); beast.clips(ch)
+    else:
+        raise KeyError(cid)
+    check_ik(ch)
+    return ch
+
+
+# key poses for the review sheets: (label, clip, frame, yaw)
+SHEET_POSES = {
+    'kael': [('guard', 'idle', 0, 30), ('kneel', 'entrance', 10, 30), ('salute', 'entrance', 70, 20), ('dash coil', 'dash_slash', 9, 60), ('dash cut', 'dash_slash', 18, 40),
+             ('combo 1', 'combo', 12, 30), ('combo 3', 'combo', 45, 60), ('parry', 'parry', 0, 30), ('riposte', 'riposte', 16, 70), ('cuts', 'thousand_cuts', 14, 20), ('death', 'death', 70, 60)],
+    'kael_crownbound': [('guard', 'idle', 0, 30), ('land', 'land', 6, 20), ('dash cut', 'dash_slash', 18, 40), ('riposte', 'riposte', 16, 70), ('death', 'death', 70, 60)],
+    'pit_champion': [('ready', 'idle', 0, 30), ('landing', 'entrance', 8, 20), ('slam', 'entrance', 40, 30), ('block', 'block', 12, 30), ('thrust coil', 'thrust', 9, 70), ('thrust', 'thrust', 16, 70), ('bash', 'bash', 14, 50), ('death', 'death', 70, 60)],
+    'veiled_assassin': [('crouch', 'idle', 0, 30), ('vanish', 'vanish', 20, 30), ('leap', 'ambush', 14, 70), ('stab', 'ambush', 22, 50), ('reveal', 'entrance', 36, 20), ('death', 'death', 70, 60)],
+    'sol': [('float', 'idle', 0, 30), ('gather', 'cast', 12, 30), ('cast', 'cast', 24, 40), ('folded', 'entrance', 5, 30), ('risen', 'entrance', 62, 20), ('death', 'death', 60, 60)],
+    'umbra': [('float', 'idle', 0, -30), ('gather', 'cast', 12, -30), ('cast', 'cast', 24, -40), ('risen', 'entrance', 62, -20)],
+    'sundered_king': [('planted', 'idle', 0, 30), ('kneel', 'entrance', 10, 30), ('raise', 'entrance', 92, 25), ('ready', 'ready', 0, 30), ('windup', 'swing', 14, 60), ('cleave', 'swing', 24, 60), ('kneel p2', 'kneel', 50, 30), ('death', 'death', 70, 60)],
+    'colossus': [('idle', 'idle', 0, 20), ('rising', 'rise', 40, 20), ('arms up', 'rise', 90, 20)],
+    'briar_matron': [('idle', 'idle', 0, 30), ('emerging', 'entrance', 30, 30), ('unfurl', 'entrance', 70, 20), ('summon low', 'summon', 14, 40), ('summon', 'summon', 40, 20), ('death', 'death', 70, 60)],
+    'gorehorn': [('idle', 'idle', 0, 60), ('paw', 'entrance', 16, 70), ('rear', 'entrance', 80, 80), ('charge', 'charge', 4, 90), ('impact', 'impact', 5, 60), ('stumble', 'impact', 16, 40), ('death', 'death', 88, 60)],
+}
 
 
 def want(chars, cid):
@@ -52,6 +95,11 @@ def build_all(chars=None):
     result = {'chars': [], 'weapons': {}}
     if want(chars, 'hero'):
         build_hero(result)
+    for cid in REGISTRY[1:]:
+        if want(chars, cid):
+            ch = build_boss(cid)
+            result['chars'].append(ch)
+            # hide finished characters so bone-heat/raycasts of the next one are unaffected
     return result
 
 
@@ -65,7 +113,7 @@ def export_pack(result, path):
         bpy.context.view_layer.update()
         names = [b.name for b in rig.data.bones]
         parents = [names.index(b.parent.name) if b.parent else -1 for b in rig.data.bones]
-        skel = ch.kind
+        skel = ch.kind + ('_cape' if 'cape.1' in names else '')
         if skel in payload['skeletons']:
             assert payload['skeletons'][skel]['bones'] == names, 'skeleton order differs for ' + ch.id
         payload['skeletons'][skel] = {'bones': names, 'parents': parents}
@@ -133,13 +181,16 @@ def render_sheets(result, out_dir):
     for ch in result['chars']:
         act = {c.name: c.action for c in ch.clips}
         poses = [('front', act.get('idle'), 0, 0), ('3/4', act.get('idle'), 0, 35), ('side', act.get('idle'), 0, 90), ('back', act.get('idle'), 0, 180)]
+        for (label, clip, fr, yaw) in SHEET_POSES.get(ch.id, []):
+            if clip in act:
+                poses.append((label, act[clip], fr, yaw))
         if ch.id == 'hero':
             poses += [('walk', act['walk'], 4, 30), ('run', act['run'], 6, 60), ('ready', act['ready_onehand'], 0, 30),
                       ('windup', act['slash'], 8, 30), ('strike', act['slash'], 13, 30), ('follow', act['slash'], 18, 30)]
             ch.show_weapon('sword')
         p = str(out_dir / ('sheet-%s.png' % ch.id))
         extra = [o for (o, _) in result['weapons'].values() if not o.hide_render] if ch.id == 'hero' else []
-        review.sheet(ch, poses, p, only=extra)
+        review.sheet(ch, poses, p, only=extra, extent=ch.P.get('H', 2) * (1.9 if ch.kind == 'quad' else 1.0))
         sheets.append(p)
     return sheets
 

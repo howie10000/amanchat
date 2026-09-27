@@ -39,3 +39,7 @@ server-node/dev-fishing.db
 *.blend1
 
 /tools/blender/animation-rigs.json
+
+# Python bytecode
+__pycache__/
+*.pyc

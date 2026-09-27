@@ -115,7 +115,7 @@ def encode_groups(groups, skinned):
             P.append(int(round((v[a] - lo[a]) / ((hi[a] - lo[a]) or 1) * 65535)))
     Nq = [max(-127, min(127, int(round(c * 127)))) for n in N for c in n]
     w = 2 if len(V) <= 65535 else 4
-    out = {'b': [round(x, 5) for x in lo + hi], 'p': b64(P, 'H'), 'n': b64(Nq, 'b'), 'i': b64(I, 'H' if w == 2 else 'I'), 'w': w, 'g': G, 'vc': len(V)}
+    out = {'b': [round(x, 5) for x in lo + hi], 'p': b64(P, 'H'), 'i': b64(I, 'H' if w == 2 else 'I'), 'w': w, 'g': G, 'vc': len(V)}
     if skinned:
         out['j'] = b64([x for j in J for x in j], 'B')
         out['k'] = b64([x for k in K for x in k], 'B')

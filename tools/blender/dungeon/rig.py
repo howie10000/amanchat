@@ -232,7 +232,7 @@ class Clip:
             loc = None
             if b + '@' in pose:
                 loc = tuple(c * self.size for c in pose[b + '@'])
-            elif b in ('hips', 'root'):
+            elif b in ('hips', 'root', 'body'):
                 loc = (0, 0, 0)
             self._set(b, rot, loc, f + 1)
         if interp:

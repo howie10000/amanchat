@@ -104,7 +104,7 @@ def hero():
         ch.add(cuff)
     # a leather pauldron on the left shoulder (the off-hand side)
     ch.add(Bd.pauldron('hero.pauldron', rig, 'L', P, M['leather'], M['brass'], 0.8, 2))
-    finish(ch, tris=7000)
+    finish(ch, tris=5200)
     # hero weapons are separate (swappable) - exported by the build script from weapons.build()
     ch.meta = {'tints': ['skin', 'shirt', 'pants', 'hairColor']}
     return ch

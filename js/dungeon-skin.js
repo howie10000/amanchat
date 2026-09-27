@@ -38,14 +38,19 @@
     if (decoded[key]) return decoded[key];
     const q = u16(m.p), n = m.vc, pos = new Float32Array(n * 3), b = m.b;
     for (let i = 0; i < n; i++) for (let a = 0; a < 3; a++) pos[i * 3 + a] = b[a] + (b[a + 3] - b[a]) * q[i * 3 + a] / 65535;
-    const out = { pos, nrm: i8(m.n), idx: m.w === 4 ? u32(m.i) : u16(m.i), groups: m.g };
+    const out = { pos, nrm: m.n ? i8(m.n) : null, idx: m.w === 4 ? u32(m.i) : u16(m.i), groups: m.g };
+    if (!out.nrm) {
+      // normals are not shipped: hard edges are split vertices, so per-index averaging rebuilds them
+      const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setIndex(new THREE.BufferAttribute(out.idx, 1));
+      g.computeVertexNormals(); out.nrm = g.getAttribute("normal").array; g.dispose();
+    }
     if (m.j) { const j = bytes(m.j); out.skinIndex = new Uint16Array(j.length); for (let i = 0; i < j.length; i++) out.skinIndex[i] = j[i]; out.skinWeight = bytes(m.k); }
     return (decoded[key] = out);
   }
   function geometry(key, m) {
     const d = decodeMesh(key, m), g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(d.pos, 3));
-    g.setAttribute("normal", new THREE.BufferAttribute(d.nrm, 3, true));
+    g.setAttribute("normal", d.nrm instanceof Float32Array ? new THREE.BufferAttribute(d.nrm, 3) : new THREE.BufferAttribute(d.nrm, 3, true));
     if (d.skinIndex) { g.setAttribute("skinIndex", new THREE.BufferAttribute(d.skinIndex, 4)); g.setAttribute("skinWeight", new THREE.BufferAttribute(d.skinWeight, 4, true)); }
     g.setIndex(new THREE.BufferAttribute(d.idx, 1));
     d.groups.forEach((gr, i) => g.addGroup(gr[1], gr[2], i));
@@ -58,15 +63,26 @@
     if (s.emissive) { o.emissive = new THREE.Color(s.emissive); o.emissiveIntensity = s.ei || 1; }
     if (s.side === 2) o.side = THREE.DoubleSide;
     if (s.opacity != null && s.opacity < 1) { o.transparent = true; o.opacity = s.opacity; o.depthWrite = false; }
+    if (s.additive) { o.transparent = true; o.blending = THREE.AdditiveBlending; o.depthWrite = false; o.side = THREE.DoubleSide; }
     const m = new THREE.MeshStandardMaterial(Object.assign(o, overrides || {}));
-    m.name = name; m.userData.tint = s.tint || null; m.userData.baseColor = m.color.clone();
+    m.name = name; m.userData.tint = s.tint || null; m.userData.baseColor = m.color.clone(); m.userData.baseOpacity = m.opacity;
     return m;
   }
 
   // ---- clips: basis tracks -> local tracks for this character's rest pose
+  // 'walk|noarms' / 'ready_pole|arms': the clip restricted to (or without) the arm chains, so a
+  // locomotion layer and a weapon-hold layer can run at full weight on disjoint bones.
+  const ARM = /^(shoulder|upper_arm|forearm|hand|grip)\./;
   function clipFor(cid, name) {
     const key = cid + "|" + name;
     if (clipCache[key]) return clipCache[key];
+    const bar = name.indexOf("|");
+    if (bar > 0) {
+      const base = clipFor(cid, name.slice(0, bar)), mask = name.slice(bar + 1); if (!base) return null;
+      const keep = (t) => { const arm = ARM.test(t.name.split(".").slice(0, -1).join(".")); return mask === "arms" ? arm : !arm; };
+      const c = new THREE.AnimationClip(name, base.duration, base.tracks.filter(keep)); c.userData = base.userData;
+      return (clipCache[key] = c);
+    }
     const L = lib(), ch = L.characters[cid], ref = ch.clips[name];
     if (ref == null) return null;
     const c = L.clips[ref], names = L.skeletons[ch.skel].bones, rest = ch.rest, fps = c.f || 30, unit = ch.u;
@@ -141,15 +157,15 @@
       duration: (n) => { const c = clipFor(cid, n); return c ? c.duration : 0; },
       // Scrubbed pose for timeline-driven cutscenes: layers [[clip, seconds, weight], ...]. Looping clips
       // wrap, one-shots clamp. Weights are normalised to 1 so the blend never sags towards the bind pose.
+      // Weights are used as given: layers on the same bones should sum to 1 (cross-fades).
       pose(layers) {
-        let sum = 0; for (const l of layers) if (l && actions !== null && l[2] > 0) sum += l[2];
         for (const k in actions) { actions[k].enabled = false; actions[k].setEffectiveWeight(0); }
         for (const l of layers) {
           if (!l || !(l[2] > 0)) continue;
           const a = action(l[0]); if (!a) continue;
           const d = a.getClip().duration, loop = a.getClip().userData.loop;
           let t = l[1] || 0; t = loop ? ((t % d) + d) % d : Math.max(0, Math.min(d - 1e-4, t));
-          a.enabled = true; a.setEffectiveWeight(l[2] / (sum || 1)); a.time = t;
+          a.enabled = true; a.setEffectiveWeight(Math.min(1, l[2])); a.time = t;
         }
         mixer.update(0);
         current = null;

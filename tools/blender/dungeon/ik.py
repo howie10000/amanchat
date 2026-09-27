@@ -53,8 +53,8 @@ class Control:
 
 
 class HandIK:
-    def __init__(self, clip, side='R'):
-        self.clip, self.side = clip, side
+    def __init__(self, clip, side='R', world=False):
+        self.clip, self.side, self.world = clip, side, world
         self.t = Control(clip, 'ik.hand.' + side)
         self.p = Control(clip, 'pole.elbow.' + side)
         rig = clip.rig
@@ -126,8 +126,8 @@ def bake(clip, hands=(), feet=(), support=None, weapon_bone='grip.R', start=0, e
             R.two_bone(rig, 'thigh.' + s, 'shin.' + s, 'foot.' + s, M.translation, pole, M, pole_side=1.0)
         D = rig.pose.bones['chest'].matrix @ chest_rest.inverted()
         for h in hands:
-            T = D @ h.t.matrix()
-            pole = D @ h.p.matrix().translation
+            T = h.t.matrix() if h.world else D @ h.t.matrix()
+            pole = h.p.matrix().translation if h.world else D @ h.p.matrix().translation
             hand_m = T @ grip_rel[h.side].inverted()
             s = h.side
             R.two_bone(rig, 'upper_arm.' + s, 'forearm.' + s, 'hand.' + s, hand_m.translation, pole, hand_m, pole_side=-1.0)
