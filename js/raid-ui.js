@@ -212,7 +212,7 @@
       <p class="muted">${esc(cfg.blurb || "")}</p>
       <small>Boss: ${esc(bossName(cfg.boss))} ${archBadge(cfg.boss)}${cfg.raidMin === 1 ? " · solo raids allowed" : cfg.raidMin ? ` · needs at least ${cfg.raidMin} delvers` : ""} · item level ${cfg.gearLvl || "?"}</small>
       ${artChips(tier)}
-      ${sealedFor(tier) ? `<div class="adSeal">🔒 SEALED — your guild must clear <b>${esc(tierName(cfg.unlockAfter))}</b> before it can open a raid here.</div>` : ""}
+      ${sealedFor(tier) ? `<div class="adSeal">🔒 SEALED — your guild must clear <span class="gdEm">${esc(tierName(cfg.unlockAfter))}</span> before it can open a raid here.</div>` : ""}
     </div>
     <h3 class="section">DUNGEON</h3><div class="adChoice">`;
     for (const k of tiers) {

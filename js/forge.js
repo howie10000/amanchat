@@ -348,7 +348,7 @@
       const it = F.pick && item(F.pick);
       const okPick = it && pickFilter(F.tab)(it);
       let bench = items().some(pickFilter(F.tab))
-        ? `<p class="muted adPickHint">← Pick a piece on the left. You will see the cost and the result before anything is spent.</p>`
+        ? `<p class="muted adPickHint">Pick a piece from the list. You will see the cost and the result before anything is spent.</p>`
         : `<p class="muted adPickHint">Nothing here can use this yet.</p>`;
       if (okPick) {
         bench = F.tab === "enhance" ? enhanceBench(it) : F.tab === "reforge" ? reforgeBench(it)

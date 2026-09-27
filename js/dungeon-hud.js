@@ -53,7 +53,7 @@
   const arts=!!(artsUI&&run&&!d.bossRoom);
   if(arts&&!artsButton){
    artsButton=document.createElement('button');artsButton.id='dungeonArtsBtn';artsButton.type='button';
-   artsButton.textContent='✦ Arts F/C';artsButton.setAttribute('aria-label','Crown Arts: equip the abilities you use with F and C');artsButton.title='Crown Arts: equip the abilities you use with F and C';
+   artsButton.innerHTML='✦ Arts<small>F · C</small>';artsButton.setAttribute('aria-label','Crown Arts: equip the abilities you use with F and C');artsButton.title='Crown Arts: equip the abilities you use with F and C';
    artsButton.addEventListener('pointerdown',e=>e.stopPropagation());
    artsButton.addEventListener('click',e=>{e.stopPropagation();artsButton.blur();try{window.gameArtsUI.open();}catch(err){}});
    document.getElementById('stage').appendChild(artsButton);

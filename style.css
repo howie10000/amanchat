@@ -2891,6 +2891,13 @@ img.ii.scSil{filter:grayscale(1) brightness(.45) contrast(1.2);opacity:.75}
 /* journey: locked tags, disabled buttons that look disabled */
 .gdLockTag{display:inline-block;padding:1px 8px;border-radius:6px;font-size:11px;font-weight:700;color:#cbd5e1;background:rgba(148,163,184,.14);border:1px dashed rgba(148,163,184,.5)}
 #jnRoot .menuBtn:disabled,#jnRoot .menuBtn[disabled]{opacity:.42;filter:grayscale(.7);cursor:not-allowed;box-shadow:none}
+.gdEm{color:#fde68a;font-weight:800}
+.adForgeHero .gdHelpBtn,.scHero .gdHelpBtn{display:flex;width:max-content;margin-top:6px}
+/* the side column in a run: ?, collapse, Arts (two short lines so it clears the HUD panel) */
+#dungeonArtsBtn{width:44px;height:auto!important;padding:4px 0!important;display:grid;justify-items:center;gap:1px;line-height:1.05!important}
+#dungeonArtsBtn small{font-size:9px;letter-spacing:.08em;color:#fcd34d}
+#dungeonArtsBtn[hidden]{display:none}
+body.dungeon-clean-hud #adRunHud{left:66px;width:min(292px,calc(100% - 82px))}
 /* run HUD: labelled counters, "target" clock, help button */
 .adKey em{display:block;font-style:normal;font-size:8px;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;margin-top:1px}
 .adHud-timer small{margin-left:4px;letter-spacing:.04em}

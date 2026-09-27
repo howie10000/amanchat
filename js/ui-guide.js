@@ -106,6 +106,12 @@
     const r = anchor.getBoundingClientRect(), vw = W.innerWidth || 1280, vh = W.innerHeight || 800;
     el.style.left = "0px"; el.style.top = "0px";
     const w = el.offsetWidth || 260, h = el.offsetHeight || 80;
+    // A small anchor near a screen edge (the run HUD): sit beside it rather than on top of what it explains.
+    if (prefer === "side" && r.right + w + 20 < vw) {
+      el.style.left = Math.round(r.right + 14) + "px";
+      el.style.top = Math.round(Math.max(8, Math.min(vh - h - 8, r.top + r.height / 2 - h / 2))) + "px";
+      return;
+    }
     let x = Math.max(8, Math.min(vw - w - 8, r.left + r.width / 2 - w / 2));
     let y = prefer === "above" ? r.top - h - 10 : r.bottom + 10;
     if (y + h > vh - 8) y = r.top - h - 10;
@@ -171,7 +177,7 @@
       { sel: ".adCard .gdVerdict", title: "Upgrade or not?", text: "Every item in your pack says if it beats what you wear in that slot. Green ▲ = upgrade." },
       { sel: ".adNavForge, .scNavArts", title: "Make it stronger", text: "The Forge upgrades gear. Crown Arts are your two special abilities (F and C)." },
     ] },
-    run: { title: "In a dungeon", noFocus: true, steps: [
+    run: { title: "In a dungeon", noFocus: true, side: true, steps: [
       { sel: "#adRunHud .adHud-top", title: "Difficulty and clock", text: "DELVE is the difficulty. The clock counts up; beat the TARGET time for a bonus. It is not a time limit." },
       { sel: "#adRunHud .adHud-keys", title: "Keys you pick up", text: "Silver keys open silver chests, the gold key opens the gold chest, three vault shards open the Arcane Vault." },
       { sel: "#dungeonArtsBtn", title: "Crown Arts", text: "Your special abilities. Equip them here, then press F or C to use them (the two round buttons on a phone)." },
@@ -220,7 +226,7 @@
         ${at > 1 ? `<button type="button" class="menuBtn gray" onclick="gameGuide.stepTour(-1)">← BACK</button>` : ""}
         <button type="button" class="menuBtn gold gdNextBtn" onclick="gameGuide.stepTour(1)">${at === total ? "GOT IT" : "NEXT →"}</button></div>`;
     el.hidden = false;
-    const go = () => { if (tourState && n) place(el, n); else { el.style.left = "50%"; el.style.top = "20%"; } };
+    const go = () => { if (tourState && n) place(el, n, T.side ? "side" : undefined); else { el.style.left = Math.max(8, ((W.innerWidth || 800) - (el.offsetWidth || 300)) / 2) + "px"; el.style.top = "20%"; } };
     go(); setTimeout(go, 350);   // after the smooth scroll settles
     const b = !T.noFocus && el.querySelector(".gdNextBtn"); if (b && b.focus) try { b.focus({ preventScroll: true }); } catch (e) {}
   }
