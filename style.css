@@ -2794,7 +2794,7 @@ img.ii.scSil{filter:grayscale(1) brightness(.45) contrast(1.2);opacity:.75}
    violet = wait or info, green = done / upgrade, grey dashed = locked. */
 .gdTerm{cursor:help;border-bottom:1px dotted currentColor}
 .gdTerm:focus-visible{outline:2px solid #fde68a;outline-offset:2px;border-radius:3px}
-.adStats .gdTerm,.adDelveStats .gdTerm,.scArtChips .gdTerm,.adLoot .gdTerm,.adWallet .gdTerm{display:inline;min-width:0;padding:0;background:none;border:0;border-bottom:1px dotted currentColor;border-radius:0;font:inherit;color:inherit;letter-spacing:inherit}
+.adStats .gdTerm,.adDelveStats .gdTerm,.scArtChips .gdTerm,.adLoot .gdTerm{display:inline;min-width:0;padding:0;background:none;border:0;border-bottom:1px dotted currentColor;border-radius:0;font:inherit;color:inherit;letter-spacing:inherit}
 .gdPop{position:fixed;z-index:10050;max-width:min(300px,calc(100vw - 16px));padding:9px 12px;border-radius:10px;pointer-events:none;box-sizing:border-box;
   background:linear-gradient(160deg,#1e1b3a,#0b0a16);border:1px solid rgba(253,230,138,.55);box-shadow:0 10px 30px rgba(0,0,0,.6);
   color:#e2e8f0;font:13px/1.4 system-ui,sans-serif;display:grid;gap:3px;text-align:left;letter-spacing:0;text-transform:none}
@@ -2873,6 +2873,31 @@ img.ii.scSil{filter:grayscale(1) brightness(.45) contrast(1.2);opacity:.75}
 .gdRankLine{display:flex;align-items:center;gap:6px;font-size:11px;color:#fde68a}
 .gdNotYet{font-size:11px;color:#94a3b8}
 .scSlot:focus-visible{outline:2px solid #fde68a;outline-offset:2px}
+/* forge / armory / wallet */
+[data-gd-term].adMat{cursor:help}
+[data-gd-term].adMat:focus-visible{outline:2px solid #fde68a;outline-offset:2px}
+.gdTabHelp{margin:6px 0 10px;padding:7px 10px;border-radius:9px;background:rgba(139,92,246,.1);border-left:3px solid #a78bfa;font-size:12px;color:#e2e8f0}
+.gdTabHelp b{color:#c4b5fd;letter-spacing:.06em}
+.gdEmptyNote{margin:6px 0 10px}
+.adForgeHero .gdHelpBtn,.scHero .gdHelpBtn{justify-self:start;align-self:flex-start;width:max-content}
+.gdVerdict{display:inline-block;margin-right:4px;padding:1px 7px;border-radius:6px;font-size:10px;font-weight:900;letter-spacing:.08em;vertical-align:middle}
+.gdVerdict.up{background:rgba(74,222,128,.18);color:#86efac;border:1px solid rgba(74,222,128,.6)}
+.gdVerdict.dn{background:rgba(248,113,113,.12);color:#fca5a5;border:1px solid rgba(248,113,113,.5)}
+.gdVerdict.eq{background:rgba(148,163,184,.12);color:#cbd5e1;border:1px solid rgba(148,163,184,.4)}
+.adActs .gdBtnTxt{font-size:10px;margin-left:3px;letter-spacing:.06em}
+.gdSr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.menuBtn.gdLockedBtn{opacity:.6;border-style:dashed;filter:grayscale(.5)}
+.menuBtn.gdLockedBtn.gold{opacity:.85}
+/* journey: locked tags, disabled buttons that look disabled */
+.gdLockTag{display:inline-block;padding:1px 8px;border-radius:6px;font-size:11px;font-weight:700;color:#cbd5e1;background:rgba(148,163,184,.14);border:1px dashed rgba(148,163,184,.5)}
+#jnRoot .menuBtn:disabled,#jnRoot .menuBtn[disabled]{opacity:.42;filter:grayscale(.7);cursor:not-allowed;box-shadow:none}
+/* run HUD: labelled counters, "target" clock, help button */
+.adKey em{display:block;font-style:normal;font-size:8px;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;margin-top:1px}
+.adHud-timer small{margin-left:4px;letter-spacing:.04em}
+#dungeonHelpBtn{position:absolute;z-index:25;width:30px;height:30px;padding:0;border-radius:50%;border:1px solid rgba(253,230,138,.7);background:#11151fee;
+  color:#fde68a;font:900 15px system-ui,sans-serif;cursor:pointer;left:14px;top:calc(50% - 54px);transform:translateY(-50%)}
+#dungeonHelpBtn[hidden]{display:none}
+#dungeonHelpBtn:hover,#dungeonHelpBtn:focus-visible{background:rgba(253,230,138,.2);outline:none;box-shadow:0 0 0 2px rgba(253,230,138,.5)}
 /* keyboard focus you can see on the screens these updates added */
 #menuBody .menuBtn:focus-visible,#menuBody .adFTab:focus-visible,#menuBody .jnTab:focus-visible,#menuBody .scArt:focus-visible,#menuBody .scSlot:focus-visible,#menuBody select:focus-visible,#menuBody .adPick:focus-visible{outline:2px solid #fde68a;outline-offset:2px}
 @media (prefers-reduced-motion:reduce){.gdSpot{animation:none}}

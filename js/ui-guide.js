@@ -167,11 +167,11 @@
       { sel: ".adForgePick", title: "Pick a piece", text: "Choose an item on the left. The right side shows the cost and what will change before you spend anything." },
     ] },
     armory: { title: "The Armory", steps: [
-      { sel: ".adStatRow, .adArmoryStats", title: "Your totals", text: "Attack, defence and health from everything you wear. They apply in every dungeon." },
+      { sel: ".statRow", title: "Your totals", text: "Attack, defence and health from everything you wear. They apply in every dungeon." },
       { sel: ".adCard .gdVerdict", title: "Upgrade or not?", text: "Every item in your pack says if it beats what you wear in that slot. Green ▲ = upgrade." },
       { sel: ".adNavForge, .scNavArts", title: "Make it stronger", text: "The Forge upgrades gear. Crown Arts are your two special abilities (F and C)." },
     ] },
-    run: { title: "In a dungeon", steps: [
+    run: { title: "In a dungeon", noFocus: true, steps: [
       { sel: "#adRunHud .adHud-top", title: "Difficulty and clock", text: "DELVE is the difficulty. The clock counts up; beat the TARGET time for a bonus. It is not a time limit." },
       { sel: "#adRunHud .adHud-keys", title: "Keys you pick up", text: "Silver keys open silver chests, the gold key opens the gold chest, three vault shards open the Arcane Vault." },
       { sel: "#dungeonArtsBtn", title: "Crown Arts", text: "Your special abilities. Equip them here, then press F or C to use them (the two round buttons on a phone)." },
@@ -222,7 +222,7 @@
     el.hidden = false;
     const go = () => { if (tourState && n) place(el, n); else { el.style.left = "50%"; el.style.top = "20%"; } };
     go(); setTimeout(go, 350);   // after the smooth scroll settles
-    const b = el.querySelector(".gdNextBtn"); if (b && b.focus) try { b.focus({ preventScroll: true }); } catch (e) {}
+    const b = !T.noFocus && el.querySelector(".gdNextBtn"); if (b && b.focus) try { b.focus({ preventScroll: true }); } catch (e) {}
   }
   function tour(id) {
     const d = doc(), T = TOURS[id];

@@ -192,6 +192,15 @@
     const ks = (g.research && g.research.keystone) | 0;
     try { return D.guildMaxDelve(rec, ks) | 0; } catch (e) { return 0; }
   }
+  // Is `tier` sealed to the player's guild? (false when unknown: the server has the final say.)
+  function sealedFor(tier) {
+    try {
+      const g = W.gameGuild && W.gameGuild.myGuild ? W.gameGuild.myGuild() : null;
+      const cfg = (ECONg().GUILD_DUNGEONS || {})[tier] || {};
+      if (!g || !cfg.unlockAfter || !(W.DEPTHS && W.DEPTHS.tierUnlocked)) return false;
+      return !W.DEPTHS.tierUnlocked(g.depths || { tiers: {} }, tier);
+    } catch (e) { return false; }
+  }
   function renderCreate(tier) {
     const tiers = raidableTiers();
     if (!tier || tiers.indexOf(tier) < 0) tier = tiers.indexOf("raid_nexus") >= 0 ? "raid_nexus" : tiers[0];
@@ -203,22 +212,25 @@
       <p class="muted">${esc(cfg.blurb || "")}</p>
       <small>Boss: ${esc(bossName(cfg.boss))} ${archBadge(cfg.boss)}${cfg.raidMin === 1 ? " · solo raids allowed" : cfg.raidMin ? ` · needs at least ${cfg.raidMin} delvers` : ""} · item level ${cfg.gearLvl || "?"}</small>
       ${artChips(tier)}
+      ${sealedFor(tier) ? `<div class="adSeal">🔒 SEALED — your guild must clear <b>${esc(tierName(cfg.unlockAfter))}</b> before it can open a raid here.</div>` : ""}
     </div>
     <h3 class="section">DUNGEON</h3><div class="adChoice">`;
     for (const k of tiers) {
-      html += `<button class="menuBtn${k === tier ? " gold" : ""}" onclick="gameRaidUI.openCreate(${js(k)})">${esc(tierName(k))}</button>`;
+      const locked = sealedFor(k);
+      html += `<button class="menuBtn${k === tier ? " gold" : ""}${locked ? " gdLockedBtn" : ""}" onclick="gameRaidUI.openCreate(${js(k)})"${locked ? ` title="Sealed to your guild" aria-label="${esc(tierName(k))} (sealed to your guild)"` : ""}>${locked ? "🔒 " : ""}${esc(tierName(k))}</button>`;
     }
     html += `</div>
     <h3 class="section">DELVE LEVEL</h3>
-    <div class="formRow"><input id="rcDelve" class="menuInput" type="number" min="0" max="${max}" value="0" />
-      <small class="muted">0 – ${max} (the leader's guild ladder for this dungeon)</small></div>
+    <div class="formRow"><label class="gdSr" for="rcDelve">Delve level</label><input id="rcDelve" class="menuInput" type="number" min="0" max="${max}" value="0" />
+      <small class="muted">0 = normal difficulty. ${max ? `You can pick up to ${max} (the highest your guild has unlocked here).` : "Your guild unlocks higher levels by beating this dungeon's target time."}</small></div>
     <h3 class="section">WHO MAY JOIN</h3><div class="adChoice">`;
     for (const k of Object.keys(PRIVACY)) {
       html += `<label class="adRadio"><input type="radio" name="rcPriv" value="${k}"${k === "allies" ? " checked" : ""}/> <b>${PRIVACY[k].label}</b><br/><small class="muted">${PRIVACY[k].desc}</small></label>`;
     }
     html += `</div>
     <h3 class="section">MINIMUM COMBAT MASTERY</h3>
-    <div class="formRow"><input id="rcMin" class="menuInput" type="number" min="0" max="99" value="0" /></div>
+    <div class="formRow"><label class="gdSr" for="rcMin">Minimum combat mastery</label><input id="rcMin" class="menuInput" type="number" min="0" max="99" value="0" />
+      <small class="muted">Players below this Combat Mastery level can't join. 0 = anyone.</small></div>
     <div class="flexRow">
       <button class="menuBtn gold" onclick="gameRaidUI.create(${js(tier)})">OPEN THE LOBBY</button>
       <button class="menuBtn" onclick="gameRaidUI.openBoard()">BACK</button>
