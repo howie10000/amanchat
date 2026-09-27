@@ -19,6 +19,8 @@ const P=Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
 function load(src){return new Promise((ok,no)=>{const s=document.createElement('script');s.src=src+'?v='+Date.now();s.onload=ok;s.onerror=no;document.head.appendChild(s);});}
 (async()=>{
   await load('../../js/dungeon-models.js');await load('../../js/dungeon-skin.js');
+  // the pack is split per dungeon: pull every part so the roster is complete for review
+  for(const part of new Set(Object.values(DungeonModels.parts||{})))await load('../../js/dungeon-models-'+part+'.js');
   const W=innerWidth,H=innerHeight;
   const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setSize(W,H);renderer.setPixelRatio(Math.min(2,devicePixelRatio));
   renderer.outputEncoding=THREE.LinearEncoding;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.shadowMap.enabled=true;
@@ -52,9 +54,15 @@ function load(src){return new Promise((ok,no)=>{const s=document.createElement('
   let drag=null;addEventListener('pointerdown',e=>drag={x:e.clientX,y:e.clientY});addEventListener('pointerup',()=>drag=null);
   addEventListener('pointermove',e=>{if(!drag)return;yaw-=(e.clientX-drag.x)*.4;pitch=Math.max(-10,Math.min(70,pitch+(e.clientY-drag.y)*.3));drag={x:e.clientX,y:e.clientY};});
   addEventListener('wheel',e=>{dist*=e.deltaY>0?1.1:.9;});
-  let last=performance.now();
+  // frame-time readout: average / p95 / worst over the last 240 frames, draw calls and triangles per frame
+  const perf={frames:[],last:0,tick(now){if(this.last){this.frames.push(now-this.last);if(this.frames.length>240)this.frames.shift();}this.last=now;},
+    stats(){const a=this.frames;if(!a.length)return null;const s=a.slice().sort((x,y)=>x-y),avg=a.reduce((x,y)=>x+y,0)/a.length;return {avg,p95:s[Math.floor(s.length*.95)],max:s[s.length-1],fps:1000/avg};}};
+  window.__perf=()=>Object.assign(perf.stats()||{},{calls:renderer.info.render.calls,tris:renderer.info.render.triangles});
+  let last=performance.now(),perfLine='';
   function frame(now){
-    const dt=Math.min(.05,(now-last)/1000);last=now;
+    const dt=Math.min(.05,(now-last)/1000);last=now;perf.tick(now);
+    const ps=perf.stats();if(ps&&(now|0)%8<1){perfLine=`\nframe ${ps.avg.toFixed(2)} ms (${ps.fps.toFixed(0)} fps) · p95 ${ps.p95.toFixed(1)} · worst ${ps.max.toFixed(1)} ms · draw calls ${renderer.info.render.calls} · tris ${(renderer.info.render.triangles/1000).toFixed(1)}k`;
+      const info=document.getElementById('info');info.textContent=info.textContent.split('\n')[0]+perfLine;}
     if(P.t!=null)actor.pose([[clip,+P.t,1]]);else actor.update(dt);
     const a=yaw*Math.PI/180,b=pitch*Math.PI/180,h=actor.height*.5;
     cam.position.set(Math.sin(a)*Math.cos(b)*dist,h+Math.sin(b)*dist,Math.cos(a)*Math.cos(b)*dist);cam.lookAt(0,h,0);

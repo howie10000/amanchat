@@ -40,6 +40,8 @@ pack_path = (out_dir / 'js' / 'dungeon-models.js') if out_dir == ROOT else (out_
 pack_path.parent.mkdir(parents=True, exist_ok=True)
 stats = Bld.export_pack(result, pack_path)
 print('PACK', pack_path, stats['bytes'], 'bytes')
+for name, n in stats['files'].items():
+    print('  FILE %-34s %8d bytes' % (name, n))
 for k, v in stats['chars'].items():
     print('  %-18s tris %6d verts %6d bones %d clips %d attach %d' % (k, v['tris'], v['verts'], v['bones'], v['clips'], v['attach']))
 print('  weapons', stats['weapons'])

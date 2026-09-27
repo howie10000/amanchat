@@ -3457,7 +3457,7 @@
     if (SKIN.promise) { if (id) SKIN.promise.then((ok) => { if (ok) loadPart(id); }); return SKIN.promise; }
     if (!SCRIPT_URL || typeof document === "undefined" || !document.head || typeof URL === "undefined") return Promise.resolve(false);
     const one = (name) => new Promise((ok, no) => {
-      const el = document.createElement("script"); el.src = new URL(name + "?v=skin-1", SCRIPT_URL).href; el.async = true;
+      const el = document.createElement("script"); el.src = new URL(name + "?v=skin-2", SCRIPT_URL).href; el.async = true;
       el.onload = ok; el.onerror = () => { el.remove(); no(new Error("could not load " + name)); }; document.head.appendChild(el);
     });
     SKIN.state = "loading";
@@ -3484,6 +3484,11 @@
     twin_monarchs: { actors: [{ cid: "sol", h: 14.5, x: -5.5, hover: 1, eye: 0xffffff }, { cid: "umbra", h: 14.5, x: 5.5, hover: 1, delay: 0.9, eye: 0xf5d0fe }], special: "cast" },
     sundered_king: { actors: [{ cid: "sundered_king", h: 17, eye: 0xfde047 }], special: "swing", colossus: { cid: "colossus", h: 34, z: -13 } },
     gorehorn: { actors: [{ cid: "gorehorn", h: 11.5, eye: 0xfbbf24 }], special: ["charge", "impact"] },
+    // the older majors, rebuilt in Blender; their built-in entrances are procedural-only, so the
+    // skinned versions go through awakeCrown (or their js/cutscenes/legacy.js direction)
+    warden: { actors: [{ cid: "warden", h: 16, eye: 0x67e8f9 }], special: "swing", legacy: true },
+    smith: { actors: [{ cid: "smith", h: 17, eye: 0xffb347 }], special: "smash", legacy: true },
+    tyrant: { actors: [{ cid: "tyrant", h: 15, hover: 1, eye: 0xd8b4fe }], special: "cast", legacy: true },
   };
   function skinKey(id) {
     if (!skinReady()) return null;
@@ -3759,10 +3764,14 @@
   }
   function rigBounds(rig){
     const home=new THREE.Vector3(0,0,ROOM.bossZ);
+    // Varkaal is authored with its own flipped, offset shell and animated by root flight paths: its
+    // body box cannot be read off the meshes, so its shots are kept clear by construction instead
+    if(rig.id==="dragon"){rig.bounds=()=>[];return;}
+    const skip=new Set();
     const measure=(obj)=>{
       const box=new THREE.Box3(),tmp=new THREE.Box3();
       obj.updateMatrixWorld(true);
-      obj.traverse(o=>{ if(!o.isMesh||!o.geometry||o.material&&o.material.transparent&&!o.isSkinnedMesh)return;
+      obj.traverse(o=>{ if(!o.isMesh||!o.geometry||skip.has(o)||o.material&&o.material.transparent&&!o.isSkinnedMesh)return;
         if(!o.geometry.boundingBox)o.geometry.computeBoundingBox(); tmp.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld); if(isFinite(tmp.min.x))box.union(tmp); });
       if(box.isEmpty())box.set(new THREE.Vector3(-3,0,ROOM.bossZ-3),new THREE.Vector3(3,12,ROOM.bossZ+3));
       // fatten a little: the rest pose is narrower than a swing
@@ -4082,7 +4091,11 @@
     let i=0;while(i<keys.length-2&&k>keys[i+1][0])i++;
     const u=clamp01((k-keys[i][0])/Math.max(.0001,keys[i+1][0]-keys[i][0]));
     const v=axis=>cameraValue(keys,i,u,axis);
-    placeCamera(v(1),v(2),v(3),v(4),v(5),v(6),v(7),shake);
+    // the built-in shots are audited too: skinned rigs by their bone hull, every rig against the
+    // pillars and the themed dressing (procedural bodies are judged by their authored keys)
+    const DC=window.DungeonCutscenes,pos=[v(1),v(2),v(3)],look=[v(4),v(5),v(6)];
+    if(DC&&DC.clear&&rig&&rig.bounds)DC.clear(pos,look,(rig.skinned?rig.bounds():[]).concat(rig.id==="dragon"?[]:staticBounds()),ROOM,1.2);
+    placeCamera(pos[0],pos[1],pos[2],look[0],look[1],look[2],v(7),shake);
   }
   // Put the camera somewhere and look at something. The one place every
   // cutscene (built-in or js/cutscenes/*) sets the lens, so shake, the gate
@@ -4980,9 +4993,11 @@
 
   function poseEntrance(p) {
     const shake = poseArrival(p);
-    const awake = AWAKE[p.id] || AWAKE.tyrant;
+    // a skinned rig has none of the procedural parts the old entrances animate (chains, assembly blocks, the
+    // mantle): it rises the way the Crown cast does instead
+    const awake = (rig.skinned && SKINNED[skinKey(p.id) || ""] && SKINNED[skinKey(p.id)].legacy) ? awakeCrown : (AWAKE[p.id] || AWAKE.tyrant);
     const extra = awake(p) || 0;
-    flyCamera(AWAKE_CAM[p.id] || CAM_TYRANT, p.k, Math.max(shake, extra));
+    flyCamera((awake === awakeCrown ? CAM_CROWN : AWAKE_CAM[p.id]) || CAM_TYRANT, p.k, Math.max(shake, extra));
   }
 
   // ---------------------------------------------------------------
@@ -5336,7 +5351,7 @@
     const R=room.userData;
     rig.root.rotation.z=0;rig.root.scale.setScalar(mini?.62:1);
     // Each silhouette dies with its own weight. Corpses do not shrink away.
-    if(p.id==='warden'){
+    if(p.id==='warden'&&!rig.skinned){
       rig.root.position.y=-9*collapse;
       if(rig.chains)for(const chain of rig.chains)chain.g.rotation.z=chain.sx*.4*collapse;
       fx.flood.visible=true;fx.flood.position.y=.3;fx.flood.material.opacity=.68;
@@ -5347,7 +5362,7 @@
       for(const l of rig.limbs){l.arm.rotation.z=-l.sx*collapse*.8;l.arm.rotation.y=l.sx*collapse*1.2;}
       if(D.crown){D.crown.visible=true;D.crown.position.y=2.1-3.2*collapse;D.crown.rotation.z=.8*collapse;}
       R.ceil.position.y=150;R.backWall.position.y=-40;for(const w of R.sideWalls)w.position.y=-40;fx.sky.visible=true;scene.fog.density=.008;
-    }else if(p.id==='tyrant'||p.id==='tempest'){
+    }else if((p.id==='tyrant'&&!rig.skinned)||p.id==='tempest'){
       rig.root.position.y=-5*collapse;rig.root.rotation.z=.3*collapse;
       if(Array.isArray(rig.crown))for(const c of rig.crown){c.position.y=21-18*collapse;c.rotation.z=collapse*2;}
       if(rig.stormRings)for(let i=0;i<rig.stormRings.length;i++){const r=rig.stormRings[i];r.rotation.y=p.t/1000+i;r.position.y=7+i*2-collapse*(5+i*2);}
@@ -5399,7 +5414,7 @@
         // the camera: audited against the rig's boxes, the floor and the walls before it is placed
         place(pos, look, fov, shake) {
           const DC = window.DungeonCutscenes, pp = pos.slice(), ll = look.slice();
-          if (DC && rig && rig.bounds) DC.clear(pp, ll, rig.bounds().concat(staticBounds()), ROOM, cx.margin == null ? 1.6 : cx.margin);
+          if (DC && rig && rig.bounds) DC.clear(pp, ll, rig.bounds().concat(cx.id === "dragon" ? [] : staticBounds()), ROOM, cx.margin == null ? 1.6 : cx.margin);
           placeCamera(pp[0], pp[1], pp[2], ll[0], ll[1], ll[2], fov || 52, shake || 0);
           return pp;
         },
@@ -5542,5 +5557,5 @@
   window.DungeonGL = { render, createModel, warmup, available: () => !dead, _headless: headless, BOSS_THEME,
     skins: { load: loadSkins, ready: skinReady, state: () => SKIN.state, skinned: (id) => !!skinKey(id) },
     // js/cutscenes: which directions have been retired after throwing, and the live context (tests, review pages)
-    director: { failed: () => Object.keys(DIR.failed), ctx: () => DIR.ctx, bounds: () => (rig && rig.bounds ? rig.bounds().concat(staticBounds()) : []), renderer: () => renderer } };
+    director: { failed: () => Object.keys(DIR.failed), ctx: () => DIR.ctx, bounds: () => (rig && rig.bounds ? rig.bounds().concat(rig.id === "dragon" ? [] : staticBounds()) : []), renderer: () => renderer } };
 })();

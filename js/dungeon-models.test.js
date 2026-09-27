@@ -10,9 +10,19 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), vm = requ
 const THREE = require('./vendor/three.min.js');
 const ECON = require('./shared/economy.js');
 
+const zlib = require('node:zlib'), path = require('node:path');
 const libPath = require.resolve('./dungeon-models.js');
-const bytes = fs.statSync(libPath).size;
-assert(bytes < 3.0e6, 'library stays under 3 MB before compression (' + bytes + ')');
+// the pack is split per dungeon: the core plus js/dungeon-models-<part>.js, merged into the core when loaded
+const PART_FILES = fs.readdirSync(__dirname).filter((f) => /^dungeon-models-[a-z_]+\.js$/.test(f)).sort();
+assert(PART_FILES.length >= 7, 'one pack part per dungeon (' + PART_FILES.join(',') + ')');
+const sizes = {};
+for (const f of ['dungeon-models.js'].concat(PART_FILES)) {
+  const buf = fs.readFileSync(path.join(__dirname, f));
+  sizes[f] = { raw: buf.length, gzip: zlib.gzipSync(buf, { level: 9 }).length, brotli: zlib.brotliCompressSync(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } }).length };
+}
+const bytes = Object.values(sizes).reduce((a, s) => a + s.raw, 0);
+assert(sizes['dungeon-models.js'].raw < 1.0e6, 'core pack stays under 1 MB raw (' + sizes['dungeon-models.js'].raw + ')');
+for (const f of PART_FILES) assert(sizes[f].gzip < 300e3, f + ' stays under 300 KB gzipped (' + sizes[f].gzip + ')');
 
 const noop = () => {};
 function ctx2d() { return new Proxy({}, { get: (o, k) => (k === 'measureText' ? () => ({ width: 10 }) : k === 'getImageData' ? () => ({ data: new Uint8ClampedArray(4) }) : k === 'createLinearGradient' || k === 'createRadialGradient' ? () => ({ addColorStop: noop }) : noop), set: () => true }); }
@@ -21,7 +31,7 @@ function world(withLib) {
   const w = { THREE, Math, console, JSON, Object, Array, Number, String, Set, Map, Float32Array, Int8Array, Int16Array, Uint8Array, Uint16Array, Uint32Array, Int32Array, Error, Promise,
     atob, Buffer, document: { createElement: canvasStub }, ECON, performance: { now: () => 0 } };
   w.window = w; w.globalThis = w; vm.createContext(w);
-  if (withLib) for (const f of ['./dungeon-models.js', './dungeon-skin.js']) vm.runInContext(fs.readFileSync(require.resolve(f), 'utf8'), w, { filename: f });
+  if (withLib) for (const f of ['./dungeon-models.js'].concat(PART_FILES.map((p) => './' + p), ['./dungeon-skin.js'])) vm.runInContext(fs.readFileSync(require.resolve(f), 'utf8'), w, { filename: f });
   return w;
 }
 
@@ -29,8 +39,11 @@ function world(withLib) {
 const W = world(true);
 const L = W.DungeonModels, SK = W.DungeonSkin;
 assert(SK.ready(), 'runtime sees the library');
-const CHARS = ['hero', 'kael', 'kael_crownbound', 'pit_champion', 'veiled_assassin', 'sol', 'umbra', 'sundered_king', 'colossus', 'briar_matron', 'gorehorn'];
+const CHARS = ['hero', 'kael', 'kael_crownbound', 'pit_champion', 'veiled_assassin', 'sol', 'umbra', 'sundered_king', 'colossus', 'briar_matron', 'gorehorn', 'warden', 'smith', 'tyrant'];
 for (const c of CHARS) assert(SK.has(c), c + ' is in the library');
+for (const c of CHARS) if (c !== 'hero') assert(typeof L.parts[c] === 'string' && fs.existsSync(path.join(__dirname, 'dungeon-models-' + L.parts[c] + '.js')), c + ' is in a pack part');
+assert(L.parts.hero == null, 'the hero rides in the core');
+for (const p of new Set(Object.values(L.parts))) assert(L.loaded && L.loaded[p], 'part ' + p + ' merged into the core');
 const KINDS = ['sword', 'mace', 'spear', 'dagger', 'axe', 'scythe', 'gun', 'boomerang', 'blowdart', 'crossbow'];
 assert.deepEqual(SK.weaponKinds().slice().sort(), KINDS.slice().sort(), 'all ten weapon kinds have a mesh');
 const NEED = {
@@ -44,6 +57,9 @@ const NEED = {
   colossus: ['idle', 'rise'],
   briar_matron: ['idle', 'walk', 'summon', 'entrance', 'hit', 'death'],
   gorehorn: ['idle', 'walk', 'charge', 'entrance', 'impact', 'hit', 'death'],
+  warden: ['idle', 'walk', 'entrance', 'swing', 'hit', 'stagger', 'death'],
+  smith: ['idle', 'walk', 'entrance', 'smash', 'hit', 'death'],
+  tyrant: ['idle', 'walk', 'entrance', 'cast', 'hit', 'death'],
 };
 let tris = 0, clipsChecked = 0;
 for (const cid of CHARS) {
@@ -65,7 +81,8 @@ for (const cid of CHARS) {
   const j = Buffer.from(ch.mesh.j, 'base64');
   for (const b of j) assert(b < sk.bones.length, cid + ' skin index in range');
 }
-assert(tris < 90000, 'whole roster under 90k triangles (' + tris + ')');
+assert(tris < 130000, 'whole roster under 130k triangles (' + tris + ')');
+for (const cid of CHARS) { const ch = L.characters[cid]; for (const a of ch.attach || []) assert(L.skeletons[ch.skel].bones.includes(a.bone), cid + ' attachment ' + a.name + ' rides a real bone'); }
 
 // ------------------------------------------------------------------ runtime: every clip poses to finite transforms
 const V = new THREE.Vector3();
@@ -162,14 +179,51 @@ heroes = []; G.scene().traverse((o) => { if (o.name === 'skin:hero' && o.visible
 assert.equal(heroes.length, 2, 'two skinned party heroes');
 let crossbow = false; heroes[1].traverse((o) => { if (o.name === 'weapon:crossbow') crossbow = true; });
 assert(crossbow, 'second hero carries its crossbow');
-// older bosses keep their procedural builders
-G.pose({ mode: 'entrance', id: 'warden', k: 0.5, t: 100, sceneId: 'w', color: '#555', accent: '#fff', people: [] });
-assert(!G.rig().skinned, 'warden stays procedural');
+// the rebuilt legacy majors are skinned too, with their weapons on the grip bones; the Arcane majors stay procedural
+for (const id of ['warden', 'smith', 'tyrant']) {
+  assert(W3.DungeonGL.skins.skinned(id), id + ' uses the Blender rig');
+  poseAll(G, id, 'entrance', false); poseAll(G, id, 'victory', false); poseAll(G, id, 'phase2', false, { phase: 2 });
+  assert(G.rig().skinned, id + ' rig is skinned');
+  let weapon = 0; G.rig().root.traverse((o) => { if (o.parent && /^grip\./.test(o.parent.name) && o.isMesh) weapon++; });
+  assert(weapon >= 1, id + ' carries its weapon in a fist');
+}
+G.pose({ mode: 'entrance', id: 'astraea', k: 0.5, t: 100, sceneId: 'w', color: '#555', accent: '#fff', people: [] });
+assert(!G.rig().skinned, 'astraea stays procedural');
 
 // ------------------------------------------------------------------ fallback: no library -> procedural rigs everywhere
+// ------------------------------------------------------------------ the film direction (js/cutscenes): every frame poses, the lens stays out of the geometry
+const W5 = world(true);
+for (const f of ['./cutscenes/director.js', './dungeon3d.js', './cutscenes/kael.js', './cutscenes/gorehorn.js', './cutscenes/twin_monarchs.js', './cutscenes/sundered_king.js', './cutscenes/legacy.js'])
+  vm.runInContext(fs.readFileSync(require.resolve(f), 'utf8'), W5, { filename: f });
+const DC = W5.DungeonCutscenes, G5 = W5.DungeonGL._headless();
+assert.equal(DC.warp(0, [[0.3, 0.5, 0.25]]), 0); assert(Math.abs(DC.warp(1, [[0.3, 0.5, 0.25]]) - 1) < 1e-9, 'warp keeps the ends');
+{ let last = -1; for (let i = 0; i <= 100; i++) { const v = DC.warp(i / 100, [[0.3, 0.5, 0.25], [0.7, 0.8, 0]]); assert(v >= last - 1e-12, 'warp is monotone'); last = v; } }
+{ const p = [0, 3, -30]; DC.clear(p, [0, 5, -30], [{ min: [-2, 0, -32], max: [2, 10, -28] }], { halfW: 17, backZ: -44, doorZ: 8, wallH: 24 }, 1.5); assert(!DC.inside(p, [{ min: [-2, 0, -32], max: [2, 10, -28] }], 1.4), 'clear pushes the lens out of a box'); }
+const DIRECTED = ['kael', 'gorehorn', 'twin_monarchs', 'sundered_king', 'warden', 'smith', 'tyrant', 'dragon'];
+let directedFrames = 0;
+for (const id of DIRECTED) {
+  assert(DC.get(id), id + ' has film direction');
+  const def = ECON.GUILD_BOSSES[id];
+  for (const mode of ['entrance', 'phase2', 'victory']) {
+    let clock = 5000;
+    for (let i = 0; i <= 40; i++) {
+      const k = i / 40; clock += 16;
+      G5.pose({ mode, id, k, t: clock, sceneId: 'dir' + mode + id, mini: false, phase: 2, color: def.color, accent: def.accent, people: [{ appearance: null }, { appearance: null, weapon: 'axe' }] });
+      finiteTree(G5.rig().root, `directed ${mode} ${id} k=${k}`);
+      const c = G5.camera(); const cam = [c.position.x, c.position.y, c.position.z];
+      for (const v of cam) assert(Number.isFinite(v), 'camera finite');
+      assert(!DC.inside(cam, W5.DungeonGL.director.bounds(), 0), `${id}/${mode} camera inside geometry at k=${k} (${cam.map((v) => v.toFixed(1))})`);
+      assert(cam[1] > 0.5 && Math.abs(cam[0]) < 17 && cam[2] > -44 && cam[2] < 24, `${id}/${mode} camera inside the room at k=${k}`);
+      directedFrames++;
+    }
+  }
+}
+assert.deepEqual(W5.DungeonGL.director.failed(), [], 'no film direction threw');
+
 const W4 = world(false);
 vm.runInContext(fs.readFileSync(require.resolve('./dungeon3d.js'), 'utf8'), W4, { filename: 'dungeon3d.js' });
 const G4 = W4.DungeonGL._headless();
 for (const id of CROWN) { poseAll(G4, id, 'entrance', ECON.GUILD_BOSSES[id].tier === 'mini'); assert(!G4.rig().skinned, id + ' falls back to the procedural rig'); }
 
-console.log(`PASS dungeon models: ${CHARS.length} characters, ${KINDS.length} weapons, ${Object.keys(L.clips).length} clips (${clipsChecked} poses), ${tris} triangles, ${(bytes / 1e6).toFixed(2)} MB`);
+for (const [f, s] of Object.entries(sizes)) console.log(`  ${f.padEnd(32)} raw ${String(s.raw).padStart(8)}  gzip ${String(s.gzip).padStart(7)}  brotli ${String(s.brotli).padStart(7)}`);
+console.log(`PASS dungeon models: ${CHARS.length} characters, ${KINDS.length} weapons, ${Object.keys(L.clips).length} clips (${clipsChecked} poses), ${tris} triangles, ${(bytes / 1e6).toFixed(2)} MB raw in ${1 + PART_FILES.length} files, ${directedFrames} directed frames audited`);
