@@ -104,6 +104,65 @@ rebuilding both together restores the shared file.
   visible objects — in idle-time slices of 3-10 ms, then draws one throw-away frame (texture uploads, shadow
   and post programs). It stops if a cutscene starts.
 
-## 4. Measurements
+* Shader warm-up detail: a compile blocks the thread that asks for it (three reads the program's uniforms
+  straight after linking; one PBR program with the room's lights is 0.2–0.7 s on ANGLE/D3D11, and
+  `KHR_parallel_shader_compile` does not help because of that read). So `warmSteps` first captures the GLSL three
+  would build (a dry compile with linking stubbed, ~20 ms), links it in `js/cutscenes/shader-warm-worker.js`
+  (its own OffscreenCanvas context, off the main thread), then compiles for real: the GPU process's program cache
+  turns that into a hit. Experiment: 1.3 s main-thread compile → 55 ms.
 
-See §5 of this file (filled in by the bench runs, `tools/cutscene-bench/run.cjs`).
+## 4. Measurements (this machine — honest caveats first)
+
+The dev box is **not** the target: Intel Core i5-9600K + **NVIDIA GTX 1660 SUPER**, Chrome 153 headless
+(`--use-angle=d3d11`). There is no Core Ultra 5 here. As a pessimistic stand-in for an iGPU I also ran
+**SwiftShader** (CPU software rendering) — far slower than any Intel Arc/Xe iGPU, so treat its absolute numbers
+as a stress test and its *ratios* as the signal. Network: emulated 20 Mbit/s, 40 ms, cache disabled.
+Bench: `node tools/cutscene-bench/run.cjs --tree base=<old tree> --tree cur=. [--warm] [--gpu swiftshader] --net 20`.
+Every frame is synchronised with a 1 px `readPixels`, so frame times include GPU work.
+"Cold" = the cutscene starts with nothing downloaded; "warm" = the in-game path (old: the town warm-up had
+already pulled the whole pack and compiled the room; new: `DungeonGL.prefetch` during the floor before).
+
+### Download (bytes a player fetches for one mini cutscene, first visit)
+
+| | raw | gzip -9 | brotli 11 |
+|---|---|---|---|
+| before: `dungeon-models.js` + `dungeon-skin.js` (any cutscene) | 2,242,618 | 1,016,987 | 757,738 |
+| after: Pit Champion (index + skin + hero + pit_champion) | 412,274 | 162,112 | 150,856 |
+| after: Veiled Assassin | 377,393 | 153,493 | 143,044 |
+| after: Briar Matron | 386,506 | 155,948 | 145,236 |
+| after: Kael Crownbound (+ shared Kael clips) | 443,474 | 181,619 | 170,095 |
+| after: a whole Thornwild run (Matron + Gorehorn + hero) | 515,274 | 207,271 | 192,757 |
+| repeat visit | 0 (immutable hashed URLs; `index.js` re-checked hourly, ~0.5 KB) | | |
+
+All eleven characters: 2.23 MB raw / 1.01 MB gz before → 1.72 MB raw / 0.73 MB gz after, and nobody downloads
+all of them any more. Boot scripts grew by ~9 KB gz (`cutscene-quality.js`, `mob-anim.js`, dungeon3d.js additions);
+the mini-boss director (10 KB gz) and the shader worker load with the cutscene runtime, not at boot.
+
+### Load + first frame (GTX 1660 S, 20 Mbit/s)
+
+| | before | after |
+|---|---|---|
+| cold: time until the Blender model is on screen (Pit Champion / Assassin) | 2,015 / 946 ms | 1,533 / 588 ms |
+| cold: first cutscene frame (renderer init + compiles) | 1,216 / 936 ms | 799 / 445 ms |
+| cold: worst frame during the cutscene | 694 ms (model swap + recompile) | 517 ms |
+| warm: first cutscene frame | 997 / 981 / 41 ms | 32 / 52 / 21 ms |
+| warm: worst frame during the cutscene | 21 / 17 / 15 ms | 46 / 17 / 14 ms |
+| warm-up cost, main thread (spread over idle slices; worst single slice) | — (not done) | 106–345 ms (worst slice 72–95 ms) |
+
+### Frame cost during the cutscene
+
+| | before | after |
+|---|---|---|
+| GTX 1660 S, high tier, avg / p95 | 6.4–6.9 / 10.6–11.5 ms | 6.3–6.9 / 10.1–10.5 ms |
+| draw calls (mini entrance) | 201 | 169–171 (high), 123–128 (low) |
+| SwiftShader (iGPU stress stand-in), avg / p95 | 437 / 465 ms (fixed 1536×960, everything on) | 119–151 / 164–185 ms (auto: low tier, scale 0.8) |
+
+On the 1660 the cutscene was never GPU-bound, so the frame-cost win shows only under stress: the governor took
+SwiftShader from 437 ms to ~120–150 ms a frame (3–3.7×) by picking the low tier and walking the render scale
+down to 0.8. On a real Core Ultra 5 the detected tier is `medium` (Intel Arc iGPU) or `low` (U-series
+"Intel(R) Graphics"); **I could not measure it** — that remains the one number to take on the target laptop
+(open the game, play a mini cutscene, check `DungeonGL.stats()` and `CutsceneQuality.current()` in the console).
+
+Remaining rough edges: the cold path's first frame still compiles on the main thread (0.4–0.8 s on the 1660;
+~1.7 s on SwiftShader, which does not share programs with the worker) — prefetch removes it in normal play;
+the point-light budget is the main per-pixel cost left on medium/high.

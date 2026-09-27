@@ -200,6 +200,18 @@
   // ---------------------------------------------------------------
   //  the chamber
   // ---------------------------------------------------------------
+  // [[geometry, x, y, z], ...] -> one non-indexed geometry (position/normal/uv), the parts disposed
+  let brazierStone = null;
+  function mergeStatic(parts) {
+    const gs = parts.map(([g, x, y, z]) => { const n = g.index ? g.toNonIndexed() : g; n.translate(x, y, z); if (n !== g) g.dispose(); return n; });
+    let count = 0; for (const g of gs) count += g.attributes.position.count;
+    const out = new THREE.BufferGeometry(), P = new Float32Array(count * 3), N = new Float32Array(count * 3), UV = new Float32Array(count * 2);
+    let o = 0;
+    for (const g of gs) { const A = g.attributes, c = A.position.count; P.set(A.position.array, o * 3); N.set(A.normal.array, o * 3); if (A.uv) UV.set(A.uv.array, o * 2); o += c; g.dispose(); }
+    out.setAttribute("position", new THREE.BufferAttribute(P, 3)); out.setAttribute("normal", new THREE.BufferAttribute(N, 3)); out.setAttribute("uv", new THREE.BufferAttribute(UV, 2));
+    out.computeBoundingSphere();
+    return out;
+  }
   function buildRoom() {
     room = new THREE.Group();
     scene.add(room);
@@ -290,10 +302,9 @@
       const z = -2 - i * 8;
       for (const sx of [-1, 1]) {
         const g = new THREE.Group();
-        const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.45, 0.8, 10), stone(0x3f3a2e, 0.7));
-        bowl.position.y = 3.4;
-        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.28, 3.2, 8), stone(0x3f3a2e, 0.7));
-        stem.position.y = 1.6;
+        // bowl + stem: one mesh, one shared material (draw calls: 16 -> 8, and half the shadow casters)
+        const bowl = new THREE.Mesh(mergeStatic([[new THREE.CylinderGeometry(0.85, 0.45, 0.8, 10), 0, 3.4, 0], [new THREE.CylinderGeometry(0.16, 0.28, 3.2, 8), 0, 1.6, 0]]), brazierStone || (brazierStone = stone(0x3f3a2e, 0.7)));
+        const stem = new THREE.Object3D();
         const flame = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.6, 8), new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0 }));
         flame.position.y = 4.5;
         const light = new THREE.PointLight(0xff9a3c, 0, 40, 2);
@@ -329,14 +340,12 @@
     const cc = new THREE.Mesh(new THREE.BoxGeometry(14.6, 0.8, 20), stone(0x1a1424, 0.95, [5, 8]));
     cc.position.set(0, 13.6, ROOM.doorZ + 11);
     room.add(cc);
+    // the portcullis: nine bars and the lintel as one mesh (it only ever moves as a whole): 10 draws -> 1
     const gate = new THREE.Group();
-    for (let i = 0; i < 9; i++) {
-      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 12, 6), stone(0x55505e, 0.55));
-      bar.position.set(-6 + i * 1.5, 6, 0);
-      gate.add(bar);
-    }
-    const lintel = new THREE.Mesh(new THREE.BoxGeometry(14, 0.9, 0.9), stone(0x55505e, 0.55));
-    lintel.position.y = 12; gate.add(lintel);
+    const gateParts = [];
+    for (let i = 0; i < 9; i++) gateParts.push([new THREE.CylinderGeometry(0.22, 0.22, 12, 6), -6 + i * 1.5, 6, 0]);
+    gateParts.push([new THREE.BoxGeometry(14, 0.9, 0.9), 0, 12, 0]);
+    gate.add(new THREE.Mesh(mergeStatic(gateParts), stone(0x55505e, 0.55)));
     gate.position.set(0, 0, ROOM.doorZ);
     room.add(gate);
 
