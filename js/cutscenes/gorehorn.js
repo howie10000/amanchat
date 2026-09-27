@@ -89,7 +89,7 @@
       if (slam > 0 && slam < 1) { shake = Math.max(shake, 1.4 * (1 - slam)); cx.shockwaves(0, STOP_Z + 2, slam, rig.accent, 52); if (slam < 0.3 && Math.random() < 0.95 * cx.frameStep) dust(cx, 0, STOP_Z + 3, 5, true); }
       cx.fx.wash.material.color.set(AMBER); cx.fx.wash.material.opacity = clamp01(1 - Math.abs(slam - 0.05) / 0.06) * 0.5 + clamp01(1 - Math.abs(skid - 0.06) / 0.06) * 0.25;
       // lighting: near-black until it stops; amber from its eyes; a cold rim so the silhouette reads in the dark
-      cx.lights.eye.color.set(AMBER); cx.lights.eye.distance = 40; cx.lights.eye.intensity = 0.35 * dark + 1.2 * cx.smoothW(0.5, 0.62, k) + 1.5 * Math.sin(rear * Math.PI);
+      cx.lights.eye.color.set(AMBER); cx.lights.eye.distance = 40; cx.lights.eye.intensity = 0.35 * dark + 0.8 * charge + 1.2 * cx.smoothW(0.5, 0.62, k) + 1.5 * Math.sin(rear * Math.PI);
       cx.lights.eye.position.set(0, 7, z + 10);
       cx.lights.rim.color.set(0x9fb8ff); cx.lights.rim.intensity = 0.9 + 0.6 * rear;
       cx.lights.key.intensity = 0.1 + 0.5 * cx.smoothW(0.52, 0.66, k);
@@ -116,7 +116,7 @@
       const turn = beat(k, 0.0, 0.14), charge = beat(k, 0.14, 0.42), hit = beat(k, 0.42, 0.72), back = beat(k, 0.72, 1);
       const kw = warp(k, [[0.40, 0.50, 0.25]]);
       const runX = map(kw, [[0.14, 0], [0.42, 6.2]]);
-      rig.root.rotation.y = -Math.PI / 2 * cx.easeInOut(turn) * (1 - 0.35 * cx.easeInOut(back));
+      rig.root.rotation.y = Math.PI / 2 * cx.easeInOut(turn) * (1 - 0.35 * cx.easeInOut(back));   // +Z facing turned onto +X: the pillar side
       rig.root.position.x = runX + map(kw, [[0.42, 0], [0.5, -0.8], [0.72, -0.4], [1, -2.5]]);
       if (k < 0.14) A.pose([["idle", t / 1000, 1 - turn], ["walk", turn * 0.6, turn]]);
       else if (kw < 0.42) A.pose([["charge", (kw - 0.14) * 3 * 1.8, 1]]);
@@ -141,7 +141,7 @@
       let c;
       if (k < 0.14) c = { pos: [-8, 2.8, -10], look: [0, 6, BZ], fov: 46, shake: 0 };
       else if (kw < 0.42) c = { pos: [runX - 6, 3.0, BZ + 20], look: [runX + 5, 6, BZ + 2], fov: 52, shake: 0 };
-      else c = { pos: [-3 + 1.5 * hit, 4.5, -38.5], look: [13, 6.5, BZ], fov: 50 - 6 * cx.easeOut(clamp01(hit * 2)), shake: 0 };
+      else c = { pos: [-2 + 2 * hit, 18, -9], look: [10, 5, BZ], fov: 56 - 6 * cx.easeOut(clamp01(hit * 2)), shake: 0 };
       cx.place(c.pos, c.look, c.fov, shake);
       return true;
     },

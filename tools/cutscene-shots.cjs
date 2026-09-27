@@ -32,7 +32,7 @@ function serve() {
 }
 function launch(port) {
   const flags = ['--headless=new', '--remote-debugging-port=' + port, '--window-size=' + W + ',' + H, '--hide-scrollbars', '--no-first-run', '--no-default-browser-check',
-    '--disable-extensions', '--mute-audio', '--ignore-gpu-blocklist', '--enable-gpu-rasterization', '--user-data-dir=' + path.join(require('os').tmpdir(), 'cine-shots-profile')];
+    '--disable-extensions', '--mute-audio', '--ignore-gpu-blocklist', '--enable-gpu-rasterization', '--disable-frame-rate-limit', '--disable-gpu-vsync', '--user-data-dir=' + path.join(require('os').tmpdir(), 'cine-shots-profile')];
   if (opt('--soft')) flags.push('--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'); else flags.push('--use-angle=d3d11');
   flags.push('about:blank');
   const ch = spawn(CHROME, flags, { stdio: ['ignore', 'ignore', 'pipe'] });

@@ -143,8 +143,8 @@
     { k: [0.19, 0.30], pos: [0, 3, -4], look: [0, 10, BZ], to: { pos: [0, 3.5, -8], fov: 42 }, fov: 48, ease: "inout" },
     { k: [0.30, 0.46], pos: [3, 8, -14], look: [0, 12, -28], to: { pos: [2, 9, -17], fov: 38 }, fov: 42, ease: "inout" },
     { k: [0.46, 0.60], pos: [-5.5, 2.5, -16], look: [0, 9, BZ], to: { pos: [-4.5, 3, -17.5], fov: 42 }, fov: 46, ease: "inout" },
-    { k: [0.60, 0.74], orbit: { c: [0, 0, BZ], r: [13, 11.5], h: [9, 10.5], a: [Math.PI * 0.62, Math.PI * 0.45], look: [0, 11, BZ] }, fov: 40, ease: "inout" },
-    { k: [0.74, 0.88], pos: [2.5, 13, -22], look: [0, 14.5, BZ], to: { pos: [2, 13.5, -23], fov: 28 }, fov: 31, ease: "inout" },
+    { k: [0.60, 0.74], orbit: { c: [0, 0, BZ], r: [16, 14], h: [11, 12.5], a: [Math.PI * 0.62, Math.PI * 0.45], look: [0, 13.5, BZ] }, fov: 40, ease: "inout" },
+    { k: [0.74, 0.88], pos: [3.5, 15.5, -20.5], look: [0, 16.5, BZ], to: { pos: [3, 16, -21.5], fov: 30 }, fov: 33, ease: "inout" },
     { k: [0.88, 1.0], pos: [0.5, 2.6, -6], look: [0, 11, BZ], to: { pos: [0.3, 3.0, -9] }, fov: 48, ease: "out" },
   ]));
   DC.register("tyrant", {
@@ -199,7 +199,7 @@
       else if (k < 0.30) { const u = cx.easeInOut(beat(k, 0.11, 0.30)); c = { pos: [2 + u * 4, 3, 4 - u * 6], look, fov: 60 - 8 * u }; }        // the sky: it is a speck, then a shape
       else if (k < 0.50) { const u = cx.easeInOut(beat(k, 0.30, 0.50)); c = { pos: [-11 + u * 3, 5 + u * 3, -4 - u * 6], look, fov: 58 }; }     // it banks over the court
       else if (k < 0.68) { const u = beat(k, 0.50, 0.68); c = { pos: [13 - u * 4, 6 - u * 2, 1 + u * 4], look: [D.x, D.y + 6, D.z], fov: 62 + 10 * u }; }  // it comes in low, straight over the lens
-      else if (k < 0.85) { const u = cx.easeOut(land); c = { pos: [0, 2.5 + u * 1.5, 5 + u * 2], look: [0, 12 + 4 * u, BZ], fov: 64 }; }       // the landing, from the floor
+      else if (k < 0.85) { const u = cx.easeOut(land); c = { pos: [4, 3.2 + u * 1.5, -1 - u * 1.5], look: [0, 12 + 4 * u, BZ], fov: 64 }; }       // the landing, from the floor
       else { const u = cx.easeInOut(roar); c = { pos: [lerp(-22, -18, u), lerp(8, 16, u), lerp(2, 4, u)], look: [0, 18, BZ], fov: 60 }; }     // crane up for the roar
       cx.margin = 2.5;
       cx.place(c.pos, c.look, c.fov, shake + (land > 0 && land < 0.3 ? 0.8 * (1 - land / 0.3) : 0));

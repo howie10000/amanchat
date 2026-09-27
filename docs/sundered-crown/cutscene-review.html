@@ -57,6 +57,7 @@ function frame(real){
   const k=freeze!=null?Math.min(1,Math.max(0,freeze)):Math.min(1,((real-t0)*speed)/dur);
   if(freeze==null&&k>=1&&(real-t0)*speed>dur+900){t0=real;sceneSeq++;}
   const t=freeze!=null?t0+k*dur/speed+16*frames:real;
+  const R=DungeonGL.director.renderer();if(R){R.info.autoReset=false;R.info.reset();}   // draw calls / triangles of the whole frame (all passes)
   const gl=DungeonGL.available()?DungeonGL.render({mode,sceneId:mode+id+sceneSeq,id,mini:mode==='entrance'&&mini,k,t,phase:2,people:[{appearance:null},{appearance:{shirt:'#dc2626'},weapon:'crossbow'}],color:def.color,accent:def.accent}):null;
   ctx.fillStyle='#000';ctx.fillRect(0,0,1024,640);if(gl)ctx.drawImage(gl,0,0,1024,640);
   // the letterbox and card bosses.js draws over the frame, so the shots are judged with them on
