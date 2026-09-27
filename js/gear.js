@@ -441,7 +441,6 @@ function adCard(item, opts) {
         ${uq ? `<span class="adUqBadge">UNIQUE</span>` : ""}
         ${set ? `<span class="adSetBadge">SET ${setN}/5</span>` : ""}
         <span class="adIlvl">iLvl ${it.lvl} ${gEsc(slot.label)}</span>
-        ${wkKindOf(it) ? wkChip(wkKindOf(it), ' title="Weapon kind"') : ""}
       </div>
       <div class="adIStats">${statHtml}</div>
       ${wkHtml(it, !!opts.compact)}
