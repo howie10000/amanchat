@@ -46,7 +46,10 @@
 
   // Supersampled: the cutscene is drawn into the dungeon's own transform,
   // which may scale it up to fill the canvas.
-  const RW = 1536, RH = 960;
+  // RW x RH is the high tier's full supersample; the live frame is FW x FH
+  // (BASE x the tier's adaptive render scale, see QUALITY below).
+  const RW = 1536, RH = 960, BASE_W = 1024, BASE_H = 640;
+  let FW = RW, FH = RH;
 
   // The room, in world units. Camera looks down -Z, so the party comes in at
   // +Z and the thing they came to kill is at the far end.
@@ -65,11 +68,14 @@
     glCanvas = document.createElement("canvas");
     renderer = null;
     try {
-      renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, powerPreference: "high-performance" });
+      // No MSAA on the canvas: the scene is drawn into finish.target (never multisampled) and the canvas
+      // only ever receives one full-screen quad, so canvas MSAA was pure memory bandwidth on an iGPU.
+      // Edges are smoothed by the supersampled render scale on the tiers that can afford it.
+      renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: false, powerPreference: "high-performance" });
     } catch (e) { dead = true; return false; }
     if (!renderer.getContext()) { dead = true; return false; }
     renderer.setPixelRatio(1);
-    renderer.setSize(RW, RH, false);
+    renderer.setSize(FW, FH, false);
     renderer.setClearColor(0x05030a, 1);
     renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.0;
     // Deliberately NOT sRGB output. three r148 ships with ColorManagement off,
@@ -350,7 +356,9 @@
   // ---------------------------------------------------------------
   //  motes, embers, shards, shockwaves
   // ---------------------------------------------------------------
+  // MOTES is the buffer; moteCap the tier budget actually cycled and drawn (drawRange)
   const MOTES = 900, SHARDS = 44;
+  let moteCap = MOTES;
 
   function buildFx() {
     fx = {};
@@ -461,23 +469,33 @@
   let finish=null, rimLight=null;
   function buildCinemaFinish(){
     rimLight=new THREE.DirectionalLight(0x8eabd1,.65);rimLight.position.set(-12,22,ROOM.bossZ-10);rimLight.target.position.set(0,10,ROOM.bossZ);scene.add(rimLight,rimLight.target);
-    const target=new THREE.WebGLRenderTarget(RW,RH,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
-    target.depthTexture=new THREE.DepthTexture(RW,RH);target.depthTexture.type=THREE.UnsignedShortType;
-    const uniforms={frame:{value:target.texture},depth:{value:target.depthTexture},pixel:{value:new THREE.Vector2(1/RW,1/RH)},focus:{value:36},nearPlane:{value:.5},farPlane:{value:400},time:{value:0}};
-    const material=new THREE.ShaderMaterial({depthTest:false,depthWrite:false,uniforms,
+    const target=makeTarget(FW,FH);
+    const uniforms={frame:{value:target.texture},depth:{value:target.depthTexture},pixel:{value:new THREE.Vector2(1/FW,1/FH)},focus:{value:36},nearPlane:{value:.5},farPlane:{value:400},time:{value:0}};
+    // QUALITY 2: depth of field + bloom taps + grain (9 taps); 1: depth of field only (5 taps);
+    // 0: one tap — the grade and vignette only (low tier / integrated GPUs)
+    const material=new THREE.ShaderMaterial({depthTest:false,depthWrite:false,uniforms,defines:{QUALITY:2},
       vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}',
       fragmentShader:`varying vec2 vUv;uniform sampler2D frame;uniform sampler2D depth;uniform vec2 pixel;uniform float focus,nearPlane,farPlane,time;
       void main(){
+        #if QUALITY >= 1
         float d=texture2D(depth,vUv).x;
         float z=nearPlane*farPlane/(farPlane-d*(farPlane-nearPlane));
         float blur=clamp(abs(z-focus)/max(12.,focus)*1.8,0.,1.5);
         vec2 r=pixel*blur;vec3 c=texture2D(frame,vUv).rgb*.5;
         c+=(texture2D(frame,vUv+vec2(r.x,0.)).rgb+texture2D(frame,vUv-vec2(r.x,0.)).rgb+texture2D(frame,vUv+vec2(0.,r.y)).rgb+texture2D(frame,vUv-vec2(0.,r.y)).rgb)*.125;
+        #else
+        vec3 c=texture2D(frame,vUv).rgb;
+        #endif
+        #if QUALITY >= 2
         vec3 glow=vec3(0.);for(int i=0;i<4;i++){float a=float(i)*1.5707963;glow+=max(vec3(0.),texture2D(frame,vUv+vec2(cos(a),sin(a))*pixel*5.).rgb-.68);}
         c+=glow*.075;
+        #endif
         float vignette=1.-smoothstep(.2,.85,length((vUv-.5)*vec2(1.,.8)));c*=.76+.24*vignette;
+        #if QUALITY >= 2
         float grain=fract(sin(dot(vUv+time*.0001,vec2(12.9898,78.233)))*43758.5453)-.5;
-        c+=grain*.008;c=mix(vec3(dot(c,vec3(.2126,.7152,.0722))),c,.93);
+        c+=grain*.008;
+        #endif
+        c=mix(vec3(dot(c,vec3(.2126,.7152,.0722))),c,.93);
         gl_FragColor=vec4(max(c,vec3(0.)),1.);
       }`});
     const postScene=new THREE.Scene(),postCamera=new THREE.Camera();postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),material));
@@ -488,7 +506,12 @@
         fragmentShader:'varying vec2 vUv;uniform float time,opacity;void main(){float w=sin(vUv.x*29.+sin(vUv.y*17.+time*.18)*2.+time*.12)*.5+.5;float edge=sin(vUv.x*3.14159)*sin(vUv.y*3.14159);gl_FragColor=vec4(.48,.53,.6,opacity*w*edge);}' });
       const m=new THREE.Mesh(new THREE.PlaneGeometry(34,58),mat);m.rotation.x=-Math.PI/2;m.position.set(0,.8+i*.65,-14);scene.add(m);mist.push(m);
     }
-    finish={target,uniforms,scene:postScene,camera:postCamera,mist};
+    finish={target,uniforms,material,scene:postScene,camera:postCamera,mist};
+  }
+  function makeTarget(w,h){
+    const target=new THREE.WebGLRenderTarget(w,h,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
+    target.depthTexture=new THREE.DepthTexture(w,h);target.depthTexture.type=THREE.UnsignedShortType;
+    return target;
   }
   // ---------------------------------------------------------------
   //  THE ARCANE DEPTHS — themed chambers
@@ -1542,7 +1565,7 @@
   function spawnMote(o) {
     if(frameStep<1 && Math.random()>frameStep)return;
     const m = fx.motes[moteHead];
-    moteHead = (moteHead + 1) % MOTES;
+    moteHead = (moteHead + 1) % moteCap;
     m.x = o.x; m.y = o.y; m.z = o.z;
     m.vx = o.vx || 0; m.vy = o.vy || 0; m.vz = o.vz || 0;
     m.life = 0; m.max = o.max || 90;
@@ -1552,7 +1575,7 @@
   }
   function stepMotes(dt = 1) {
     const pos = fx.moteGeo.attributes.position, col = fx.moteGeo.attributes.aCol, siz = fx.moteGeo.attributes.aSize;
-    for (let i = 0; i < MOTES; i++) {
+    for (let i = 0; i < moteCap; i++) {
       const m = fx.motes[i];
       if (m.life >= m.max) { siz.setX(i, 0); continue; }
       m.life += dt;
@@ -3436,32 +3459,58 @@
   // =====================================================================
   // The Sundered Crown bosses and the party heroes are rigged, skinned and
   // animated in Blender (tools/blender/build-dungeon-models.py) and shipped as
-  // js/dungeon-models.js, played through js/dungeon-skin.js (SkinnedMesh +
-  // AnimationMixer). Both are fetched lazily after login (warmup) so the login
-  // screen and town never pay for them. Until they arrive — or if they fail —
-  // the procedural builders above are used unchanged.
+  // js/dungeon-models/<id>.js (one file per character), played through
+  // js/dungeon-skin.js (SkinnedMesh + AnimationMixer). Only the runtime and the
+  // characters a cutscene actually shows are fetched — see the LOADER API block
+  // at the top of dungeon-skin.js and docs/sundered-crown/CUTSCENE-PERF.md.
+  // DungeonGL.prefetch(bossId) pulls a boss's cast in during the floor before
+  // it. Until a character arrives — or if it fails — the procedural builders
+  // above are used unchanged.
   const SCRIPT_URL = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
-  const SKIN = { state: "idle", promise: null, fresh: false };
+  const SKIN = { state: "idle", promise: null, arrived: new Set(), broken: {} };
   function skinReady() {
-    if (SKIN.state === "ready") return true;
     if (SKIN.state === "failed") return false;
-    if (window.DungeonSkin && DungeonSkin.ready && DungeonSkin.ready()) { SKIN.state = "ready"; return true; }
+    if (window.DungeonSkin && DungeonSkin.load && DungeonSkin.has) {
+      if (SKIN.state !== "ready") { SKIN.state = "ready"; hookSkin(); }
+      return true;
+    }
     return false;
   }
-  function loadSkins() {
+  function hookSkin() {
+    if (SCRIPT_URL && typeof URL !== "undefined" && DungeonSkin.setBase && !DungeonSkin.base()) DungeonSkin.setBase(new URL("dungeon-models/", SCRIPT_URL).href);
+    if (DungeonSkin.onArrive) DungeonSkin.onArrive((ids) => { for (const id of ids) SKIN.arrived.add(id); });
+  }
+  // the runtime (dungeon-skin.js) and the file index: ~25 KB, no characters
+  function skinRuntime() {
     if (skinReady()) return Promise.resolve(true);
     if (SKIN.promise) return SKIN.promise;
     if (!SCRIPT_URL || typeof document === "undefined" || !document.head || typeof URL === "undefined") return Promise.resolve(false);
     const one = (name) => new Promise((ok, no) => {
-      const el = document.createElement("script"); el.src = new URL(name + "?v=skin-1", SCRIPT_URL).href; el.async = true;
+      const el = document.createElement("script"); el.src = new URL(name, SCRIPT_URL).href; el.async = true;
       el.onload = ok; el.onerror = () => { el.remove(); no(new Error("could not load " + name)); }; document.head.appendChild(el);
     });
     SKIN.state = "loading";
-    SKIN.promise = one("dungeon-models.js").then(() => one("dungeon-skin.js")).then(() => {
-      SKIN.state = (window.DungeonSkin && DungeonSkin.ready && DungeonSkin.ready()) ? "ready" : "failed";
-      SKIN.fresh = SKIN.state === "ready"; return SKIN.state === "ready";
+    SKIN.promise = Promise.all([one("dungeon-models/index.js?v=" + SKIN_V), one("dungeon-skin.js?v=" + SKIN_V)]).then(() => {
+      SKIN.state = "idle"; return skinReady();
     }).catch((e) => { SKIN.state = "failed"; console.warn("Dungeon models unavailable; using procedural rigs", e); return false; });
     return SKIN.promise;
+  }
+  const SKIN_V = "split-1";
+  // which Blender characters a boss's cutscene shows (always with the party hero)
+  function castOf(id) {
+    const key = SKINNED[id] ? id : (SKINNED[artOf(id)] ? artOf(id) : null);
+    const out = ["hero"];
+    if (key) { for (const a of SKINNED[key].actors) out.push(a.cid); if (SKINNED[key].colossus) out.push(SKINNED[key].colossus.cid); }
+    return out;
+  }
+  // start (or join) the download of exactly what `id` needs; resolves true when it is all in memory
+  function loadSkins(id, low) {
+    return skinRuntime().then((ok) => {
+      if (!ok) return false;
+      const cast = id ? castOf(id) : ["hero"];
+      if (cast.every((c) => DungeonSkin.has(c))) return true;
+      return low ? DungeonSkin.prefetch(cast) : DungeonSkin.load(cast);
+    });
   }
   // game height of each actor (the procedural rigs' sizes), and which clip plays each beat
   const SKINNED = {
@@ -3477,7 +3526,7 @@
   function skinKey(id) {
     if (!skinReady()) return null;
     const key = SKINNED[id] ? id : (SKINNED[artOf(id)] ? artOf(id) : null);
-    if (!key) return null;
+    if (!key || SKIN.broken[key]) return null;
     const S = SKINNED[key];
     return S.actors.every((a) => DungeonSkin.has(a.cid)) && (!S.colossus || DungeonSkin.has(S.colossus.cid)) ? key : null;
   }
@@ -3487,7 +3536,7 @@
     return function (root, shell, body, trim, accent) {
       try { return buildSkinned(id, spec, root, shell, trim, accent); }
       catch (e) {
-        console.warn("Skinned " + id + " failed; procedural rig used", e); SKIN.state = "failed";
+        console.warn("Skinned " + id + " failed; procedural rig used", e); SKIN.broken[id] = true;
         while (shell.children.length) shell.remove(shell.children[0]);
         return fallback(root, shell, body, trim, accent);
       }
@@ -5289,38 +5338,122 @@
     flyCamera([[0,-9,9,4,0,mini?8:13,ROOM.bossZ,43],[.32,-5,5,0,0,mini?5:8,ROOM.bossZ,46],[.62,8,6,5,0,3,ROOM.bossZ,54],[.82,11,7,0,0,5,ROOM.doorZ,58],[1,8,5,-6,0,5,ROOM.doorZ,50]],p.k,.28*Math.sin(collapse*Math.PI));
     if(p.id==='dragon')flyCamera([[0,-25,12,28,0,19,ROOM.bossZ,58],[.5,30,10,22,0,8,ROOM.bossZ,62],[1,25,12,-8,0,12,52,55]],p.k,.2*Math.sin(collapse*Math.PI));
   }
-  let lastMode = null, lastProgress=-1, lastTime=0;
+  // ---------------------------------------------------------------
+  //  QUALITY — tiers, adaptive resolution, budgets (js/cutscene-quality.js)
+  // ---------------------------------------------------------------
+  // The tier is fixed for the length of one cutscene (shadow type, light
+  // count and the post variant are shader parameters; changing them mid-scene
+  // recompiles programs = a hitch). Inside a cutscene only the render scale
+  // moves (adaptive pixel ratio), which is a render-target resize.
+  // Stable per tier + boss so the prefetch warm-up compiles exactly the
+  // programs the cutscene will use.
+  let tierNow = null, lightsKey = "", sceneSig = "";
+  const QDEF = { name: "high", scale: RW / BASE_W, minScale: 1.15, shadows: 2, shadowMap: 1024, shadowCasters: "all", motes: MOTES, post: 2 };
+  function tierFor() { return (window.CutsceneQuality && renderer) ? CutsceneQuality.begin(renderer.getContext()) : QDEF; }
+  function setFrameScale(s) {
+    const w = Math.max(320, Math.round(BASE_W * s)), h = Math.max(200, Math.round(BASE_H * s));
+    if (w === FW && h === FH) return;
+    FW = w; FH = h;
+    if (renderer) renderer.setSize(FW, FH, false);
+    if (finish) {
+      finish.target.dispose(); if (finish.target.depthTexture) finish.target.depthTexture.dispose();
+      finish.target = makeTarget(FW, FH);
+      finish.uniforms.frame.value = finish.target.texture; finish.uniforms.depth.value = finish.target.depthTexture;
+      finish.uniforms.pixel.value.set(1 / FW, 1 / FH);
+    }
+  }
+  function applyTier(T, id) {
+    tierNow = T;
+    moteCap = Math.max(64, Math.min(MOTES, T.motes | 0));
+    if (fx && fx.moteGeo) fx.moteGeo.setDrawRange(0, moteCap);
+    if (renderer) {
+      const type = T.shadows === 2 ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+      if (renderer.shadowMap.type !== type) { renderer.shadowMap.type = type; renderer.shadowMap.needsUpdate = true; }
+    }
+    if (keyLight.shadow.mapSize.x !== T.shadowMap) {
+      keyLight.shadow.mapSize.set(T.shadowMap, T.shadowMap);
+      if (keyLight.shadow.map) { keyLight.shadow.map.dispose(); keyLight.shadow.map = null; }
+    }
+    // who casts: the characters always; big room pieces on medium; everything on high
+    room.traverse((o) => {
+      if (!o.isMesh) return;
+      if (o.userData.cast0 == null) o.userData.cast0 = o.castShadow;
+      const big = o.geometry && (o.geometry.boundingSphere || (o.geometry.computeBoundingSphere(), o.geometry.boundingSphere)).radius * Math.max(o.scale.x, o.scale.y, o.scale.z) > 3;
+      o.castShadow = o.userData.cast0 && (T.shadowCasters === "all" || (T.shadowCasters === "large" && big));
+    });
+    // brazier lights: 8 on high; one per pair on medium/low (brighter, further) — point lights are
+    // the dominant per-pixel cost on an integrated GPU. The coal light only exists for Varkaal.
+    const lk = T.name + "|" + (id === "dragon");
+    if (lk !== lightsKey) {
+      lightsKey = lk;
+      for (const b of room.userData.braziers) {
+        const keep = T.name === "high" || b.order % 2 === 1;
+        b.light.visible = keep;
+        b.light.userData.k = keep && T.name !== "high" ? 1.7 : 1;
+        b.light.distance = keep && T.name !== "high" ? 52 : 40;
+      }
+      coalLight.visible = id === "dragon";
+    }
+    if (finish && finish.material.defines.QUALITY !== T.post) { finish.material.defines.QUALITY = T.post; finish.material.needsUpdate = true; }
+    setFrameScale((window.CutsceneQuality && CutsceneQuality.governor()) ? CutsceneQuality.governor().scale : T.scale);
+  }
+
+  // ---------------------------------------------------------------
+  //  entry points
+  // ---------------------------------------------------------------
+  let lastMode = null, lastProgress=-1, lastTime=0, lastRenderAt = 0, lastRenderKey = null, lastRenderMs = 0;
+  const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
   function render(p) {
     if (dead) return null;
-    loadSkins();
+    if (!skinKey(p.id)) loadSkins(p.id);
     if (!renderer && !init()) return null;
+    const now = nowMs(), key = p.mode + "|" + p.id + "|" + (p.sceneId || "");
+    // a new cutscene: settle the last one's verdict, pick this one's tier
+    if (key !== lastRenderKey || now - lastRenderAt > 1000) {
+      if (window.CutsceneQuality && lastRenderKey) CutsceneQuality.finish();
+      lastRenderKey = key; applyTier(tierFor(), p.id);
+    } else if (window.CutsceneQuality) {
+      const g = CutsceneQuality.governor();
+      if (g && g.sample(now - lastRenderAt)) setFrameScale(g.scale);
+    }
+    lastRenderAt = now;
     try { poseScene(p); }
     catch (e) { renderer.setRenderTarget(null);console.warn('Dungeon cinematic failed',e);dead = true; return null; }
-    try {
-      renderer.setRenderTarget(finish.target);
-      renderer.autoClear = true;
-      renderer.render(scene, camera);
-      // the full-screen wash rides over the top in its own pass
-      if (fx.wash.material.opacity > 0.002) {
-        fx.wash.material.opacity=Math.min(reducedMotion.matches?.12:.38,fx.wash.material.opacity);
-        renderer.autoClear = false;
-        renderer.render(fx.washScene, fx.washCam);
-        renderer.autoClear = true;
-      }
-      renderer.setRenderTarget(null);renderer.autoClear=true;
-      finish.uniforms.focus.value=focusDistance;finish.uniforms.time.value=reducedMotion.matches?0:(p.t-t0);
-      renderer.render(finish.scene,finish.camera);
-    } catch (e) { renderer.setRenderTarget(null);console.warn('Dungeon cinematic failed',e);dead = true; return null; }
+    try { drawFrame(p.t); } catch (e) { renderer.setRenderTarget(null);console.warn('Dungeon cinematic failed',e);dead = true; return null; }
+    lastRenderMs = nowMs() - now;
     return glCanvas;
+  }
+  function drawFrame(t) {
+    renderer.setRenderTarget(finish.target);
+    renderer.autoClear = true;
+    renderer.render(scene, camera);
+    // the full-screen wash rides over the top in its own pass
+    if (fx.wash.material.opacity > 0.002) {
+      fx.wash.material.opacity=Math.min(reducedMotion.matches?.12:.38,fx.wash.material.opacity);
+      renderer.autoClear = false;
+      renderer.render(fx.washScene, fx.washCam);
+      renderer.autoClear = true;
+    }
+    renderer.setRenderTarget(null);renderer.autoClear=true;
+    finish.uniforms.focus.value=focusDistance;finish.uniforms.time.value=reducedMotion.matches?0:(t-t0);
+    renderer.render(finish.scene,finish.camera);
   }
   // Pose one frame of whichever cutscene `p` describes: everything render()
   // does except drawing it. Throws on a broken pose.
   function poseScene(p) {
     if (!t0) t0 = p.t;
+    // undo last frame's light-budget scaling so poses that do not touch a brazier keep its own value
+    for (const b of room.userData.braziers) if (b.light.userData.raw != null) b.light.intensity = b.light.userData.raw;
 
     // Rebuild the rig when the boss changes; reset the motes when a new
     // cutscene starts so the last one's ash does not bleed into it.
-    if (SKIN.fresh) { SKIN.fresh = false; currentId = null; if (fx && fx.party) for (const m of fx.party) m.skinTried = false; }
+    // Characters that just arrived swap in only where they replace a stand-in
+    // (a prefetch of some other boss never rebuilds the rig on screen).
+    if (SKIN.arrived.size) {
+      if (rig && !rig.skinned && skinKey(currentId)) currentId = null;
+      if (SKIN.arrived.has("hero") && fx && fx.party) for (const m of fx.party) m.skinTried = false;
+      SKIN.arrived.clear();
+    }
     if (!rig || currentId !== p.id) buildRig(p.id, p.color, p.accent);
     const modeKey = p.mode + "|" + p.id + "|" + (p.sceneId || "");
     if (modeKey !== lastMode || p.k < lastProgress) { lastMode = modeKey; t0=p.t;lastTime=p.t;clearMotes();moteHead=0;resetStage(); }
@@ -5364,13 +5497,15 @@
       stepMotes(frameStep);
       rimLight.color.copy(rig.accent);rimLight.intensity=.5+.3*beat(q.k,.3,.8);
       for(const m of finish.mist)m.material.uniforms.time.value=q.t/1000;
+      // tier light budget: surviving brazier lights carry their dropped partner's share
+      for (const b of room.userData.braziers) { const u = b.light.userData; u.raw = b.light.intensity; b.light.intensity *= u.k || 1; }
     }
   }
 
   // Gameplay owns this independent model; no cutscene camera or renderer is
   // initialized, and disposal cannot invalidate an active cinematic rig.
   function createModel(id,color,accent) {
-    loadSkins();
+    if (!skinKey(id)) loadSkins(id);
     const root=new THREE.Group(),shell=new THREE.Group();root.add(shell);
     const body=new THREE.MeshStandardMaterial({color:color||'#65596b',roughness:.8});
     const trim=new THREE.MeshStandardMaterial({color:accent||'#ffc976',emissive:accent||'#ffc976',emissiveIntensity:.25});
@@ -5380,16 +5515,57 @@
     if(d&&d.actors)for(const a of d.actors)for(const k in a.mats)owned.push(a.mats[k]);
     root.userData.ownedMaterials=owned;root.userData.rig=d;return root;
   }
+  // Background warm-up (js/sea-assets.js quiet slots): the runtime + the party hero only — boss casts are
+  // fetched per boss (prefetch / the cutscene itself), never the whole roster.
   function warmup(stage) {
-    loadSkins();
+    loadSkins(null, true);
     if (dead) return false;
     if (!renderer && !init()) return false;
     if (stage !== 'build' && renderer.compile) renderer.compile(scene, camera);
     return true;
   }
+  // The next likely boss (called during the floor before it): download its cast at low priority, then —
+  // when no cutscene is on screen — build its rig and draw one throw-away frame of its cutscene so every
+  // shader program, shadow program and texture upload happens now instead of on the cutscene's first frame.
+  const warmed = {};
+  function prefetch(id, opts) {
+    opts = opts || {};
+    if (!id || dead) return Promise.resolve(false);
+    const def = (window.ECON && ECON.GUILD_BOSSES && ECON.GUILD_BOSSES[id]) || {};
+    return loadSkins(id, true).then((ok) => {
+      if (opts.noWarm || typeof document === "undefined") return ok;
+      return new Promise((done) => {
+        const go = () => {
+          // never while a cutscene is playing, and wait for a quiet moment
+          if (nowMs() - lastRenderAt < 1500) { setTimeout(go, 1000); return; }
+          try { warmBoss(id, def); } catch (e) { console.warn("cutscene warm-up failed", e); }
+          done(ok);
+        };
+        if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 4000 }); else setTimeout(go, 200);
+      });
+    });
+  }
+  function warmBoss(id, def) {
+    if (!renderer && !init()) return false;
+    const mini = !!(window.ECON && ECON.isMiniBoss && ECON.isMiniBoss(id));
+    const sig = id + "|" + !!skinKey(id);
+    if (warmed[sig]) return true;
+    const t = nowMs();
+    applyTier(tierFor(), id);
+    const p = { mode: "entrance", id, mini, k: 0.62, t: 1e7, sceneId: "warm", people: [{ appearance: null }], color: def.color || "#555", accent: def.accent || "#fff" };
+    poseScene(p);
+    // make the hidden-by-beat pieces count too: compile everything once, then draw one frame
+    if (renderer.compile) renderer.compile(scene, camera);
+    drawFrame(p.t);
+    lastMode = null; lastRenderKey = null;
+    if (window.CutsceneQuality) CutsceneQuality.finish();
+    warmed[sig] = nowMs() - t;
+    return true;
+  }
   // Headless hook for js/arcane-art.test.js: build the scene with no renderer
   // and pose any frame. Not used by the game.
-  function headless() { if (!scene) buildScene(); return { pose: poseScene, rig: () => rig, scene: () => scene, camera: () => camera }; }
-  window.DungeonGL = { render, createModel, warmup, available: () => !dead, _headless: headless, BOSS_THEME,
+  function headless() { if (!scene) buildScene(); return { pose: poseScene, rig: () => rig, scene: () => scene, camera: () => camera, applyTier: (T, id) => applyTier(T, id), frame: () => [FW, FH], moteCap: () => moteCap }; }
+  window.DungeonGL = { render, createModel, warmup, prefetch, available: () => !dead, _headless: headless, BOSS_THEME,
+    castOf, stats: () => ({ tier: tierNow && tierNow.name, frame: [FW, FH], lastRenderMs, warmed: Object.assign({}, warmed), files: window.DungeonSkin && DungeonSkin.stats ? DungeonSkin.stats() : [] }),
     skins: { load: loadSkins, ready: skinReady, state: () => SKIN.state, skinned: (id) => !!skinKey(id) } };
 })();

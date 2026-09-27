@@ -1,5 +1,5 @@
 'use strict';
-// The Blender-authored cutscene characters (js/dungeon-models.js, built by
+// The Blender-authored cutscene characters (js/dungeon-models/<id>.js, built by
 // tools/blender/build-dungeon-models.py) and their runtime (js/dungeon-skin.js):
 // library integrity, every character / clip / weapon present, bone budgets,
 // clip durations, finite data, weapons held in the fist, and dungeon3d.js
@@ -10,9 +10,14 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), vm = requ
 const THREE = require('./vendor/three.min.js');
 const ECON = require('./shared/economy.js');
 
-const libPath = require.resolve('./dungeon-models.js');
-const bytes = fs.statSync(libPath).size;
+// one self-contained file per character (see the LOADER API in dungeon-skin.js)
+const path = require('node:path');
+const PART_DIR = path.join(__dirname, 'dungeon-models');
+const PARTS = fs.readdirSync(PART_DIR).filter((f) => f.endsWith('.js') && f !== 'index.js').sort();
+let bytes = 0;
+for (const f of PARTS) { const b = fs.statSync(path.join(PART_DIR, f)).size; bytes += b; assert(b < 420e3, f + ' stays under 420 KB (' + b + ')'); }
 assert(bytes < 3.0e6, 'library stays under 3 MB before compression (' + bytes + ')');
+assert(!fs.existsSync(path.join(__dirname, 'dungeon-models.js')), 'the monolithic pack is gone: the runtime loads js/dungeon-models/<id>.js');
 
 const noop = () => {};
 function ctx2d() { return new Proxy({}, { get: (o, k) => (k === 'measureText' ? () => ({ width: 10 }) : k === 'getImageData' ? () => ({ data: new Uint8ClampedArray(4) }) : k === 'createLinearGradient' || k === 'createRadialGradient' ? () => ({ addColorStop: noop }) : noop), set: () => true }); }
@@ -21,7 +26,7 @@ function world(withLib) {
   const w = { THREE, Math, console, JSON, Object, Array, Number, String, Set, Map, Float32Array, Int8Array, Int16Array, Uint8Array, Uint16Array, Uint32Array, Int32Array, Error, Promise,
     atob, Buffer, document: { createElement: canvasStub }, ECON, performance: { now: () => 0 } };
   w.window = w; w.globalThis = w; vm.createContext(w);
-  if (withLib) for (const f of ['./dungeon-models.js', './dungeon-skin.js']) vm.runInContext(fs.readFileSync(require.resolve(f), 'utf8'), w, { filename: f });
+  if (withLib) for (const f of PARTS.map((p) => './dungeon-models/' + p).concat(['./dungeon-models/index.js', './dungeon-skin.js'])) vm.runInContext(fs.readFileSync(require.resolve(f), 'utf8'), w, { filename: f });
   return w;
 }
 

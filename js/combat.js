@@ -750,6 +750,7 @@ function reapDead(list, arena) {
 function onEnemyDeath(e) {
   if (e._deathFx) return;
   addParticles(e.x, e.y, e.color, 16);
+  if (window.gameMobs && gameMobs.onDeath) gameMobs.onDeath(e);   // the body topples instead of vanishing
   if (window.gameDepths) gameDepths.onEnemyDeath(e);
   e._deathFx = true;
 }
@@ -3452,6 +3453,7 @@ function drawBossStatusHud(ctx, b, t, x0, w, accent, y0) {
 function drawArenaAdds(ctx, t) {
   const d = state.dungeon, G = window.gameDepths;
   const adds = (d.arenaEnemies || []).slice().sort((a, b) => a.y - b.y);
+  if (gameMobs.drawCorpses) gameMobs.drawCorpses(ctx, t, ENEMY_TYPES);
   for (const e of adds) {
     if (G) G.drawEnemyUnder(ctx, e, t);
     ctx.globalAlpha = enemyAlpha(e);
@@ -3937,6 +3939,7 @@ function drawDungeon() {
   // Enemies — real models, sorted so the ones lower down overlap the ones
   // behind them instead of z-fighting at random.
   const order = state.enemies.slice().sort((a, b) => a.y - b.y);
+  if (gameMobs.drawCorpses) gameMobs.drawCorpses(ctx, t, ENEMY_TYPES);
   for (const e of order) { ctx.globalAlpha = enemyAlpha(e); gameMobs.drawEnemy(ctx, e, t, ENEMY_TYPES); ctx.globalAlpha = 1; drawEnemyTells(ctx, e, t); }
 
   drawPartyMembers(t);

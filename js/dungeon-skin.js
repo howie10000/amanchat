@@ -12,16 +12,81 @@
      a.play('walk', 0.25); a.update(dt);                 // real time, cross-faded
      a.setWeapon('crossbow');  a.tint({ shirt: '#f00' });
 
-   Both files are lazy-loaded by dungeon3d.js after login, so neither the
-   login screen nor the town pays for them. No dependency beyond the
+   This file is lazy-loaded by dungeon3d.js after login, so neither the
+   login screen nor the town pays for it. No dependency beyond the
    vendored three.min.js (r148).
+
+   ---------------------------------------------------------------------
+   LOADER API — per-character split packs (read this if you add a boss)
+   ---------------------------------------------------------------------
+   The Blender pack is split into one self-contained file per character:
+   js/dungeon-models/<id>.js (mesh, skeleton, materials, clips; 'hero' also
+   carries every weapon), listed with a content hash + size in
+   js/dungeon-models/index.js. Each file merges itself into
+   globalThis.DungeonModels when it runs, so any load order works and a
+   cutscene only downloads the characters it actually shows (a mini + the
+   party hero is ~0.5 MB instead of the old 2.2 MB monolith).
+
+     DungeonSkin.setBase(url)        directory URL holding <id>.js + index.js
+                                     (dungeon3d.js sets it from its own URL)
+     DungeonSkin.load(ids)           -> Promise<boolean>: true when every id is
+                                     in memory. Fetches only missing files,
+                                     de-duplicated; a failed file can retry later.
+     DungeonSkin.prefetch(ids)       the same at low fetch priority; never rejects
+     DungeonSkin.state(id)           'absent' | 'loading' | 'ready' | 'failed'
+     DungeonSkin.has(id)             in memory and creatable right now
+     DungeonSkin.available(id)       a file exists for it (index) or it is loaded
+     DungeonSkin.onArrive(fn)        fn(ids) each time characters land
+     DungeonSkin.stats()             [{id, bytes, ms, ok}] per fetched file
+
+   To add a character: build it with tools/blender/build-dungeon-models.py
+   (which writes js/dungeon-models/<id>.js + index.js), then name it in the
+   boss's cast in dungeon3d.js (SKINNED) — DungeonGL.prefetch(bossId) and the
+   cutscene itself call load() for exactly that cast. Rebuilt with an old
+   script into one js/dungeon-models.js? `node tools/split-dungeon-models.cjs
+   js/dungeon-models.js --only <ids>` converts it.
+   See docs/sundered-crown/CUTSCENE-PERF.md.
    ===================================================================== */
 (function () {
   "use strict";
   const G = typeof globalThis !== "undefined" ? globalThis : window;
-  if (typeof THREE === "undefined") { G.DungeonSkin = { ready: () => false }; return; }
+  if (typeof THREE === "undefined") { G.DungeonSkin = { ready: () => false, has: () => false, load: () => Promise.resolve(false), prefetch: () => Promise.resolve(false), state: () => "failed", available: () => false }; return; }
 
   const lib = () => G.DungeonModels || null;
+  // ---- the split-pack loader
+  const files = {};            // id -> { promise, state, bytes, ms }
+  const arriveFns = [];
+  let base = "";
+  const inMemory = (id) => { const L = lib(); return !!(L && L.characters && L.characters[id]); };
+  function fetchScript(url, low) {
+    return new Promise((ok, no) => {
+      if (typeof document === "undefined" || !document.head) { no(new Error("no document")); return; }
+      const el = document.createElement("script"); el.src = url; el.async = true;
+      if (low) { try { el.fetchPriority = "low"; } catch (e) {} }
+      el.onload = ok; el.onerror = () => { el.remove(); no(new Error("could not load " + url)); };
+      document.head.appendChild(el);
+    });
+  }
+  function loadOne(id, low) {
+    if (inMemory(id)) return Promise.resolve(true);
+    const f = files[id];
+    if (f && f.promise && f.state !== "failed") return f.promise;
+    const idx = (G.DungeonModelIndex || {})[id];
+    if (!base) return Promise.resolve(false);
+    if (G.DungeonModelIndex && !idx) { files[id] = { state: "failed", promise: Promise.resolve(false) }; return files[id].promise; }
+    const t0 = (typeof performance !== "undefined" ? performance.now() : Date.now());
+    const rec = files[id] = { state: "loading", bytes: idx ? idx.bytes : 0, ms: 0 };
+    rec.promise = fetchScript(base + id + ".js" + (idx ? "?v=" + idx.v : ""), low).then(() => {
+      rec.ms = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
+      rec.state = inMemory(id) ? "ready" : "failed"; return rec.state === "ready";
+    }, (e) => { rec.state = "failed"; rec.promise = null; console.warn("Dungeon model " + id + " unavailable", e); return false; });
+    return rec.promise;
+  }
+  function load(ids, low) {
+    const list = (Array.isArray(ids) ? ids : [ids]).filter(Boolean);
+    return Promise.all(list.map((id) => loadOne(id, low))).then((r) => r.every(Boolean));
+  }
+  function stateOf(id) { if (inMemory(id)) return "ready"; const f = files[id]; return f ? f.state : "absent"; }
   const decoded = {};          // per mesh key -> typed arrays (kept for rebuilding geometry)
   const clipCache = {};        // per character id + clip -> THREE.AnimationClip
 
@@ -215,8 +280,18 @@
   }
 
   G.DungeonSkin = {
-    ready: () => !!(lib() && lib().characters),
-    has: (id) => !!(lib() && lib().characters && lib().characters[id]),
+    // the runtime is here (it always is once this file ran); characters arrive per file
+    ready: () => true,
+    has: inMemory,
+    setBase(url) { base = url && !/\/$/.test(url) ? url + "/" : (url || ""); },
+    base: () => base,
+    load: (ids) => load(ids, false),
+    prefetch: (ids) => load(ids, true).catch(() => false),
+    state: stateOf,
+    available: (id) => inMemory(id) || !!(G.DungeonModelIndex && G.DungeonModelIndex[id]),
+    onArrive(fn) { if (typeof fn === "function") arriveFns.push(fn); },
+    _arrived(ids) { for (const fn of arriveFns) { try { fn(ids); } catch (e) { console.warn(e); } } },
+    stats: () => Object.keys(files).map((id) => ({ id, bytes: files[id].bytes || 0, ms: Math.round(files[id].ms || 0), ok: files[id].state === "ready" })),
     characters: () => (lib() ? Object.keys(lib().characters) : []),
     weaponKinds: () => (lib() && lib().weapons ? Object.keys(lib().weapons) : []),
     weaponInfo: (k) => (lib() && lib().weapons ? lib().weapons[k] || null : null),

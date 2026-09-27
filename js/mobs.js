@@ -1931,6 +1931,50 @@
     return `rgb(${c[0]},${c[1]},${c[2]})`;
   }
 
+  // ---- facing + the animation layer (js/mob-anim.js); legacy hard mirror if that file is missing
+  function tracksPlayer(e) { return e.ai === "ranged" || e.ai === "healer" || !!e.isBoss; }
+  function animFor(e, t) {
+    const MA = window.MobAnim;
+    if (!MA) {
+      const dx = e.x - (e._lx == null ? e.x : e._lx); e._lx = e.x;
+      if (Math.abs(dx) > 0.12) e._face = dx > 0 ? 1 : -1;
+      if (tracksPlayer(e)) e._face = state.pos.x >= e.x ? 1 : -1;
+      return null;
+    }
+    const A = MA.update(e, t, state.pos ? { px: state.pos.x, py: state.pos.y } : null,
+      { tracks: tracksPlayer(e), ranged: e.ai === "ranged" || e.ai === "healer" || e.ai === "archer", winding: winding(e), turnRate: e.isBoss || e.size > 17 ? 6 : 10 });
+    e._face = A.side;
+    return A;
+  }
+  // Dead enemies leave combat.js's list the frame they die; a few are kept here to play the death out.
+  const corpses = [];
+  function onDeath(e) {
+    if (!e || !MODEL[e.type] || (e.type === "mimic" && !e.awake)) return;
+    const c = Object.assign({}, e); c.hitFlash = 0; c.fuse = 0;
+    const px = state.pos ? state.pos.x : e.x - 1;
+    corpses.push({ e: c, t0: null, dir: e.x >= px ? 1 : -1, born: Date.now() });
+    if (corpses.length > 24) corpses.shift();
+  }
+  let corpseT = null;
+  function drawCorpses(ctx, t, TYPES) {
+    const MA = window.MobAnim; if (!MA) { corpses.length = 0; return; }
+    if (t === corpseT) return; corpseT = t;             // the maze and the arena may both ask in one frame
+    for (let i = corpses.length - 1; i >= 0; i--) {
+      const c = corpses[i];
+      if (Date.now() - c.born > 1500) { corpses.splice(i, 1); continue; }   // never replay a stale death somewhere else
+      if (c.t0 == null) c.t0 = t;
+      const D = MA.death(c, t); if (D.done) { corpses.splice(i, 1); continue; }
+      const e = c.e, base = BASE[e.type] || 14, scale = e.size / base, side = e._face || 1;
+      ctx.save();
+      ctx.globalAlpha *= D.alpha;
+      ctx.translate(e.x, e.y);
+      ctx.save(); ctx.scale(1 - 0.4 * (1 - D.alpha), 1); shadowUnder(ctx, e.size); ctx.restore();
+      ctx.translate(0, e.size + D.oy); ctx.rotate(D.rot); ctx.scale(scale * side * D.sx, scale * D.sy); ctx.translate(0, -base);
+      MODEL[e.type](ctx, e, t, 0, { body: e.color, dark: shade(e.color, 0.5) }, TYPES);
+      ctx.restore();
+    }
+  }
+
   function drawEnemy(ctx, e, t, TYPES) {
     const model = MODEL[e.type] || drawBrute;
     const base = BASE[e.type] || 14;
@@ -1941,10 +1985,12 @@
     const dx = e.x - e._px, dy = e.y - e._py;
     const moved = Math.hypot(dx, dy);
     e._phase = (e._phase || 0) + moved * 0.22;
-    if (Math.abs(dx) > 0.12) e._face = dx > 0 ? 1 : -1;
     e._px = e.x; e._py = e.y;
-    // Ranged types face what they are shooting at rather than where they walk.
-    if (e.ai === "ranged" || e.ai === "healer" || e.isBoss) e._face = state.pos.x >= e.x ? 1 : -1;
+    // Facing + secondary motion (js/mob-anim.js). This used to be a hard mirror on the sign of dx
+    // (or of player.x - e.x for trackers): a 180-degree snap every time the player crossed the body's
+    // centre line, and a flicker for anything walking mostly up or down. Now a continuous, rate-limited
+    // facing angle whose profile side changes with hysteresis and turns through the narrow profile.
+    const A = animFor(e, t);
     const sw = Math.sin(e._phase);
 
     const flash = e.hitFlash > 0;
@@ -1958,7 +2004,13 @@
     ctx.save();
     ctx.translate(e.x, e.y);
     shadowUnder(ctx, e.size);
-    ctx.scale(scale * e._face, scale);
+    if (A) {
+      // pivot at the feet: lean into the stride / wind-up / strike / recoil, squash-and-stretch, the turn
+      ctx.translate(A.ox, e.size);
+      ctx.rotate(A.lean * A.side);
+      ctx.scale(scale * A.mirror * A.sx, scale * A.sy);
+      ctx.translate(0, -base);
+    } else ctx.scale(scale * e._face, scale);
     // A small vertical bob while walking sells the weight.
     ctx.translate(0, -Math.abs(Math.sin(e._phase)) * (e.type === "tank" || e.type === "warden" ? 1 : 2));
     model(ctx, e, t, sw, C, TYPES);
@@ -2009,7 +2061,7 @@
     ctx.fillRect(x0, y0, w, h);
   }
 
-  window.gameMobs = { drawEnemy, drawFloor, endlessFloorPattern, _endlessDirect: (...a) => drawEndlessFloorDirect(...a), drawWalls, buildProps, drawGroundProps, drawStandingProps, drawDarkness,
+  window.gameMobs = { drawEnemy, drawCorpses, onDeath, drawFloor, endlessFloorPattern, _endlessDirect: (...a) => drawEndlessFloorDirect(...a), drawWalls, buildProps, drawGroundProps, drawStandingProps, drawDarkness,
     drawMotes, hasModel: (type) => !!MODEL[type], MODEL_TYPES: Object.keys(MODEL), GROUND_KINDS, THEMED_STANDING,
     // tell combat.js it can stop drawing its fallbacks
     THEMED: true, ELITE_OVERLAY: true,
