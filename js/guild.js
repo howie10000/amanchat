@@ -869,7 +869,7 @@ function scArtChipsHtml(k) {
   return `<div class="scArtChips"><small>${guildTerm("crown_art", "CROWN ARTS")}</small>${list.map(a => {
     const d = window.CROWN && CROWN.ARTS[a.id]; if (!d) return "";
     const p = (a.p * 100).toFixed(a.p < 0.01 ? 1 : 0) + "%";
-    return `<span class="scArtChip r-${esc(d.rarity)}${own[a.id] ? " own" : ""}" title="${esc(d.name + " — " + d.desc + " (" + p + " per clear)")}">${gIco("art", a.id, 16) || "♛"}${esc(d.name)}<small class="gdPct">${own[a.id] ? "✓ owned" : p}</small></span>`; }).join("")}</div>`;
+    return `<span class="scArtChip r-${esc(d.rarity)}${own[a.id] ? " own" : ""}" title="${esc(d.name + " — " + d.desc + " (" + p + " per clear)")}">${gIco("art", a.id, 16) || "♛"}${esc(d.name)}<small class="gdPct">${own[a.id] ? "owned" : p}</small></span>`; }).join("")}</div>`;
 }
 // UI GUIDE hooks (js/ui-guide.js). Every one degrades to plain text when the guide is absent.
 function guildTerm(key, label) { return window.gameGuide && gameGuide.term ? gameGuide.term(key, label) : esc(label); }

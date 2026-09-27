@@ -2819,11 +2819,11 @@ img.ii.scSil{filter:grayscale(1) brightness(.45) contrast(1.2);opacity:.75}
 .gdSpot{position:relative;z-index:2;outline:3px solid #fde68a!important;outline-offset:3px;border-radius:10px;box-shadow:0 0 0 6px rgba(253,230,138,.18),0 0 26px rgba(253,230,138,.45)!important;animation:gdSpotPulse 1.6s ease-in-out infinite}
 @keyframes gdSpotPulse{50%{outline-color:rgba(253,230,138,.45)}}
 /* boss primer */
-.gdBoss{position:fixed;z-index:10030;left:12px;top:22%;width:min(320px,calc(100vw - 24px));padding:12px 14px;border-radius:14px;box-sizing:border-box;
+.gdBoss{position:fixed;z-index:10030;right:12px;top:64px;width:min(320px,calc(100vw - 24px));padding:12px 14px;border-radius:14px;box-sizing:border-box;
   background:linear-gradient(165deg,rgba(40,20,26,.96),rgba(10,6,10,.96));border:1px solid rgba(248,113,113,.65);box-shadow:0 14px 40px rgba(0,0,0,.6);
   color:#f1f5f9;font:13px/1.45 system-ui,sans-serif}
 .gdBoss[hidden]{display:none}
-.gdBoss.modal{left:50%;top:50%;transform:translate(-50%,-50%);width:min(420px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto}
+.gdBoss.modal{right:auto;left:50%;top:50%;transform:translate(-50%,-50%);width:min(420px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto}
 .gdBoss > b{font-size:15px;color:#fecaca}
 .gdBoss ol{margin:8px 0;padding-left:20px;display:grid;gap:5px}
 .gdBoss .menuBtn{width:100%;margin-top:8px}
@@ -2892,6 +2892,7 @@ img.ii.scSil{filter:grayscale(1) brightness(.45) contrast(1.2);opacity:.75}
 .gdLockTag{display:inline-block;padding:1px 8px;border-radius:6px;font-size:11px;font-weight:700;color:#cbd5e1;background:rgba(148,163,184,.14);border:1px dashed rgba(148,163,184,.5)}
 #jnRoot .menuBtn:disabled,#jnRoot .menuBtn[disabled]{opacity:.42;filter:grayscale(.7);cursor:not-allowed;box-shadow:none}
 .gdEm{color:#fde68a;font-weight:800}
+.scRvNext{display:block;margin-top:4px;font-size:10px;line-height:1.3;color:#fde68a;opacity:.9;max-width:150px;text-align:center}
 .adForgeHero .gdHelpBtn,.scHero .gdHelpBtn{display:flex;width:max-content;margin-top:6px}
 /* the side column in a run: ?, collapse, Arts (two short lines so it clears the HUD panel) */
 #dungeonArtsBtn{width:44px;height:auto!important;padding:4px 0!important;display:grid;justify-items:center;gap:1px;line-height:1.05!important}

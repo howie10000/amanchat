@@ -303,7 +303,7 @@
     if(state.tomeCine){ctx.save();ctx.translate(VIEW_OX,VIEW_OY);gameBosses.drawTomeCinematic(ctx,state.tomeCine,t);ctx.restore();}
     if(G())G().drawScreen(ctx,t);
     minimap();
-    if(window.gameCrownArts)gameCrownArts.drawSlots(ctx,canvas.width-134,canvas.height-70,t);
+    if(window.gameCrownArts)gameCrownArts.drawSlots(ctx,canvas.width-250,canvas.height-70,t); /* clear of the phone button (GUI-AUDIT) */
   }
   window.gameExpedition={setup,tick,draw,minimap,flowTarget,apply,leave,inside};
   if(window.NET)NET.on('guild_dungeon',m=>{if(m.kind==='expedition')apply(m);});
