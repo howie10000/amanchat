@@ -109,7 +109,7 @@ def gorehorn():
     for k in range(5):
         a = (k - 2) * 0.35
         ch.add(core.sphere(cid_ + '.rivet', hc + Vector((math.sin(a) * 0.28, -0.42, 0.05 + math.cos(a) * 0.1)), 0.035, M['trim'], 8, 5), 'head')
-    ring = core.torus(cid_ + '.ring', (0, Q['headY'] - 0.8, Q['headZ'] - 0.6), 0.07, 0.018, M['trim'], 20, 6, 'Y')
+    ring = core.torus(cid_ + '.ring', (0, Q['headY'] - 0.8, Q['headZ'] - 0.47), 0.06, 0.016, M['trim'], 20, 6, 'Y')
     ch.add(ring, 'head')
     for i, sx in enumerate((1, -1)):
         e = Vector((sx * 0.3, Q['headY'] - 0.25, Q['headZ'] + 0.02))

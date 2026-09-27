@@ -3471,8 +3471,8 @@
     veiled_assassin: { actors: [{ cid: "veiled_assassin", h: 13, eye: 0xe9d5ff }], mini: "entrance", special: "ambush" },
     briar_matron: { actors: [{ cid: "briar_matron", h: 16.5, eye: 0xd9f99d }], mini: "entrance", special: "summon" },
     twin_monarchs: { actors: [{ cid: "sol", h: 14.5, x: -5.5, hover: 1, eye: 0xffffff }, { cid: "umbra", h: 14.5, x: 5.5, hover: 1, delay: 0.9, eye: 0xf5d0fe }], special: "cast" },
-    sundered_king: { actors: [{ cid: "sundered_king", h: 17, eye: 0xfde047 }], special: "swing", colossus: { cid: "colossus", h: 26, z: -13 } },
-    gorehorn: { actors: [{ cid: "gorehorn", h: 15, eye: 0xfbbf24 }], special: ["charge", "impact"] },
+    sundered_king: { actors: [{ cid: "sundered_king", h: 17, eye: 0xfde047 }], special: "swing", colossus: { cid: "colossus", h: 34, z: -13 } },
+    gorehorn: { actors: [{ cid: "gorehorn", h: 11.5, eye: 0xfbbf24 }], special: ["charge", "impact"] },
   };
   function skinKey(id) {
     if (!skinReady()) return null;
