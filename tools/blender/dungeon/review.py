@@ -112,3 +112,28 @@ def sheet(ch, poses, out, extent=None, only=None):
     img.save()
     bpy.data.images.remove(img)
     return out
+
+
+def stitch(paths, out, cols):
+    """Grid several single-tile PNGs (deleting them) into one sheet."""
+    tiles = []
+    for p in paths:
+        img = bpy.data.images.load(p)
+        tiles.append(np.array(img.pixels[:], dtype=np.float32).reshape(img.size[1], img.size[0], 4))
+        bpy.data.images.remove(img)
+        os.remove(p)
+    rows = (len(tiles) + cols - 1) // cols
+    h, w = tiles[0].shape[:2]
+    grid = np.zeros((rows * h, cols * w, 4), dtype=np.float32)
+    grid[..., 3] = 1
+    for i, t in enumerate(tiles):
+        r, c = i // cols, i % cols
+        rr = rows - 1 - r
+        grid[rr * h:(rr + 1) * h, c * w:(c + 1) * w] = t
+    img = bpy.data.images.new('sheet', cols * w, rows * h, alpha=False)
+    img.pixels[:] = grid.ravel()
+    img.filepath_raw = out
+    img.file_format = 'PNG'
+    img.save()
+    bpy.data.images.remove(img)
+    return out

@@ -73,6 +73,7 @@ def build_hero(result):
     for cls, rep in (('onehand', 'sword'), ('pole', 'spear'), ('gun', 'gun'), ('throw', 'boomerang'), ('dart', 'blowdart'), ('xbow', 'crossbow')):
         CHero.ready(ch, cls, weps[rep][1])
     CHero.hero_attacks(ch, {k: s for k, (o, s) in weps.items()})
+    KB.hit(ch, 'flinch')
     ch.show_weapon = show
     check_ik(ch)
     show('sword')
@@ -186,8 +187,26 @@ def render_sheets(result, out_dir):
                 poses.append((label, act[clip], fr, yaw))
         if ch.id == 'hero':
             poses += [('walk', act['walk'], 4, 30), ('run', act['run'], 6, 60), ('ready', act['ready_onehand'], 0, 30),
-                      ('windup', act['slash'], 8, 30), ('strike', act['slash'], 13, 30), ('follow', act['slash'], 18, 30)]
+                      ('windup', act['slash'], 8, 30), ('strike', act['slash'], 13, 30), ('cheer', act['cheer'], 12, 20)]
             ch.show_weapon('sword')
+            p = str(out_dir / ('sheet-%s.png' % ch.id))
+            review.sheet(ch, poses, p, only=[result['weapons']['sword'][0]])
+            sheets.append(p)
+            # every weapon kind: its ready stance and the key frame of its attack, one weapon visible at a time
+            tiles = []
+            for kind, clip, fr in (('sword', 'slash', 13), ('mace', 'smash', 15), ('dagger', 'stab', 7), ('axe', 'chop', 15), ('spear', 'thrust', 14), ('scythe', 'sweep', 17),
+                                   ('gun', 'shoot', 12), ('boomerang', 'throw', 9), ('blowdart', 'puff', 13), ('crossbow', 'loose', 18)):
+                ch.show_weapon(kind)
+                cls = W.CLASS[kind]
+                for a, f in ((act['ready_' + cls], 0), (act[clip], fr)):
+                    t = str(out_dir / ('_w%02d.png' % len(tiles)))
+                    review.sheet(ch, [(kind, a, f, 35)], t, only=[result['weapons'][kind][0]])
+                    tiles.append(t)
+            p = str(out_dir / 'sheet-hero-weapons.png')
+            review.stitch(tiles, p, 5)
+            sheets.append(p)
+            ch.show_weapon('sword')
+            continue
         p = str(out_dir / ('sheet-%s.png' % ch.id))
         extra = [o for (o, _) in result['weapons'].values() if not o.hide_render] if ch.id == 'hero' else []
         review.sheet(ch, poses, p, only=extra, extent=ch.P.get('H', 2) * (1.9 if ch.kind == 'quad' else 1.0))

@@ -44,14 +44,14 @@ for k, v in stats['chars'].items():
     print('  %-18s tris %6d verts %6d bones %d clips %d attach %d' % (k, v['tris'], v['verts'], v['bones'], v['clips'], v['attach']))
 print('  weapons', stats['weapons'])
 print('  clips stored', stats['clips'], 'unique of', stats['clip_refs'])
+if not opt('--skip-render'):
+    sheets = Bld.render_sheets(result, (ROOT / 'assets' / 'dungeon') if out_dir == ROOT else out_dir)
+    for s in sheets:
+        print('SHEET', s)
 if not opt('--no-blend'):
     blend = ROOT / 'assets' / 'dungeon' / 'dungeon-models.blend' if out_dir == ROOT else out_dir / 'dungeon-models.blend'
     blend.parent.mkdir(parents=True, exist_ok=True)
     Bld.layout_for_blend(result)
     bpy.ops.wm.save_as_mainfile(filepath=str(blend), compress=True)
     print('BLEND', blend)
-if not opt('--skip-render'):
-    sheets = Bld.render_sheets(result, (ROOT / 'assets' / 'dungeon') if out_dir == ROOT else out_dir)
-    for s in sheets:
-        print('SHEET', s)
 print('done in %.1fs' % (time.time() - t0))

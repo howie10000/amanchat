@@ -109,7 +109,7 @@ def gorehorn():
     for k in range(5):
         a = (k - 2) * 0.35
         ch.add(core.sphere(cid_ + '.rivet', hc + Vector((math.sin(a) * 0.28, -0.42, 0.05 + math.cos(a) * 0.1)), 0.035, M['trim'], 8, 5), 'head')
-    ring = core.torus(cid_ + '.ring', (0, Q['headY'] - 0.74, Q['headZ'] - 0.58), 0.08, 0.02, M['trim'], 20, 6, 'Y')
+    ring = core.torus(cid_ + '.ring', (0, Q['headY'] - 0.8, Q['headZ'] - 0.6), 0.07, 0.018, M['trim'], 20, 6, 'Y')
     ch.add(ring, 'head')
     for i, sx in enumerate((1, -1)):
         e = Vector((sx * 0.3, Q['headY'] - 0.25, Q['headZ'] + 0.02))
@@ -197,10 +197,10 @@ def clips(ch):
         c.key(f, merge(low, legs(fr=-30, kfr=80), {'body@': (0, 0, -0.04)}))
         c.key(f + 6, merge(low, legs(fr=12, kfr=10), {'body@': (0, 0, -0.07)}))
     c.key(58, merge(low, {'neck': (-30, 0, 0), 'head': (-20, 0, 0), 'body@': (0, 0.15, -0.12)}, legs(8, 8, 10, 10, 10, 10, 20, 20)))       # anticipation: sink back
-    rear = merge(legs(-60, -40, -30, -30, 90, 70, 24, 24), {'body@': (0, 0.1, -0.05), 'body': (32, 0, 0), 'spine': (8, 0, 0), 'chest': (6, 0, 0),
+    rear = merge(legs(-60, -40, 30, 30, 90, 70, 16, 16), {'body@': (0, 0.05, -0.12), 'body': (32, 0, 0), 'spine': (8, 0, 0), 'chest': (6, 0, 0),
                   'neck': (18, 0, 0), 'head': (24, 0, 0), 'jaw': (30, 0, 0), 'tail.1': (-10, 0, 0)})
     c.key(70, rear, lag={'head': 2, 'tail': 4})
-    c.key(84, merge(rear, legs(-64, -44, -34, -34, 95, 75, 26, 26), {'body': (36, 0, 0), 'neck': (24, 0, 6), 'head': (30, 8, 0), 'jaw': (34, 0, 0)}), lag={'head': 2})
+    c.key(84, merge(rear, legs(-64, -44, 34, 34, 95, 75, 18, 18), {'body': (36, 0, 0), 'neck': (24, 0, 6), 'head': (30, 8, 0), 'jaw': (34, 0, 0)}), lag={'head': 2})
     c.key(94, merge(low, legs(-10, -6, 6, 6, 20, 20, 16, 16), {'body@': (0, 0, -0.18), 'body': (-4, 0, 0), 'neck': (-24, 0, 0), 'head': (-16, 0, 0), 'jaw': (8, 0, 0)}), lag={'head': 3, 'tail': 4})
     c.key(120, merge(low, {'neck': (-16, 0, 0), 'head': (-10, 0, 0), 'body@': (0, 0, -0.05)}))
     c.interp_at(95, 'LINEAR')

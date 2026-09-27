@@ -59,7 +59,8 @@
   }
   function material(name, overrides) {
     const s = (lib().materials || {})[name] || { color: "#888888", roughness: 0.8, metalness: 0 };
-    const o = { color: new THREE.Color(s.color), roughness: s.roughness, metalness: s.metalness };
+    // no environment map in the dungeon scenes: fully metallic surfaces would read black, so metals keep some diffuse
+    const o = { color: new THREE.Color(s.color), roughness: s.roughness, metalness: Math.min(0.55, s.metalness) };
     if (s.emissive) { o.emissive = new THREE.Color(s.emissive); o.emissiveIntensity = s.ei || 1; }
     if (s.side === 2) o.side = THREE.DoubleSide;
     if (s.opacity != null && s.opacity < 1) { o.transparent = true; o.opacity = s.opacity; o.depthWrite = false; }

@@ -1711,11 +1711,19 @@
   // `people` is [{ appearance }] from bosses.js — you first, then whoever else
   // is on this floor of this run. `walk` is 0 standing, 1 walking; `face` is
   // the yaw they hold. `phase` drives the stride.
-  function poseParty(people, x0, z0, walk, phase, face) {
+  function poseParty(people, x0, z0, walk, phase, face, act) {
     const n = Math.max(0, Math.min(PARTY_MAX, (people && people.length) || 0));
     for (let i = 0; i < PARTY_MAX; i++) {
       const m = fx.party[i];
-      if (i >= n) { m.g.visible = false; continue; }
+      const sk = skinMember(m);
+      if (i >= n) { m.g.visible = false; if (sk) sk.root.visible = false; continue; }
+      if (sk) {
+        // the Blender hero: faces +Z, so the same yaw turns it toward the boss on the way in
+        m.g.visible = false; sk.root.visible = true;
+        sk.root.position.set(x0 + (i - (n - 1) / 2) * 1.9, 0, z0 + (i % 2) * 1.1); sk.root.rotation.y = face;
+        poseSkinnedMember(m, people[i], i, walk, phase, act);
+        continue;
+      }
       m.g.visible = true;
       dressMember(m, people[i] && people[i].appearance);
 
@@ -3423,6 +3431,223 @@
     };
   }
 
+  // =====================================================================
+  //  BLENDER-AUTHORED CHARACTERS
+  // =====================================================================
+  // The Sundered Crown bosses and the party heroes are rigged, skinned and
+  // animated in Blender (tools/blender/build-dungeon-models.py) and shipped as
+  // js/dungeon-models.js, played through js/dungeon-skin.js (SkinnedMesh +
+  // AnimationMixer). Both are fetched lazily after login (warmup) so the login
+  // screen and town never pay for them. Until they arrive — or if they fail —
+  // the procedural builders above are used unchanged.
+  const SCRIPT_URL = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
+  const SKIN = { state: "idle", promise: null, fresh: false };
+  function skinReady() {
+    if (SKIN.state === "ready") return true;
+    if (SKIN.state === "failed") return false;
+    if (window.DungeonSkin && DungeonSkin.ready && DungeonSkin.ready()) { SKIN.state = "ready"; return true; }
+    return false;
+  }
+  function loadSkins() {
+    if (skinReady()) return Promise.resolve(true);
+    if (SKIN.promise) return SKIN.promise;
+    if (!SCRIPT_URL || typeof document === "undefined" || !document.head || typeof URL === "undefined") return Promise.resolve(false);
+    const one = (name) => new Promise((ok, no) => {
+      const el = document.createElement("script"); el.src = new URL(name + "?v=skin-1", SCRIPT_URL).href; el.async = true;
+      el.onload = ok; el.onerror = () => { el.remove(); no(new Error("could not load " + name)); }; document.head.appendChild(el);
+    });
+    SKIN.state = "loading";
+    SKIN.promise = one("dungeon-models.js").then(() => one("dungeon-skin.js")).then(() => {
+      SKIN.state = (window.DungeonSkin && DungeonSkin.ready && DungeonSkin.ready()) ? "ready" : "failed";
+      SKIN.fresh = SKIN.state === "ready"; return SKIN.state === "ready";
+    }).catch((e) => { SKIN.state = "failed"; console.warn("Dungeon models unavailable; using procedural rigs", e); return false; });
+    return SKIN.promise;
+  }
+  // game height of each actor (the procedural rigs' sizes), and which clip plays each beat
+  const SKINNED = {
+    kael: { actors: [{ cid: "kael", h: 15, eye: 0xfecdd3 }], special: "thousand_cuts" },
+    kael_crownbound: { actors: [{ cid: "kael_crownbound", h: 15, eye: 0xfde047 }], mini: "land", special: "riposte" },
+    pit_champion: { actors: [{ cid: "pit_champion", h: 15.5, eye: 0xfde68a }], mini: "entrance", special: "thrust" },
+    veiled_assassin: { actors: [{ cid: "veiled_assassin", h: 13, eye: 0xe9d5ff }], mini: "entrance", special: "ambush" },
+    briar_matron: { actors: [{ cid: "briar_matron", h: 16.5, eye: 0xd9f99d }], mini: "entrance", special: "summon" },
+    twin_monarchs: { actors: [{ cid: "sol", h: 14.5, x: -5.5, hover: 1, eye: 0xffffff }, { cid: "umbra", h: 14.5, x: 5.5, hover: 1, delay: 0.9, eye: 0xf5d0fe }], special: "cast" },
+    sundered_king: { actors: [{ cid: "sundered_king", h: 17, eye: 0xfde047 }], special: "swing", colossus: { cid: "colossus", h: 26, z: -13 } },
+    gorehorn: { actors: [{ cid: "gorehorn", h: 15, eye: 0xfbbf24 }], special: ["charge", "impact"] },
+  };
+  function skinKey(id) {
+    if (!skinReady()) return null;
+    const key = SKINNED[id] ? id : (SKINNED[artOf(id)] ? artOf(id) : null);
+    if (!key) return null;
+    const S = SKINNED[key];
+    return S.actors.every((a) => DungeonSkin.has(a.cid)) && (!S.colossus || DungeonSkin.has(S.colossus.cid)) ? key : null;
+  }
+  const smoothW = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+  function skinnedBuilder(id, fallback) {
+    const spec = SKINNED[id];
+    return function (root, shell, body, trim, accent) {
+      try { return buildSkinned(id, spec, root, shell, trim, accent); }
+      catch (e) {
+        console.warn("Skinned " + id + " failed; procedural rig used", e); SKIN.state = "failed";
+        while (shell.children.length) shell.remove(shell.children[0]);
+        return fallback(root, shell, body, trim, accent);
+      }
+    };
+  }
+  function eyesOn(actor, color, r, out) {
+    for (const n of ["eyeL", "eyeR"]) {
+      const so = actor.socket(n); if (!so) continue;
+      const e = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), glowMat(color));
+      e.add(new THREE.Mesh(new THREE.SphereGeometry(r * 2.6, 10, 8), glowMat(color, 0.22)));
+      so.add(e); out.push(e);
+    }
+  }
+  function buildSkinned(id, spec, root, shell, trim, accent) {
+    const actors = [], eyes = [];
+    let trimMat = null;
+    for (const s of spec.actors) {
+      const a = DungeonSkin.create(s.cid, { height: s.h });
+      a.spec = s; a.root.position.x = s.x || 0; shell.add(a.root); actors.push(a);
+      const meta = (DungeonSkin.meta(s.cid) || {}).meta || {};
+      if (!trimMat && meta.trim && a.mats[meta.trim]) trimMat = a.mats[meta.trim];
+      eyesOn(a, s.eye || accent || 0xffffff, 0.016, eyes);
+    }
+    // the King's spectral colossus, hidden until his second phase
+    let col = null, colA = null, mist = null;
+    const colEyes = [];
+    if (spec.colossus) {
+      col = new THREE.Group(); col.position.z = spec.colossus.z; col.visible = false; root.add(col);
+      colA = DungeonSkin.create(spec.colossus.cid, { height: spec.colossus.h, shadows: false }); col.add(colA.root);
+      eyesOn(colA, 0xfff7d6, 0.03, colEyes);
+      mist = glowSprite(0xfacc15, 40, 0.28); mist.position.set(0, 12, -1); col.add(mist);
+    }
+    // Sol's sun and Umbra's dark moon hang above the pair
+    let deco = null;
+    if (id === "twin_monarchs") {
+      const Y = 20;
+      const sun = mesh(shell, new THREE.SphereGeometry(1.6, 24, 16), emissiveMat(0xfde68a, 1.4), -5.5, Y, -2);
+      const sunGlow = glowSprite(0xfbbf24, 9, 0.55); sunGlow.position.set(-5.5, Y, -2.2); shell.add(sunGlow);
+      const moon = mesh(shell, new THREE.SphereGeometry(1.5, 24, 16), new THREE.MeshStandardMaterial({ color: 0x0c0620, roughness: 1 }), 5.5, Y, -2);
+      const moonRim = mesh(shell, new THREE.TorusGeometry(1.6, 0.08, 6, 40), glowMat(0xc4b5fd, 0.8), 5.5, Y, -1.95);
+      deco = { sun, sunGlow, moon, moonRim, Y };
+    }
+    root.updateMatrixWorld(true);
+    const rp = root.getWorldPosition(new THREE.Vector3());
+    const eyeY = eyes.length ? eyes[0].getWorldPosition(new THREE.Vector3()).y - rp.y : spec.actors[0].h * 0.9;
+    const secs = (t, s) => t / 1000 + ((s && s.delay) || 0);
+    const hover = (a, s, t, down) => { if (s.hover) a.root.position.y = (0.9 + Math.sin((t + (s.delay || 0) * 1000) / 700) * 0.35) * (1 - (down || 0)); };
+    const each = (fn) => actors.forEach((a) => fn(a, a.spec));
+    const clipOr = (a, n) => (a.has(n) ? n : "idle");
+    function decoIdle(t) { if (!deco) return; deco.sun.rotation.y = t / 3000; deco.sunGlow.material.opacity = 0.45 + 0.15 * Math.sin(t / 500); deco.moonRim.rotation.z = t / 4000; }
+    function colossus(u, t) {
+      if (!col) return;
+      col.visible = u > 0.001; if (!col.visible) return;
+      col.position.y = -12 * (1 - easeOut(u));
+      const w = smoothW(0.92, 1, u);
+      colA.pose([["rise", u * colA.duration("rise"), 1 - w], ["idle", t / 1000, w]]);
+      for (const k in colA.mats) { const m = colA.mats[k]; m.opacity = (m.userData.baseOpacity == null ? 1 : m.userData.baseOpacity) * u; }
+      mist.material.opacity = 0.28 * u;
+    }
+    function idle(t) {
+      each((a, s) => { a.pose([["idle", secs(t, s), 1]]); hover(a, s, t); });
+      if (col) col.visible = false;
+      decoIdle(t);
+    }
+    // the boss entrance: the authored entrance clip across the beat, settling into the idle loop
+    function rise(k, t) {
+      each((a, s) => {
+        const n = clipOr(a, "entrance"), kk = s.delay ? clamp01(k * 1.1 - 0.05) : k, w = smoothW(0.9, 1, kk);
+        a.pose([[n, kk * a.duration(n), 1 - w], ["idle", secs(t, s), w]]); hover(a, s, t);
+      });
+      if (deco) { deco.sun.scale.setScalar(Math.max(0.01, easeOutBack(clamp01((k - 0.4) / 0.4)))); deco.moon.scale.setScalar(Math.max(0.01, easeOutBack(clamp01((k - 0.5) / 0.4)))); }
+    }
+    // the minis drop in: the first frame while falling, then the clip plays through the stand-up and the look
+    function miniPose(s) {
+      each((a, sp) => {
+        const n = clipOr(a, spec.mini || "entrance"), u = s.land <= 0 ? 0 : 0.06 + 0.94 * clamp01(0.55 * s.up + 0.45 * s.look), w = smoothW(0.85, 1, s.look);
+        a.pose([[n, u * a.duration(n), 1 - w], ["idle", secs(s.t, sp), w]]); hover(a, sp, s.t);
+      });
+    }
+    function deathPose(c, t) {
+      each((a, s) => { const n = clipOr(a, "death"); a.pose([[n, c * a.duration(n), 1]]); hover(a, s, t, easeOut(c)); });
+      if (deco) { deco.sun.position.y = deco.Y - 17 * easeIn(c); deco.moon.position.y = deco.Y - 17 * easeIn(c); deco.sunGlow.position.y = deco.sun.position.y; deco.moonRim.position.y = deco.moon.position.y; }
+    }
+    // a phase cinematic: the signature move, played out and settled back into the guard
+    function phase2Pose(k, t) {
+      const sp = Array.isArray(spec.special) ? spec.special : [spec.special];
+      each((a, s) => {
+        if (sp.length === 2) {
+          const wc = smoothW(0.06, 0.12, k) * (1 - smoothW(0.42, 0.48, k)), wi = smoothW(0.42, 0.48, k) * (1 - smoothW(0.85, 0.95, k));
+          const ui = clamp01((k - 0.45) / 0.4);
+          a.pose([[clipOr(a, sp[0]), t / 1000, wc], [clipOr(a, sp[1]), ui * a.duration(clipOr(a, sp[1])), wi], ["idle", secs(t, s), Math.max(0, 1 - wc - wi)]]);
+        } else {
+          const n = clipOr(a, sp[0]), w = smoothW(0.06, 0.14, k) * (1 - smoothW(0.8, 0.94, k)), u = clamp01((k - 0.1) / 0.66);
+          a.pose([[n, u * a.duration(n), w], ["idle", secs(t, s), 1 - w]]);
+        }
+        hover(a, s, t);
+      });
+      decoIdle(t);
+    }
+    // the King's second phase: down onto one knee over the sword
+    function phaseKing(k, t) {
+      each((a, s) => { const n = clipOr(a, "kneel"); a.pose([[n, clamp01(k / 0.45) * a.duration(n), 1]]); });
+    }
+    const A0 = actors[0];
+    return { eyes, eyeY, limbs: [], parts: [], idle, rise, miniPose, deathPose, phase2Pose, phaseKing: spec.colossus ? phaseKing : null,
+      colossus: spec.colossus ? colossus : null, colGroup: col, colEyes, torso: A0.bones.chest || A0.bones.body || A0.root, head: A0.bones.head || A0.root,
+      sculpted: true, skinned: true, crownHuman: true, actors, trim: trimMat || trim };
+  }
+
+  // ---- the party heroes, skinned: appearance tints, the weapon each is carrying, and what they are doing
+  const WEAPON_KINDS = ["sword", "mace", "spear", "dagger", "axe", "scythe", "gun", "boomerang", "blowdart", "crossbow"];
+  const ATTACK_CLIP = { sword: "slash", mace: "smash", spear: "thrust", dagger: "stab", axe: "chop", scythe: "sweep", gun: "shoot", boomerang: "throw", blowdart: "puff", crossbow: "loose" };
+  function kindOf(x) {
+    if (!x) return null;
+    if (typeof x === "string") return WEAPON_KINDS.includes(x) ? x : (x === "pistol" ? "gun" : null);
+    try { const k = window.ECON && ECON.weaponKindOf ? ECON.weaponKindOf(x) : null; return WEAPON_KINDS.includes(k) ? k : (x.kind && WEAPON_KINDS.includes(x.kind) ? x.kind : null); } catch (e) { return null; }
+  }
+  // The weapon system's contract (read guarded): gameWeapons.loadout() -> { melee, ranged, active }; before it
+  // exists, state.weapon is 'sword' | 'pistol'.
+  function heroWeapon(person, i) {
+    try {
+      if (person && (person.weaponKind || person.weapon)) { const k = kindOf(person.weaponKind || person.weapon); if (k) return k; }
+      if (i === 0) {
+        const GW = window.gameWeapons;
+        if (GW && GW.loadout) { const L = GW.loadout() || {}; const k = kindOf(L.active === "ranged" ? L.ranged : L.melee); if (k) return k; }
+        if (typeof state !== "undefined" && state && state.weapon) return kindOf(state.weapon) || "sword";
+      } else if (person && person.name && typeof state !== "undefined" && state && state.others && state.others[person.name]) {
+        const o = state.others[person.name], k = kindOf(o.weaponKind || o.weapon); if (k) return k;
+      }
+    } catch (e) {}
+    return "sword";
+  }
+  function skinMember(m) {
+    if (m.skin || m.skinTried || !skinReady() || !DungeonSkin.has("hero")) return m.skin;
+    m.skinTried = true;
+    try {
+      m.skin = DungeonSkin.create("hero", { height: 3.4 });
+      m.skin.root.visible = false; scene.add(m.skin.root);
+      m.skin.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    } catch (e) { console.warn("Skinned hero failed", e); m.skin = null; }
+    return m.skin;
+  }
+  function poseSkinnedMember(m, person, i, walk, phase, act) {
+    const S = m.skin;
+    if (S.appearance !== (person && person.appearance)) { S.appearance = person && person.appearance; S.tint(S.appearance || {}); }
+    const kind = heroWeapon(person, i);
+    if (S.weaponKind !== kind) S.setWeapon(kind);
+    const info = DungeonSkin.weaponInfo(kind) || {}, ready = "ready_" + (info.cls || "onehand");
+    const secs = cinematicTime / 1000 + i * 0.37, w = walk;
+    const L = [];
+    if (w > 0) L.push(["walk|noarms", ((phase + i * 0.7) / TAU) * S.duration("walk"), w], [ready + "|arms", secs, w]);
+    if (w < 1) L.push([ready, secs, 1 - w]);
+    if (act && act.w > 0) {
+      const n = act.kind === "attack" ? (ATTACK_CLIP[kind] || "slash") : act.kind;
+      for (const l of L) l[2] *= 1 - act.w;
+      L.push([n, act.u * S.duration(n), act.w]);
+    }
+    S.pose(L);
+  }
+
   const BUILDERS = { warden: buildWarden, smith: buildSmith, tyrant: buildTyrant, ogrelord: buildOgre, tempest: buildTempest,
     curator: buildCurator, astraea: buildAstraea, prismgolem: buildPrismGolem, khyra: buildKhyra, halvard: buildHalvard,
     iskarra: buildIskarra, herald: buildHerald, broodmother: buildBroodmother, heart: buildHeart, concordant: buildConcordant,
@@ -3430,7 +3655,11 @@
   Object.assign(BUILDERS, CROWN_BUILDERS);
   BUILD_DECOR.thornwild = crownDecor("thornwild"); BUILD_DECOR.colosseum = crownDecor("colosseum"); BUILD_DECOR.mirror = crownDecor("mirror"); BUILD_DECOR.throne = crownDecor("throne");
   function artOf(id) { try { return (window.ECON && ECON.bossArt) ? ECON.bossArt(id) : id; } catch (e) { return id; } }
-  function builderFor(id) { return id === "dragon" ? buildDragon : (BUILDERS[id] || BUILDERS[artOf(id)] || buildTyrant); }
+  function builderFor(id) {
+    const proc = id === "dragon" ? buildDragon : (BUILDERS[id] || BUILDERS[artOf(id)] || buildTyrant);
+    const key = skinKey(id);
+    return key ? skinnedBuilder(key, proc) : proc;
+  }
 
   function buildRig(id, color, accent) {
     if (rig) {
@@ -4573,6 +4802,7 @@
     rig.shell.visible = true;
     litBraziers(1, t, 0, 0.1);
     const flare = beat(k, 0.15, 0.45), settle = beat(k, 0.45, 1);
+    if (rig.phase2Pose) rig.phase2Pose(k, t);
     rig.root.position.y = Math.sin(flare * Math.PI) * 1.5;
     rig.trim.emissiveIntensity = 0.5 + 2 * Math.sin(flare * Math.PI);
     if (p.accent) rig.trim.emissive.set(p.accent);
@@ -4650,7 +4880,7 @@
   function posePhaseKing(p) {
     posePhaseGeneric(p);
     const { k, t } = p;
-    if (rig.rise) rig.rise(1 - 0.85 * Math.sin(clamp01(k / 0.45) * Math.PI * 0.5), t);
+    if (rig.phaseKing) rig.phaseKing(k, t); else if (rig.rise) rig.rise(1 - 0.85 * Math.sin(clamp01(k / 0.45) * Math.PI * 0.5), t);
     if (rig.colossus) rig.colossus(beat(k, 0.22, 0.8), t);
     if (rig.colEyes) for (const e of rig.colEyes) e.scale.setScalar(Math.max(0.01, beat(k, 0.7, 0.85)));
     const up = beat(k, 0.22, 0.8);
@@ -5038,6 +5268,9 @@
       if(rig.stormRings)for(let i=0;i<rig.stormRings.length;i++){const r=rig.stormRings[i];r.rotation.y=p.t/1000+i;r.position.y=7+i*2-collapse*(5+i*2);}
     }else if(ARCANE_IDS[p.id]){
       victoryArcane(p,collapse);
+    }else if(rig.skinned){
+      // the authored death does the falling; the root stays on the floor
+      rig.deathPose(collapse,p.t);
     }else{
       rig.root.position.y=-3.8*collapse;rig.root.rotation.x=.6*collapse;
       if(rig.deathPose)rig.deathPose(collapse,p.t);else for(const l of rig.limbs)l.arm.rotation.z=l.sx*lerp(-.2,-1,collapse);
@@ -5048,7 +5281,10 @@
     fx.wash.material.opacity=0;fx.shaft.material.opacity=.06*(1-collapse);
     R.gate.position.y=13*release;doorLight.color.setHex(0xffe2a2);doorLight.intensity=4.5*release;R.doorGlow.material.opacity=.8*release;
     litBraziers(1,p.t,0,.1);ambient.intensity=.2;hemi.intensity=.23;
-    poseParty(p.people,0,1.5+release*4,release>0&&release<1?1:0,p.t/150,0);
+    // the party lands the last blow, cheers as it falls, then turns and walks out
+    const blow=beat(p.k,0,.16),cheer=beat(p.k,.3,.62);
+    const act=blow<1?{kind:'attack',u:blow,w:clamp01(blow*10)*(1-smoothW(.8,1,blow))}:{kind:'cheer',u:cheer,w:Math.sin(cheer*Math.PI)};
+    poseParty(p.people,0,1.5+release*4,release>0&&release<1?1:0,p.t/150,Math.PI*(1-clamp01((p.k-.58)/.08)),act);
     if(collapse>0&&collapse<1)for(let i=0;i<3;i++)spawnMote({x:(Math.random()-.5)*16,y:Math.random()*12,z:ROOM.bossZ+Math.random()*8,vx:0,vy:.035,vz:.025,max:100,r:.68,g:.61,b:.45,s:.055});
     flyCamera([[0,-9,9,4,0,mini?8:13,ROOM.bossZ,43],[.32,-5,5,0,0,mini?5:8,ROOM.bossZ,46],[.62,8,6,5,0,3,ROOM.bossZ,54],[.82,11,7,0,0,5,ROOM.doorZ,58],[1,8,5,-6,0,5,ROOM.doorZ,50]],p.k,.28*Math.sin(collapse*Math.PI));
     if(p.id==='dragon')flyCamera([[0,-25,12,28,0,19,ROOM.bossZ,58],[.5,30,10,22,0,8,ROOM.bossZ,62],[1,25,12,-8,0,12,52,55]],p.k,.2*Math.sin(collapse*Math.PI));
@@ -5056,6 +5292,7 @@
   let lastMode = null, lastProgress=-1, lastTime=0;
   function render(p) {
     if (dead) return null;
+    loadSkins();
     if (!renderer && !init()) return null;
     try { poseScene(p); }
     catch (e) { renderer.setRenderTarget(null);console.warn('Dungeon cinematic failed',e);dead = true; return null; }
@@ -5083,6 +5320,7 @@
 
     // Rebuild the rig when the boss changes; reset the motes when a new
     // cutscene starts so the last one's ash does not bleed into it.
+    if (SKIN.fresh) { SKIN.fresh = false; currentId = null; if (fx && fx.party) for (const m of fx.party) m.skinTried = false; }
     if (!rig || currentId !== p.id) buildRig(p.id, p.color, p.accent);
     const modeKey = p.mode + "|" + p.id + "|" + (p.sceneId || "");
     if (modeKey !== lastMode || p.k < lastProgress) { lastMode = modeKey; t0=p.t;lastTime=p.t;clearMotes();moteHead=0;resetStage(); }
@@ -5132,14 +5370,18 @@
   // Gameplay owns this independent model; no cutscene camera or renderer is
   // initialized, and disposal cannot invalidate an active cinematic rig.
   function createModel(id,color,accent) {
+    loadSkins();
     const root=new THREE.Group(),shell=new THREE.Group();root.add(shell);
     const body=new THREE.MeshStandardMaterial({color:color||'#65596b',roughness:.8});
     const trim=new THREE.MeshStandardMaterial({color:accent||'#ffc976',emissive:accent||'#ffc976',emissiveIntensity:.25});
     const builder=builderFor(id);
-    builder(root,shell,body,trim,accent||'#ffc976');
-    root.userData.ownedMaterials=[body,trim];return root;
+    const d=builder(root,shell,body,trim,accent||'#ffc976');
+    const owned=[body,trim];
+    if(d&&d.actors)for(const a of d.actors)for(const k in a.mats)owned.push(a.mats[k]);
+    root.userData.ownedMaterials=owned;root.userData.rig=d;return root;
   }
   function warmup(stage) {
+    loadSkins();
     if (dead) return false;
     if (!renderer && !init()) return false;
     if (stage !== 'build' && renderer.compile) renderer.compile(scene, camera);
@@ -5148,5 +5390,6 @@
   // Headless hook for js/arcane-art.test.js: build the scene with no renderer
   // and pose any frame. Not used by the game.
   function headless() { if (!scene) buildScene(); return { pose: poseScene, rig: () => rig, scene: () => scene, camera: () => camera }; }
-  window.DungeonGL = { render, createModel, warmup, available: () => !dead, _headless: headless, BOSS_THEME };
+  window.DungeonGL = { render, createModel, warmup, available: () => !dead, _headless: headless, BOSS_THEME,
+    skins: { load: loadSkins, ready: skinReady, state: () => SKIN.state, skinned: (id) => !!skinKey(id) } };
 })();
