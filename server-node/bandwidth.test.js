@@ -19,15 +19,22 @@ const { HASHED } = require('../tools/bandwidth/manifest.cjs');
 const KB = 1024;
 const BUDGET = {
     // Login screen (index.html + boot scripts + stylesheet + title worker), brotli-11 bytes.
-    bootBrotli: 1200 * KB,          // measured 1030 KB
-    bootRaw: 4900 * KB,             // measured 4234 KB (what an uncompressed host would send)
+    // Measured on the sundered-crown merge (7411d7a + this branch).
+    bootBrotli: 1450 * KB,          // measured 1249 KB (sundered-crown unoptimised: 5,160 KB on the wire)
+    bootRaw: 5900 * KB,             // measured 5123 KB (what an uncompressed host would send)
     bootFileBrotli: 200 * KB,       // largest: three.min.js 122 KB
-    // Idle warmup + on-demand downloads (sea and racing models, workers).
-    lazyBrotli: 3300 * KB,          // measured 2759 KB
+    // Everything fetched later: idle warmup and on-demand (sea/racing models, dungeon model
+    // pack core + parts, cutscene directions, Ascension art, workers). A player downloads only
+    // the parts their bosses use, so this is an upper bound.
+    lazyBrotli: 4600 * KB,          // measured 3864 KB
     lazyFileBrotli: 1800 * KB,      // largest: race-models.js 1522 KB
+    // Dungeon model pack, any layout: js/dungeon-models.js + js/dungeon-models-<part>.js today,
+    // packed per-id js/dungeon-models/<id>[.<hash>].js next.
+    dungeonModelsBrotli: 1250 * KB, // measured 1072 KB (core 107 + 7 parts + dungeon-skin.js)
+    dungeonModelFileBrotli: 300 * KB, // largest: dungeon-models-throne.js 220 KB
     cssImageRaw: 500 * KB,          // title-scroll.png 456 KB (unused by the arcane login)
     // A real server, cold visit, bytes on the wire including headers.
-    firstLoadWire: 1240 * KB,       // measured 1056 KB (baseline: 4266 KB in a browser)
+    firstLoadWire: 1500 * KB,       // measured 1280 KB (browser: 1,283 KB; sundered-crown unoptimised 5,160 KB)
     repeatRequests: 1,              // only index.html revalidates (304)
     repeatWire: 2 * KB,
     // Presence, bytes/s per player at 15 Hz (tools/bandwidth/presence-model.cjs), as served
@@ -74,6 +81,12 @@ function check(name, value, max, unit) {
     if (!check('lazy brotli total', Math.round(inv.lazyTotals.br / KB), BUDGET.lazyBrotli / KB, ' KB')) fails++;
     const lmax = maxOf(inv.lazy);
     if (!check('largest lazy file (' + lmax.url + ') brotli', Math.round(lmax.br / KB), BUDGET.lazyFileBrotli / KB, ' KB')) fails++;
+    const models = inv.lazy.filter(r => /^js\/dungeon-models/.test(r.url));
+    assert(models.length > 0, 'the dungeon model pack was not found by the manifest scanner');
+    assert(!inv.boot.some(r => /^js\/dungeon-models/.test(r.url)), 'dungeon models must never be in the login boot set');
+    if (!check('dungeon model pack brotli total', Math.round(models.reduce((t, r) => t + r.br, 0) / KB), BUDGET.dungeonModelsBrotli / KB, ' KB')) fails++;
+    const mmax = maxOf(models);
+    if (!check('largest dungeon model file (' + mmax.url + ') brotli', Math.round(mmax.br / KB), BUDGET.dungeonModelFileBrotli / KB, ' KB')) fails++;
     for (const c of inv.css) if (!check('css image ' + c.url, Math.round(c.raw / KB), BUDGET.cssImageRaw / KB, ' KB')) fails++;
 
     const h = await report.httpReplay(m);
