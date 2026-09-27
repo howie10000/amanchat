@@ -175,6 +175,13 @@
   function errK(b, now) { return b.err.at ? Math.exp(-Math.max(0, now - b.err.at) / ERR_MS) : 0; }
 
   // ------------------------------------------------------------ adopting the view / pushes
+  // UI GUIDE hook: the first time a player meets each Crown boss, a short "how to beat it" card
+  // (js/ui-guide.js, shown once per boss per browser; after the entrance has started).
+  function introOnce(id) {
+    const G = W.gameGuide;
+    if (!G || typeof G.bossIntro !== 'function' || (G.seen && G.seen('boss.' + id))) return;
+    if (typeof setTimeout === 'function') setTimeout(() => { try { G.bossIntro(id); } catch (e) {} }, 1800);
+  }
   function enter(view) {
     reset();
     if (view) adopt(view, null);
@@ -182,6 +189,7 @@
   function adopt(view, m) {
     if (!view || !isMobileId(view.id)) { if (view && R.bossId && view.id !== R.bossId) reset(); return; }
     if (R.bossId && R.bossId !== view.id) reset();
+    if (R.bossId !== view.id) introOnce(view.id);
     R.bossId = view.id;
     R.def = (W.ECON && ECON.GUILD_BOSSES[view.id]) || null;
     R.phase = view.phase || 1;
@@ -868,52 +876,74 @@
   // ------------------------------------------------------------ HUD (screen space, under the boss bar)
   // Returns the y below everything it drew, for the status notes.
   function hasTwins() { return !!(R.twinHp && (R.twinHp.sol || R.twinHp.umbra)); }
+  // One colour + icon language for the prompt (js/ui-guide.js CUES; local copy when the guide is absent):
+  // strike = your opening (gold), hold = don't hit (red), wait = can't be hurt yet (violet), tip = what to do (slate).
+  const CUE_FALLBACK = { strike: { icon: '⚔', color: '#fde047' }, hold: { icon: '✋', color: '#f87171' }, wait: { icon: '⏳', color: '#c4b5fd' }, tip: { icon: '›', color: '#cbd5e1' } };
+  function cueOf(kind) { const G = W.gameGuide && W.gameGuide.CUES; return (G && G[kind]) || CUE_FALLBACK[kind] || CUE_FALLBACK.tip; }
+  // A readable pill: dark plate, coloured edge, icon + text. Returns its height.
+  function hudPill(ctx, cx, y, text, kind, size, alpha) {
+    const c = cueOf(kind), fs = size || 13;
+    ctx.font = 'bold ' + fs + 'px sans-serif';
+    const tw = (ctx.measureText(text) || {}).width || text.length * fs * 0.6;
+    const w = tw + fs * 2.6, h = fs + 10, x = cx - w / 2;
+    ctx.globalAlpha = alpha == null ? 1 : alpha;
+    ctx.fillStyle = 'rgba(2,6,23,.82)'; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = c.color; ctx.fillRect(x, y, 3, h); ctx.fillRect(x + w - 3, y, 3, h);
+    ctx.textAlign = 'center'; ctx.fillStyle = c.color;
+    ctx.fillText(c.icon + '  ' + text, cx, y + h / 2 + fs * 0.36);
+    ctx.globalAlpha = 1;
+    return h;
+  }
+  // What the player should do right now, as {text, kind, bar}. Pure (tested).
+  function hudLine(now) {
+    const main = R.bodies.main;
+    const st = main && main.pose.step;
+    const def = R.def || {};
+    let line = null, kind = 'tip', bar = 0;
+    if (R.shards && R.shards.list.length) {
+      let up = 0; for (const s of R.shards.list) if (s.hp > 0) up++;
+      if (R.sunderedUntil > now) { line = 'SUNDERED — HIT HIM NOW ×1.5 · ' + ((R.sunderedUntil - now) / 1000).toFixed(1) + 's'; kind = 'strike'; }
+      else if (up) { line = 'BREAK THE CROWN SHARDS · ' + up + ' / ' + R.shards.list.length + ' left'; kind = 'strike'; }
+    }
+    if (!line && st && st.guard && stepEnd(st) > now) { line = 'GUARD UP — DON\'T HIT (it counters)'; kind = 'hold'; }
+    else if (!line && st && st.vuln > 1 && stepEnd(st) > now) {
+      const nm = { stunned: 'STUNNED', exhausted: 'EXHAUSTED', kneel: 'KNEELING', sundered: 'SUNDERED', recover: 'OPEN', rest: 'HAND RESTING' }[st.s] || 'VULNERABLE';
+      line = nm + ' — HIT NOW ×' + (+st.vuln).toFixed(1) + ' DAMAGE'; kind = 'strike';
+      bar = clamp((stepEnd(st) - now) / Math.max(1, stepEnd(st) - st.t0), 0, 1);
+    } else if (!line && main && main.pose.hidden) {
+      line = R.form === 'colossus' ? 'TOWERING — hit a hand when it rests on the floor' : R.form === 'crown' ? 'SHIELDED — break the crown shards first' : 'VANISHED — watch where it comes back';
+      kind = 'wait';
+    } else if (!line) {
+      line = def.archetype === 'beast' ? 'Stand by a pillar and dodge its charge'
+        : def.archetype === 'twins' ? 'Hit the EXPOSED twin (bright outline)'
+        : R.form === 'colossus' ? 'Hit a hand while it rests'
+        : def.duelist && def.duelist.block ? 'Circle to its side or back — the front is blocked'
+        : 'Dodge its attack, then hit it right after';
+    }
+    if (Date.now() - R.parriedAt < 1400) { line = 'PARRIED!' + (R.parriedBy ? ' (' + R.parriedBy + ')' : '') + ' — don\'t hit the guard'; kind = 'hold'; }
+    return { text: line, kind, bar };
+  }
   function drawHud(ctx, b, t, cx, y) {
     if (!R.bossId || !b) return y + 22;
     const now = R.now || serverNow();
     ctx.save(); ctx.textAlign = 'center';
-    let line = null, col = '#fde68a';
-    const main = R.bodies.main;
-    const st = main && main.pose.step;
-    if (R.shards && R.shards.list.length) {
-      let up = 0; for (const s of R.shards.list) if (s.hp > 0) up++;
-      if (R.sunderedUntil > now) { line = 'SUNDERED ×1.5 — ' + ((R.sunderedUntil - now) / 1000).toFixed(1) + 's'; col = '#fde047'; }
-      else if (up) { line = 'CROWN SHARDS ' + up + ' / ' + R.shards.list.length + ' — break them all'; col = '#fde047'; }
-    }
-    let bar = 0;
-    if (!line && st && st.guard && stepEnd(st) > now) { line = 'GUARD UP — DO NOT STRIKE'; col = '#f8fafc'; }
-    else if (!line && st && st.vuln > 1 && stepEnd(st) > now) {
-      const nm = { stunned: 'STUNNED', exhausted: 'EXHAUSTED', kneel: 'KNEELING', sundered: 'SUNDERED', recover: 'OPEN', rest: 'HAND RESTING' }[st.s] || 'VULNERABLE';
-      line = nm + ' — ×' + (+st.vuln).toFixed(1) + ' DAMAGE'; col = '#fde047';
-      bar = clamp((stepEnd(st) - now) / Math.max(1, stepEnd(st) - st.t0), 0, 1);
-    } else if (!line && main && main.pose.hidden) { line = R.form === 'colossus' ? 'TOWERING — wait for a hand to rest' : R.form === 'crown' ? 'SHIELDED BY THE CROWN' : 'VANISHED — watch for it'; col = '#c4b5fd'; }
-    else if (!line) {
-      const def = R.def || {};
-      line = def.archetype === 'beast' ? 'Bait the charge into a pillar' : def.archetype === 'twins' ? 'Strike the exposed Monarch' : R.form === 'colossus' ? 'Strike a resting hand' : 'Strike when it is open';
-      col = '#cbd5e1';
-    }
-    if (Date.now() - R.parriedAt < 1400) { line = 'PARRIED!' + (R.parriedBy ? ' (' + R.parriedBy + ')' : ''); col = '#f8fafc'; }
-    ctx.font = 'bold 11px sans-serif'; ctx.fillStyle = col; ctx.fillText(line, cx, y);
-    y += 8;
-    if (bar > 0) { ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(cx - 120, y, 240, 5); ctx.fillStyle = '#fde047'; ctx.fillRect(cx - 120, y, 240 * bar, 5); y += 8; }
+    const L = hudLine(now);
+    y += hudPill(ctx, cx, y - 8, L.text, L.kind, 13) - 4;
+    if (L.bar > 0) { ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(cx - 120, y, 240, 5); ctx.fillStyle = cueOf('strike').color; ctx.fillRect(cx - 120, y, 240 * L.bar, 5); y += 8; }
     if (R.twin && R.twin.fallen && R.twin.reviveAt > now) {
       const left = R.twin.reviveAt - now, tot = (R.def && R.def.twins && R.def.twins.linkMs) || 15000;
       ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(cx - 150, y, 300, 6);
       ctx.fillStyle = '#f87171'; ctx.fillRect(cx - 150, y, 300 * clamp(left / tot, 0, 1), 6);
-      ctx.fillStyle = '#fecaca'; ctx.font = 'bold 10px sans-serif';
-      ctx.fillText('REVIVE IN ' + (left / 1000).toFixed(1) + 's — fell the other now', cx, y + 18);
-      y += 22;
+      y += 10 + hudPill(ctx, cx, y + 8, 'KILL THE OTHER TWIN — revive in ' + (left / 1000).toFixed(1) + 's', 'strike', 11);
     } else if (hasTwins()) {
       const pol = polarityAt(R.polarity, now);
       if (pol && pol.warning) {
-        ctx.fillStyle = '#fde68a'; ctx.globalAlpha = 0.6 + 0.4 * Math.sin(Date.now() / 80); ctx.font = 'bold 10px sans-serif';
-        ctx.fillText('POLARITY SHIFTS IN ' + Math.max(0, (pol.swapAt - now) / 1000).toFixed(1) + 's', cx, y + 10);
-        ctx.globalAlpha = 1; y += 14;
+        y += 4 + hudPill(ctx, cx, y + 4, 'SWAP IN ' + Math.max(0, (pol.swapAt - now) / 1000).toFixed(1) + 's — get ready to switch targets', 'wait', 11, 0.65 + 0.35 * Math.sin(Date.now() / 80));
       }
     }
     let clones = 0;
     for (let n = 0; n < R.order.length; n++) if (R.bodies[R.order[n]].clone) clones++;
-    if (clones) { ctx.fillStyle = '#fda4af'; ctx.font = '10px sans-serif'; ctx.fillText(clones + ' AFTERIMAGE' + (clones > 1 ? 'S' : '') + ' — the real one casts a shadow', cx, y + 10); y += 14; }
+    if (clones) y += 4 + hudPill(ctx, cx, y + 4, clones + ' COP' + (clones > 1 ? 'IES' : 'Y') + ' — the real one has a shadow', 'tip', 11);
     ctx.restore();
     return y + 12;
   }
@@ -932,7 +962,7 @@
       ctx.fillStyle = hp.dead ? '#475569' : (bd && bd.color) || '#f59e0b'; ctx.fillRect(x, y, bw * clamp(hp.hp / (hp.maxHp || 1), 0, 1), 13);
       if (ex && !hp.dead) { ctx.strokeStyle = '#fef3c7'; ctx.lineWidth = 2; ctx.strokeRect(x - 1, y - 1, bw + 2, 15); }
       ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'left'; ctx.fillStyle = '#fff';
-      ctx.fillText((k === 'sol' ? 'SOL' : 'UMBRA') + (hp.dead ? ' · FALLEN' : ex ? ' · EXPOSED' : ' · VEILED'), x + 4, y + 10);
+      ctx.fillText((k === 'sol' ? 'SOL' : 'UMBRA') + (hp.dead ? ' · FALLEN' : ex ? ' · EXPOSED — HIT' : ' · VEILED — IMMUNE'), x + 4, y + 10);
       ctx.textAlign = 'right';
       ctx.fillText(Math.max(0, Math.round(hp.hp)).toLocaleString(), x + bw - 4, y + 10);
     }
@@ -949,7 +979,7 @@
     bodies: () => R.order.map(k => R.bodies[k]),
     shards: () => (R.shards ? R.shards.list : []),
     // pure pieces, for js/crown-client.test.js
-    _t: { createClock, clockSample, clockNow, samplePose, mergeSteps, stepEnd, ease, segDist, runtime: () => R },
+    _t: { hudLine, createClock, clockSample, clockNow, samplePose, mergeSteps, stepEnd, ease, segDist, runtime: () => R },
   };
   W.gameCrownBoss = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;

@@ -2859,6 +2859,20 @@ img.ii.scSil{filter:grayscale(1) brightness(.45) contrast(1.2);opacity:.75}
 .gdAffixDesc{display:block;font-style:normal;font-size:10px;color:#cbd5e1;font-weight:400;max-width:230px}
 .gdBanners{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px}
 .gdBanners .adRaidBanner{margin:0}
+/* Crown Arts: how-it-works strip, empty state, open/locked sources */
+.gdSteps{list-style:none;margin:0 0 10px;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px}
+.gdSteps li{padding:7px 9px;border-radius:10px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.08);display:grid;gap:2px}
+.gdSteps b{font-size:11px;letter-spacing:.1em;color:#cbd5e1}
+.gdSteps small{font-size:11px;color:#94a3b8;line-height:1.35}
+.gdSteps li.now{border-color:#fde68a;background:rgba(253,230,138,.1)} .gdSteps li.now b{color:#fde68a}
+.gdSteps li.done{border-color:rgba(74,222,128,.5)} .gdSteps li.done b{color:#86efac} .gdSteps li.done b::after{content:" ✓"}
+.gdEmpty{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 10px;padding:10px 12px;border-radius:12px;
+  background:rgba(253,230,138,.08);border:1px dashed rgba(253,230,138,.6)}
+.gdEmpty > div{display:grid;gap:3px;flex:1 1 240px} .gdEmpty b{color:#fde68a} .gdEmpty small{color:#e2e8f0;font-size:12px}
+.scSrc .gdLocked{opacity:.6} .scSrc .gdLocked small{color:#94a3b8} .scSrc .gdOpen small{color:#86efac}
+.gdRankLine{display:flex;align-items:center;gap:6px;font-size:11px;color:#fde68a}
+.gdNotYet{font-size:11px;color:#94a3b8}
+.scSlot:focus-visible{outline:2px solid #fde68a;outline-offset:2px}
 /* keyboard focus you can see on the screens these updates added */
 #menuBody .menuBtn:focus-visible,#menuBody .adFTab:focus-visible,#menuBody .jnTab:focus-visible,#menuBody .scArt:focus-visible,#menuBody .scSlot:focus-visible,#menuBody select:focus-visible,#menuBody .adPick:focus-visible{outline:2px solid #fde68a;outline-offset:2px}
 @media (prefers-reduced-motion:reduce){.gdSpot{animation:none}}
