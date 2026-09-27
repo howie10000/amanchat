@@ -67,8 +67,35 @@
       at += dur;
       return step;
     });
+    // THE SUNDERED CROWN: Crown Art cards come after the gear, each with its own
+    // beat (they are rare, and they are the thing players chase). Not part of the
+    // gear cap: at most a few per chest.
+    const arts = normArts(opts.arts);
+    for (const a of arts) {
+      const r = rarityIdx(a.rarity);
+      const dur = ART_STEP_MS[a.rarity] || ART_STEP_MS.rare;
+      steps.push({ item: null, art: a, rarity: a.rarity, idx: r, at, dur, cine: a.rarity === "mythic" ? 2 : a.rarity === "legendary" ? 1 : 0, titleCard: false, isArt: true });
+      at += dur;
+    }
     const total = at;
-    return { intro: INTRO_MS, steps, total, cap };
+    return { intro: INTRO_MS, steps, total, cap: cap + arts.reduce((s, a) => s + (ART_STEP_MS[a.rarity] || ART_STEP_MS.rare), 0) };
+  }
+  // Art reveal beats by art rarity.
+  const ART_STEP_MS = { rare: 900, epic: 1100, legendary: 1400, mythic: 1900 };
+  // [{id, result, rank, shards}] from a settlement (§6.4) -> the displayable art cards.
+  function normArts(list) {
+    const C = typeof window !== "undefined" && window.CROWN;
+    return (Array.isArray(list) ? list : []).filter(a => a && typeof a === "object" && a.id && !(C && C.ARTS && !C.ARTS[a.id])).map(a => {
+      const d = C && C.ARTS && C.ARTS[a.id];
+      return { id: String(a.id), result: a.result || "new", rank: a.rank | 0 || 1, shards: a.shards | 0, name: d ? d.name : String(a.id),
+        rarity: d && RARITIES.includes(d.rarity) ? d.rarity : "rare", color: (d && d.color) || "#fde047", desc: (d && d.desc) || "" };
+    });
+  }
+  function artResultText(a) {
+    if (a.result === "new") return "NEW CROWN ART";
+    if (a.result === "rank") return "RANK UP → " + a.rank;
+    if (a.result === "melt") return "MAX RANK · melted into +" + a.shards + " crown shards";
+    return "+1 copy toward rank " + (a.rank + 1);
   }
   // Pull the displayable parts out of any result shape.
   function normalize(result, opts) {
@@ -85,11 +112,12 @@
       codexNew: Array.isArray(r.codexNew) ? r.codexNew : [], achievements: Array.isArray(r.achievements) ? r.achievements : [],
       gained: +r.gained || 0, packFull: !!r.packFull, tier: opts.tier || r.tier || null, segment: !!r.segment,
       source: opts.source || "", delve: r.delve || null,
+      arts: Array.isArray(r.arts) ? r.arts.filter(a => a && a.id) : [], crownShards: Math.max(0, r.crownShards | 0), artPity: !!r.artPity,
     };
   }
   function isEmpty(n) {
     return !n.items.length && !Object.keys(n.mats).length && !Object.keys(n.gems).length && !(n.delver && n.delver.gained) &&
-      !n.codexNew.length && !n.achievements.length;
+      !n.codexNew.length && !n.achievements.length && !n.arts.length && !n.crownShards;
   }
 
   // ---------------- DOM runtime ----------------
@@ -132,6 +160,18 @@
         <span class="adRBadge">${esc(r.label)}</span><small>${ui ? ui.statLine(it) : ""}</small><small class="muted">Lv ${it.lvl | 0} ${esc(slot.label)}</small></div>`;
     }
     return inner + (overflowed ? `<div class="adRvOver">Pack full → Lost &amp; Found</div>` : "");
+  }
+
+  // A Crown Art card face: the art's sigil, its name, and what the copy did.
+  function artFace(a) {
+    let img = "";
+    try { img = (window.ItemIcons && ItemIcons.html("art", a.id, 72)) || ""; } catch (e) { img = ""; }
+    let pipsHtml = "";
+    const max = (window.CROWN && CROWN.ART_MAX_RANK) || 5;
+    for (let i = 1; i <= max; i++) pipsHtml += `<i class="${i <= a.rank ? "on" : ""}"></i>`;
+    return `<div class="scRvFace"><small class="scRvKind">CROWN ART</small><div class="scRvIco">${img || `<span class="scGlyph">♛</span>`}</div>
+      <b>${esc(a.name)}</b><span class="adRBadge">${esc(rInfo(a.rarity).label)}</span>
+      <span class="scPips">${pipsHtml}</span><span class="scRvRes">${esc(artResultText(a))}</span>${a.result === "new" ? `<small class="scRvNext">Equip it in Crown Arts, then press F or C in a dungeon</small>` : ""}</div>`;
   }
 
   // ---- particles (one canvas for the whole overlay) ----
@@ -194,6 +234,7 @@
       const g = ui && ui.gem(k);
       chips.push(`<span class="adMat" style="--mc:${g ? g.color : "#f472b6"}">${ui ? ui.icon("gem", k, 16, "", "<i></i>") : "<i></i>"}${esc(g ? g.name : k)} <b>+${n.gems[k]}</b></span>`);
     }
+    if (n.crownShards > 0) chips.push(`<span class="adMat" style="--mc:#fde047">${ui ? ui.matIco("crown_shard") : "<i></i>"}Crown Shard <b>+${n.crownShards}</b></span>`);
     return chips.join("");
   }
   function codexLabel(id) {
@@ -211,6 +252,12 @@
       const r = rInfo(s.rarity);
       const beam = r.beam || {};
       const bh = beam.h >= 9999 ? "140vh" : (beam.h | 0) + "px";
+      if (s.isArt) {
+        return `<div class="adRvSlot scRvArt adR-${s.rarity} cine-${s.cine} res-${esc(s.art.result)}" data-i="${i}" style="--rc:${r.color};--rg:${r.glow || r.color};--ac:${esc(s.art.color)};--bh:${bh};--bw:${Math.max(8, beam.w | 0)}px;--bd:${Math.max(600, s.dur + 600)}ms">
+          <div class="adRvBeam"></div><div class="adRvBeam twin"></div><div class="scRvHalo" aria-hidden="true"></div>
+          <div class="adRvFlip"><div class="adRvBack scRvBack"><span>♛</span></div><div class="adRvFace">${artFace(s.art)}</div></div>
+        </div>`;
+      }
       return `<div class="adRvSlot adR-${s.rarity} cine-${s.cine}" data-i="${i}" style="--rc:${r.color};--rg:${r.glow || r.color};--bh:${bh};--bw:${Math.max(6, beam.w | 0)}px;--bd:${Math.max(400, Math.min(beam.dur || 800, s.dur + 600))}ms">
         <div class="adRvBeam"></div><div class="adRvBeam twin"></div>
         <div class="adRvFlip"><div class="adRvBack"><span>?</span></div><div class="adRvFace">${cardFace(s.item, n.overflowIds.has(s.item.id))}</div></div>
@@ -248,6 +295,8 @@
       const a = window.ECON && ECON.ACHIEVEMENT_BY_ID && ECON.ACHIEVEMENT_BY_ID[id];
       toasts.push(`<span class="adRvToast ach">★ Achievement: <b>${esc(a ? a.label : id)}</b></span>`);
     }
+    if (n.artPity) toasts.push(`<span class="adRvToast ach">♛ The crown owed you one — an art after twelve clears without.</span>`);
+    if (n.arts.length) toasts.push(`<span class="adRvToast codex">♛ Bind Crown Arts to <b>F</b> and <b>C</b> in the Armory's Crown Arts panel.</span>`);
     if (n.packFull) toasts.push(`<span class="adRvToast warn">Your pack is full — the rest waits in the Armory's Lost &amp; Found.</span>`);
     if (toasts.length) parts.push(`<div class="adRvToasts">${toasts.join("")}</div>`);
     if (!n.items.length && !parts.length) parts.push(`<div class="muted">The chest was empty this time.</div>`);
@@ -298,7 +347,7 @@
 
   function run(n) {
     return new Promise((resolve) => {
-      const p = plan(n.items);
+      const p = plan(n.items, { arts: n.arts });
       const root = build(n, p);
       const fx = fxLayer(root.querySelector(".adRvFx"));
       const slotsEl = [...root.querySelectorAll(".adRvSlot")];
@@ -332,7 +381,8 @@
           if (st.closed) return;
           el.classList.add("flip", "beam");
           const c = center(el), r = rInfo(s.rarity);
-          const cols = r.prism || [r.color, r.glow || r.color, "#ffffff"];
+          const cols = s.isArt ? [s.art.color, "#fde047", "#ffffff", r.color] : r.prism || [r.color, r.glow || r.color, "#ffffff"];
+          if (s.isArt && !quick) { el.classList.add("crowned"); fx.burst(c.x, c.y, ["#fde047", "#fef9c3", s.art.color], 26, "rise"); }
           if (!quick) {
             clearCine();
             if (s.cine >= 1) root.classList.add("dim", "cine-" + s.rarity);
@@ -449,18 +499,20 @@
       if (window.gameGear && result && !Array.isArray(result) && result.gear && typeof result.gear === "object") gameGear.applyView({ gear: result.gear });
       if (window.gameGear && gameGear.refresh && result && !Array.isArray(result) && (result.mats || result.overflow || result.gems)) gameGear.refresh();
       if (window.gameCodex && gameCodex.noteDelver && n.delver) gameCodex.noteDelver(n.delver);
+      if ((n.arts.length || n.crownShards) && window.gameArtsUI && gameArtsUI.load) gameArtsUI.load();
       mirrorRecord(n);
     } catch (e) { /* display only */ }
     if (isEmpty(n)) return Promise.resolve({ empty: true });
     if (!hasDom() || !window.ECON) {
       if (window.gameGear && gameGear.announceLoot) gameGear.announceLoot(n.items);
+      if (typeof window.toast === "function") for (const a of normArts(n.arts)) window.toast(`♛ <b>${esc(a.name)}</b> — ${esc(artResultText(a))}`, 7000);
       return Promise.resolve({ fallback: true });
     }
     return new Promise((resolve) => { queue.push({ n, resolve }); pump(); });
   }
 
   window.gameLootReveal = {
-    show, plan, order, normalize,
+    show, plan, order, normalize, normArts, artResultText, artFace,
     isOpen: () => !!active,
     skip: () => { if (active && typeof KeyboardEvent === "function") dispatchEvent(new KeyboardEvent("keydown", { key: "e" })); },
     CAP_MS, INTRO_MS, TITLE_CARD_MS,

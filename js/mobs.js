@@ -1143,6 +1143,19 @@
           if (n > 0.93) { ctx.strokeStyle = `rgba(249,115,22,${0.4 + 0.3 * Math.sin(now / 300 + n * 30)})`; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(gx + 5, gy + 8); ctx.lineTo(gx + 14, gy + 18); ctx.lineTo(gx + 26, gy + 12); ctx.stroke(); }
         } else if (tk === "void") {
           if (n > 0.94) { ctx.strokeStyle = "rgba(192,132,252,.35)"; ctx.lineWidth = 1; ctx.strokeRect(gx + 10, gy + 10, 12, 12); ctx.beginPath(); ctx.moveTo(gx + 10, gy + 10); ctx.lineTo(gx + 22, gy + 22); ctx.stroke(); }
+        } else if (tk === "thornwild") {
+          if (n > 0.55 && n < 0.68) { ctx.fillStyle = "rgba(77,124,15,.28)"; ctx.beginPath(); ctx.ellipse(gx + 16, gy + 16, 10 + n * 6, 5, n * 6, 0, TAU); ctx.fill(); }
+          if (n > 0.9) { ctx.strokeStyle = "rgba(58,40,20,.7)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(gx, gy + 10 + n * 10); ctx.quadraticCurveTo(gx + 16, gy + 4, gx + TS, gy + 18); ctx.stroke(); }
+          if (n > 0.975) { ctx.fillStyle = `rgba(217,249,157,${0.4 + 0.3 * Math.sin(now / 600 + n * 40)})`; ctx.beginPath(); ctx.arc(gx + 20, gy + 12, 2, 0, TAU); ctx.fill(); }
+        } else if (tk === "colosseum") {
+          ctx.fillStyle = "rgba(214,180,140,.06)"; ctx.fillRect(gx + 3, gy + 6 + n * 16, TS - 6, 1);
+          if (n > 0.93) { ctx.fillStyle = "rgba(90,20,14,.3)"; ctx.beginPath(); ctx.ellipse(gx + 16, gy + 16, 9, 4, n * 5, 0, TAU); ctx.fill(); }
+        } else if (tk === "mirror") {
+          if (((gx / TS + gy / TS) | 0) % 2) { ctx.fillStyle = "rgba(226,232,240,.07)"; ctx.fillRect(gx + 2, gy + 2, TS - 2, TS - 2); }
+          if (n > 0.95) { const tw = Math.abs(Math.sin(now / 500 + n * 60)); ctx.fillStyle = `rgba(245,208,254,${0.6 * tw})`; ctx.fillRect(gx + 15, gy + 10, 1.5, 7); ctx.fillRect(gx + 12, gy + 13, 7, 1.5); }
+        } else if (tk === "throne") {
+          if (n > 0.8 && n < 0.84) { ctx.strokeStyle = "rgba(202,138,4,.3)"; ctx.lineWidth = 1.2; ctx.strokeRect(gx + 6, gy + 6, TS - 12, TS - 12); }
+          if (n > 0.95) { ctx.strokeStyle = "rgba(0,0,0,.55)"; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(gx + 4, gy + 4); ctx.lineTo(gx + 14, gy + 18); ctx.lineTo(gx + 28, gy + 14); ctx.stroke(); ctx.strokeStyle = "rgba(250,204,21,.25)"; ctx.lineWidth = 0.8; ctx.stroke(); }
         } else if (tk === "dragon") {
           if (n > 0.9) { ctx.fillStyle = "rgba(20,16,14,.35)"; ctx.beginPath(); ctx.ellipse(gx + 16, gy + 16, 12, 6, n * 6, 0, TAU); ctx.fill(); }
         } else if (n > 0.93) {
@@ -1196,6 +1209,17 @@
         }
       } else if (tk === "archive") {
         ctx.fillStyle = "rgba(250,204,21,.45)"; if (horiz) ctx.fillRect(w.x, w.y + 2, w.w, 1);
+      } else if (tk === "thornwild") {
+        // brambles along the top of the hedge
+        ctx.strokeStyle = "#1a2e05"; ctx.lineWidth = 1.5;
+        for (let k = 0; k < (horiz ? w.w : w.h); k += 9) { const n = hash2(w.x + k, w.y + 3); const px = horiz ? w.x + k : w.x + w.w / 2 + (n - 0.5) * w.w, py = horiz ? w.y : w.y + k;
+          ctx.beginPath(); ctx.moveTo(px, py + 1); ctx.lineTo(px + 3 - n * 6, py - 4 - n * 4); ctx.stroke(); if (n > 0.8) { ctx.fillStyle = "#be123c"; ctx.fillRect(px - 1, py - 3, 2, 2); } }
+      } else if (tk === "colosseum" && horiz) {
+        ctx.fillStyle = "rgba(0,0,0,.35)"; for (let bx = w.x + 20; bx < w.x + w.w - 10; bx += 40) { ctx.beginPath(); ctx.arc(bx, w.y + w.h, Math.min(7, w.h * 0.6), Math.PI, TAU); ctx.fill(); }
+      } else if (tk === "mirror") {
+        ctx.fillStyle = "rgba(226,232,240,.5)"; if (horiz) ctx.fillRect(w.x, w.y + w.h * 0.5, w.w, 1); else ctx.fillRect(w.x + w.w * 0.5, w.y, 1, w.h);
+      } else if (tk === "throne") {
+        ctx.fillStyle = "rgba(202,138,4,.55)"; if (horiz) { ctx.fillRect(w.x, w.y + 3, w.w, 1); for (let bx = w.x + 24; bx < w.x + w.w; bx += 48) ctx.fillRect(bx, w.y + 3, 2, w.h - 5); } else ctx.fillRect(w.x + 3, w.y, 1, w.h);
       }
     }
   }
@@ -1220,10 +1244,12 @@
       if (kind === "snow") { y = y0 + ((v * h + t * 0.03 * (1 + k % 3)) % h); x += Math.sin(t / 900 + k) * 14; ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.beginPath(); ctx.arc(x, y, 1 + (k % 3) * 0.6, 0, TAU); ctx.fill(); }
       else if (kind === "embers" || kind === "ash") { y = y0 + h - ((v * h + t * 0.025 * (1 + k % 3)) % h); ctx.fillStyle = kind === "ash" ? "rgba(168,162,158,.45)" : `rgba(251,146,60,${0.4 + 0.4 * Math.sin(t / 200 + k)})`; ctx.fillRect(x + Math.sin(t / 700 + k) * 8, y, 2, 2); }
       else if (kind === "bubbles") { y = y0 + h - ((v * h + t * 0.02 * (1 + k % 2)) % h); ctx.strokeStyle = "rgba(103,232,249,.3)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, 1.5 + (k % 3), 0, TAU); ctx.stroke(); }
+      else if (kind === "pollen") { y = y0 + ((v * h - t * 0.012 * (1 + k % 3)) % h + h) % h; x += Math.sin(t / 1100 + k) * 16; ctx.fillStyle = `rgba(217,249,157,${0.25 + 0.35 * Math.abs(Math.sin(t / 700 + k))})`; ctx.beginPath(); ctx.arc(x, y, 1.2 + (k % 2) * 0.6, 0, TAU); ctx.fill(); }
+      else if (kind === "crown_dust") { y = y0 + ((v * h + t * 0.01 * (1 + k % 3)) % h); x += Math.sin(t / 1500 + k) * 10; ctx.fillStyle = `rgba(253,224,71,${0.2 + 0.5 * Math.abs(Math.sin(t / 400 + k * 1.7))})`; ctx.fillRect(x, y, 1.6, 1.6); }
       else if (kind === "runes") { const a = 0.15 + 0.25 * Math.abs(Math.sin(t / 900 + k)); ctx.fillStyle = `rgba(192,132,252,${a})`; ctx.fillRect(x, y - (t * 0.01 + k * 10) % 40, 4, 4); }
       else {
         const tw = Math.abs(Math.sin(t / (500 + k * 13) + k));
-        const col = kind === "stars" ? "253,230,138" : kind === "sparkles" ? (k % 2 ? "240,171,252" : "103,232,249") : "196,181,253";
+        const col = kind === "stars" ? "253,230,138" : kind === "sparkles" ? (k % 2 ? "240,171,252" : "103,232,249") : kind === "glints" ? (k % 3 ? "245,208,254" : "255,255,255") : "196,181,253";
         const yy = kind === "ley" ? y0 + h - ((v * h + t * 0.015 * (1 + k % 3)) % h) : y;
         ctx.fillStyle = `rgba(${col},${0.2 + 0.6 * tw})`;
         ctx.fillRect(x - 0.8, yy - 3 * tw, 1.6, 6 * tw); ctx.fillRect(x - 3 * tw, yy - 0.8, 6 * tw, 1.6);
@@ -1425,9 +1451,11 @@
   // plan.features.props carries {kind, x, y, rot}. Flat kinds are painted in
   // the ground pass; everything else stands up. A kind nobody knows falls back
   // to a torch, so an old client or a new kind still lights the room.
-  const GROUND_KINDS = { puddle: 1, bones: 1, skull: 1, rubble: 1, scorch: 1, slag_pool: 1, star_map: 1, abyss_crack: 1, rune_circle: 1, leyline_vein: 1, geode_rim: 1, eggshell: 1 };
+  const GROUND_KINDS = { puddle: 1, bones: 1, skull: 1, rubble: 1, scorch: 1, slag_pool: 1, star_map: 1, abyss_crack: 1, rune_circle: 1, leyline_vein: 1, geode_rim: 1, eggshell: 1,
+    mushroom_ring: 1, sand_drift: 1, checker_tile: 1, crown_shard_pile: 1 };
   const PROP_LIGHT = { candles: "253,224,71", orrery: "253,230,138", crystal_cluster: "34,211,238", resonance_pillar: "240,171,252",
-    ley_pylon: "167,139,250", obelisk: "192,132,252", ice_spire: "125,211,252", anvil: "249,115,22", floating_pages: "253,230,138" };
+    ley_pylon: "167,139,250", obelisk: "192,132,252", ice_spire: "125,211,252", anvil: "249,115,22", floating_pages: "253,230,138",
+    candelabra: "245,208,254", root_arch: "190,242,100", mirror_pane: "226,232,240" };
   function drawGroundThemed(ctx, p, t) {
     const x = p.x, y = p.y, rot = p.rot || 0;
     if (p.kind === "scorch") {
@@ -1473,7 +1501,7 @@
       ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
       ctx.fillStyle = "#e7e5e4"; ctx.beginPath(); ctx.ellipse(-5, 0, 7, 5, -0.4, 0, Math.PI); ctx.fill(); ctx.beginPath(); ctx.ellipse(7, 2, 6, 4, 0.5, Math.PI, TAU); ctx.fill();
       ctx.fillStyle = "rgba(124,45,18,.6)"; ctx.fillRect(-8, 0, 3, 1.5); ctx.restore();
-    }
+    } else drawCrownGround(ctx, p, t);
   }
   function drawStandingThemed(ctx, p, t) {
     const x = p.x, y = p.y;
@@ -1583,12 +1611,294 @@
         ctx.fillStyle = "#2e1065"; ctx.beginPath(); ctx.moveTo(x - 12, y - 18 + bob); ctx.lineTo(x - 3, y - 28 + bob); ctx.lineTo(x + 11, y - 22 + bob); ctx.lineTo(x + 12, y - 12 + bob); ctx.lineTo(x, y - 6 + bob); ctx.closePath(); ctx.fill();
         ctx.strokeStyle = "#8b5cf6"; ctx.lineWidth = 1.2; ctx.stroke(); break;
       }
-      default: return false;
+      default: return drawCrownStanding(ctx, p, t);
     }
     return true;
   }
   const THEMED_STANDING = { candles: 1, anvil: 1, chains: 1, broken_throne: 1, obelisk: 1, bookshelf: 1, orrery: 1, floating_pages: 1,
-    crystal_cluster: 1, resonance_pillar: 1, ice_spire: 1, frozen_corpse: 1, ley_pylon: 1, floating_stone: 1 };
+    crystal_cluster: 1, resonance_pillar: 1, ice_spire: 1, frozen_corpse: 1, ley_pylon: 1, floating_stone: 1,
+    bramble: 1, root_arch: 1, broken_column: 1, weapon_rack: 1, mirror_pane: 1, candelabra: 1, shattered_banner: 1, throne_rubble: 1 };
+
+  // ================================================ THE SUNDERED CROWN ROSTER (B3)
+  // Thirteen bodies for the four crown tiers. Same contract: authored facing
+  // right at BASE[type], origin at the feet, `sw` the walk swing. The new AIs'
+  // tells (MASTER-PLAN §3.3) are read defensively from whatever the client AI
+  // sets: charging / windup / chargeWarn / pounceWarn / rootWarn / netWarn /
+  // guard (blocking) / blockFlash / leaping / phase (0..1 visibility) / alpha.
+  function crownTell(e) {
+    return winding(e) || e.chargeWarn > 0 || e.pounceWarn > 0 || e.rootWarn > 0 || e.netWarn > 0 || e.sporeWarn > 0 || e.tell > 0;
+  }
+  const tellK = (t) => 0.5 + 0.5 * Math.sin(t / 60);
+  function softDot(ctx, x, y, r, col, a) { ctx.globalAlpha = a; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
+  function outlineFill(ctx, fill, lw) { ctx.lineWidth = lw || 1.6; ctx.strokeStyle = "rgba(8,6,4,.85)"; ctx.stroke(); ctx.fillStyle = fill; ctx.fill(); }
+
+  // THORNLING — a scuttling knot of bramble with two lamp eyes.
+  function drawThornling(ctx, e, t, sw, C) {
+    const bob = Math.abs(Math.sin(t / 70 + (e.x || 0))) * 1.5;
+    ctx.strokeStyle = C.dark; ctx.lineWidth = 1.6; ctx.lineCap = "round";
+    for (let k = 0; k < 3; k++) { const s2 = Math.sin(t / 60 + k * 2.1) * 3; ctx.beginPath(); ctx.moveTo(-4 + k * 4, -2); ctx.lineTo(-6 + k * 5 + s2, 8); ctx.stroke(); }
+    ctx.lineCap = "butt";
+    ctx.save(); ctx.translate(0, -6 - bob);
+    ctx.beginPath(); for (let k = 0; k < 14; k++) { const a = k / 14 * TAU, r = k % 2 ? 6.5 : 10; k ? ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r * 0.9) : ctx.moveTo(r, 0); } ctx.closePath();
+    outlineFill(ctx, C.body);
+    ctx.fillStyle = C.dark; ctx.beginPath(); ctx.arc(-1, 1, 4.5, 0, TAU); ctx.fill();
+    eye(ctx, 2, -2, 1.9, "#fde047", false); eye(ctx, 5.5, -1.5, 1.6, "#fde047", false);
+    ctx.restore();
+  }
+  // TUSKED BOAR — a bristled quadruped; winds up pawing, charges head-down.
+  function drawBoar(ctx, e, t, sw, C) {
+    const tell = crownTell(e), charge = !!(e.charging || e.dashing);
+    const lower = charge ? 4 : tell ? 2 : 0, gal = charge ? Math.sin(t / 45) : sw;
+    // legs: a two-beat gallop when charging
+    for (const [x, ph, col] of [[-9, 0, C.dark], [8, 1.5, C.dark], [-6, 3.1, C.body], [11, 4.6, C.body]]) { const s2 = Math.sin(ph + (charge ? t / 45 : e._phase || 0)) * (charge ? 5 : 3); limb(ctx, x, 0 + lower * 0.3, x + s2, 11, 3.6, col); }
+    ctx.save(); ctx.translate(0, lower * 0.5);
+    ctx.beginPath(); ctx.ellipse(0, -5, 15, 9, charge ? 0.12 : 0, 0, TAU); outlineFill(ctx, C.body);
+    // bristle ridge
+    ctx.strokeStyle = C.dark; ctx.lineWidth = 1.4; for (let k = -10; k <= 6; k += 3) { ctx.beginPath(); ctx.moveTo(k, -12); ctx.lineTo(k - 2, -16 - (k % 2 ? 1 : 0)); ctx.stroke(); }
+    // head + snout + tusks
+    ctx.save(); ctx.translate(13, -4 + lower); ctx.rotate(charge ? 0.35 : tell ? 0.2 + Math.sin(t / 80) * 0.08 : 0);
+    ctx.beginPath(); ctx.ellipse(3, 0, 8, 6.5, 0, 0, TAU); outlineFill(ctx, C.body);
+    ctx.fillStyle = "#e7a1a1"; ctx.beginPath(); ctx.ellipse(10, 1.5, 2.8, 3, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = "#f5ecd7"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(8, 3); ctx.quadraticCurveTo(12, 4, 12, -2); ctx.stroke();
+    eye(ctx, 4, -2.5, 1.5, tell || charge ? "#ef4444" : "#fde047", false);
+    ctx.restore(); ctx.restore();
+    if (tell) { ctx.fillStyle = `rgba(168,120,80,${0.5 * tellK(t)})`; ctx.beginPath(); ctx.ellipse(-12, 11, 6, 2.5, 0, 0, TAU); ctx.fill(); }
+  }
+  // SPORECAP — a waddling toadstool that breathes out a slowing cloud.
+  function drawSporecap(ctx, e, t, sw, C) {
+    const puff = crownTell(e) || e.sporeT > 0, breathe = Math.sin(t / 400) * 1.2 + (puff ? 2 : 0);
+    limb(ctx, -4, 0, -4 + sw * 2, 11, 4, "#e7e5e4"); limb(ctx, 4, 0, 4 - sw * 2, 11, 4, "#e7e5e4");
+    ctx.beginPath(); ctx.ellipse(0, -3, 6, 7, 0, 0, TAU); outlineFill(ctx, "#f5f5f4");
+    eye(ctx, 1, -4, 1.3, "#1c1917", false); eye(ctx, 4, -4, 1.3, "#1c1917", false);
+    ctx.beginPath(); ctx.ellipse(0, -11 - breathe * 0.5, 14 + breathe, 8 + breathe * 0.4, 0, Math.PI, TAU); ctx.closePath(); outlineFill(ctx, C.body);
+    ctx.fillStyle = "#fef3c7"; for (const [x, y, r] of [[-7, -14, 2.2], [0, -17, 2.6], [7, -14, 2], [-2, -12, 1.4]]) { ctx.beginPath(); ctx.arc(x, y - breathe * 0.5, r, 0, TAU); ctx.fill(); }
+    // spores drifting off the cap
+    for (let k = 0; k < (puff ? 7 : 3); k++) { const ph = ((t / (puff ? 500 : 1400)) + k / 7) % 1; softDot(ctx, Math.sin(k * 2.3 + t / 700) * 12 * ph, -18 - ph * 16, 1.6 + ph * 2, "#fde68a", (1 - ph) * (puff ? 0.8 : 0.4)); }
+  }
+  // VINECALLER — a hooded druid with a living staff; roots answer the staff.
+  function drawVinecaller(ctx, e, t, sw, C) {
+    const cast = crownTell(e);
+    ctx.beginPath(); ctx.moveTo(-8, 12); ctx.quadraticCurveTo(-9, -6, 0, -14); ctx.quadraticCurveTo(9, -6, 8, 12); ctx.closePath(); outlineFill(ctx, C.body);
+    ctx.fillStyle = C.dark; ctx.beginPath(); ctx.moveTo(-6, -8); ctx.quadraticCurveTo(0, -24, 6, -8); ctx.closePath(); ctx.fill();
+    eye(ctx, 1, -12, 1.3, "#bef264", false); eye(ctx, 4, -12, 1.3, "#bef264", false);
+    // the staff: raised and glowing while calling roots
+    const ra = cast ? -0.5 + Math.sin(t / 90) * 0.1 : 0.15 + sw * 0.05;
+    ctx.save(); ctx.translate(8, -4); ctx.rotate(ra);
+    ctx.strokeStyle = "#5a3a1a"; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(0, 14); ctx.quadraticCurveTo(3, 0, 0, -18); ctx.stroke();
+    ctx.strokeStyle = "#4d7c0f"; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(0, -18); ctx.bezierCurveTo(5, -22, -4, -26, 2, -30); ctx.stroke();
+    if (cast) { softDot(ctx, 1, -22, 9, "#bef264", 0.35 + 0.3 * tellK(t)); softDot(ctx, 1, -22, 3, "#ecfccb", 0.9); }
+    ctx.restore();
+  }
+  // shared: a small armoured soldier with an optional big shield in front
+  function soldier(ctx, e, t, sw, C, o) {
+    const guard = e.guard || e.blocking || o.alwaysGuard, flash = e.blockFlash > 0;
+    limb(ctx, -4, 2, -5 + sw * 3, 14, 4.2, o.leg || C.dark); limb(ctx, 4, 2, 5 - sw * 3, 14, 4.2, o.leg || C.dark);
+    // torso
+    ctx.beginPath(); ctx.moveTo(-7, 4); ctx.lineTo(-8, -12); ctx.quadraticCurveTo(0, -16, 8, -12); ctx.lineTo(7, 4); ctx.closePath(); outlineFill(ctx, o.armor || C.body);
+    ctx.fillStyle = o.trim || "#fde68a"; ctx.fillRect(-7, 0, 14, 2);
+    // head / helm
+    ctx.beginPath(); ctx.arc(1, -18, 5.5, 0, TAU); outlineFill(ctx, o.helm || "#a8a29e");
+    ctx.fillStyle = "#0c0a09"; ctx.fillRect(1, -19, 5, 1.8);
+    if (o.crest) { ctx.strokeStyle = o.crest; ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(-4, -21); ctx.quadraticCurveTo(0, -28, 6, -22); ctx.stroke(); ctx.lineCap = "butt"; }
+    if (o.crown) { ctx.fillStyle = "#ca8a04"; ctx.beginPath(); ctx.moveTo(-3, -23); ctx.lineTo(-2, -27); ctx.lineTo(0, -24); ctx.lineTo(2, -28); ctx.lineTo(4, -24); ctx.lineTo(6, -27); ctx.lineTo(6, -23); ctx.closePath(); ctx.fill(); }
+    // weapon arm
+    o.weapon(ctx, e, t, sw);
+    // shield: forward and raised while guarding
+    const sx = guard ? 9 : 5, sy = guard ? -6 : -3;
+    ctx.save(); ctx.translate(sx, sy);
+    ctx.beginPath();
+    if (o.tower) ctx.rect(-3, -12, 7, 22); else ctx.ellipse(0, 0, 4.5, 10, 0, 0, TAU);
+    outlineFill(ctx, flash ? "#ffffff" : o.shield || "#92400e", 1.8);
+    ctx.strokeStyle = o.shieldTrim || "#fde68a"; ctx.lineWidth = 1.2; ctx.beginPath(); if (o.tower) ctx.rect(-2, -10, 5, 18); else ctx.ellipse(0, 0, 3, 8, 0, 0, TAU); ctx.stroke();
+    if (o.mirror) { ctx.fillStyle = `rgba(255,255,255,${0.35 + 0.25 * Math.sin(t / 300)})`; ctx.fillRect(-1, -8, 1.5, 12); }
+    ctx.restore();
+    if (guard && !o.noArc) { ctx.strokeStyle = flash ? "rgba(255,255,255,.9)" : "rgba(253,230,138,.35)"; ctx.lineWidth = flash ? 3 : 1.5; ctx.beginPath(); ctx.arc(0, -4, 20, -1.2, 1.2); ctx.stroke(); }
+  }
+  const spearArm = (col) => (ctx, e, t, sw) => {
+    const thrust = crownTell(e) ? -3 : e.attacking ? 6 : 0;
+    ctx.strokeStyle = "#6b4f2a"; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(-10 + thrust, -8); ctx.lineTo(16 + thrust, -12); ctx.stroke();
+    ctx.fillStyle = col || "#e7e5e4"; ctx.beginPath(); ctx.moveTo(16 + thrust, -14.5); ctx.lineTo(22 + thrust, -12.5); ctx.lineTo(16 + thrust, -10); ctx.closePath(); ctx.fill();
+  };
+  // ASHEN HOPLITE — a round shield turned toward you; flank it.
+  const HOPLITE = { alwaysGuard: true, armor: "#7c4a1e", helm: "#b8872e", crest: "#dc2626", weapon: spearArm(), shield: "#92400e" };
+  function drawHoplite(ctx, e, t, sw, C) { soldier(ctx, e, t, sw, C, HOPLITE); }
+  // RETIARIUS — net and trident; the net spins overhead before the throw.
+  function drawRetiarius(ctx, e, t, sw, C) {
+    const aim = crownTell(e);
+    limb(ctx, -4, 2, -5 + sw * 4, 14, 3.8, C.dark); limb(ctx, 4, 2, 5 - sw * 4, 14, 3.8, C.dark);
+    ctx.beginPath(); ctx.moveTo(-6, 4); ctx.lineTo(-7, -11); ctx.quadraticCurveTo(0, -15, 7, -11); ctx.lineTo(6, 4); ctx.closePath(); outlineFill(ctx, "#c8a27a");
+    ctx.fillStyle = C.body; ctx.fillRect(-6, 0, 12, 5);
+    ctx.beginPath(); ctx.arc(1, -17, 5, 0, TAU); outlineFill(ctx, "#c8a27a"); ctx.fillStyle = "#3f2a1a"; ctx.beginPath(); ctx.arc(0, -19, 5, Math.PI, TAU); ctx.fill();
+    eye(ctx, 3.5, -17, 1.1, "#fde68a", false);
+    // trident
+    ctx.strokeStyle = "#94a3b8"; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(-6, 2); ctx.lineTo(8, -22); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(5, -24); ctx.lineTo(9, -27); ctx.moveTo(8, -22); ctx.lineTo(11, -26); ctx.moveTo(10, -20); ctx.lineTo(14, -22); ctx.stroke();
+    // the net
+    ctx.save(); ctx.translate(aim ? 2 : 8, aim ? -30 : -4); ctx.rotate(aim ? t / 90 : 0.2);
+    ctx.strokeStyle = aim ? "rgba(214,211,209,.95)" : "rgba(168,162,158,.8)"; ctx.lineWidth = 1;
+    const r = aim ? 11 : 6; ctx.beginPath(); ctx.ellipse(0, 0, r, r * (aim ? 0.45 : 1), 0, 0, TAU); ctx.stroke();
+    for (let k = 0; k < 4; k++) { const a = k / 4 * Math.PI; ctx.beginPath(); ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r * (aim ? 0.45 : 1)); ctx.lineTo(-Math.cos(a) * r, -Math.sin(a) * r * (aim ? 0.45 : 1)); ctx.stroke(); }
+    ctx.restore();
+  }
+  // ASH LION — ember-maned; crouches with a lashing tail, then leaps.
+  function drawAshLion(ctx, e, t, sw, C) {
+    const tell = crownTell(e), leap = !!(e.leaping || e.pouncing || e.dashing);
+    const crouch = tell ? 4 : 0, lift = leap ? -6 : 0;
+    ctx.save(); ctx.translate(0, lift);
+    for (const [x, ph, col] of [[-9, 0, C.dark], [8, 3.1, C.dark], [-6, 1.6, C.body], [11, 4.7, C.body]]) {
+      if (leap) limb(ctx, x, -1, x + (x < 0 ? -7 : 7), 6, 3.6, col); else limb(ctx, x, -1 + crouch * 0.4, x + Math.sin(ph + (e._phase || 0)) * 3, 11, 3.6, col);
+    }
+    ctx.beginPath(); ctx.ellipse(0, -5 + crouch * 0.6, 14, 7, leap ? -0.15 : 0, 0, TAU); outlineFill(ctx, C.body);
+    // tail
+    ctx.strokeStyle = C.body; ctx.lineWidth = 2.4; ctx.lineCap = "round"; const lash = Math.sin(t / (tell ? 70 : 400)) * (tell ? 6 : 3);
+    ctx.beginPath(); ctx.moveTo(-13, -6); ctx.quadraticCurveTo(-20, -8 + lash, -22, -14 + lash); ctx.stroke(); ctx.lineCap = "butt";
+    softDot(ctx, -22, -14 + lash, 2.5, "#f97316", 0.9);
+    // head and the ember mane
+    ctx.save(); ctx.translate(12, -9 + crouch);
+    for (let k = 0; k < 9; k++) { const a = k / 9 * TAU + t / 900, fl = 7 + Math.sin(t / 110 + k * 2) * 1.5; ctx.fillStyle = k % 2 ? "#f97316" : "#fbbf24"; ctx.beginPath(); ctx.ellipse(Math.cos(a) * 4 - 1, Math.sin(a) * 4, fl * 0.55, 3, a, 0, TAU); ctx.fill(); }
+    ctx.beginPath(); ctx.arc(1, 0, 5.2, 0, TAU); outlineFill(ctx, C.body);
+    ctx.fillStyle = "#44261a"; ctx.beginPath(); ctx.ellipse(5, 1.5, 2.6, 2, 0, 0, TAU); ctx.fill();
+    eye(ctx, 2.5, -1.5, 1.2, tell ? "#ef4444" : "#fde047", false);
+    ctx.restore(); ctx.restore();
+    for (let k = 0; k < 3; k++) { const ph = (t / 700 + k / 3) % 1; softDot(ctx, 10 + Math.sin(k * 3) * 4, -14 - ph * 14, 1.4, "#fb923c", 1 - ph); }
+  }
+  // REFLECTION — you, made of mirror glass: a faceted silhouette with a prismatic edge.
+  function drawReflection(ctx, e, t, sw, C) {
+    const shine = (t / 1400 + (e.x || 0) * 0.003) % 1;
+    const body = () => { ctx.beginPath(); ctx.moveTo(-5, 13); ctx.lineTo(-7, -10); ctx.lineTo(-4, -14); ctx.lineTo(-5, -19); ctx.lineTo(0, -25); ctx.lineTo(5, -19); ctx.lineTo(4, -14); ctx.lineTo(7, -10); ctx.lineTo(5, 13); ctx.closePath(); };
+    ctx.save(); ctx.translate(-1.5, 0); body(); ctx.fillStyle = "rgba(244,63,94,.25)"; ctx.fill(); ctx.translate(3, 0); body(); ctx.fillStyle = "rgba(56,189,248,.25)"; ctx.fill(); ctx.restore();
+    body(); ctx.fillStyle = "rgba(203,213,225,.72)"; ctx.fill(); ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.strokeStyle = "rgba(100,116,139,.6)"; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(-6, -8); ctx.lineTo(4, 2); ctx.lineTo(-3, 10); ctx.moveTo(0, -25); ctx.lineTo(1, -12); ctx.stroke();
+    ctx.fillStyle = `rgba(255,255,255,${0.7 * Math.sin(shine * Math.PI)})`; ctx.beginPath(); ctx.moveTo(-6 + shine * 12, -24); ctx.lineTo(-3 + shine * 12, -24); ctx.lineTo(-7 + shine * 12, 12); ctx.lineTo(-10 + shine * 12, 12); ctx.closePath(); ctx.fill();
+    limb(ctx, -3, 6, -3 + sw * 3, 13, 2, "rgba(226,232,240,.8)"); limb(ctx, 3, 6, 3 - sw * 3, 13, 2, "rgba(226,232,240,.8)");
+  }
+  // MASKED COURTIER — only really there up close or when it strikes (e.phase / alpha).
+  function drawCourtier(ctx, e, t, sw, C) {
+    const vis = e.phase != null ? clamp01(e.phase) : e.alpha != null ? clamp01(e.alpha) : e.hidden ? 0.12 : 1;
+    const a0 = ctx.globalAlpha;
+    if (vis < 0.35) { ctx.strokeStyle = `rgba(233,213,255,${0.25 + 0.15 * Math.sin(t / 90)})`; ctx.lineWidth = 1; for (let k = 0; k < 3; k++) { const ph = ((t / 600) + k / 3) % 1; ctx.beginPath(); ctx.ellipse(0, -8, 6 + ph * 8, 12 + ph * 8, 0, 0, TAU); ctx.stroke(); } }
+    ctx.globalAlpha = a0 * Math.max(0.08, vis);
+    ctx.beginPath(); ctx.moveTo(-8, 13); ctx.lineTo(-6, -8); ctx.quadraticCurveTo(0, -12, 6, -8); ctx.lineTo(8, 13); ctx.closePath(); outlineFill(ctx, C.body);
+    ctx.fillStyle = "#fde68a"; ctx.fillRect(-6, -8, 12, 1.6); ctx.fillRect(-1, -8, 2, 20);
+    ctx.fillStyle = "#e7e5e4"; ctx.beginPath(); ctx.moveTo(-6, -8); ctx.lineTo(0, -5); ctx.lineTo(6, -8); ctx.lineTo(0, -11); ctx.closePath(); ctx.fill();
+    // porcelain mask with a painted smile
+    ctx.beginPath(); ctx.ellipse(1, -16, 5, 6, 0, 0, TAU); outlineFill(ctx, "#f5f5f4");
+    ctx.fillStyle = "#1c1917"; ctx.beginPath(); ctx.ellipse(-0.5, -17, 1.2, 0.8, 0, 0, TAU); ctx.ellipse(3, -17, 1.2, 0.8, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = "#be123c"; ctx.lineWidth = 0.9; ctx.beginPath(); ctx.arc(1.3, -14.5, 2, 0.2, Math.PI - 0.2); ctx.stroke();
+    ctx.fillStyle = "#4c1d95"; ctx.beginPath(); ctx.moveTo(-5, -20); ctx.lineTo(7, -20); ctx.lineTo(4, -25); ctx.lineTo(-2, -24); ctx.closePath(); ctx.fill();
+    // rapier
+    ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(6, -4); ctx.lineTo(18, crownTell(e) ? -12 : 2); ctx.stroke();
+    ctx.globalAlpha = a0;
+  }
+  // MIRROR KNIGHT — silver plate, a mirrored tower shield that throws light.
+  function drawMirrorKnight(ctx, e, t, sw, C) { soldier(ctx, e, t, sw, C, { alwaysGuard: true, tower: true, mirror: true, armor: "#94a3b8", helm: "#cbd5e1", trim: "#e2e8f0", leg: "#64748b", shield: "#e2e8f0", shieldTrim: "#94a3b8",
+    weapon: (ctx) => { ctx.strokeStyle = "#f8fafc"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-8, -6); ctx.lineTo(-14, -22); ctx.stroke(); ctx.strokeStyle = "#64748b"; ctx.beginPath(); ctx.moveTo(-10, -9); ctx.lineTo(-5, -11); ctx.stroke(); } }); }
+  // CROWNGUARD — the King's heavy guard: halberd, tower shield, crowned helm.
+  function drawCrownguard(ctx, e, t, sw, C) { soldier(ctx, e, t, sw, C, { alwaysGuard: true, tower: true, crown: true, armor: "#57534e", helm: "#78716c", trim: "#ca8a04", leg: "#292524", shield: "#7f1d1d", shieldTrim: "#ca8a04",
+    weapon: (ctx, e2, t2) => { const up = crownTell(e2) ? -4 : 0; ctx.strokeStyle = "#57534e"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-10, 10); ctx.lineTo(-6, -28 + up); ctx.stroke();
+      ctx.fillStyle = "#d6d3d1"; ctx.beginPath(); ctx.moveTo(-6, -28 + up); ctx.quadraticCurveTo(-15, -26 + up, -13, -18 + up); ctx.lineTo(-6, -21 + up); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(-6, -28 + up); ctx.lineTo(-5, -34 + up); ctx.lineTo(-4, -28 + up); ctx.fill(); } }); }
+  // OATHBREAKER — a knight who broke faith: torn cape, dragging chains, glowing cracks; it charges.
+  function drawOathbreaker(ctx, e, t, sw, C) {
+    const tell = crownTell(e), charge = !!(e.charging || e.dashing);
+    ctx.save(); if (charge) ctx.rotate(0.18);
+    ctx.fillStyle = "#1c1917"; ctx.beginPath(); ctx.moveTo(-6, -12); ctx.lineTo(-14 - (charge ? 6 : 0), 10); ctx.lineTo(-10, 6); ctx.lineTo(-8, 12); ctx.lineTo(-3, 4); ctx.closePath(); ctx.fill();
+    soldier(ctx, e, t, sw, C, { armor: "#3f3f46", helm: "#52525b", trim: "#7f1d1d", leg: "#27272a", shield: "#27272a", shieldTrim: "#7f1d1d", noArc: true,
+      weapon: (ctx) => { ctx.strokeStyle = "#a1a1aa"; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.moveTo(-6, -4); ctx.lineTo(charge ? 20 : -4, charge ? -10 : -26); ctx.stroke(); } });
+    // cracks of red light through the plate
+    ctx.strokeStyle = `rgba(239,68,68,${0.6 + 0.4 * (tell ? tellK(t) : 0.3)})`; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(-4, -11); ctx.lineTo(0, -5); ctx.lineTo(-2, 0); ctx.moveTo(3, -9); ctx.lineTo(5, -3); ctx.stroke();
+    ctx.strokeStyle = "#57534e"; ctx.lineWidth = 1.2; for (let k = 0; k < 5; k++) { ctx.beginPath(); ctx.ellipse(-8 - k * 3, 10 + Math.sin(t / 150 + k) * 1, 1.6, 1, 0, 0, TAU); ctx.stroke(); }
+    ctx.restore();
+    if (tell) softDot(ctx, 3, -18, 5, "#ef4444", 0.4 * tellK(t));
+  }
+  // CROWN WISP — a little floating crown of light with sparks circling it.
+  function drawCrownWisp(ctx, e, t, sw, C) {
+    const hot = crownTell(e) || e.dashing, hover = Math.sin(t / 220 + (e.x || 0)) * 3;
+    ctx.save(); ctx.translate(0, -12 + hover);
+    softDot(ctx, 0, 0, hot ? 14 : 10, "#fde047", hot ? 0.45 : 0.25);
+    ctx.fillStyle = "#facc15"; ctx.beginPath(); ctx.moveTo(-7, 4); ctx.lineTo(-7, -3); ctx.lineTo(-4, 0); ctx.lineTo(0, -6); ctx.lineTo(4, 0); ctx.lineTo(7, -3); ctx.lineTo(7, 4); ctx.closePath(); outlineFill(ctx, "#facc15", 1.2);
+    ctx.fillStyle = "#fff7d6"; ctx.beginPath(); ctx.arc(0, 1, 1.8, 0, TAU); ctx.fill();
+    for (let k = 0; k < 4; k++) { const a = t / (hot ? 120 : 300) + k / 4 * TAU; softDot(ctx, Math.cos(a) * 11, Math.sin(a) * 4, 1.4, "#fef08a", 0.9); }
+    ctx.restore();
+  }
+
+  // ---- themed ground / standing props for the four crown themes
+  function drawCrownGround(ctx, p, t) {
+    const x = p.x, y = p.y, rot = p.rot || 0;
+    if (p.kind === "mushroom_ring") {
+      ctx.strokeStyle = "rgba(190,242,100,.14)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(x, y, 30, 15, 0, 0, TAU); ctx.stroke();
+      for (let k = 0; k < 9; k++) { const a = k / 9 * TAU + rot, mx = x + Math.cos(a) * 30, my = y + Math.sin(a) * 15, g = 0.5 + 0.5 * Math.sin(t / 700 + k);
+        ctx.fillStyle = "#e7e5e4"; ctx.fillRect(mx - 1, my - 4, 2, 4); ctx.fillStyle = k % 2 ? "#a3e635" : "#65a30d"; ctx.beginPath(); ctx.ellipse(mx, my - 4, 4, 2.5, 0, Math.PI, TAU); ctx.fill();
+        ctx.fillStyle = `rgba(217,249,157,${0.25 * g})`; ctx.beginPath(); ctx.arc(mx, my - 5, 6, 0, TAU); ctx.fill(); }
+    } else if (p.kind === "sand_drift") {
+      ctx.fillStyle = "rgba(166,124,82,.55)"; ctx.beginPath(); ctx.ellipse(x, y, 34, 12, rot * 0.3, 0, TAU); ctx.fill();
+      ctx.strokeStyle = "rgba(214,180,140,.45)"; ctx.lineWidth = 1; for (let k = -2; k <= 2; k++) { ctx.beginPath(); ctx.ellipse(x + k * 3, y + k * 2, 26 - Math.abs(k) * 5, 7 - Math.abs(k), rot * 0.3, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke(); }
+    } else if (p.kind === "checker_tile") {
+      ctx.save(); ctx.translate(x, y); ctx.scale(1, 0.55); ctx.rotate(Math.PI / 4 + rot * 0.2);
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { ctx.fillStyle = (i + j) % 2 ? "rgba(15,12,26,.8)" : "rgba(203,213,225,.55)"; ctx.fillRect(-20 + i * 10, -20 + j * 10, 10, 10); }
+      ctx.strokeStyle = "rgba(226,232,240,.4)"; ctx.lineWidth = 1.2; ctx.strokeRect(-20, -20, 40, 40); ctx.restore();
+    } else if (p.kind === "crown_shard_pile") {
+      ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.beginPath(); ctx.ellipse(x, y + 2, 18, 6, 0, 0, TAU); ctx.fill();
+      for (let k = 0; k < 7; k++) { const a = k * 2.3 + rot, d = (k % 3) * 5, sx0 = x + Math.cos(a) * d, sy0 = y + Math.sin(a) * d * 0.5, tw = 0.5 + 0.5 * Math.sin(t / 300 + k);
+        ctx.fillStyle = k % 2 ? "#ca8a04" : "#facc15"; ctx.beginPath(); ctx.moveTo(sx0 - 3, sy0); ctx.lineTo(sx0, sy0 - 7 - (k % 3) * 2); ctx.lineTo(sx0 + 3, sy0); ctx.closePath(); ctx.fill();
+        if (tw > 0.85) { ctx.fillStyle = "#fff7d6"; ctx.fillRect(sx0 - 0.5, sy0 - 9, 1, 3); } }
+    }
+  }
+  function drawCrownStanding(ctx, p, t) {
+    const x = p.x, y = p.y;
+    const shadow = (w) => { ctx.fillStyle = "rgba(0,0,0,.4)"; ctx.beginPath(); ctx.ellipse(x + 2, y + 10, w, w * 0.32, 0, 0, TAU); ctx.fill(); };
+    switch (p.kind) {
+      case "bramble": {
+        shadow(18); ctx.strokeStyle = "#1a2e05"; ctx.lineWidth = 3; ctx.lineCap = "round";
+        for (let k = 0; k < 7; k++) { const a = -Math.PI / 2 + (k - 3) * 0.4, sw2 = Math.sin(t / 900 + k) * 2; ctx.beginPath(); ctx.moveTo(x, y + 6); ctx.quadraticCurveTo(x + Math.cos(a) * 14 + sw2, y + Math.sin(a) * 14, x + Math.cos(a) * 22 + sw2, y + Math.sin(a) * 26); ctx.stroke(); }
+        ctx.strokeStyle = "#3f6212"; ctx.lineWidth = 1.2; for (let k = 0; k < 12; k++) { const a = k * 2.1, r = 8 + (k % 4) * 4; ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * r, y - 8 + Math.sin(a) * r * 0.7); ctx.lineTo(x + Math.cos(a) * (r + 4), y - 11 + Math.sin(a) * r * 0.7); ctx.stroke(); }
+        ctx.fillStyle = "#be123c"; for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.arc(x - 8 + k * 8, y - 14 - (k % 2) * 6, 1.8, 0, TAU); ctx.fill(); }
+        ctx.lineCap = "butt"; break;
+      }
+      case "root_arch": {
+        shadow(24); ctx.strokeStyle = "#3f2a14"; ctx.lineCap = "round";
+        for (const [w, dx] of [[6, 0], [3.5, 3], [2.5, -3]]) { ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(x - 22 + dx, y + 8); ctx.bezierCurveTo(x - 24 + dx, y - 36, x + 22 - dx, y - 40, x + 22 - dx, y + 8); ctx.stroke(); }
+        ctx.fillStyle = "#4d7c0f"; for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.ellipse(x - 14 + k * 6, y - 30 + Math.abs(k - 2.5) * 5, 3.5, 2, k, 0, TAU); ctx.fill(); }
+        const g = 0.5 + 0.5 * Math.sin(t / 800); ctx.fillStyle = `rgba(190,242,100,${0.35 * g})`; ctx.beginPath(); ctx.arc(x, y - 22, 4, 0, TAU); ctx.fill();
+        ctx.lineCap = "butt"; break;
+      }
+      case "broken_column": {
+        shadow(16); ctx.fillStyle = "#6b5845"; ctx.fillRect(x - 10, y - 8, 20, 16);
+        ctx.fillStyle = "#8a7560"; ctx.beginPath(); ctx.moveTo(x - 9, y - 8); ctx.lineTo(x - 9, y - 38); ctx.lineTo(x - 3, y - 44); ctx.lineTo(x + 2, y - 36); ctx.lineTo(x + 9, y - 40); ctx.lineTo(x + 9, y - 8); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = "rgba(0,0,0,.3)"; ctx.lineWidth = 1; for (const dx of [-5, 0, 5]) { ctx.beginPath(); ctx.moveTo(x + dx, y - 8); ctx.lineTo(x + dx, y - 36); ctx.stroke(); }
+        ctx.fillStyle = "#6b5845"; ctx.save(); ctx.translate(x + 18, y + 4); ctx.rotate(0.3); ctx.fillRect(-7, -5, 14, 10); ctx.restore(); break;
+      }
+      case "weapon_rack": {
+        shadow(18); ctx.fillStyle = "#4a3422"; ctx.fillRect(x - 18, y - 6, 36, 4); ctx.fillRect(x - 16, y - 30, 3, 34); ctx.fillRect(x + 13, y - 30, 3, 34); ctx.fillRect(x - 18, y - 30, 36, 3);
+        ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = 1.6; for (const [dx, h] of [[-9, 34], [-3, 30], [3, 36], [9, 28]]) { ctx.beginPath(); ctx.moveTo(x + dx, y - 4); ctx.lineTo(x + dx + 1, y - 4 - h); ctx.stroke(); }
+        ctx.fillStyle = "#92400e"; ctx.beginPath(); ctx.ellipse(x + 20, y - 8, 6, 10, 0.2, 0, TAU); ctx.fill(); ctx.strokeStyle = "#fde68a"; ctx.lineWidth = 1; ctx.stroke(); break;
+      }
+      case "mirror_pane": {
+        shadow(14); ctx.fillStyle = "#cbd5e1"; ctx.fillRect(x - 13, y - 46, 26, 52);
+        ctx.fillStyle = "#3b3556"; ctx.fillRect(x - 10, y - 43, 20, 46);
+        const ph = ((t / 2400) + x * 0.01) % 1.4; if (ph < 1) { ctx.fillStyle = `rgba(255,255,255,${0.35 * Math.sin(ph * Math.PI)})`; ctx.beginPath(); ctx.moveTo(x - 10 + ph * 20, y - 43); ctx.lineTo(x - 5 + ph * 20, y - 43); ctx.lineTo(x - 12 + ph * 20, y + 3); ctx.lineTo(x - 17 + ph * 20, y + 3); ctx.closePath(); ctx.fill(); }
+        ctx.strokeStyle = "rgba(15,12,26,.8)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x - 6, y - 30); ctx.lineTo(x + 2, y - 20); ctx.lineTo(x - 2, y - 10); ctx.stroke(); break;
+      }
+      case "candelabra": {
+        shadow(10); ctx.fillStyle = "#cbd5e1"; ctx.fillRect(x - 1.5, y - 30, 3, 36); ctx.fillRect(x - 8, y + 4, 16, 3);
+        ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 10, y - 30); ctx.quadraticCurveTo(x, y - 22, x + 10, y - 30); ctx.stroke();
+        for (const dx of [-10, 0, 10]) { ctx.fillStyle = "#fef3c7"; ctx.fillRect(x + dx - 1.5, y - 38, 3, 8); const fl = 0.8 + 0.2 * Math.sin(t / 90 + dx); ctx.fillStyle = `rgba(245,208,254,${0.3 * fl})`; ctx.beginPath(); ctx.arc(x + dx, y - 42, 7, 0, TAU); ctx.fill(); ctx.fillStyle = "#fde68a"; ctx.beginPath(); ctx.ellipse(x + dx, y - 41, 1.5, 3 * fl, 0, 0, TAU); ctx.fill(); }
+        break;
+      }
+      case "shattered_banner": {
+        shadow(10); ctx.fillStyle = "#44403c"; ctx.fillRect(x - 1.5, y - 50, 3, 58); ctx.fillStyle = "#ca8a04"; ctx.beginPath(); ctx.arc(x, y - 51, 2.5, 0, TAU); ctx.fill();
+        const w2 = Math.sin(t / 600 + x) * 2; ctx.fillStyle = "#7f1d1d"; ctx.beginPath(); ctx.moveTo(x + 1, y - 46); ctx.lineTo(x + 20 + w2, y - 44); ctx.lineTo(x + 17 + w2, y - 30); ctx.lineTo(x + 21 + w2, y - 24); ctx.lineTo(x + 12 + w2, y - 20); ctx.lineTo(x + 8 + w2, y - 12); ctx.lineTo(x + 1, y - 18); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#ca8a04"; ctx.beginPath(); ctx.moveTo(x + 7 + w2, y - 36); ctx.lineTo(x + 9 + w2, y - 40); ctx.lineTo(x + 11 + w2, y - 36); ctx.lineTo(x + 13 + w2, y - 40); ctx.lineTo(x + 14 + w2, y - 34); ctx.lineTo(x + 7 + w2, y - 34); ctx.closePath(); ctx.fill(); break;
+      }
+      case "throne_rubble": {
+        shadow(20);
+        for (const [dx, dy, w, h, c] of [[-12, 0, 16, 10, "#44403c"], [4, 2, 14, 8, "#57534e"], [-4, -8, 12, 9, "#3a2f26"], [10, -6, 8, 6, "#57534e"]]) { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x + dx, y + dy); ctx.lineTo(x + dx + w, y + dy - 2); ctx.lineTo(x + dx + w - 2, y + dy - h); ctx.lineTo(x + dx + 2, y + dy - h + 1); ctx.closePath(); ctx.fill(); }
+        ctx.strokeStyle = "#ca8a04"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x - 10, y - 9); ctx.lineTo(x - 2, y - 11); ctx.stroke();
+        ctx.fillStyle = "#57130f"; ctx.beginPath(); ctx.moveTo(x - 6, y - 16); ctx.lineTo(x + 6, y - 15); ctx.lineTo(x + 4, y - 10); ctx.lineTo(x - 5, y - 10); ctx.closePath(); ctx.fill(); break;
+      }
+      default: return false;
+    }
+    return true;
+  }
 
   const MODEL = {
     melee: drawBrute, fast: drawImp, tank: drawOgre, ranged: drawMage,
@@ -1598,15 +1908,21 @@
     crawler: drawCrawler, shard: drawShard, prism: drawPrism, golem: drawGolem,
     wraith: drawWraith, angler: drawAngler, revenant: drawRevenant,
     mimic: drawMimic, goblin: drawGoblin, voidling: drawVoidling,
+    // THE SUNDERED CROWN
+    thornling: drawThornling, boar: drawBoar, sporecap: drawSporecap, vinecaller: drawVinecaller, hoplite: drawHoplite, retiarius: drawRetiarius,
+    ash_lion: drawAshLion, reflection: drawReflection, courtier: drawCourtier, mirror_knight: drawMirrorKnight, crownguard: drawCrownguard,
+    oathbreaker: drawOathbreaker, crown_wisp: drawCrownWisp,
   };
   // Nominal radius each model was authored against, so `size` scales it.
   const BASE = { melee: 14, fast: 11, tank: 18, ranged: 12, archer: 12, bomber: 13, shaman: 13, stalker: 12, warden: 17, boss: 30,
     wisp: 9, tome: 12, scribe: 12, sentinel: 17, crawler: 12, shard: 8, prism: 14, golem: 19, wraith: 12, angler: 14, revenant: 16,
-    mimic: 15, goblin: 11, voidling: 10 };
+    mimic: 15, goblin: 11, voidling: 10,
+    thornling: 9, boar: 15, sporecap: 13, vinecaller: 12, hoplite: 14, retiarius: 12, ash_lion: 14, reflection: 12, courtier: 12, mirror_knight: 14, crownguard: 14, oathbreaker: 14, crown_wisp: 9 };
   // How far above its feet each Depths model actually reaches (halo, lure, spikes, lid), in
   // authored units, so the HP bar sits above the art instead of across its face.
   const TOP = { wisp: 20, tome: 36, scribe: 41, sentinel: 40, crawler: 24, shard: 20, prism: 33, golem: 33, wraith: 35,
-    angler: 37, revenant: 40, mimic: 36, goblin: 28, voidling: 25 };
+    angler: 37, revenant: 40, mimic: 36, goblin: 28, voidling: 25,
+    thornling: 18, boar: 20, sporecap: 24, vinecaller: 32, hoplite: 30, retiarius: 32, ash_lion: 22, reflection: 26, courtier: 27, mirror_knight: 26, crownguard: 30, oathbreaker: 26, crown_wisp: 22 };
 
   function shade(hex, k) {
     const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || "#888888");
@@ -1696,5 +2012,9 @@
   window.gameMobs = { drawEnemy, drawFloor, endlessFloorPattern, _endlessDirect: (...a) => drawEndlessFloorDirect(...a), drawWalls, buildProps, drawGroundProps, drawStandingProps, drawDarkness,
     drawMotes, hasModel: (type) => !!MODEL[type], MODEL_TYPES: Object.keys(MODEL), GROUND_KINDS, THEMED_STANDING,
     // tell combat.js it can stop drawing its fallbacks
-    THEMED: true, ELITE_OVERLAY: true };
+    THEMED: true, ELITE_OVERLAY: true,
+    // THE SUNDERED CROWN: models for the 13 new enemies, the 4 themes and their props
+    CROWN_THEMED: true,
+    // Content waves register their own enemy models here (js/bosses/*.js): fn(ctx, e, t, sw, C, TYPES) drawn facing right at the feet, base = authored size.
+    registerModel: (type, fn, base) => { if (type && typeof fn === "function") { MODEL[type] = fn; if (base > 0) BASE[type] = base; } } };
 })();

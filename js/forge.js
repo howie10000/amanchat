@@ -86,19 +86,33 @@
   // ---------------- rendering ----------------
   function walletHtml() {
     const m = mats();
-    const order = ["dust", "shard", "ember", "gilded_key"];
+    const order = ["dust", "shard", "ember", "gilded_key"].concat(m.crown_shard ? ["crown_shard"] : []);
     const sig = Object.keys(m).filter(k => /^sigil_/.test(k) && m[k] > 0).sort();
     const gemN = Object.values(gems()).reduce((s, n) => s + (+n || 0), 0);
+    // Each chip explains itself on tap / focus / hover (js/ui-guide.js glossary): what it is for, where it drops.
+    const tip = (k) => (window.gameGuide && gameGuide.explain && gameGuide.explain(k)) ? ` role="button" tabindex="0" data-gd-term="${k}"` : "";
     return `<div class="adWallet adForgeWallet">
       <span class="adMat" style="--mc:#fbbf24"><i></i>Gold <b>${money(haveMoney())}</b></span>
-      ${order.map(k => `<span class="adMat${m[k] ? "" : " zero"}" style="--mc:${U().matColor(k)}">${U().matIco(k)}${esc(U().matName(k))} <b>${(+m[k] || 0).toLocaleString()}</b></span>`).join("")}
-      ${sig.map(k => `<span class="adMat sig" style="--mc:${U().matColor(k)}">${U().matIco(k)}${esc(U().matName(k))} <b>${m[k]}</b></span>`).join("")}
-      <span class="adMat" style="--mc:#f472b6"><i></i>Gems <b>${gemN}</b></span>
+      ${order.map(k => `<span class="adMat${m[k] ? "" : " zero"}" style="--mc:${U().matColor(k)}"${tip(k)}>${U().matIco(k)}${esc(U().matName(k))} <b>${(+m[k] || 0).toLocaleString()}</b></span>`).join("")}
+      ${sig.map(k => `<span class="adMat sig" style="--mc:${U().matColor(k)}"${tip("sigil")}>${U().matIco(k)}${esc(U().matName(k))} <b>${m[k]}</b></span>`).join("")}
+      <span class="adMat" style="--mc:#f472b6"${tip("gems")}><i></i>Gems <b>${gemN}</b></span>
     </div>`;
   }
+  // One plain sentence per tab: what it does and what it costs (GUI-AUDIT C3).
+  const TAB_HELP = {
+    enhance: "Add +1 to a piece's stats: up to +5 for Rare and below, +10 for Epic to Mythic, +12 for Ancient and Arcane. Costs gold and Arcane Dust. A strike can fail, but it never breaks the piece and the next try gets likelier.",
+    reforge: "Re-roll one bonus line (a \"mod\") on an Epic or better piece. You see the new line before you keep it.",
+    sockets: "Set gems into a piece's sockets for extra stats, or drill one extra socket. Legendary and better pieces have sockets.",
+    gems: "Your gems. Fuse three of the same gem into one of the next grade.",
+    ascend: "Turn a Mythic piece into an Ancient one: higher stats, an extra mod and socket, and +12 enhancing. Mythic gear drops from the harder dungeons and higher delve levels.",
+    craft: "Craft a missing piece of a dungeon's gear set, using that boss's sigils plus gold and materials.",
+    transmute: "Turn a lot of a common material into one of a rarer one (for example Arcane Dust into a Void Shard).",
+    salvage: "Break gear you don't need into materials. Worn and locked pieces are safe.",
+  };
   function tabsHtml() {
-    return `<div class="adForgeTabs">${TABS.map(([id, label, ico]) =>
-      `<button class="adFTab ${F.tab === id ? "on" : ""}" onclick="gameForge.tab('${id}')"><span>${ico}</span>${label}</button>`).join("")}</div>`;
+    return `<div class="adForgeTabs" role="tablist" aria-label="Forge actions">${TABS.map(([id, label, ico]) =>
+      `<button class="adFTab ${F.tab === id ? "on" : ""}" role="tab" aria-selected="${F.tab === id}" title="${esc(TAB_HELP[id] || "")}" onclick="gameForge.tab('${id}')"><span>${ico}</span>${label}</button>`).join("")}</div>
+      ${TAB_HELP[F.tab] ? `<p class="gdTabHelp"><b>${esc((TABS.find(t => t[0] === F.tab) || [])[1] || "")}:</b> ${esc(TAB_HELP[F.tab])}</p>` : ""}`;
   }
   function pickFilter(tab) {
     const worn = wornIds();
@@ -122,9 +136,9 @@
     const list = items().filter(pickFilter(F.tab))
       .sort((a, b) => (U().rarIdx(b.rarity) - U().rarIdx(a.rarity)) || ((b.lvl | 0) - (a.lvl | 0)) || ((b.plus | 0) - (a.plus | 0)));
     if (!list.length) {
-      const why = { reforge: "Nothing with a mod to reforge. Epic and better pieces carry mods.", ascend: "Only Mythic pieces can ascend.",
-        salvage: "Nothing loose and unlocked to salvage." }[F.tab] || "Your pack is empty.";
-      return `<div class="adForgePick"><p class="muted">${why}</p></div>`;
+      const why = { reforge: "Nothing with a mod to reforge yet. Epic and better pieces carry mods.", ascend: "No Mythic pieces yet — only Mythic gear can ascend. It drops from the harder dungeons and higher delve levels.",
+        salvage: "Nothing to salvage: worn and locked pieces are kept safe." }[F.tab] || "Your pack is empty — gear drops from dungeon bosses and chests.";
+      return `<div class="adForgePick"><p class="muted gdEmptyNote">${why}</p>${items().length ? "" : `<button class="menuBtn gold" onclick="window.gameGuild&&gameGuild.openDungeons?gameGuild.openDungeons():closeMenu()">FIND GEAR IN DUNGEONS</button>`}</div>`;
     }
     return `<div class="adForgePick">${list.map(it => pickRow(it, multi ? F.sel.has(it.id) : F.pick === it.id, multi)).join("")}</div>`;
   }
@@ -333,7 +347,9 @@
     if (needsPick) {
       const it = F.pick && item(F.pick);
       const okPick = it && pickFilter(F.tab)(it);
-      let bench = `<p class="muted adPickHint">Choose a piece.</p>`;
+      let bench = items().some(pickFilter(F.tab))
+        ? `<p class="muted adPickHint">Pick a piece from the list. You will see the cost and the result before anything is spent.</p>`
+        : `<p class="muted adPickHint">Nothing here can use this yet.</p>`;
       if (okPick) {
         bench = F.tab === "enhance" ? enhanceBench(it) : F.tab === "reforge" ? reforgeBench(it)
           : F.tab === "sockets" ? socketBench(it) : ascendBench(it);
@@ -345,7 +361,8 @@
     else if (F.tab === "transmute") body = `<div class="adForgeBench wide">${flashHtml()}${transmuteBench()}</div>`;
     else body = `<div class="adForgeBench wide">${flashHtml()}${craftBench()}</div>`;
     return `<div id="adForgeRoot" class="adForge">
-      <div class="adForgeHero"><div class="adForgeRune"></div><div><b>THE ARCANE FORGE</b><small>Every strike is rolled by the server. Materials cannot be sold or traded.</small></div>
+      <div class="adForgeHero"><div class="adForgeRune"></div><div><b>THE ARCANE FORGE</b><small>Make your gear stronger with gold and the materials dungeons drop. Materials can't be sold or traded.</small>${window.gameGuide && gameGuide.helpBtn ? gameGuide.helpBtn("forge") : ""}</div>
+        <button class="menuBtn scNavArts" onclick="window.gameArtsUI?gameArtsUI.open('forge'):toast('The Crown Arts arrive with the update.')" title="Rank up Crown Arts with crown shards">♛ ARTS</button>
         <button class="menuBtn gray" onclick="gameGear.openArmory()">← ARMORY</button></div>
       ${walletHtml()}${tabsHtml()}${body}</div>`;
   }
@@ -365,6 +382,7 @@
     }
     F.flash = null; F.ask = null;
     openMenu("THE ARCANE FORGE", render(), true);
+    if (window.gameGuide && gameGuide.autoTour) gameGuide.autoTour("forge");
     loadStatus().then(ok => { if (ok) paint(); });
   }
   function setTab(t) { F.tab = t; F.flash = null; F.ask = null; paint(); }

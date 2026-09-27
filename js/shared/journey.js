@@ -167,8 +167,8 @@
   function pickBase(slot, lvl, rand) {
     lvl = clamp(int(lvl) || 4, 1, ECON.GEAR_MAX_LEVEL);
     const s = STAT_SLOTS.includes(slot) ? slot : STAT_SLOTS[Math.floor(rand() * STAT_SLOTS.length) % STAT_SLOTS.length];
-    let pool = ECON.GEAR_BASES.filter(b => b.lvl === lvl && b.slot === s && !b.unique && !b.set);
-    if (!pool.length) pool = ECON.GEAR_BASES.filter(b => b.slot === s && !b.unique && !b.set);
+    let pool = ECON.GEAR_BASES.filter(b => b.lvl === lvl && b.slot === s && !b.unique && !b.set && !b.armament);
+    if (!pool.length) pool = ECON.GEAR_BASES.filter(b => b.slot === s && !b.unique && !b.set && !b.armament);
     return pool[Math.floor(rand() * pool.length) % pool.length].id;
   }
   // Mint a reward into concrete things. ctx = {rand, now, lvl (for 'tier'), floor (for 'floor'), src}.

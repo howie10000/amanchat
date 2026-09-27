@@ -215,8 +215,11 @@
     8: { metal: ["#e8ecff", "#98a2d8", "#3d3a9c", "#1a1747"], trim: ["#fff4c7", "#e8b90c", "#865012"], cloth: ["#29307a", "#0f1236"], gem: "#fde68a", glow: "#fde68a", motif: "stars" },
     9: { metal: ["#fbe3ff", "#cd8ff7", "#7e22ce", "#35074f"], trim: ["#d4fbff", "#22d3ee", "#0e6a86"], cloth: ["#5b2182", "#240a3a"], gem: "#22d3ee", glow: "#67e8f9", motif: "crystal" },
     10: { metal: ["#f4fbff", "#a9d9f2", "#3d7fb1", "#0d2b49"], trim: ["#ffffff", "#bfe6fb", "#1f6aa3"], cloth: ["#1e4d78", "#0a1d33"], gem: "#5eead4", glow: "#bae6fd", motif: "frost" },
+    // THE SUNDERED CROWN: the Mirror Court (silvered glass, rose-lilac) and the Sundered Throne (old gold, royal crimson).
+    11: { metal: ["#fdf4ff", "#d9cbe8", "#7d6d99", "#261d3a"], trim: ["#fff1f9", "#f0abfc", "#86198f"], cloth: ["#4c1d95", "#1a0b33"], gem: "#f5d0fe", glow: "#f0abfc", motif: "glints" },
+    12: { metal: ["#fff6d8", "#dcb25a", "#8a5f12", "#321f04"], trim: ["#fee2e2", "#dc2626", "#7f1d1d"], cloth: ["#7f1d1d", "#2a0808"], gem: "#fde047", glow: "#fde047", motif: "crown_dust" },
   };
-  function theme(lvl) { return THEMES[Math.max(1, Math.min(10, lvl | 0 || 1))]; }
+  function theme(lvl) { return THEMES[Math.max(1, Math.min(12, lvl | 0 || 1))]; }
   function pal(t, over) { return Object.assign({}, t, over || {}); }
 
   // ------------------------------------------------------------------ base -> family + look
@@ -320,6 +323,93 @@
   const SET_GLYPH = { warden_vigil: "trident", emberwright: "anvil", hollow_regalia: "door", ashen_mantle: "eye", starlit_codex: "star", choir_of_stone: "fork", rimeveil_oath: "snow" };
   const SET_SLOTS_ORDER = ["weapon", "helmet", "chest", "legs", "ring"];
 
+  // ---- THE SUNDERED CROWN (docs/sundered-crown/MASTER-PLAN.md §3.6): every new base gets an explicit
+  // painter family, look variants, bespoke unique palettes and a set palette of its own dungeon.
+  Object.assign(FAMILY, {
+    // L11 - the Mirror Court
+    gleamglass_saber: "sabre", eclipse_rapier: "sword", courtly_warhammer: "hammer",
+    silvered_visage: "mask", masque_of_umbra: "mask", looking_glass_helm: "helm",
+    mirrorplate: "plate", duskweave_doublet: "jerkin", gilded_bulwark: "plate",
+    glasswalk_greaves: "greaves", velvet_striders: "boots", court_tassets: "tassets",
+    twin_moon_band: "band", sunspot_signet: "signet", silver_vow: "gemring",
+    // L12 - the Sundered Throne
+    crownsplitter: "axe", regicide_blade: "greatsword", throne_maul: "hammer",
+    kingsguard_greathelm: "helm", usurpers_circlet: "circlet", throneward_helm: "visor",
+    royal_hauberk: "mail", regents_mantle: "mantle", sundered_aegis_plate: "plate",
+    kingsroad_greaves: "greaves", heralds_striders: "boots", throne_tassets: "tassets",
+    signet_of_ruin: "signet", broken_oath_band: "band", coronation_loop: "twist",
+    // uniques
+    gorehorn_tusk: "fang", rampager_hide: "jerkin", matrons_briar: "twist", kaels_edge: "sword", duelists_mask: "mask",
+    champions_aegis: "plate", sol_and_umbra: "sabre", mirror_crown: "crown", veilpiercer: "gemring", kingsbane: "greatsword",
+    the_sundered_crown: "crown", crownbound_oath: "greaves",
+    // sets
+    thornhide_weapon: "fang", thornhide_helmet: "hood", thornhide_chest: "jerkin", thornhide_legs: "trousers", thornhide_ring: "twist",
+    pit_sovereign_weapon: "sword", pit_sovereign_helmet: "visor", pit_sovereign_chest: "plate", pit_sovereign_legs: "greaves", pit_sovereign_ring: "band",
+    mirror_regalia_weapon: "sabre", mirror_regalia_helmet: "crown", mirror_regalia_chest: "robe", mirror_regalia_legs: "boots", mirror_regalia_ring: "signet",
+    sundered_regalia_weapon: "greatsword", sundered_regalia_helmet: "crown", sundered_regalia_chest: "mail", sundered_regalia_legs: "greaves", sundered_regalia_ring: "signet",
+  });
+  Object.assign(VARIANT, {
+    gleamglass_saber: { crystal: 1 }, eclipse_rapier: { runes: 1 }, courtly_warhammer: { heavy: 1 }, looking_glass_helm: { lens: 1 },
+    masque_of_umbra: { veil: 1 }, gilded_bulwark: { heavy: 1 }, mirrorplate: { crystal: 1 }, twin_moon_band: { six: 1 },
+    sunspot_signet: { gemc: "#fde047" }, silver_vow: { gemc: "#f5d0fe" }, glasswalk_greaves: { crystal: 1 },
+    crownsplitter: { big: 1, jag: 1 }, regicide_blade: { runes: 1 }, throne_maul: { heavy: 1 }, kingsguard_greathelm: { heavy: 1 },
+    sundered_aegis_plate: { heavy: 1, crack: 1 }, signet_of_ruin: { crack: 1 }, broken_oath_band: { crack: 1 }, usurpers_circlet: { broken: 1 },
+    gorehorn_tusk: { bone: 1 }, rampager_hide: { scales: 1 }, matrons_briar: { gemc: "#bef264" }, kaels_edge: { flame: 1 }, duelists_mask: { veil: 1 },
+    champions_aegis: { heavy: 1 }, sol_and_umbra: { eclipse: 1 }, mirror_crown: { crystal: 1 }, veilpiercer: { gemc: "#c4b5fd" },
+    kingsbane: { runes: 1, big: 1 }, the_sundered_crown: { broken: 1 }, crownbound_oath: { heavy: 1 },
+    thornhide_weapon: { bone: 1 }, sundered_regalia_helmet: { broken: 1 }, mirror_regalia_helmet: { crystal: 1 },
+  });
+  const THORN_METAL = ["#e7f5c8", "#8fae4a", "#44601c", "#172308"], PIT_METAL = ["#ffe9c7", "#d08a3a", "#7c3b10", "#2c1204"];
+  Object.assign(UNIQUE_LOOK, {
+    gorehorn_tusk: { gem: "#fbbf24", glow: "#f59e0b", motif: "thorns", metal: ["#fffbeb", "#e7d8b8", "#8a7652", "#3a2c16"] },
+    rampager_hide: { gem: "#fbbf24", glow: "#d97706", motif: "thorns", cloth: ["#6b4423", "#2a170a"] },
+    matrons_briar: { gem: "#bef264", glow: "#84cc16", motif: "thorns", metal: THORN_METAL },
+    kaels_edge: { gem: "#fda4af", glow: "#f43f5e", motif: "ash", metal: ["#ffffff", "#d7dde6", "#7b8594", "#252a33"] },
+    duelists_mask: { gem: "#fda4af", glow: "#f43f5e", motif: "ash", metal: PIT_METAL },
+    champions_aegis: { gem: "#fde68a", glow: "#f59e0b", motif: "sand", metal: PIT_METAL },
+    sol_and_umbra: { gem: "#fde68a", glow: "#fde68a", motif: "glints", metal: ["#fff8e1", "#e9c46a", "#4c3d8f", "#140f33"] },
+    mirror_crown: { gem: "#f5d0fe", glow: "#f0abfc", motif: "glints" },
+    veilpiercer: { gem: "#c4b5fd", glow: "#a78bfa", motif: "glints" },
+    kingsbane: { gem: "#fde047", glow: "#fbbf24", motif: "crown_dust", metal: ["#fff6d8", "#e2c275", "#8a5f12", "#321f04"] },
+    the_sundered_crown: { gem: "#fde047", glow: "#fde047", motif: "crown_dust" },
+    crownbound_oath: { gem: "#fde047", glow: "#dc2626", motif: "crown_dust", metal: ["#e7e5e4", "#78716c", "#292524", "#0c0a09"] },
+  });
+  // Set palettes: the L4 / L7 sets wear their own dungeon, not the crypt's or the roost's.
+  const SET_LOOK = {
+    thornhide: { metal: THORN_METAL, trim: ["#fef3c7", "#d6b77a", "#6b4a1b"], cloth: ["#4d7c0f", "#1a2e05"], gem: "#bef264", glow: "#a3e635", motif: "thorns" },
+    pit_sovereign: { metal: PIT_METAL, trim: ["#fee2e2", "#dc2626", "#7f1d1d"], cloth: ["#9a3412", "#3b1306"], gem: "#fb923c", glow: "#fb923c", motif: "sand" },
+    mirror_regalia: { motif: "glints" },
+    sundered_regalia: { motif: "crown_dust" },
+  };
+  Object.assign(SET_GLYPH, { thornhide: "thorn", pit_sovereign: "swords", mirror_regalia: "sunmoon", sundered_regalia: "crown" });
+
+  // ---- WEAPONS (docs/sundered-crown/WEAPONS.md): every boss weapon (arm_<kind>_<lvl>) and the
+  // signature ranged uniques get an explicit family; the painter follows the weapon KIND.
+  const KIND_FAMILY = { sword: "sword", mace: "mace", spear: "spear", dagger: "fang", axe: "axe", scythe: "scythe",
+    gun: "gun", boomerang: "boomerang", blowdart: "blowpipe", crossbow: "crossbow" };
+  (function () {
+    const E = EC();
+    if (!E || !E.ARMAMENT_BASE) return;
+    for (const [kind, ids] of Object.entries(E.ARMAMENT_BASE)) ids.forEach((id, lvl) => {
+      if (!id) return;
+      // high-level swords are greatswords, high-level maces hammers: a little variety across the ladder
+      FAMILY[id] = kind === "sword" && lvl >= 10 ? "greatsword" : kind === "mace" && lvl % 3 === 0 ? "hammer" : kind === "dagger" && lvl % 4 === 2 ? "knives" : KIND_FAMILY[kind];
+      if (lvl >= 9 && (kind === "sword" || kind === "spear")) VARIANT[id] = { runes: 1 };
+      else if (lvl === 10) VARIANT[id] = { ice: 1 };
+    });
+  })();
+  Object.assign(FAMILY, { gorehorn_tuskrang: "boomerang", matrons_thornpipe: "blowpipe", varkaals_breath: "blowpipe", kaels_parting_shot: "gun",
+    eclipse_chakram: "boomerang", crownfall_arbalest: "crossbow" });
+  Object.assign(VARIANT, { gorehorn_tuskrang: { bone: 1 }, matrons_thornpipe: { thorn: 1 }, eclipse_chakram: { eclipse: 1 } });
+  Object.assign(UNIQUE_LOOK, {
+    gorehorn_tuskrang: { gem: "#fbbf24", glow: "#f59e0b", motif: "thorns", metal: ["#fffbeb", "#e7d8b8", "#8a7652", "#3a2c16"] },
+    matrons_thornpipe: { gem: "#bef264", glow: "#84cc16", motif: "thorns", metal: THORN_METAL },
+    varkaals_breath: { gem: "#fb923c", glow: "#f97316", motif: "flames" },
+    kaels_parting_shot: { gem: "#fda4af", glow: "#f43f5e", motif: "ash", metal: ["#ffffff", "#d7dde6", "#7b8594", "#252a33"] },
+    eclipse_chakram: { gem: "#fde68a", glow: "#fde68a", motif: "glints", metal: ["#fff8e1", "#e9c46a", "#4c3d8f", "#140f33"] },
+    crownfall_arbalest: { gem: "#fde047", glow: "#fbbf24", motif: "crown_dust", metal: ["#fff6d8", "#e2c275", "#8a5f12", "#321f04"] },
+  });
+
   function nameGuess(id, slot) {
     const s = String(id || "").toLowerCase();
     const T = [
@@ -332,7 +422,7 @@
       [/legging|trouser/, "trousers"], [/greave/, "greaves"], [/pearl|heart|amulet|pendant/, "amulet"], [/signet|seal|sigil/, "signet"], [/loop/, "twist"], [/eye/, "eyering"],
     ];
     for (const [re, f] of T) if (re.test(s)) return f;
-    return { weapon: "sword", helmet: "helm", chest: "plate", legs: "greaves", ring: "band" }[slot] || "sword";
+    return { weapon: "sword", ranged: "gun", helmet: "helm", chest: "plate", legs: "greaves", ring: "band" }[slot] || "sword";
   }
   function lookFor(baseId, slot, lvl) {
     const E = EC();
@@ -343,11 +433,13 @@
     const uq = (b && b.unique) || !!UNIQUE_LOOK[baseId];
     if (uq && (!b || !b.lvl)) { // "any level" uniques read their boss's dungeon level
       const u = E && E.GEAR_UNIQUES && E.GEAR_UNIQUES[baseId];
-      const bossLvl = { ogrelord: 4, tempest: 5, curator: 8, prismgolem: 9, halvard: 10, herald: 6, broodmother: 7 };
+      const bossLvl = { ogrelord: 4, tempest: 5, curator: 8, prismgolem: 9, halvard: 10, herald: 6, broodmother: 7,
+        briar_matron: 4, pit_champion: 7, veiled_assassin: 11, kael_crownbound: 12 };
       L = (u && bossLvl[u.boss]) || L;
     }
     const fam = FAMILY[baseId] || nameGuess(baseId + " " + ((b && b.name) || ""), sl);
     let p = pal(theme(L));
+    if (setId && SET_LOOK[setId]) p = pal(p, SET_LOOK[setId]);
     if (UNIQUE_LOOK[baseId]) { const U = UNIQUE_LOOK[baseId]; p = pal(p, U); p.motif = U.motif; }
     return { fam, slot: sl, lvl: L, p, v: Object.assign({}, VARIANT[baseId] || {}), set: setId || null, uq: !!uq };
   }
@@ -1150,11 +1242,17 @@
       case "claw": S(cc => { for (const dx of [-5, 0, 5]) { cc.moveTo(dx - 2, 8); cc.quadraticCurveTo(dx + 3, 0, dx, -9); } }); break;
       case "hammer": F(cc => { rr(cc, -8, -9, 16, 7, 1.5); rr(cc, -1.5, -2, 3, 12, 1); }); break;
       case "numeral": break;
+      // THE SUNDERED CROWN
+      case "thorn": S(cc => { cc.moveTo(-9, 8); cc.bezierCurveTo(-8, -4, 4, 2, 2, -9); }); F(cc => { poly(cc, [-6, 1, -10, -1, -6.5, -2.5]); poly(cc, [-1, -2, -2, -6.5, 1.5, -4]); poly(cc, [-4, 5, -1, 8.5, -1.5, 4]); poly(cc, [2, -6, 6.5, -6, 3.5, -3]); }); break;
+      case "sunmoon": F(cc => { cc.moveTo(0, -9); cc.arc(0, 0, 9, -PI / 2, PI / 2, true); cc.closePath(); }); c.save(); c.fillStyle = "rgba(0,0,0,.55)"; c.beginPath(); c.moveTo(0, -9); c.arc(0, 0, 9, -PI / 2, PI / 2); c.quadraticCurveTo(5, 0, 0, -9); c.fill(); c.restore(); S(cc => { for (let i = 0; i < 5; i++) { const a = PI / 2 + (i + 0.5) * PI / 5; cc.moveTo(Math.cos(a) * 10.5, Math.sin(a) * 10.5); cc.lineTo(Math.cos(a) * 13, Math.sin(a) * 13); } }); break;
+      case "mirror": F(cc => poly(cc, [0, -10, 7, 0, 0, 10, -7, 0])); c.fillStyle = "rgba(255,255,255,.55)"; c.beginPath(); poly(c, [-1, -6, 3, -2, -2, 3, -4, 0]); c.fill(); break;
+      case "dagger": F(cc => { poly(cc, [0, -10, 2.2, 1, -2.2, 1]); rr(cc, -5, 1, 10, 2, 1); rr(cc, -1.2, 3, 2.4, 6, 1); }); break;
       default: F(cc => starN(cc, 0, 0, 4, 9, 3));
     }
     c.restore();
   }
-  const BOSS_GLYPH = { warden: "trident", smith: "anvil", tyrant: "door", dragon: "eye", astraea: "star", khyra: "fork", iskarra: "snow", ogrelord: "tusk", tempest: "bolt", curator: "book", prismgolem: "prism", halvard: "shield", herald: "horn", broodmother: "egg", heart: "heart", concordant: "rings", ley_ember: "flame", ley_tide: "wave", ley_star: "star" };
+  const BOSS_GLYPH = { warden: "trident", smith: "anvil", tyrant: "door", dragon: "eye", astraea: "star", khyra: "fork", iskarra: "snow", ogrelord: "tusk", tempest: "bolt", curator: "book", prismgolem: "prism", halvard: "shield", herald: "horn", broodmother: "egg", heart: "heart", concordant: "rings", ley_ember: "flame", ley_tide: "wave", ley_star: "star",
+    gorehorn: "tusk", kael: "swords", twin_monarchs: "sunmoon", sundered_king: "crown", briar_matron: "thorn", pit_champion: "shield", veiled_assassin: "dagger", kael_crownbound: "sword" };
 
   // ------------------------------------------------------------------ motifs (aura effects around an item)
   function motifBack(c, m, p, rn) {
@@ -1179,6 +1277,11 @@
     if (m === "steam") for (let i = 0; i < 4; i++) { c.strokeStyle = al("#e2e8f0", 0.45); c.lineWidth = 1.3; const x = 20 + rn() * 60; c.beginPath(); c.moveTo(x, 30); c.bezierCurveTo(x - 5, 24, x + 5, 18, x, 12); c.stroke(); }
     if (m === "pages") for (let i = 0; i < 3; i++) { const x = 14 + rn() * 70, y = 14 + rn() * 70, a = rn() - 0.5; c.save(); c.translate(x, y); c.rotate(a); part(c, cc => rr(cc, -4, -5, 8, 10, 0.8), "#fef3c7", { lw: 0.7 }); c.restore(); }
     if (m === "ley" || m === "prism") for (let i = 0; i < 5; i++) sparkle(c, 12 + rn() * 76, 12 + rn() * 76, 1.6 + rn() * 1.6, PRISM[i % 5]);
+    // THE SUNDERED CROWN
+    if (m === "glints") for (let i = 0; i < 6; i++) { const x = 12 + rn() * 76, y = 12 + rn() * 76; sparkle(c, x, y, 1.6 + rn() * 2.4, i % 2 ? "#ffffff" : g); if (i < 2) { c.strokeStyle = al("#ffffff", 0.35); c.lineWidth = 0.7; c.beginPath(); c.moveTo(x - 6, y + 6); c.lineTo(x + 6, y - 6); c.stroke(); } }
+    if (m === "crown_dust") { for (let i = 0; i < N; i++) glowDot(c, 12 + rn() * 76, 12 + rn() * 76, 0.9 + rn() * 1.5, "#fbbf24", "#fef9c3"); for (let i = 0; i < 2; i++) { const x = 16 + rn() * 68, y = 14 + rn() * 26; part(c, cc => poly(cc, [x, y - 3, x + 2, y, x, y + 3, x - 2, y]), "#fde047", { lw: 0.6 }); } }
+    if (m === "thorns") for (let i = 0; i < 3; i++) { const x = 14 + rn() * 72, y = 70 + rn() * 18, s = rn() < 0.5 ? -1 : 1; strokeP(c, al("#4d7c0f", 0.9), 1.6, cc => { cc.moveTo(x - 8 * s, y + 6); cc.quadraticCurveTo(x, y - 6, x + 8 * s, y); }); c.fillStyle = "#a3e635"; c.beginPath(); poly(c, [x, y - 1.5, x + 1.6 * s, y - 5, x + 2 * s, y - 0.8]); c.fill(); }
+    if (m === "sand") for (let i = 0; i < N; i++) { c.fillStyle = al(i % 3 ? "#fdba74" : "#fef3c7", 0.55 + rn() * 0.35); c.beginPath(); circ(c, 10 + rn() * 80, 58 + rn() * 32, 0.6 + rn() * 1.1); c.fill(); }
   }
 
   // ------------------------------------------------------------------ rarity frames
@@ -1301,6 +1404,58 @@
     c.strokeStyle = "rgba(209,250,229,.8)"; c.lineWidth = 0.6; c.beginPath(); c.moveTo(7.5, 75.5); c.lineTo(20.5, 75.5); c.stroke();
     glyph(c, g, 14, 84, 10, "#ecfdf5");
   }
+  // ---- WEAPONS (docs/sundered-crown/WEAPONS.md): the ranged kinds.
+  W.gun = function (c, p, v, rn) {
+    // a flintlock: barrel up the blade line, the stock curling down and back
+    const stock = cc => { cc.moveTo(-5, 6); cc.lineTo(5, 6); cc.quadraticCurveTo(7, 24, 17, 42); cc.quadraticCurveTo(11, 50, 3, 46); cc.quadraticCurveTo(-3, 30, -5, 6); cc.closePath(); };
+    part(c, stock, metal(c, -5, 17, WOOD), { rn, tex: 10, box: [-6, 6, 18, 50] });
+    part(c, cc => rr(cc, -4.5, -50, 9, 58, 2), metal(c, -4.5, 4.5, [p.metal[0], p.metal[1], p.metal[2], p.metal[3]]), { rn, tex: 8, box: [-5, -50, 5, 8] });
+    for (const y of [-47, -22]) part(c, cc => rr(cc, -5.6, y, 11.2, 4, 1.2), lg(c, -5, 0, 5, 0, p.trim), { tex: 0, lw: 0.9 });
+    strokeP(c, "rgba(255,255,255,.55)", 0.8, cc => { cc.moveTo(-2, -48); cc.lineTo(-2, 4); });
+    // lock + hammer + trigger guard
+    part(c, cc => rr(cc, 3, -4, 9, 11, 2), lg(c, 3, 0, 12, 0, p.trim), { tex: 0, lw: 1 });
+    part(c, cc => poly(cc, [8, -4, 13, -12, 15, -10, 11, -2]), p.metal[2], { lw: 0.9 });
+    strokeP(c, OUT, 3.2, cc => cc.arc(-1, 16, 6, -0.3, PI * 0.9));
+    strokeP(c, p.trim[0], 1.6, cc => cc.arc(-1, 16, 6, -0.3, PI * 0.9));
+    gem(c, 8, 2, 2.2, p.gem);
+    part(c, cc => circ(cc, 0, -50, 3.2), "#0f0f10", { lw: 0.8 });
+  };
+  W.boomerang = function (c, p, v, rn) {
+    // a hooked throwing-stick: two broad arms meeting at a carved elbow
+    // a sharp V: two broad arms meeting at the elbow (never a bow's crescent)
+    const body = cc => { cc.moveTo(-22, -40); cc.quadraticCurveTo(0, -24, 20, 0); cc.quadraticCurveTo(0, 24, -22, 40); cc.quadraticCurveTo(-24, 34, -18, 30); cc.quadraticCurveTo(-2, 16, 6, 0); cc.quadraticCurveTo(-2, -16, -18, -30); cc.quadraticCurveTo(-24, -34, -22, -40); cc.closePath(); };
+    const wood = v.bone ? ["#fbf6e8", "#ded2b6", "#8a7652", "#3a2c16"] : [lt(WOOD[0], 0.15), WOOD[0], WOOD[1], WOOD[3]];
+    part(c, body, metal(c, -4, 16, wood), { rn, tex: 16, box: [-10, -50, 16, 50] });
+    strokeP(c, "rgba(255,255,255,.5)", 0.9, cc => { cc.moveTo(-19, -37); cc.quadraticCurveTo(2, -21, 16, -2); });
+    for (const s of [-1, 1]) strokeP(c, p.trim[1], 2.2, cc => { cc.moveTo(-6, s * 20); cc.lineTo(-1, s * 13); });
+    for (const s of [-1, 1]) strokeP(c, p.gem, 1.4, cc => { cc.moveTo(-14, s * 30); cc.lineTo(-9, s * 23); });
+    gem(c, 11, 0, 3.4, p.gem);
+    if (v.eclipse) { glowDot(c, -4, -18, 3, "#fde68a"); glowDot(c, -4, 18, 3, "#a78bfa"); }
+  };
+  W.blowpipe = function (c, p, v, rn) {
+    // a reed pipe with bound nodes, a brass mouthpiece and a dart peeking out
+    part(c, cc => rr(cc, -3, -50, 6, 96, 3), metal(c, -3, 3, [lt("#8fae4a", 0.2), "#8fae4a", "#4d6b1a", "#1f2e08"]), { rn, tex: 12, box: [-3, -50, 3, 46] });
+    for (let y = -40; y < 40; y += 16) part(c, cc => rr(cc, -3.8, y, 7.6, 3, 1), lg(c, -4, 0, 4, 0, [p.trim[2], p.trim[0], p.trim[1]]), { tex: 0, lw: 0.7 });
+    part(c, cc => rr(cc, -4.2, 40, 8.4, 10, 2.5), lg(c, -4, 0, 4, 0, [p.trim[2], p.trim[0], p.trim[1]]), { tex: 0, lw: 1 });
+    part(c, cc => poly(cc, [0, -56, 1.6, -50, -1.6, -50]), p.metal[0], { lw: 0.8 });
+    for (const s of [-1, 1]) strokeP(c, v.thorn ? "#bef264" : p.gem, 1.3, cc => { cc.moveTo(s * 2.5, -30); cc.quadraticCurveTo(s * 10, -24, s * 7, -12); });
+    gem(c, 0, 45, 2.2, p.gem);
+  };
+  W.crossbow = function (c, p, v, rn) {
+    // stock along the blade line, the prod across its head, a bolt nocked
+    part(c, cc => { cc.moveTo(-4, -30); cc.lineTo(4, -30); cc.lineTo(6, 30); cc.quadraticCurveTo(8, 44, 2, 50); cc.lineTo(-4, 50); cc.quadraticCurveTo(-7, 40, -5, 30); cc.closePath(); },
+      metal(c, -5, 7, WOOD), { rn, tex: 12, box: [-7, -30, 8, 50] });
+    const limb = cc => { cc.moveTo(-26, -20); cc.quadraticCurveTo(-12, -38, 0, -34); cc.quadraticCurveTo(12, -38, 26, -20); cc.lineTo(24, -17); cc.quadraticCurveTo(12, -32, 0, -29); cc.quadraticCurveTo(-12, -32, -24, -17); cc.closePath(); };
+    part(c, limb, lg(c, -26, 0, 26, 0, [p.metal[2], p.metal[0], p.metal[1], p.metal[0], p.metal[2]]), { rn, tex: 8, box: [-26, -38, 26, -17] });
+    strokeP(c, "rgba(245,245,220,.95)", 0.9, cc => { cc.moveTo(-25, -18.5); cc.lineTo(0, -6); cc.lineTo(25, -18.5); });
+    part(c, cc => rr(cc, -1.2, -52, 2.4, 46, 1), "#9ca3af", { lw: 0.7 });
+    part(c, cc => poly(cc, [0, -56, 3.6, -48, -3.6, -48]), lg(c, -3, 0, 3, 0, [p.metal[1], "#ffffff", p.metal[2]]), { lw: 0.8 });
+    for (const s of [-1, 1]) part(c, cc => poly(cc, [0, -10, s * 4, -4, 0, -7]), "#b91c1c", { lw: 0.6 });
+    part(c, cc => rr(cc, -4.6, -4, 9.2, 8, 2), lg(c, -4, 0, 4, 0, p.trim), { tex: 0, lw: 1 });
+    strokeP(c, OUT, 2.4, cc => { cc.moveTo(4, 8); cc.quadraticCurveTo(10, 12, 6, 18); });
+    gem(c, 0, 0, 2.4, p.gem);
+  };
+
   function uniqueMark(c) {
     // orange-gold double-border corners + a star in the top-left
     for (const [x, y, sx, sy] of [[10, 10, 1, 1], [90, 10, -1, 1], [10, 90, 1, -1], [90, 90, -1, -1]]) {
@@ -1319,7 +1474,7 @@
     const fam = look.fam;
     c.save();
     c.translate(50, 50);
-    if (look.slot === "weapon") { c.rotate(PI / 4); c.scale(WEAPON_W * WEAPON_BOX, WEAPON_BOX); (W[fam] || W.sword)(c, p, v, rn); }
+    if (look.slot === "weapon" || look.slot === "ranged") { c.rotate(PI / 4); c.scale(WEAPON_W * WEAPON_BOX, WEAPON_BOX); (W[fam] || W.sword)(c, p, v, rn); }
     else { c.scale(ICON_BOX, ICON_BOX); c.translate(-50, -50); const tbl = look.slot === "helmet" ? H : look.slot === "chest" ? C : look.slot === "legs" ? LG : R; (tbl[fam] || tbl[Object.keys(tbl)[0]])(c, p, v, rn); }
     c.restore();
   }
@@ -1466,7 +1621,7 @@
     const m = (E && E.MATERIALS && E.MATERIALS[id]) || null;
     const col = (m && m.color) || "#c4b5fd";
     const kind = m ? m.kind : /^sigil_/.test(id) ? "sigil" : "mat";
-    const rar = id === "dust" ? "rare" : id === "shard" ? "epic" : id === "ember" ? "mythic" : kind === "key" ? "legendary" : kind === "sigil" ? "legendary" : "fine";
+    const rar = id === "dust" ? "rare" : id === "shard" ? "epic" : id === "ember" || id === "crown_shard" ? "mythic" : kind === "key" ? "legendary" : kind === "sigil" ? "legendary" : "fine";
     return render("mat|" + id, size || 64, (c, px, rn) => {
       const F = frame(c, rar);
       frameBack(c, F.st, col, lt(col, 0.3), rn, F);
@@ -1498,6 +1653,16 @@
           for (const k of [-1, 0, 1]) strokeP(lc, "#1c1917", 2.2, cc => { cc.moveTo(50 + k * 16, 20); cc.quadraticCurveTo(50 + k * 34, 56, 50 + k * 16, 88); });
           strokeP(lc, "#1c1917", 3, cc => { cc.moveTo(36, 88); cc.lineTo(64, 88); cc.moveTo(40, 20); cc.lineTo(60, 20); });
           for (let i = 0; i < 6; i++) glowDot(lc, 26 + rn() * 48, 14 + rn() * 30, 1.3, "#fb923c", "#fde047");
+        } else if (id === "crown_shard") {
+          // a broken point of the Sundered Crown: gold tine, crimson gem, a faceted break
+          lc.fillStyle = rg(lc, 50, 52, 2, 36, [al("#fef9c3", 0.8), al(col, 0.35), al(col, 0)]); lc.beginPath(); circ(lc, 50, 52, 36); lc.fill();
+          lc.save(); lc.translate(50, 52); lc.rotate(-0.22);
+          part(lc, cc => poly(cc, [-20, 22, -20, 2, -12, 10, 0, -30, 12, 10, 16, 4, 18, 14, 10, 22, 4, 16, -4, 24]), lg(lc, -20, -30, 20, 24, ["#fffbeb", "#fde047", "#ca8a04", "#713f12"]), { rn, tex: 14, box: [-20, -30, 20, 24], bev: 3 });
+          lc.strokeStyle = "rgba(255,255,255,.6)"; lc.lineWidth = 0.8; lc.beginPath(); lc.moveTo(0, -30); lc.lineTo(-4, 16); lc.moveTo(0, -30); lc.lineTo(6, 12); lc.stroke();
+          lc.fillStyle = "rgba(60,30,4,.45)"; lc.beginPath(); poly(lc, [0, -30, 12, 10, 16, 4, 18, 14, 10, 22, 4, 16]); lc.fill();
+          gem(lc, -2, 6, 4.6, "#dc2626", "d");
+          lc.restore();
+          for (let i = 0; i < 7; i++) sparkle(lc, 16 + rn() * 68, 14 + rn() * 70, 0.9 + rn() * 1.8, i % 2 ? "#ffffff" : "#fde047");
         } else if (id === "gilded_key" || kind === "key") {
           key(lc, "gilded", 50, 50, 1.05, rn);
         } else { // boss sigil stone
@@ -1777,6 +1942,150 @@
     part(c, cc => { cc.moveTo(34, 50); cc.quadraticCurveTo(50, 36, 66, 50); cc.quadraticCurveTo(50, 64, 34, 50); cc.closePath(); }, rg(c, 50, 50, 1, 16, ["#ffffff", acc, "#1e1b4b"]), { lw: 1.3 });
     part(c, cc => ell(cc, 50, 50, 2.6, 7, 0), "#05030b", { lw: 0 }); glowDot(c, 50, 50, 5, "#ffffff");
   };
+  // ---- THE SUNDERED CROWN portraits (4 bosses + 4 minis)
+  BUST.gorehorn = (c, col, acc, rn) => {
+    // shaggy mane
+    part(c, cc => { cc.moveTo(8, 74); for (let i = 0; i <= 12; i++) { const a = PI + i * PI / 12, r = i % 2 ? 34 : 46; cc.lineTo(50 + Math.cos(a) * r * 1.02, 60 + Math.sin(a) * r * 0.95); } cc.lineTo(92, 74); cc.closePath(); },
+      lg(c, 0, 14, 0, 74, ["#6b3a1c", "#3a1d0b", "#1c0d04"]), { rn, tex: 22, box: [6, 14, 94, 74] });
+    // horns sweeping up and out
+    for (const s of [-1, 1]) part(c, cc => { cc.moveTo(50 + s * 15, 32); cc.bezierCurveTo(50 + s * 30, 26, 50 + s * 42, 16, 50 + s * 38, 3); cc.bezierCurveTo(50 + s * 48, 16, 50 + s * 42, 36, 50 + s * 22, 41); cc.closePath(); },
+      lg(c, 50, 3, 50 + s * 46, 41, ["#fffbeb", "#d6b77a", "#6b4a1b"]), { lw: 1.3 });
+    const head = cc => { cc.moveTo(50, 22); cc.bezierCurveTo(70, 22, 81, 34, 79, 50); cc.bezierCurveTo(77, 62, 69, 70, 65, 82); cc.quadraticCurveTo(50, 93, 35, 82); cc.bezierCurveTo(31, 70, 23, 62, 21, 50); cc.bezierCurveTo(19, 34, 30, 22, 50, 22); cc.closePath(); };
+    part(c, head, rg(c, 46, 40, 2, 46, [lt(col, 0.4), col, dk(col, 0.5), dk(col, 0.82)]), { rn, tex: 28, box: [19, 20, 81, 93], bev: 4 });
+    part(c, cc => { cc.moveTo(29, 43); cc.quadraticCurveTo(50, 33, 71, 43); cc.lineTo(67, 47.5); cc.quadraticCurveTo(50, 40, 33, 47.5); cc.closePath(); }, dk(col, 0.62), { lw: 1 });
+    for (const s of [-1, 1]) { part(c, cc => ell(cc, 50 + s * 11.5, 49.5, 4.6, 2.5, s * 0.35), "#140803", { lw: 0.8 }); glowDot(c, 50 + s * 11.5, 49.5, 4.6, acc, "#fff7ed"); }
+    part(c, cc => ell(cc, 50, 72, 13.5, 9.5, 0), rg(c, 48, 68, 1, 15, [lt(col, 0.5), dk(col, 0.15), dk(col, 0.6)]), { lw: 1.3 });
+    for (const s of [-1, 1]) part(c, cc => ell(cc, 50 + s * 5, 72.5, 2.3, 3.3, 0), "#140803", { lw: 0 });
+    // tusks
+    for (const s of [-1, 1]) part(c, cc => { cc.moveTo(50 + s * 10, 77); cc.bezierCurveTo(50 + s * 23, 81, 50 + s * 29, 66, 50 + s * 25, 51); cc.quadraticCurveTo(50 + s * 21, 66, 50 + s * 9, 71); cc.closePath(); },
+      lg(c, 50, 51, 50 + s * 29, 81, ["#fffbeb", "#e7d8b8", "#8a7652"]), { lw: 1.2 });
+    strokeP(c, al("#fecaca", 0.75), 1.3, cc => { cc.moveTo(60, 29); cc.lineTo(67, 43); cc.moveTo(63, 30); cc.lineTo(70, 42); });
+    for (let i = 0; i < 6; i++) glowDot(c, 12 + rn() * 76, 86 + rn() * 8, 2 + rn() * 2.2, "#d6b77a", "#fef3c7");
+  };
+  // A pale duelist's face under a wild fringe, a crimson scarf and one burning eye.
+  function duelistHead(c, col, acc, rn, o) {
+    o = o || {};
+    // the blade behind the shoulder
+    c.save(); c.translate(70, 30); c.rotate(0.62);
+    part(c, cc => poly(cc, [0, -34, 4.2, -26, 3.2, 30, -3.2, 30, -4.2, -26]), lg(c, -4, 0, 4, 0, ["#7b8594", "#ffffff", "#d7dde6", "#525a66"]), { lw: 1.2 });
+    strokeP(c, al(acc, 0.9), 0.9, cc => { cc.moveTo(3.4, -24); cc.lineTo(2.6, 28); });
+    part(c, cc => rr(cc, -10, 29, 20, 4, 1.5), lg(c, 0, 29, 0, 33, [o.trim || "#fda4af", dk(o.trim || col, 0.4)]), { lw: 1 });
+    part(c, cc => rr(cc, -2.5, 33, 5, 12, 1.5), "#1c1917", { lw: 1 });
+    c.restore();
+    // cloak + shoulders
+    part(c, cc => { cc.moveTo(10, 100); cc.quadraticCurveTo(14, 70, 34, 64); cc.lineTo(66, 64); cc.quadraticCurveTo(86, 70, 90, 100); cc.closePath(); }, lg(c, 0, 62, 0, 100, [o.cloak || "#292524", "#0c0a09"]), { rn, tex: 12, box: [10, 62, 90, 100] });
+    part(c, cc => { cc.moveTo(24, 76); cc.quadraticCurveTo(28, 64, 40, 63); cc.lineTo(40, 72); cc.closePath(); }, lg(c, 24, 62, 40, 76, ["#a8a29e", "#44403c"]), { lw: 1 });
+    // face
+    const face = cc => { cc.moveTo(50, 22); cc.bezierCurveTo(63, 22, 66, 36, 64, 48); cc.quadraticCurveTo(61, 62, 50, 68); cc.quadraticCurveTo(39, 62, 36, 48); cc.bezierCurveTo(34, 36, 37, 22, 50, 22); cc.closePath(); };
+    part(c, face, rg(c, 46, 38, 2, 30, ["#fbe7d6", "#e2bfa3", "#9a7258"]), { lw: 1.4 });
+    // scarf over the mouth, trailing
+    part(c, cc => { cc.moveTo(35, 50); cc.quadraticCurveTo(50, 57, 65, 50); cc.lineTo(66, 62); cc.quadraticCurveTo(76, 70, 88, 64); cc.quadraticCurveTo(80, 78, 64, 72); cc.quadraticCurveTo(50, 76, 36, 66); cc.closePath(); },
+      lg(c, 35, 50, 88, 76, [lt(o.scarf || col, 0.25), o.scarf || col, dk(o.scarf || col, 0.5)]), { rn, tex: 10, box: [35, 50, 88, 78] });
+    // eyes: one burning, one scarred shut
+    part(c, cc => ell(cc, 43.5, 43, 4, 1.8, 0.12), "#0c0a09", { lw: 0.6 });
+    glowDot(c, 43.5, 43, 5, acc, "#ffffff");
+    strokeP(c, "#5b3a2a", 1.2, cc => { cc.moveTo(53, 43); cc.quadraticCurveTo(56.5, 44.5, 60, 43); });
+    strokeP(c, al("#fecaca", 0.85), 1.1, cc => { cc.moveTo(55, 35); cc.lineTo(59, 50); });
+    // wild fringe
+    part(c, cc => { cc.moveTo(33, 42); cc.bezierCurveTo(28, 22, 44, 12, 56, 15); cc.bezierCurveTo(70, 16, 72, 32, 67, 44); cc.lineTo(62, 33); cc.lineTo(58, 38); cc.lineTo(54, 30); cc.lineTo(48, 37); cc.lineTo(45, 29); cc.lineTo(39, 38); cc.lineTo(37, 31); cc.closePath(); },
+      lg(c, 30, 12, 70, 44, [o.hair || "#44403c", dk(o.hair || "#44403c", 0.7)]), { rn, tex: 14, box: [28, 12, 72, 44] });
+  }
+  BUST.kael = (c, col, acc, rn) => {
+    duelistHead(c, col, acc, rn, { scarf: "#b91c1c", hair: "#3f2a22" });
+    for (let i = 0; i < 6; i++) glowDot(c, 10 + rn() * 80, 10 + rn() * 80, 1 + rn() * 1.4, "#f97316", "#fde047");
+  };
+  BUST.kael_crownbound = (c, col, acc, rn) => {
+    duelistHead(c, col, "#fde047", rn, { scarf: "#7f1d1d", hair: "#1c1917", cloak: "#1c1917", trim: "#fde047" });
+    // a broken circlet of the crown he now serves
+    for (const [x0, x1, y] of [[35, 48, 20], [53, 66, 19]]) part(c, cc => { cc.moveTo(x0, y + 5); cc.lineTo(x0 + 2, y - 3); cc.lineTo((x0 + x1) / 2, y + 1); cc.lineTo(x1 - 2, y - 5); cc.lineTo(x1, y + 5); cc.closePath(); }, lg(c, 0, y - 5, 0, y + 5, ["#fef9c3", "#eab308", "#713f12"]), { lw: 1.1 });
+    // chains across the chest
+    for (const [x0, y0, x1, y1] of [[14, 84, 86, 74], [18, 96, 82, 86]]) for (let i = 0; i <= 8; i++) { const t = i / 8, x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t + Math.sin(t * PI) * 3; part(c, cc => ell(cc, x, y, 3.4, 2, i % 2 ? 0.9 : -0.3), lg(c, x - 3, y - 2, x + 3, y + 2, ["#e7e5e4", "#57534e"]), { lw: 0.8 }); }
+    motifFront(c, "crown_dust", { glow: acc }, rn);
+  };
+  BUST.twin_monarchs = (c, col, acc, rn) => {
+    // Sol on the left, Umbra on the right, one crown between them
+    c.fillStyle = rg(c, 30, 50, 2, 48, [al("#fde68a", 0.8), al("#f59e0b", 0.35), al("#f59e0b", 0)]); c.beginPath(); circ(c, 30, 50, 48); c.fill();
+    for (let i = 0; i < 9; i++) { const a = PI / 2 + (i + 0.5) * PI / 9; part(c, cc => poly(cc, [50 + Math.cos(a) * 30, 52 + Math.sin(a) * 30, 50 + Math.cos(a + 0.08) * 44, 52 + Math.sin(a + 0.08) * 44, 50 + Math.cos(a + 0.16) * 30, 52 + Math.sin(a + 0.16) * 30]), lg(c, 0, 0, 100, 100, ["#fef9c3", "#f59e0b"]), { lw: 0.8 }); }
+    for (let i = 0; i < 12; i++) { const x = 62 + rn() * 32, y = 12 + rn() * 76; c.fillStyle = `rgba(255,255,255,${0.4 + rn() * 0.5})`; c.beginPath(); circ(c, x, y, 0.4 + rn() * 0.7); c.fill(); }
+    const faceL = cc => { cc.moveTo(50, 24); cc.bezierCurveTo(34, 24, 26, 38, 27, 52); cc.bezierCurveTo(28, 68, 38, 80, 50, 82); cc.closePath(); };
+    const faceR = cc => { cc.moveTo(50, 24); cc.bezierCurveTo(66, 24, 74, 38, 73, 52); cc.bezierCurveTo(72, 68, 62, 80, 50, 82); cc.closePath(); };
+    part(c, faceL, rg(c, 40, 42, 2, 36, ["#fffbeb", "#fcd34d", "#b45309"]), { rn, tex: 8, box: [26, 22, 50, 84], bev: 3 });
+    part(c, faceR, rg(c, 60, 42, 2, 36, ["#e0e7ff", "#6366f1", "#1e1b4b"]), { rn, tex: 8, box: [50, 22, 74, 84], bev: 3 });
+    strokeP(c, OUT, 1.6, cc => { cc.moveTo(50, 24); cc.lineTo(50, 82); });
+    // eyes: the sun's open and gold, the moon's a pale slit
+    part(c, cc => { cc.moveTo(36, 50); cc.quadraticCurveTo(41, 45, 46, 50); cc.quadraticCurveTo(41, 53, 36, 50); cc.closePath(); }, "#451a03", { lw: 0.7 });
+    glowDot(c, 41, 49.8, 4, "#fde68a", "#ffffff");
+    strokeP(c, "#e0e7ff", 1.8, cc => { cc.moveTo(54, 50); cc.quadraticCurveTo(59, 52.5, 64, 50); });
+    glowDot(c, 59, 51, 3.4, "#c7d2fe", "#ffffff");
+    strokeP(c, al("#78350f", 0.7), 1, cc => { cc.moveTo(40, 68); cc.quadraticCurveTo(45, 70, 50, 68); });
+    strokeP(c, al("#c7d2fe", 0.7), 1, cc => { cc.moveTo(50, 68); cc.quadraticCurveTo(55, 66, 60, 68); });
+    // the shared crown
+    part(c, cc => poly(cc, [28, 28, 28, 14, 36, 22, 43, 8, 50, 20, 57, 8, 64, 22, 72, 14, 72, 28]), lg(c, 28, 8, 72, 28, ["#fef3c7", "#fbbf24", "#e9d5ff", "#6366f1"]), { lw: 1.3 });
+    gem(c, 43, 23, 2.2, "#fde047", "d"); gem(c, 57, 23, 2.2, "#a5b4fc", "d");
+  };
+  BUST.sundered_king = (c, col, acc, rn) => {
+    // ermine mantle
+    part(c, cc => { cc.moveTo(4, 100); cc.quadraticCurveTo(8, 70, 30, 64); cc.lineTo(70, 64); cc.quadraticCurveTo(92, 70, 96, 100); cc.closePath(); }, lg(c, 0, 62, 0, 100, ["#991b1b", "#450a0a"]), { rn, tex: 12, box: [4, 62, 96, 100] });
+    part(c, cc => { cc.moveTo(20, 76); cc.quadraticCurveTo(50, 60, 80, 76); cc.lineTo(76, 84); cc.quadraticCurveTo(50, 70, 24, 84); cc.closePath(); }, "#f5f5f4", { lw: 1.1 });
+    for (let i = 0; i < 7; i++) { c.fillStyle = "#0c0a09"; c.beginPath(); ell(c, 27 + i * 7.7, 76 - Math.sin((i + 0.5) / 7 * PI) * 7, 0.9, 1.6, 0); c.fill(); }
+    // gaunt, bearded face of stone
+    const face = cc => { cc.moveTo(50, 26); cc.bezierCurveTo(64, 26, 68, 38, 67, 50); cc.quadraticCurveTo(66, 60, 60, 64); cc.lineTo(40, 64); cc.quadraticCurveTo(34, 60, 33, 50); cc.bezierCurveTo(32, 38, 36, 26, 50, 26); cc.closePath(); };
+    part(c, face, rg(c, 46, 40, 2, 32, ["#e7e5e4", "#a8a29e", "#57534e"]), { rn, tex: 18, box: [32, 24, 68, 66], bev: 3 });
+    part(c, cc => { cc.moveTo(38, 58); cc.quadraticCurveTo(50, 62, 62, 58); cc.lineTo(58, 76); cc.lineTo(54, 72); cc.lineTo(50, 82); cc.lineTo(46, 72); cc.lineTo(42, 76); cc.closePath(); }, lg(c, 0, 58, 0, 82, ["#d6d3d1", "#78716c"]), { lw: 1.1 });
+    for (const s of [-1, 1]) { part(c, cc => ell(cc, 50 + s * 7.5, 45, 4.2, 3.3, 0), "#0c0a09", { lw: 0.8 }); glowDot(c, 50 + s * 7.5, 45.3, 4.4, acc, "#fffbeb"); }
+    strokeP(c, "rgba(28,25,23,.8)", 0.9, cc => { cc.moveTo(55, 27); cc.lineTo(53, 36); cc.lineTo(57, 40); cc.moveTo(40, 52); cc.lineTo(44, 56); });
+    // the crown, sundered into floating shards
+    const shards = [[31, 20, -0.35], [42, 13, -0.12], [58, 13, 0.12], [69, 20, 0.35]];
+    for (const [x, y, a] of shards) { c.save(); c.translate(x, y); c.rotate(a); part(c, cc => poly(cc, [-5, 5, -5, -1, -2, 2, 0, -7, 2, 2, 5, -1, 5, 5]), lg(c, 0, -7, 0, 5, ["#fef9c3", "#eab308", "#713f12"]), { lw: 1.1 }); c.restore(); glowDot(c, x, y - 1, 3.2, "#fde047"); }
+    part(c, cc => rr(cc, 36, 24, 28, 4, 1.5), lg(c, 0, 24, 0, 28, ["#fde68a", "#854d0e"]), { lw: 1 });
+    motifFront(c, "crown_dust", { glow: acc }, rn);
+  };
+  BUST.briar_matron = (c, col, acc, rn) => {
+    // bramble crown / hair
+    for (let i = 0; i < 9; i++) { const a = PI + 0.15 + i * (PI - 0.3) / 8, r0 = 18, r1 = 38 + (i % 2) * 6; strokeP(c, OUT, 4.8, cc => { cc.moveTo(50 + Math.cos(a) * r0, 48 + Math.sin(a) * r0); cc.quadraticCurveTo(50 + Math.cos(a + 0.3) * (r1 - 8), 48 + Math.sin(a + 0.3) * (r1 - 8), 50 + Math.cos(a) * r1, 48 + Math.sin(a) * r1); });
+      strokeP(c, lg(c, 0, 8, 0, 60, ["#65a30d", "#365314"]), 2.6, cc => { cc.moveTo(50 + Math.cos(a) * r0, 48 + Math.sin(a) * r0); cc.quadraticCurveTo(50 + Math.cos(a + 0.3) * (r1 - 8), 48 + Math.sin(a + 0.3) * (r1 - 8), 50 + Math.cos(a) * r1, 48 + Math.sin(a) * r1); });
+      const tx = 50 + Math.cos(a) * (r1 - 6), ty = 48 + Math.sin(a) * (r1 - 6); c.fillStyle = "#d9f99d"; c.beginPath(); poly(c, [tx, ty, tx + Math.cos(a + 1.3) * 4, ty + Math.sin(a + 1.3) * 4, tx + Math.cos(a) * 2, ty + Math.sin(a) * 2]); c.fill(); }
+    part(c, cc => { cc.moveTo(22, 100); cc.quadraticCurveTo(26, 74, 40, 70); cc.lineTo(60, 70); cc.quadraticCurveTo(74, 74, 78, 100); cc.closePath(); }, lg(c, 0, 70, 0, 100, ["#3f6212", "#1a2e05"]), { rn, tex: 14, box: [22, 68, 78, 100] });
+    const face = cc => { cc.moveTo(50, 28); cc.bezierCurveTo(63, 28, 66, 42, 64, 52); cc.quadraticCurveTo(60, 68, 50, 72); cc.quadraticCurveTo(40, 68, 36, 52); cc.bezierCurveTo(34, 42, 37, 28, 50, 28); cc.closePath(); };
+    part(c, face, rg(c, 46, 42, 2, 30, ["#ecfccb", "#a3b86c", "#4d5f23"]), { rn, tex: 8, box: [34, 26, 66, 74], bev: 3 });
+    for (const s of [-1, 1]) { part(c, cc => { cc.moveTo(50 + s * 3, 48); cc.quadraticCurveTo(50 + s * 8, 44, 50 + s * 12, 48); cc.quadraticCurveTo(50 + s * 8, 50, 50 + s * 3, 48); cc.closePath(); }, "#0f1a04", { lw: 0.7 }); glowDot(c, 50 + s * 8, 47.5, 3.8, acc, "#f7fee7"); }
+    strokeP(c, "#3f6212", 1.1, cc => { cc.moveTo(45, 62); cc.quadraticCurveTo(50, 60, 55, 62); });
+    strokeP(c, al("#365314", 0.8), 0.9, cc => { cc.moveTo(40, 36); cc.quadraticCurveTo(44, 44, 41, 54); cc.moveTo(60, 36); cc.quadraticCurveTo(57, 44, 60, 54); });
+    // a blood-red rose at the temple
+    for (let i = 0; i < 5; i++) { const a = i * TAU / 5; part(c, cc => ell(cc, 66 + Math.cos(a) * 3, 30 + Math.sin(a) * 3, 3.6, 2.6, a), lg(c, 60, 24, 72, 36, ["#fda4af", "#be123c", "#4c0519"]), { lw: 0.7 }); }
+    glowDot(c, 66, 30, 2.4, "#fb7185");
+  };
+  BUST.pit_champion = (c, col, acc, rn) => {
+    const P = PIT_METAL;
+    // spear behind
+    strokeP(c, OUT, 4.4, cc => { cc.moveTo(84, 96); cc.lineTo(22, 6); }); strokeP(c, lg(c, 22, 6, 84, 96, ["#8a5a2e", "#5a3517"]), 2.6, cc => { cc.moveTo(84, 96); cc.lineTo(24, 9); });
+    part(c, cc => poly(cc, [18, 1, 27, 9, 25, 16, 20, 12]), lg(c, 18, 1, 27, 16, ["#f1f5f9", "#94a3b8"]), { lw: 1 });
+    // crest plume
+    part(c, cc => { cc.moveTo(34, 26); cc.bezierCurveTo(34, 6, 66, 4, 74, 20); cc.quadraticCurveTo(64, 14, 58, 22); cc.quadraticCurveTo(50, 12, 42, 24); cc.closePath(); }, lg(c, 34, 4, 74, 26, ["#fca5a5", "#dc2626", "#7f1d1d"]), { rn, tex: 16, box: [34, 4, 74, 26] });
+    // galea
+    const helm = cc => { cc.moveTo(28, 64); cc.bezierCurveTo(24, 32, 38, 20, 50, 20); cc.bezierCurveTo(62, 20, 76, 32, 72, 64); cc.lineTo(62, 70); cc.lineTo(62, 50); cc.lineTo(38, 50); cc.lineTo(38, 70); cc.closePath(); };
+    part(c, helm, metal(c, 24, 76, P), { rn, tex: 20, box: [24, 20, 76, 70], bev: 3.5 });
+    part(c, cc => rr(cc, 38, 44, 24, 8, 2), "#0c0a09", { lw: 1 });
+    for (const s of [-1, 1]) glowDot(c, 50 + s * 6, 48, 3.2, acc, "#fffbeb");
+    strokeP(c, al(P[0], 0.8), 1, cc => { cc.moveTo(50, 22); cc.lineTo(50, 42); });
+    // round shield up front
+    part(c, cc => circ(cc, 30, 80, 17), metal(c, 13, 47, P), { rn, tex: 12, box: [13, 63, 47, 97], bev: 3 });
+    part(c, cc => circ(cc, 30, 80, 6), rg(c, 28, 78, 0.5, 7, ["#fef3c7", "#d08a3a", "#7c3b10"]), { lw: 1 });
+    strokeP(c, al("#7f1d1d", 0.9), 1.4, cc => cc.arc(30, 80, 12, 0, TAU));
+    motifFront(c, "sand", { glow: acc }, rn);
+  };
+  BUST.veiled_assassin = (c, col, acc, rn) => {
+    // crossed daggers behind
+    for (const s of [-1, 1]) { c.save(); c.translate(50, 60); c.rotate(s * 0.75); part(c, cc => poly(cc, [0, -44, 3.4, -30, 2.4, -8, -2.4, -8, -3.4, -30]), lg(c, -3, 0, 3, 0, ["#a5b4fc", "#f5f3ff", "#6366f1"]), { lw: 1 }); part(c, cc => rr(cc, -7, -9, 14, 3, 1.2), "#1e1b4b", { lw: 1 }); c.restore(); }
+    // hood
+    const hood = cc => { cc.moveTo(50, 10); cc.bezierCurveTo(76, 12, 84, 44, 82, 72); cc.quadraticCurveTo(70, 94, 50, 96); cc.quadraticCurveTo(30, 94, 18, 72); cc.bezierCurveTo(16, 44, 24, 12, 50, 10); cc.closePath(); };
+    part(c, hood, lg(c, 18, 10, 82, 96, ["#4338ca", "#1e1b4b", "#0b0a1f"]), { rn, tex: 16, box: [16, 10, 84, 96], bev: 4 });
+    part(c, cc => { cc.moveTo(50, 24); cc.bezierCurveTo(66, 26, 70, 44, 68, 60); cc.quadraticCurveTo(60, 76, 50, 78); cc.quadraticCurveTo(40, 76, 32, 60); cc.bezierCurveTo(30, 44, 34, 26, 50, 24); cc.closePath(); }, "#06050f", { lw: 0 });
+    // the veil
+    part(c, cc => { cc.moveTo(32, 52); cc.quadraticCurveTo(50, 48, 68, 52); cc.lineTo(66, 78); cc.quadraticCurveTo(58, 72, 54, 82); cc.quadraticCurveTo(50, 74, 46, 82); cc.quadraticCurveTo(42, 72, 34, 78); cc.closePath(); }, lg(c, 0, 48, 0, 82, [al("#e9d5ff", 0.85), al("#a78bfa", 0.6)]), { lw: 1 });
+    for (const s of [-1, 1]) { part(c, cc => { cc.moveTo(50 + s * 3, 44); cc.quadraticCurveTo(50 + s * 9, 39, 50 + s * 14, 43); cc.quadraticCurveTo(50 + s * 9, 46, 50 + s * 3, 44); cc.closePath(); }, "#1e1b4b", { lw: 0 }); glowDot(c, 50 + s * 9, 42.8, 4.2, acc, "#ffffff"); }
+    for (let i = 0; i < 5; i++) sparkle(c, 14 + rn() * 72, 14 + rn() * 72, 1.2 + rn() * 1.4, "#e9d5ff");
+  };
   function paintBust(c, id, col, acc, rn) {
     const art = BUST[id] ? id : (() => { const E = EC(); const a = E && E.bossArt ? E.bossArt(id) : id; return BUST[a] ? a : null; })();
     if (art) BUST[art](c, col, acc, rn);
@@ -1843,11 +2152,14 @@
       const T = { unbroken: ["shield", "#86efac"], swift_as_ash: ["hourglass", "#fb923c"], beam_me_up: ["beam", "#fde68a"], first_ancient: ["rune", "#2dd4bf"], full_regalia: ["crown", "#34d399"],
         collector_100: ["book", "#fcd34d"], collector_300: ["book", "#fde68a"], delve_10: ["stairs", "#a78bfa"], delve_20: ["stairs", "#c4b5fd"], delve_30: ["stairs", "#f0abfc"],
         depths_10: ["spiral", "#8b5cf6"], depths_25: ["spiral", "#a78bfa"], depths_50: ["heart", "#f0abfc"], concord_1: ["rings", "#c4b5fd"], concord_2: ["rings", "#c4b5fd"], concord_3: ["rings", "#f5d0fe"],
-        goblin_slayer: ["bag", "#fde047"], vaultbreaker: ["key", "#fbbf24"], trialmaster: ["swords", "#f87171"], secret_keeper: ["eye", "#67e8f9"], plus_ten: ["hammer", "#fbbf24"], plus_twelve: ["hammer", "#f472b6"] };
+        goblin_slayer: ["bag", "#fde047"], vaultbreaker: ["key", "#fbbf24"], trialmaster: ["swords", "#f87171"], secret_keeper: ["eye", "#67e8f9"], plus_ten: ["hammer", "#fbbf24"], plus_twelve: ["hammer", "#f472b6"],
+        immovable_object: ["tusk", "#fbbf24"], patience_of_steel: ["shield", "#fda4af"], total_eclipse: ["sunmoon", "#fde68a"], kingbreaker: ["crown", "#fde047"],
+        crown_collector: ["crown", "#f0abfc"], crown_master: ["crown", "#fde047"] };
       const t = T[s]; if (t) { g = t[0]; col = t[1]; }
       else { const CT = { feat: "star", loot: "beam", codex: "book", delve: "stairs", depths: "spiral", raid: "rings", forge: "hammer", bane: "skull" }; g = CT[cat] || "star"; }
       if (s === "plus_twelve" || s === "depths_50" || s === "concord_3" || s === "collector_300" || s === "first_ancient") level = 3;
-      if (s === "plus_ten" || s === "full_regalia" || s === "beam_me_up") level = Math.max(level, 2);
+      if (s === "plus_ten" || s === "full_regalia" || s === "beam_me_up" || s === "immovable_object" || s === "patience_of_steel" || s === "crown_collector") level = Math.max(level, 2);
+      if (s === "kingbreaker" || s === "total_eclipse" || s === "crown_master") level = 3;
     }
     return { g, level, col, cat };
   }
@@ -1873,8 +2185,10 @@
   }
 
   // ---- dungeon tier emblems
-  const TIER_GLYPH = { guild_crypt: "skull", guild_forge: "anvil", guild_void: "door", guild_dragon: "eye", guild_archive: "book", guild_geode: "crystal", guild_rime: "snow", raid_nexus: "rings", arcane_depths: "spiral" };
-  const THEME_FALLBACK = { crypt: ["#33403f", "#67e8f9"], forge: ["#3f2a20", "#f97316"], void: ["#2a2140", "#c084fc"], dragon: ["#3b3733", "#fb923c"], archive: ["#1e1b4b", "#fde68a"], geode: ["#3b0764", "#22d3ee"], rime: ["#0c1a2e", "#5eead4"], depths: ["#1e1036", "#8b5cf6"], nexus: ["#1e1036", "#a78bfa"] };
+  const TIER_GLYPH = { guild_crypt: "skull", guild_forge: "anvil", guild_void: "door", guild_dragon: "eye", guild_archive: "book", guild_geode: "crystal", guild_rime: "snow", raid_nexus: "rings", arcane_depths: "spiral",
+    guild_thornwild: "thorn", guild_colosseum: "swords", guild_mirror: "sunmoon", guild_throne: "crown" };
+  const THEME_FALLBACK = { crypt: ["#33403f", "#67e8f9"], forge: ["#3f2a20", "#f97316"], void: ["#2a2140", "#c084fc"], dragon: ["#3b3733", "#fb923c"], archive: ["#1e1b4b", "#fde68a"], geode: ["#3b0764", "#22d3ee"], rime: ["#0c1a2e", "#5eead4"], depths: ["#1e1036", "#8b5cf6"], nexus: ["#1e1036", "#a78bfa"],
+    thornwild: ["#2f3b1f", "#bef264"], colosseum: ["#4a3527", "#fb923c"], mirror: ["#27243a", "#f5d0fe"], throne: ["#2b211b", "#fde047"] };
   function tierIcon(tierKey, size) {
     const E = EC();
     const d = E && E.GUILD_DUNGEONS && E.GUILD_DUNGEONS[tierKey];
@@ -1883,7 +2197,7 @@
     const f = THEME_FALLBACK[themeKey] || ["#1f2937", "#e5e7eb"];
     const wall = (th && th.wall) || f[0], torch = (th && th.torch) || f[1], cap = (th && th.cap) || torch;
     const lvl = (d && d.gearLvl) || 0;
-    const st = tierKey === "arcane_depths" ? 7 : tierKey === "raid_nexus" ? 6 : lvl >= 8 ? 5 : 4;
+    const st = tierKey === "arcane_depths" ? 7 : tierKey === "raid_nexus" || lvl >= 11 ? 6 : lvl >= 8 ? 5 : 4;
     return render("tier|" + tierKey, size || 64, (c, px, rn) => {
       frameBack(c, st, torch, torch, rn);
       composite(c, px, lc => {
@@ -1898,7 +2212,7 @@
         lc.save(); lc.shadowColor = torch; lc.shadowBlur = px * 0.05; glyph(lc, TIER_GLYPH[tierKey] || "star", 50, 44, 32, lt(torch, 0.45)); lc.restore();
         // level numeral banner
         if (lvl) {
-          const txt = tierKey === "arcane_depths" ? "∞" : ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"][lvl] || String(lvl);
+          const txt = tierKey === "arcane_depths" ? "∞" : ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"][lvl] || String(lvl);
           part(lc, cc => { cc.moveTo(28, 66); cc.lineTo(72, 66); cc.lineTo(68, 72); cc.lineTo(72, 78); cc.lineTo(28, 78); cc.lineTo(32, 72); cc.closePath(); }, lg(lc, 0, 66, 0, 78, [lt(torch, 0.2), dk(torch, 0.45)]), { lw: 1.1 });
           lc.font = "900 10px Georgia, 'Times New Roman', serif"; lc.textAlign = "center"; lc.textBaseline = "middle"; lc.lineWidth = 2.2; lc.strokeStyle = "rgba(0,0,0,.85)"; lc.strokeText(txt, 50, 72.5); lc.fillStyle = "#fffbeb"; lc.fillText(txt, 50, 72.5);
         }
@@ -1911,14 +2225,88 @@
   const COSMETIC_LOOK = {
     drowned_crown_hat: ["crown", 4], forgemaster_goggles: ["mask", 5], hollow_diadem_hat: ["circlet", 6], ember_crown: ["crown", 7],
     star_circlet: ["circlet", 8], geode_tiara: ["crown", 9], rime_crown: ["crown", 10],
+    briar_crown_hat: ["crown", 4, "thornhide"], laurel_of_the_pit: ["circlet", 7, "pit_sovereign"], mirror_masque_hat: ["mask", 11], sundered_circlet_hat: ["circlet", 12, null, { broken: 1 }],
   };
   function cosmeticIcon(id, size) {
     const L = COSMETIC_LOOK[id] || ["crown", 3];
     return render("cos|" + id, size || 64, (c, px, rn) => {
-      const p = theme(L[1]);
+      const p = L[2] && SET_LOOK[L[2]] ? pal(theme(L[1]), SET_LOOK[L[2]]) : theme(L[1]);
       const F = frame(c, "legendary");
       frameBack(c, F.st, F.col, F.glow, rn, F);
-      composite(c, px, lc => { lc.save(); lc.translate(50, 50); lc.scale(ICON_BOX, ICON_BOX); lc.translate(-50, -50); H[L[0]](lc, pal(p), { crystal: L[1] === 9, ice: L[1] === 10, flame: L[1] === 7 }, rn); lc.restore(); }, { glow: p.glow || F.glow, glowA: 0.5, rim: lt(F.glow, 0.3) });
+      composite(c, px, lc => { lc.save(); lc.translate(50, 50); lc.scale(ICON_BOX, ICON_BOX); lc.translate(-50, -50); H[L[0]](lc, pal(p), Object.assign({ crystal: L[1] === 9, ice: L[1] === 10, flame: L[1] === 7 }, L[3] || {}), rn); lc.restore(); }, { glow: p.glow || F.glow, glowA: 0.5, rim: lt(F.glow, 0.3) });
+      if (L[1] >= 11 || L[2]) motifFront(c, p.motif, p, rn);
+      frameRim(c, F.st, F.col, F.glow, rn, F);
+    });
+  }
+
+  // ---- Crown Arts (THE SUNDERED CROWN §3.5): a sigil disc in the art's colour, framed by its rarity.
+  // Reads CROWN.ARTS when js/shared/crown.js is loaded; the fallback keeps icons stable without it.
+  const ART_FALLBACK = {
+    blade_dash: ["rare", "#f43f5e", "dash", "Blade Dash"], thorn_snare: ["rare", "#65a30d", "snare", "Thorn Snare"], war_cry: ["rare", "#f59e0b", "cry", "War Cry"],
+    rampage_charge: ["epic", "#b45309", "charge", "Rampage Charge"], riposte: ["epic", "#e2e8f0", "parry", "Riposte"], frost_lance: ["epic", "#7dd3fc", "lance", "Frost Lance"],
+    shadow_veil: ["epic", "#6d28d9", "veil", "Shadow Veil"], mirror_step: ["legendary", "#f5d0fe", "mirror", "Mirror Step"], crown_nova: ["legendary", "#fde047", "nova", "Crown Nova"],
+    sundering_strike: ["mythic", "#dc2626", "sunder", "Sundering Strike"],
+  };
+  function artDef(id) {
+    const C = root.CROWN, a = C && C.ARTS && C.ARTS[id], f = ART_FALLBACK[id];
+    if (a) return { rarity: a.rarity || "rare", color: a.color || (f && f[1]) || "#e5e7eb", icon: a.icon || (f && f[2]) || "star", name: a.name || id };
+    return f ? { rarity: f[0], color: f[1], icon: f[2], name: f[3] } : { rarity: "rare", color: "#e5e7eb", icon: "star", name: String(id || "") };
+  }
+  function artEmblem(c, icon, col, rn) {
+    const hi = lt(col, 0.72), mid = lt(col, 0.3), lo = dk(col, 0.45);
+    const blade = (x, y, a, len, w) => { c.save(); c.translate(x, y); c.rotate(a); part(c, cc => poly(cc, [0, -len, w, -len + w * 2.2, w * 0.8, 0, -w * 0.8, 0, -w, -len + w * 2.2]), lg(c, -w, 0, w, 0, ["#cbd5e1", "#ffffff", hi, "#64748b"]), { lw: 1.1 }); part(c, cc => rr(cc, -w * 2.4, -1, w * 4.8, 3, 1.2), lg(c, 0, -1, 0, 2, [hi, lo]), { lw: 0.9 }); part(c, cc => rr(cc, -w * 0.5, 2, w, 9, 1), "#1c1917", { lw: 0.8 }); c.restore(); };
+    switch (icon) {
+      case "dash":
+        for (let i = 0; i < 3; i++) strokeP(c, al(hi, 0.8 - i * 0.2), 2.2 - i * 0.4, cc => { cc.moveTo(24 + i * 3, 64 - i * 9); cc.lineTo(46 + i * 3, 42 - i * 9); });
+        blade(58, 44, PI / 4, 30, 3.6); break;
+      case "snare":
+        strokeP(c, OUT, 5.6, cc => cc.arc(50, 50, 21, 0, TAU)); strokeP(c, lg(c, 30, 30, 70, 70, ["#bef264", "#4d7c0f"]), 3.2, cc => cc.arc(50, 50, 21, 0, TAU));
+        for (let i = 0; i < 10; i++) { const a = i * TAU / 10, x = 50 + Math.cos(a) * 21, y = 50 + Math.sin(a) * 21, o = i % 2 ? 1 : -1; part(c, cc => poly(cc, [x, y, x + Math.cos(a + o * 0.9) * 7, y + Math.sin(a + o * 0.9) * 7, x + Math.cos(a) * 2.5, y + Math.sin(a) * 2.5]), "#ecfccb", { lw: 0.6 }); }
+        part(c, cc => ell(cc, 50, 50, 5, 7, 0.4), rg(c, 48, 47, 0.5, 8, ["#fef3c7", "#a16207", "#422006"]), { lw: 1 }); break;
+      case "cry":
+        glyph(c, "horn", 44, 52, 34, hi);
+        for (const r of [10, 16, 22]) strokeP(c, al(hi, 0.9 - r / 40), 1.8, cc => cc.arc(66, 44, r, -0.8, 0.8)); break;
+      case "charge":
+        glyph(c, "tusk", 50, 42, 30, hi);
+        for (const y of [62, 72]) part(c, cc => poly(cc, [32, y - 4, 50, y + 4, 68, y - 4, 68, y + 1, 50, y + 9, 32, y + 1]), lg(c, 0, y - 4, 0, y + 9, [hi, lo]), { lw: 1 }); break;
+      case "parry":
+        blade(44, 58, -0.6, 32, 3.2); blade(56, 58, 0.6, 32, 3.2);
+        sparkle(c, 50, 38, 9, "#ffffff"); glowDot(c, 50, 38, 8, col); break;
+      case "lance":
+        c.save(); c.translate(50, 50); c.rotate(PI / 4);
+        part(c, cc => poly(cc, [0, -36, 6, -14, 3, 30, -3, 30, -6, -14]), lg(c, -6, 0, 6, 0, ["#e0f2fe", "#ffffff", "#7dd3fc", "#0369a1"]), { lw: 1.2 });
+        c.strokeStyle = "rgba(255,255,255,.7)"; c.lineWidth = 0.8; c.beginPath(); c.moveTo(0, -34); c.lineTo(0, 28); c.stroke(); c.restore();
+        glyph(c, "snow", 30, 70, 14, hi, false); break;
+      case "veil":
+        part(c, cc => { cc.moveTo(58, 22); cc.arc(50, 50, 29, -1.3, 1.3, true); cc.quadraticCurveTo(30, 50, 58, 22); cc.closePath(); }, lg(c, 20, 20, 60, 80, [hi, col, lo]), { lw: 1.3 });
+        strokeP(c, hi, 1.8, cc => { cc.moveTo(46, 52); cc.quadraticCurveTo(56, 58, 66, 52); });
+        for (let i = 0; i < 4; i++) sparkle(c, 58 + rn() * 20, 26 + rn() * 44, 1.2 + rn(), "#ffffff"); break;
+      case "mirror":
+        part(c, cc => poly(cc, [50, 18, 72, 50, 50, 82, 28, 50]), lg(c, 28, 18, 72, 82, ["#ffffff", hi, col, lo]), { lw: 1.4 });
+        c.fillStyle = "rgba(255,255,255,.55)"; c.beginPath(); poly(c, [44, 30, 56, 40, 42, 58, 36, 50]); c.fill();
+        c.fillStyle = al(lo, 0.7); c.beginPath(); circ(c, 54, 46, 4); c.moveTo(48, 64); c.quadraticCurveTo(54, 50, 60, 64); c.closePath(); c.fill(); break;
+      case "nova":
+        for (let i = 0; i < 12; i++) { const a = i * TAU / 12; part(c, cc => poly(cc, [50 + Math.cos(a - 0.1) * 18, 52 + Math.sin(a - 0.1) * 18, 50 + Math.cos(a) * (i % 2 ? 30 : 36), 52 + Math.sin(a) * (i % 2 ? 30 : 36), 50 + Math.cos(a + 0.1) * 18, 52 + Math.sin(a + 0.1) * 18]), lg(c, 14, 14, 86, 86, [hi, col]), { lw: 0.7 }); }
+        glyph(c, "crown", 50, 52, 24, "#fffbeb"); break;
+      case "sunder":
+        for (const s of [-1, 1]) { c.save(); c.translate(50 + s * 7, 62); c.rotate(s * 0.22); part(c, cc => poly(cc, s < 0 ? [-16, 10, -16, -8, -9, -1, -2, -14, 0, 10] : [0, 10, 2, -14, 9, -1, 16, -8, 16, 10]), lg(c, -16, -14, 16, 10, ["#fef9c3", "#eab308", "#713f12"]), { lw: 1.1 }); c.restore(); }
+        blade(50, 60, PI, 44, 3.4);
+        strokeP(c, al("#fecaca", 0.9), 1.2, cc => { cc.moveTo(50, 56); cc.lineTo(47, 64); cc.lineTo(51, 70); cc.lineTo(48, 78); }); break;
+      default: glyph(c, "star", 50, 50, 30, hi);
+    }
+  }
+  function artIcon(id, size) {
+    const A = artDef(id);
+    return render("art|" + id, size || 64, (c, px, rn) => {
+      const F = frame(c, A.rarity);
+      frameBack(c, F.st, F.col, F.glow, rn, F);
+      composite(c, px, lc => {
+        part(lc, cc => starN(cc, 50, 50, 16, 40, 36, -PI / 2), lg(lc, 10, 10, 90, 90, ["#fff7d6", "#d4a017", "#7a5410", "#2a1a04"]), { rn, tex: 10, box: [10, 10, 90, 90], bev: 2.5 });
+        part(lc, cc => circ(cc, 50, 50, 33), rg(lc, 44, 42, 2, 36, [lt(A.color, 0.15), dk(A.color, 0.4), dk(A.color, 0.82)]), { lw: 1.4 });
+        lc.strokeStyle = al(lt(A.color, 0.5), 0.5); lc.lineWidth = 0.8; lc.beginPath(); circ(lc, 50, 50, 29); lc.stroke();
+        artEmblem(lc, A.icon, A.color, rng("art-emblem:" + id));
+      }, { glow: A.color, glowA: 0.45 + F.st * 0.06, rim: lt(A.color, 0.4) });
+      if (F.st >= 4) for (let i = 0; i < F.st - 2; i++) sparkle(c, 14 + rn() * 72, 12 + rn() * 72, 1.2 + rn() * 1.6, F.st >= 5 ? A.color : "#fff7d6");
       frameRim(c, F.st, F.col, F.glow, rn, F);
     });
   }
@@ -1931,6 +2319,7 @@
     if (kind === "gem") { const g = gemInfo(arg); return g.rune ? "mythic" : GRADE_RARITY[g.grade - 1]; }
     if (kind === "chest") { const k = typeof arg === "number" || /^\d+$/.test(String(arg)) ? ["bronze", "silver", "gold", "arcane"][+arg] : String(arg); return (CHEST_LOOK[k] || CHEST_LOOK.bronze).rar; }
     if (kind === "frame") return arg;
+    if (kind === "art") return artDef(arg).rarity;
     if (kind === "trophy") { const t = arg && typeof arg === "object" ? arg.tier : String(arg).split(":")[1]; return ["rare", "epic", "legendary", "arcane"][(+t || 1) - 1]; }
     if (kind === "tier") return arg === "arcane_depths" ? "arcane" : arg === "raid_nexus" ? "ancient" : "legendary";
     if (kind === "boss") return arg === "heart" || arg === "concordant" ? "arcane" : bossColors(arg).tier === "boss" ? "mythic" : "epic";
@@ -1950,6 +2339,7 @@
       case "tier": case "dungeon": return tierIcon(arg, size);
       case "frame": case "rarity": return rarityFrame(arg, size);
       case "cosmetic": return cosmeticIcon(arg, size);
+      case "art": return artIcon(arg, size);
       default: return "";
     }
   }
@@ -1961,6 +2351,7 @@
       if (kind === "tome") return ((E && E.TOMES && E.TOMES[arg]) || {}).name || arg;
       if (kind === "boss") return ((E && E.GUILD_BOSSES && E.GUILD_BOSSES[arg]) || {}).name || arg;
       if (kind === "tier") return ((E && E.GUILD_DUNGEONS && E.GUILD_DUNGEONS[arg]) || {}).name || arg;
+      if (kind === "art") return artDef(arg).name;
       if (kind === "achievement") return ((E && E.ACHIEVEMENT_BY_ID && E.ACHIEVEMENT_BY_ID[arg]) || {}).label || arg;
       if (kind === "gem") { const g = gemInfo(arg); if (g.rune) return ((E && E.RUNES && E.RUNES[arg]) || {}).name || arg; const G = E && E.GEMS && E.GEMS[g.type]; return (G ? G.name : g.type) + " " + ["I", "II", "III", "IV", "V"][g.grade - 1]; }
     } catch (e) { /* titles are cosmetic */ }
@@ -2017,6 +2408,7 @@
     tier: (key, size) => tierIcon(key, size || 64),
     rarityFrame: (r, size) => rarityFrame(r, size || 64),
     cosmetic: (id, size) => cosmeticIcon(id, size || 64),
+    art: (id, size) => artIcon(id, size || 64),
     url: urlFor,
     html, box,
     family: (baseId) => lookFor(baseId).fam,
@@ -2026,6 +2418,17 @@
     _stats: () => ({ draws: stats.draws, hits: stats.hits, cached: cache.size }),
     clearCache() { cache.clear(); },
     _families: FAMILY,
+    // Content waves register icon art (js/ascension-weapons.js): {families:{baseId: fam}, variants:{baseId: v},
+    // weapons:{fam: painter(c, p, v, rn)}, busts:{bossId: painter(c, col, acc, rn)}}. Helpers are handed back for painters.
+    register(o) {
+      if (!o) return null;
+      if (o.families) Object.assign(FAMILY, o.families);
+      if (o.variants) Object.assign(VARIANT, o.variants);
+      if (o.weapons) Object.assign(W, o.weapons);
+      if (o.busts) Object.assign(BUST, o.busts);
+      cache.clear();
+      return { rr, circ, poly, al, dk, lt, lg, rg, glowDot, strokeP, part, pal, theme, H };
+    },
   };
   root.ItemIcons = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;

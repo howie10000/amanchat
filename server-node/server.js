@@ -48,9 +48,16 @@ if (!JS_DIR) {
 const ECON = require(path.join(JS_DIR, 'shared', 'economy.js'));
 const DEPTHS = require(path.join(JS_DIR, 'shared', 'depths.js'));
 const DUNGEON = require(path.join(JS_DIR, 'shared', 'dungeon.js'));
+const CROWN = require(path.join(JS_DIR, 'shared', 'crown.js'));   // THE SUNDERED CROWN rules (docs/sundered-crown/MASTER-PLAN.md §5.4); B1 wires it
 const createFeatureHandlers = require('./guild-features.js');
 const createRaids = require('./guild-raids.js');
 const createProgress = require('./guild-progress.js');
+const createCrownEngine = require('./crown-engine.js');
+const createCrownArts = require('./crown-arts.js');
+// THE SUNDERED CROWN II (docs/sundered-crown/NEW-CONTENT.md): appends its tiers/bosses/gear to the shared tables at load.
+const ASCEND = require(path.join(JS_DIR, 'shared', 'ascension.js'));
+const createAscensionEngine = require('./ascension-engine.js');
+const createAscension = require('./ascension.js');
 // Test-only knobs for the Arcane Depths server tests. None of these is ever set
 // in production; each one only shortens a wait or shrinks a pool so a live-
 // server test can finish in minutes.
@@ -62,7 +69,18 @@ const TEST = {
     vestMs: process.env.RAID_TEST_VEST_MS != null && process.env.RAID_TEST_VEST_MS !== '' ? +process.env.RAID_TEST_VEST_MS : null,
     miniReward: +process.env.DUNGEON_TEST_MINI_REWARD || 0,        // a story mini's purse (the LD §2.12.4 example used 950)
     claimMs: +process.env.DUNGEON_TEST_CLAIM_MS || 0,              // how long an unopened final chest stays claimable
+    // THE SUNDERED CROWN: "boss:move,boss:move" makes the planner prefer those moves; a short twin link window.
+    crownForce: (process.env.DUNGEON_TEST_CROWN_FORCE || '').split(',').map(x => x.trim()).filter(Boolean).map(x => { const [boss, move] = x.split(':'); return { boss, move }; }),
+    twinLinkMs: +process.env.DUNGEON_TEST_TWIN_LINK_MS || 0,
+    // WEAPONS: force the boss-weapon (armament) roll's chance (0..1).
+    armament: +process.env.DUNGEON_TEST_ARMAMENT || 0,
 };
+if (!TEST.crownForce.length) TEST.crownForce = null;
+// Ops kill switch: CROWN_TIERS=0 closes the four Sundered Crown tiers.
+const CROWN_TIERS_OPEN = process.env.CROWN_TIERS !== '0';
+// Boss balance (docs/sundered-crown/BALANCE.md): BOSS_GEAR_SCALE=0 turns off
+// the per-run boss HP/damage scaling to the party's gear (lifesteal rules stay).
+const BOSS_GEAR_SCALE = process.env.BOSS_GEAR_SCALE !== '0';
 // D31: stream dungeon presence per run ('dungeon:<runId>'); PRESENCE_RUN_KEY=0 turns it off.
 const PRESENCE_RUN_KEY = process.env.PRESENCE_RUN_KEY !== '0';
 const { FURNITURE_CATALOG, FURNITURE_LIST } = require(path.join(JS_DIR, 'furniture.js'));
@@ -190,6 +208,8 @@ function compactUser(u) {
         // Arcane Depths records carry zeroed counters and empty sub-maps when
         // nothing has happened yet; those read back as {} lazily.
         if ((k === 'delve' || k === 'codex') && deepEmpty(v)) continue;
+        // Crown Arts: a record with nothing owned and no pity counters is empty.
+        if (k === 'arts' && v && typeof v === 'object' && deepEmpty(v.own) && deepEmpty(v.pity)) continue;
         out[k] = v;
     }
     return out;
@@ -783,6 +803,11 @@ function presenceAreaKey(p, user) {
 // Exactly the fields other clients render. Kept as full names (not one-letter
 // keys) so the client merge stays a plain Object.assign — the win here is in
 // not sending idle players at all, not in shaving field names.
+// A bad gear record must never stop the presence stream; the cutscene falls
+// back to a sword without it.
+function presenceWeaponKind(user) {
+    try { return ECON.weaponLoadout(equippedItems(userRec(user))).melee.kind; } catch (e) { return undefined; }
+}
 function presenceView(c) {
     const p = c.presence;
     return {
@@ -796,6 +821,9 @@ function presenceView(c) {
         // client's claim, so nobody can walk into a run they aren't in.
         run: p.area === 'dungeon' ? (guildRunOf.get(c.user) || undefined) : undefined,
         dfloor: p.area === 'dungeon' ? (p.dfloor | 0) : undefined,
+        // The melee kind the party's 3D cutscene puts in this hero's hand
+        // (dungeon3d.js heroWeapon), from the worn gear, never the client.
+        weaponKind: p.area === 'dungeon' ? presenceWeaponKind(c.user) : undefined,
         car: p.car,
         facing: p.facing,
         hp: p.hp,
@@ -985,7 +1013,7 @@ const PROTECTED_FIELDS = new Set(['cars', 'equippedCar', 'sea', 'money', 'invent
     'lastInterest', 'fishInventory', 'houseStyle', 'furniture', 'houseIndex', 'createdAt',
     'bankBalance', 'bankLast', 'creditScore', 'creditGainLast', 'loan', 'notes',
     'farm', 'meals', 'luck', 'gear', 'equipped',
-    'mastery', 'mats', 'gems', 'delve', 'codex', 'overflow', 'depthsBest', 'journey', 'guild', 'lastSeen']);
+    'mastery', 'mats', 'gems', 'delve', 'codex', 'overflow', 'depthsBest', 'journey', 'guild', 'lastSeen', 'arts', 'ascension']);
 // The only fields of a user record another (non-staff) player is allowed to
 // SEE. Everything else — friends, keys, furniture, inventory, notes, all the
 // bank/loan/credit numbers — is private and never leaves the server for anyone
@@ -1861,11 +1889,15 @@ function handleMessage(c, msg) {
         // ----- server-authoritative economy ops (docs/SERVER-AUTHORITY.md) -----
         case 'car': case 'bank': case 'buy': case 'furniture_set': case 'earn': case 'fish': case 'casino': case 'home': case 'treasury': case 'staff_finance':
         case 'sea': case 'farm': case 'cook': case 'kraken': case 'guild': case 'mastery': case 'guild_dungeon': case 'gear':
-        case 'forge': case 'delver': case 'journey': {
+        case 'forge': case 'delver': case 'journey': case 'arts': case 'ascend': {
             if (!c.user) return replyErr('not authed');
             let out;
             try { out = ECONOMY_OPS[op](c.user, msg); }
             catch (e) { return replyErr(e && e.message ? e.message : String(e)); }
+            // Worn gear feeds the presence view (weaponKind). Presence uploads
+            // are change-only now, so refresh the cached view here rather than
+            // waiting for the next move or keepalive.
+            if (op === 'gear' || op === 'forge') c._viewInput = null;
             reply(out);
             break;
         }
@@ -2424,6 +2456,9 @@ const progress = createProgress({
     gearPackOf, equippedOf, saveGear, isStaff, guildRankOf,
     gearFxOf: (user) => gearFxOf(user), equippedItems: (u) => equippedItems(u),
     depositTenureMs: TEST.vestMs != null ? TEST.vestMs : null,
+    armamentChance: TEST.armament || null,
+    // THE SUNDERED CROWN: art drops + crown shards, rolled after the legacy loot roll.
+    crownRewards: (user, u, ctx, now) => crownArts.settleRewards(user, u, ctx, now),
 });
 
 // ---- THE ARCANE DEPTHS journey & endgame (guild-journey.js) ----
@@ -2442,7 +2477,7 @@ const JOURNEY_EVENT_OVERRIDES = process.env.JOURNEY_AWAKENING_START
     ? { awakening: isNaN(+process.env.JOURNEY_AWAKENING_START) ? Date.parse(process.env.JOURNEY_AWAKENING_START) : +process.env.JOURNEY_AWAKENING_START }
     : {};
 const JOURNEY_SRV = createJourney({
-    ECON, JOURNEY, store, userRec, guildIdOf, guildRec, pushTo,
+    ECON, JOURNEY, CROWN, store, userRec, guildIdOf, guildRec, pushTo,
     now: () => Date.now(),
     // leaderboards and world firsts skip hidden players and staff-geared runs, like delve_records
     lbBanned: (u) => lbBanned(u) || wearsStaffGear(u),
@@ -2529,6 +2564,15 @@ function equippedItems(u) {
     return out;
 }
 function gearStatsOf(u) { return ECON.gearTotals(equippedItems(u)); }
+// WEAPONS (docs/sundered-crown/WEAPONS.md): the client names a HAND on the
+// wire ('sword' = melee, 'pistol' = ranged); the kind, and the attack power
+// that hand swings with, come from what is actually equipped — never from
+// anything the client sends.
+function weaponOf(u, wire) {
+    const hand = ECON.handOfWire(wire);
+    const items = equippedItems(u);
+    return { hand, wire: hand === 'ranged' ? 'pistol' : 'sword', kind: ECON.weaponLoadout(items)[hand].kind, atk: ECON.handAtk(items, hand) };
+}
 // The worn gear's effect bundle (crit, procs, thorns, ...), cached per user
 // and dropped whenever the pack or the worn set is saved.
 const gearFxCache = new Map();
@@ -2549,6 +2593,8 @@ function gearView(u, user) {
         gear: pack, equipped: eq, totals,
         packMax: progress.packMaxOf(u), packUsed: Object.keys(pack).length,
         attackMult: ECON.gearAttackMult(totals.atk),
+        hands: (() => { const m = weaponOf(u, 'sword'), r = weaponOf(u, 'pistol');
+            return { melee: { kind: m.kind, atk: m.atk, attackMult: ECON.gearAttackMult(m.atk) }, ranged: { kind: r.kind, atk: r.atk, attackMult: ECON.gearAttackMult(r.atk) } }; })(),
         mitigation: ECON.gearMitigation(totals.def),
         maxHp: ECON.gearMaxHp(totals.vit),
         // THE ARCANE DEPTHS (§6.6)
@@ -2565,6 +2611,9 @@ function grantGear(user, u, tier) {
     // entry for them — which is the whole reason to run a guild dungeon.
     const tome = ECON.rollTomeDrop(tier);
     if (tome) drops.push(tome);
+    // WEAPONS: a separate, lower-chance boss-weapon roll (after the legacy rolls).
+    const arm = /^quest_/.test(String(tier)) ? ECON.rollArmamentDrop({ tier, now: Date.now(), chance: TEST.armament || undefined }, Math.random) : null;
+    if (arm) drops.push(arm);
     // A full pack no longer eats the drop: it waits in Lost & Found (§6.6).
     const placed = progress.addItems(user, u, drops, Date.now());
     const kept = placed.kept;
@@ -2639,7 +2688,7 @@ function arenaAddsAlive(run) {
     const b = run.boss, hp = run.enemyHp[run.floor] || {};
     return !!(b && b.adds && b.adds.some(id => hp[id] > 0));
 }
-function guildBossView(run, now) {
+function guildBossView(run, now, full) {
     const b = run && run.boss;
     if (!b) return null;
     now = now || Date.now();
@@ -2649,7 +2698,7 @@ function guildBossView(run, now) {
     const hp = bossHpOf(b);
     const ehp = run.enemyHp[run.floor] || {}, emeta = run.enemyMeta[run.floor] || {};
     const cfg = ECON.GUILD_DUNGEONS[run.tier] || {};
-    return {
+    return Object.assign({
         id: b.id, name: look.name, cry: look.cry, color: look.color, accent: look.accent,
         title: look.title, tier: def.tier, mini, phase: b.phase || 1,
         // A phase change is a cutscene on every client, so it needs its own
@@ -2670,11 +2719,16 @@ function guildBossView(run, now) {
         wardUntil: b.wardUntil || 0, wardIn: b.wardFrom ? Math.max(0, b.wardFrom - now) : 0, wardLeft: b.wardUntil ? Math.max(0, b.wardUntil - now) : 0, addsShield: !!b.addsShield, pylonShield: !!b.pylonShield, pylonsBroken: !!b.pylonsBroken,
         pylons: b.parts.map((p, i) => p.pylon ? { i, hp: p.hp, maxHp: p.maxHp } : null).filter(Boolean),
         raid: !!b.raid, stage: (run.miniStage | 0) + 1, stages: cfg.minis ? cfg.minis.length : 1, art: ECON.bossArt(b.id),
-    };
+    }, crownEngine.isMobile(b) ? crownEngine.view(run, now, full !== false) : null);
 }
+// Pushes that carry the motion plans in their boss view (the rest stay lean:
+// an `hp` or `attack` push never re-sends the steps; `motion` pushes do).
+const FULL_VIEW_KINDS = new Set(['spawn', 'stage']);
 function runBroadcast(run, kind, extra) {
-    const msg = Object.assign({ event: 'guild_boss', kind, runId: run.id, now: Date.now(), boss: guildBossView(run) }, extra || {});
+    const msg = Object.assign({ event: 'guild_boss', kind, runId: run.id, now: Date.now(), boss: guildBossView(run, null, FULL_VIEW_KINDS.has(kind)) }, extra || {});
     pushMany(run.members, msg);
+    const b = run.boss;
+    if (b && b.archetype) { const n = JSON.stringify(msg).length * run.members.size; b.bytesOut = (b.bytesOut || 0) + n; b.bytesBy = b.bytesBy || {}; b.bytesBy[kind] = (b.bytesBy[kind] || 0) + n; }
 }
 // Boss HP beyond the party curve: delve (or the endless floor), Tyrannical,
 // raid mode and the test multiplier. Exactly 1 for a delve-0 story run.
@@ -2687,8 +2741,34 @@ function bossHpExtra(run, bossId) {
     if ((run.affixes || []).includes('tyrannical')) x *= 1.3;
     if (run.kind === 'raid') x *= DEPTHS.RAID.BOSS_MULT;
     if (run.initiate) x *= run.initiate.hpMult;
+    x *= bossGearScaleOf(run, ECON.isMiniBoss(bossId)).hpMult;
+    if (run.ascHpMult) x *= run.ascHpMult;   // the Ascension ladder / weekly challenge (ascension.js)
     if (TEST.bossHp) x *= TEST.bossHp;
     return x;
+}
+// Boss HP/damage scaled to what the party wore at run start (BALANCE.md).
+// The endless Depths keep their own floor curve.
+function bossGearScaleOf(run, mini) {
+    if (!BOSS_GEAR_SCALE || !run || run.tier === 'arcane_depths' || !run.gearProfiles) return { hpMult: 1, dmgMult: 1 };
+    return ECON.bossGearScale(run.tier, run.gearProfiles, { mini: !!mini });
+}
+function gearProfileOf(user) {
+    const u = userRec(user);
+    return ECON.combatProfile(equippedItems(u), masteryLevelOf(u, 'combat'));
+}
+// Lifesteal is the server's call: the heal one landed swing (or boss hit) is
+// worth, after the boss efficiency and the per-second cap (ECON.lifestealHeal),
+// on a bucket per fighter per run. The client applies `heal` as sent.
+function lifestealFor(run, user, dealt, boss, now) {
+    if (!run || !(dealt > 0) || (run.downed && run.downed[user])) return 0;
+    const fx = gearFxOf(user);
+    if (!(fx.lifesteal > 0)) return 0;
+    run.lsBucket = run.lsBucket || {};
+    const bucket = run.lsBucket[user] || (run.lsBucket[user] = ECON.lifestealBucket());
+    const maxHp = ECON.gearMaxHp(gearStatsOf(userRec(user)).vit, fx.maxHpPct);
+    // The Ascension 'hungering' modifier scales lifesteal before the cap.
+    const hm = typeof ascension !== 'undefined' && ascension.healMult ? ascension.healMult(run) : 1;
+    return ECON.lifestealHeal(fx.lifesteal * hm, dealt, { boss: !!boss, maxHp, bucket, now: now || Date.now() });
 }
 // Raise either the run's final boss or the mini that blocks its middle floor.
 // Both use the same structure so the fight code, the scaling and the hit
@@ -2702,21 +2782,25 @@ function spawnGuildBoss(run, bossId) {
     // Solo-sized at spawn; rescaleGuildBoss grows it as fighters land hits.
     const extra = bossHpExtra(run, bossId);
     const maxHp = extra === 1 ? ECON.guildBossMaxHp(bossId, 1) : Math.round(def.baseHp * extra);
-    const headHp = Math.floor(maxHp * ECON.GUILD_BOSS.HEAD_FRAC);
-    const partHp = Math.floor((maxHp - headHp) / def.parts);
+    // A Sundered Crown boss (archetype, parts: 0) is one pool — twins split it
+    // in crown-engine.js. Never divide by its zero parts.
+    const mobile = CROWN.isMobile(bossId);
+    const headHp = mobile ? maxHp : Math.floor(maxHp * ECON.GUILD_BOSS.HEAD_FRAC);
+    const partHp = mobile ? 0 : Math.floor((maxHp - headHp) / def.parts);
     const riseMs = mini ? ECON.GUILD_BOSS.MINI_RISE_MS : ECON.GUILD_BOSS.RISE_MS;
     run.boss = {
         id: bossId, mini, status: 'rising', spawnedAt: now, diedAt: 0, phase: 1,
         baseHead: headHp, basePart: partHp, hpMult: 1, soloPool: maxHp,
-        maxHp: headHp + partHp * def.parts,
+        maxHp: mobile ? headHp : headHp + partHp * def.parts,
         head: { hp: headHp, maxHp: headHp },
-        parts: Array.from({ length: def.parts }, () => ({ hp: partHp, maxHp: partHp })),
+        parts: mobile ? [] : Array.from({ length: def.parts }, () => ({ hp: partHp, maxHp: partHp })),
         damage: {}, hitLast: new Map(),
         nextAttackAt: now + riseMs + 1200, lastBroadcast: 0, lastAttack: null,
         fightStart: now, phaseCount: ECON.bossPhaseCount(bossId), hardEnraged: false, enrageMs: TEST.enrageMs || def.enrageMs || 0,
         wardFrom: 0, wardUntil: 0, reflect: 0, addsShield: false, pylonShield: false, pylonsBroken: false, pylonCfg: null,
         soak: null, soakSeq: 0, backlashPending: false, raid: run.kind === 'raid', adds: [], attackCount: 0, shiftMs: 0,
     };
+    if (mobile) crownEngine.spawn(run, run.boss, now);
     console.log(`[guild-boss] ${def.name} awoke for run ${run.id} (${run.members.size} in the party)`);
     runBroadcast(run, 'spawn');
 }
@@ -2773,6 +2857,7 @@ function beginBossPhase(run, ph, now) {
     console.log(`[guild-boss] ${look.name} (phase ${b.phase}) for run ${run.id}`);
     runBroadcast(run, 'phase', { phase: b.phase, phaseCount: b.phaseCount, cinematic: !!ph.cinematic, shiftMs: b.shiftMs, look });
     if (b.id === 'dragon') runBroadcast(run, 'phase2');
+    if (crownEngine.isMobile(b)) crownEngine.onPhase(run, ph, now);
 }
 function bossDied(run, now) {
     const b = run.boss;
@@ -2792,6 +2877,7 @@ function bossDied(run, now) {
     const cfg = ECON.GUILD_DUNGEONS[run.tier];
     if (b.mini && cfg && cfg.minis && (run.miniStage | 0) < cfg.minis.length - 1) b.nextStageAt = now + 2000;
     clearArenaAdds(run, now);
+    if (crownEngine.isMobile(b)) crownEngine.onDeath(run, now);
     runBroadcast(run, 'dead');
 }
 // A threshold phase must never be skipped by a single blow to the head.
@@ -2821,6 +2907,7 @@ function rescaleGuildBoss(run) {
     const mult = ECON.guildBossHpMult(n);
     if (mult === b.hpMult) return;
     b.hpMult = mult;
+    if (crownEngine.isMobile(b)) { crownEngine.rescale(run, mult); return; }
     const scale = (p, base) => {
         const frac = p.maxHp > 0 ? p.hp / p.maxHp : 0;
         p.maxHp = Math.round(base * mult);
@@ -2875,11 +2962,38 @@ function pylonUpdate(run, i, now) {
     for (const o of pyl) if (o.q.downAt < now - win) { o.q.hp = o.q.maxHp; o.q.downAt = 0; regrew.push(o.j); }
     runBroadcast(run, 'pylon', { regrew });
 }
+// A boss swing's gear procs jump to the living arena adds.
+function bossProcs(run, user, r, dmg, now) {
+    const b = run.boss;
+    const procs = [];
+    if (r.procs.length && b.adds && b.adds.length) {
+        const hp = run.enemyHp[run.floor] || {};
+        const changed = [];
+        for (const pr of r.procs) {
+            const targets = [];
+            for (const id of b.adds) {
+                if (targets.length >= (pr.n | 0)) break;
+                if (!(hp[id] > 0)) continue;
+                const d = Math.max(1, Math.round(dmg * (pr.frac || 0)));
+                hp[id] = Math.max(0, hp[id] - d);
+                changed.push({ id, hp: hp[id], dead: hp[id] <= 0 });
+                targets.push(id);
+            }
+            if (targets.length) procs.push({ id: pr.id, targets, dmg: Math.round(dmg * (pr.frac || 0)) });
+        }
+        if (changed.length) {
+            const res = features.onEnemyDamage(run, user, changed, now);
+            pushMany(run.members, { event: 'guild_dungeon', kind: 'enemies', runId: run.id, floor: run.floor, changed, by: user, cleared: floorCleared(run, run.floor), spawned: res.spawned, drops: res.drops });
+        }
+    }
+    return procs;
+}
 // Damage from anything that is not a swing (tomes, arena procs) goes through
 // here too so the phase engine sees it.
 function hurtBoss(run, user, budget, opts, now) {
     const b = run.boss;
     if (!b || b.status !== 'alive' || budget <= 0) return 0;
+    if (crownEngine.isMobile(b)) return crownEngine.hurt(run, user, budget, opts, now);
     if (b.pylonShield && !b.pylonsBroken) return 0;
     if (b.addsShield && arenaAddsAlive(run)) return 0;
     let dealt = 0;
@@ -2905,7 +3019,8 @@ function pickFromDeck(deck) {
     for (const a of deck) { if ((x -= a.weight) <= 0) return a; }
     return deck[0];
 }
-const EXTRA_ATTACK_FIELDS = ['stars', 'turn', 'n', 'points', 'turns', 'lingerMs', 'slow', 'rStart', 'rEnd', 'count', 'gapMs', 'reflect', 'addType', 'backlash', 'beams', 'perQuadrant'];
+const EXTRA_ATTACK_FIELDS = ['stars', 'turn', 'n', 'points', 'turns', 'lingerMs', 'slow', 'rStart', 'rEnd', 'count', 'gapMs', 'reflect', 'addType', 'backlash', 'beams', 'perQuadrant',
+    'ox', 'oy', 'rootMs', 'x0', 'y0', 'x1', 'y1'];
 function rollGuildBossAttack(run, now) {
     const b = run.boss;
     now = now || Date.now();
@@ -2918,6 +3033,13 @@ function rollGuildBossAttack(run, now) {
         a = ECON.pickGuildBossAttack(b.id, null, b.phase);
         if (a === b.lastAttack && Math.random() < 0.6) a = ECON.pickGuildBossAttack(b.id, null, b.phase);
     }
+    return attackPayload(run, a, now);
+}
+// The payload of one deck attack (shared by the legacy cadence and the
+// Sundered Crown casts, which add the body origin ox/oy on top).
+function attackPayload(run, a, now) {
+    const b = run.boss;
+    now = now || Date.now();
     b.lastAttack = a;
     b.attackCount = (b.attackCount | 0) + 1;
     const dmgMult = (run.bossDmgMult || 1) * (b.hardEnraged ? 1.5 : 1) * (b.backlashPending ? 1.5 : 1);
@@ -3073,7 +3195,7 @@ function presenceOf(user) {
     const c = byUser.get(user);
     const p = c && c.presence;
     if (!p) return null;
-    return { x: p.x, y: p.y, area: p.area, run: p.run, dfloor: p.dfloor, at: c.presenceAt || 0 };
+    return { x: p.x, y: p.y, area: p.area, run: p.run, dfloor: p.dfloor, at: c.presenceAt || 0, facing: p.facing };
 }
 // The caller's reported position, if it is inside this run's dungeon (a
 // presence tagged with another run, or from town, does not count).
@@ -3133,6 +3255,9 @@ function startGuildRun(leader, tier, members, opts) {
     const g = guildRequire(leader);
     const cfg = ECON.GUILD_DUNGEONS[tier];
     if (!cfg) throw new Error('No such guild dungeon.');
+    // The Sundered Crown tiers need the archetype engine (a parts:0 boss on
+    // the legacy engine would divide its pool by zero) — closed if it is off.
+    if (cfg.crown && (!CROWN_TIERS_OPEN || !crownEngine)) throw new Error('That dungeon is not open yet.');
     const raid = opts.kind === 'raid';
     if (cfg.mode === 'raid' && !raid) throw new Error('Raid-only dungeon — open a raid lobby.');
     const endless = cfg.mode === 'endless';
@@ -3194,6 +3319,15 @@ function startGuildRun(leader, tier, members, opts) {
             if (ini && ini.active) { run.initiate = ini; run.partyHpMult *= ini.hpMult; run.bossDmgMult *= ini.dmgMult; }
         } catch (e) { console.error('[journey] initiate', e); }
     }
+    // Boss balance: every boss of this run is scaled to the party's gear as
+    // worn now (HP in bossHpExtra, damage here through bossDmgMult).
+    if (BOSS_GEAR_SCALE && !endless) {
+        run.gearProfiles = [];
+        for (const m of set) { try { run.gearProfiles.push(gearProfileOf(m)); } catch (e) { console.error('[boss-scale] profile', m, e); } }
+        const gs = bossGearScaleOf(run, false);
+        run.bossScale = { hp: gs.hpMult, dmg: gs.dmgMult };
+        run.bossDmgMult *= gs.dmgMult;
+    }
     run.ilvlAtStart = {};
     // One definition of "effective item level" (the journey's, when present).
     for (const m of set) {
@@ -3201,6 +3335,7 @@ function startGuildRun(leader, tier, members, opts) {
         catch (e) { try { run.ilvlAtStart[m] = ilvlSnapshot(m, tier); } catch (e2) { run.ilvlAtStart[m] = Math.max(1, cfg.gearLvl | 0); } }
     }
     run.lastActivity = now;
+    ascension.onStart(run, opts, cfg, g, now);   // Ascension level / weekly challenge (refuses when not allowed)
     features.initRun(run);
     applyDepthFloor(run);
     guildRuns.set(run.id, run);
@@ -3211,7 +3346,7 @@ function startGuildRun(leader, tier, members, opts) {
     const info = {
         event: 'guild_dungeon', kind: 'start', runId: run.id, tier, seed: run.seed,
         members: [...set], by: leader, guild: guildInfo,
-        state, delve, affixes: run.affixes, runKind: run.kind, theme: run.theme, guilds, weekly, initiate: run.initiate || null,
+        state, delve, affixes: run.affixes, runKind: run.kind, theme: run.theme, guilds, weekly, initiate: run.initiate || null, bossScale: run.bossScale || null,
     };
     pushMany(set, info);
     if (raid) for (const gid of Object.keys(guilds)) { const rg = guildRec(gid); if (rg) guildBroadcast(rg, { kind: 'raid_start', tier, runId: run.id, members: guilds[gid].members }); }
@@ -3219,7 +3354,7 @@ function startGuildRun(leader, tier, members, opts) {
     return {
         runId: run.id, tier, seed: run.seed, members: [...set], state,
         cfg: { name: cfg.name, floors: cfg.floors, boss: cfg.boss, mini: cfg.mini },
-        delve, affixes: run.affixes, kind: run.kind, theme: run.theme, guilds, weekly, initiate: run.initiate || null,
+        delve, affixes: run.affixes, kind: run.kind, theme: run.theme, guilds, weekly, initiate: run.initiate || null, bossScale: run.bossScale || null,
     };
 }
 
@@ -3291,7 +3426,11 @@ function guildRunTick(run, now) {
                     if (regrew.length) runBroadcast(run, 'pylon', { regrew });
                 }
             }
-            if (now >= b.nextAttackAt) {
+            if (crownEngine.isMobile(b)) {
+                // THE SUNDERED CROWN: motion plans, step events, casts, twins, shards, clones.
+                crownEngine.tick(run, now);
+                if (b.status === 'alive' && now - b.lastBroadcast > 1000) { b.lastBroadcast = now; runBroadcast(run, 'tick'); }
+            } else if (now >= b.nextAttackAt) {
                 const speed = bossHpOf(b) / b.maxHp < ECON.GUILD_BOSS.ENRAGE_FRAC ? ECON.GUILD_BOSS.ENRAGE_SPEED : 1;
                 const attack = rollGuildBossAttack(run, now);
                 const ph = bossPhaseDef(b, b.phase);
@@ -3343,6 +3482,12 @@ function swingBuffMult(run, user, now, fx, afterDash) {
     if (run.buffs.fury && run.buffs.fury.until > now) m *= DEPTHS.SHRINES.fury.dmgMult;
     if (run.buffs.stars && run.buffs.stars.until > now) m *= 1.2;
     if (afterDash && fx.afterDashHit && now - (run.dashAt[user] || 0) <= (+fx.afterDashHit.ms || 0)) m *= (+fx.afterDashHit.mult || 1);
+    // War Cry (Crown Art): the strongest active cry that reached this player.
+    if (run.warCry && run.warCry.length) {
+        let best = 1;
+        for (const w of run.warCry) if (w.until > now && w.users.includes(user)) best = Math.max(best, w.mult);
+        m *= best;
+    }
     return m;
 }
 function lbBanned(user) { return !!store.get('lb_bans/' + user); }
@@ -3397,6 +3542,16 @@ function runTallies(run) {
     const t = run.tallies || {};
     return { elites: t.elite | 0, champions: t.champion | 0, goblins: t.goblin | 0, trials: t.trial | 0, vaults: t.vault | 0, secrets: t.secret | 0 };
 }
+// What the Sundered Crown adds to one member's settle (§3.5, §3.8, §6.4).
+function crownCtx(run, m, source) {
+    const st = (run.crownStats && run.crownStats[m]) || {};
+    return { source, stats: { stuns: st.stuns | 0, artHits: st.artHits | 0, crownShardsBroken: st.crownShardsBroken | 0 },
+        noRiposte: run.tier === 'guild_colosseum' ? !run.parried : false, twinSync: run.tier === 'guild_mirror' ? !!run.twinSync : false };
+}
+function crownJourney(run, m) {
+    const c = crownCtx(run, m, 'boss');
+    return Object.assign({}, c.stats, { noRiposte: c.noRiposte ? 1 : 0, twinSync: c.twinSync ? 1 : 0 });
+}
 function rewardPush(run, m, S, res, cash, extra) {
     const rec = userRec(m);
     const pu = S.perUser[m];
@@ -3408,6 +3563,7 @@ function rewardPush(run, m, S, res, cash, extra) {
         chestTier: res ? res.chestTier : 0, mats: res ? res.mats : {}, gems: res ? res.gems : {}, overflow: res ? res.overflow : [], packFull: res ? res.packFull : false,
         delver: res ? res.delver : null, codexNew: res ? res.codexNew : [], achievements: res ? res.achievements : [],
         weekly: !!(res && res.weekly),
+        arts: res && res.arts ? res.arts : [], crownShards: res ? res.crownShards | 0 : 0, artPity: !!(res && res.artPity), ascend: res && res.ascend ? res.ascend : null,
     }, extra || {}));
 }
 
@@ -3467,8 +3623,10 @@ function settleRun(run, user, now) {
             pending: run.pendingLoot[m] || [], fortune: run.fortune, raidBonus: S.raidBonus,
             research: progress.researchOf(mg), bannerFx: progress.bannerFx(mg, now), trophyMatFind: mg ? 0.01 * ECON.trophyTier(mg.trophies[cfg.boss]) : 0,
             bossRoll: true, tallies: runTallies(run), flawless, mini: !!cfg.mini, codexBoss: cfg.boss, codexTier: run.tier,
+            crown: crownCtx(run, m, 'boss'),
         }, now);
         if (S.perUser[m]) grantMastery(m, rec, 'combat', ECON.MASTERY_XP.guild_clear);
+        try { ascension.onSettle(run, m, rec, results[m], now); } catch (e) { console.error('[ascend] settle', e); }
     }
     const party = {};
     for (const m of new Set([...Object.keys(S.perUser), ...Object.keys(results)])) {
@@ -3490,7 +3648,7 @@ function settleRun(run, user, now) {
             members: Object.keys(results).map(m => ({
                 user: m, u: userRec(m), ilvl: (run.ilvlAtStart || {})[m], loot: results[m].allGear, pending: run.pendingLoot[m] || [],
                 delverGained: results[m].delver ? results[m].delver.gained : 0, tallies: run.tallies,
-                dealt: (b.damage[m] || 0) > 0, spectator: run.spectators.has(m),
+                dealt: (b.damage[m] || 0) > 0, spectator: run.spectators.has(m), crown: crownJourney(run, m),
             })),
         });
     } catch (e) { console.error('[journey] settle', e); }
@@ -3510,6 +3668,7 @@ function settleRun(run, user, now) {
         chestTier: mine.chestTier, mats: mine.mats, gems: mine.gems, overflow: mine.overflow, packFull: mine.packFull,
         delver: mine.delver, codexNew: mine.codexNew, achievements: mine.achievements,
         delve: delveOut, records: { guildBest: delveOut.record, weekly: !!mine.weekly }, tier: run.tier,
+        arts: mine.arts || [], crownShards: mine.crownShards | 0, artPity: !!mine.artPity, ascend: mine.ascend || null,
     };
 }
 // Nobody loses a chest by being slow: a final boss that died but whose chest
@@ -3566,6 +3725,7 @@ function settleSegment(run, user, kind, now) {
             tier: 'arcane_depths', floor: f, delve: 0, spectator, pending, bossRoll: false, endless: true,
             research: progress.researchOf(mg), bannerFx: progress.bannerFx(mg, now), raidBonus: S.raidBonus,
             tallies: runTallies(run), floors: run.floorsDone | 0, heartBand, extraXp: plan.guardian && run.miniDone ? ECON.DELVER_XP.depths.guardian : 0,
+            crown: leave ? null : crownCtx(run, m, 'sanctuary'),
         }, now);
         const d = obj(rec.depthsBest);
         d.floor = Math.max(d.floor | 0, f); d.at = now;
@@ -3604,6 +3764,7 @@ function settleSegment(run, user, kind, now) {
         delver: mine.delver, codexNew: mine.codexNew, achievements: mine.achievements,
         delve: { level: 0, floor: f }, records: { guildBest: false, weekly: !!run.weekly }, segment: true, floor: f, tier: run.tier,
         reward: { gained: myPu ? myPu.each : 0, gross },
+        arts: mine.arts || [], crownShards: mine.crownShards | 0, artPity: !!mine.artPity, ascend: mine.ascend || null,
     };
     if (leave) endGuildRun(run, 'left');
     return out;
@@ -3652,7 +3813,7 @@ function depthsInfo(user, now) {
     const gid = guildIdOf(user);
     const g = gid ? guildRec(gid) : null;
     const research = progress.researchOf(g);
-    const order = ECON.GUILD_DUNGEON_ORDER.concat(['raid_nexus', 'arcane_depths']);
+    const order = ECON.GUILD_DUNGEON_ORDER.concat(['raid_nexus', 'arcane_depths'], ECON.CROWN_DUNGEON_ORDER || [], ECON.ASCEND_DUNGEON_ORDER || []);
     const tiers = order.filter(k => ECON.GUILD_DUNGEONS[k]).map(key => {
         const cfg = ECON.GUILD_DUNGEONS[key];
         const t = g ? g.depths.tiers[key] : null;
@@ -3663,14 +3824,17 @@ function depthsInfo(user, now) {
             clears: t ? t.clears | 0 : 0, delveUnlocked: t ? t.unlocked | 0 : 0, maxDelve: g ? DEPTHS.guildMaxDelve(t, research.keystone) : 0,
             best: t ? t.best | 0 : 0, bestMs: t ? t.bestMs | 0 : 0, parMs: DEPTHS.parMsFor(key, research.pathfinders), gearLvl: cfg.gearLvl,
             boss: cfg.boss, mini: cfg.mini, raidable: !!cfg.raidable, raidMin: cfg.raidMin | 0,
+            ...(cfg.crown ? { crown: true, archetype: ECON.bossArchetype(cfg.boss), open: CROWN_TIERS_OPEN } : {}),
         };
     });
     const week = DEPTHS.affixWeek(now);
     const list = DEPTHS.pickAffixes(week, 99).map(id => { const d = DEPTHS.AFFIX_DEFS[id]; return { id, name: d.name, slot: d.slot, minL: d.minL, desc: d.desc }; });
     const boards = progress.boards();
     const wk = boards.endless.week && boards.endless.week.wk === week ? (boards.endless.week.list || []) : [];
+    let ascendInfo = null;
+    try { ascendInfo = ascension.info(user, now); } catch (e) { console.error('[ascend] info', e); }
     return {
-        tiers, affixes: { week, season: DEPTHS.affixSeason(week), list },
+        tiers, affixes: { week, season: DEPTHS.affixSeason(week), list }, ascension: ascendInfo,
         endless: {
             bestFloor: g ? g.depths.endless.bestFloor : 0,
             weekly: { week, bestFloor: g && g.depths.endless.weekly.week === week ? g.depths.endless.weekly.bestFloor : 0, board: wk.map(e => ({ guild: e.name, tag: e.tag, floor: e.floor, ms: e.ms })) },
@@ -3696,6 +3860,25 @@ const features = createFeatureHandlers({
     endGuildRun: (run, reason) => { if (reason === 'wiped') autoSettle(run, Date.now(), 'wiped after the kill'); if (guildRuns.has(run.id)) endGuildRun(run, reason); }, settleSegment, recordDepth,
     runBroadcast, floorStateView, onFloorChange: applyDepthFloor,
     testKnobs: { featureAgeMs: TEST.fast ? 0 : null, trialDeadlineMs: TEST.trialDeadlineMs, descendHoldMs: TEST.fast ? 1000 : null },
+});
+// ---- THE SUNDERED CROWN modules (crown-engine.js / crown-arts.js) ----
+// THE SUNDERED CROWN II: the engine extension (linked adds, tethers, arena layouts, gear/ascension scaling).
+const ascendEngine = createAscensionEngine({ ECON, CROWN, ASCEND, userRec, gearStatsOf, bossHpOf });
+const crownEngine = createCrownEngine({
+    ECON, CROWN, pushMany, runBroadcast, presenceOf, attackPayload, bossHpOf, pendingThreshold, checkBossPhase,
+    userRec, masteryLevelOf, gearStatsOf, gearFxOf: (user) => gearFxOf(user), swingBuffMult, bossProcs, weaponOf, lifestealFor,
+    rescaleGuildBoss, raidSoak: DEPTHS.RAID_OVERLAY.soak, ext: ascendEngine,
+    testKnobs: { crownForce: TEST.crownForce, twinLinkMs: TEST.twinLinkMs },
+});
+// THE SUNDERED CROWN II: the Ascension ladder, weekly challenge, mastery and essence crafting (`ascend` op).
+const ascension = createAscension({
+    ECON, DEPTHS, ASCEND, store, userRec, guildRec, guildIdOf, saveGuild, moneyOf, setMoney, pushTo,
+    addItems: (user, u, items, now) => progress.addItems(user, u, items, now),
+});
+const crownArts = createCrownArts({
+    ECON, CROWN, DUNGEON, store, userRec, runFor, presenceOf, gearFxOf: (user) => gearFxOf(user), gearStatsOf, weaponOf, masteryLevelOf, moneyOf, setMoney,
+    pushMany, pushTo, features, floorPlan, floorCleared, leashRefusal, engine: crownEngine, swingBuffMult, hurtBoss, lifestealFor,
+    afterBossDamage: (run, now) => { if (!checkBossPhase(run, now)) runBroadcast(run, 'hp'); },
 });
 const raids = createRaids({
     ECON, DEPTHS, byUser, guildIdOf, guildRec, saveGuild, guildRankOf, pushTo, pushMany, guildBroadcast, guildRunOf, pushId, startGuildRun,
@@ -4345,9 +4528,10 @@ const ECONOMY_OPS = {
             const c = byUser.get(user), p = c && c.presence;
             if (!p || (p.area && p.area !== 'neighborhood') || !ECON.atLake(p.x, p.y)) throw new Error('You need to be at the lake.');
             const weapon = msg.weapon === 'pistol' ? 'pistol' : 'sword';
+            const wpn = weaponOf(userRec(user), weapon);
             const k = user + ':' + weapon;
             const last = kraken.hitLast.get(k) || 0;
-            if (now - last < ECON.KRAKEN.HIT_MIN_MS[weapon]) throw new Error('Too fast.');
+            if (now - last < ECON.kindMinMs(wpn.kind, 'kraken')) throw new Error('Too fast.');
             let target, pos;
             if (msg.part === 'head') {
                 if (kraken.parts.some(t => t.hp > 0)) throw new Error(kraken.kind === 'serpent' ? 'The coils guard the head — break them first!' : 'The tentacles guard the head — cut them down first!');
@@ -4358,10 +4542,10 @@ const ECONOMY_OPS = {
                 target = kraken.parts[i]; pos = ECON.beastPartPos(kraken.kind, i, kraken.parts.length);
             }
             if (target.hp <= 0) throw new Error('That part is already down.');
-            if (Math.hypot(p.x - pos.x, p.y - pos.y) > ECON.KRAKEN.REACH[weapon] + 60) throw new Error('Out of reach.');
+            if (Math.hypot(p.x - pos.x, p.y - pos.y) > ECON.kindReach(wpn.kind, 'kraken') + 60) throw new Error('Out of reach.');
             kraken.hitLast.set(k, now);
             if (!(kraken.damage[user] > 0)) { kraken.damage[user] = 0; rescaleBeast(); }
-            const dmg = Math.min(target.hp, ECON.KRAKEN.HIT_DMG[weapon]);
+            const dmg = Math.min(target.hp, Math.max(1, Math.round(ECON.kindHitDmg(wpn.kind, 'kraken'))));
             target.hp -= dmg;
             kraken.damage[user] = (kraken.damage[user] || 0) + dmg;
             const downed = target.hp <= 0;
@@ -4559,6 +4743,59 @@ const ECONOMY_OPS = {
             store.delete(`users/${user}/guild`);
             guildBroadcast(g, { kind: 'left', user });
             return { left: true, refunded: back, money: moneyOf(u) };
+        }
+
+        // The Master closes the guild for good. The client warns first; the
+        // server still demands the guild's exact name back so a stray click or
+        // a replayed packet can never wipe a guild. Nobody loses money: every
+        // member's bank balance comes back, and the treasury and the materials
+        // vault go to the Master, who is the only rank that could draw them all.
+        if (action === 'disband') {
+            const g = guildRequire(user);
+            if (g.master !== user || guildRankOf(g, user) !== 'master') throw new Error('Only the Guild Master can disband the guild.');
+            if (String(msg.confirm || '').trim().toLowerCase() !== String(g.name).toLowerCase()) throw new Error('Type the guild\'s exact name to confirm disbanding it.');
+            for (const run of guildRuns.values()) {
+                if (run.gid === g.id || [...run.members].some(m => g.members[m])) throw new Error('A guild dungeon run is still in progress. Disband once everyone is back out.');
+            }
+            const members = Object.keys(g.members);
+            const refunds = {};
+            for (const m of members) {
+                guildBankSync(g, m, now);
+                const back = Math.max(0, Math.floor(+((g.bank[m] || {}).balance) || 0));
+                if (back > 0) { const r = m === user ? u : userRec(m); setMoney(m, r, moneyOf(r) + back); }
+                refunds[m] = back;
+            }
+            const treasury = Math.max(0, Math.floor(+g.treasury || 0));
+            if (treasury > 0) setMoney(user, u, moneyOf(u) + treasury);
+            const vault = (g.vault && typeof g.vault === 'object') ? g.vault : {};
+            const mats = (u.mats && typeof u.mats === 'object') ? u.mats : (u.mats = {});
+            for (const [k, n] of Object.entries(vault)) { const c = Math.max(0, Math.floor(+n || 0)); if (c) mats[k] = (mats[k] | 0) + c; }
+            if (Object.keys(vault).length) store.put(`users/${user}/mats`, mats);
+            // Cut every tie other guilds hold to this one.
+            for (const gid of new Set([...Object.keys(g.allies || {}), ...Object.keys(g.allyReq || {})])) {
+                const other = guildRec(gid);
+                if (!other) continue;
+                const was = !!other.allies[g.id];
+                delete other.allies[g.id]; delete other.allyReq[g.id];
+                saveGuild(other);
+                if (was) guildBroadcast(other, { kind: 'ally_removed', gid: g.id, name: g.name, tag: g.tag });
+            }
+            const invites = store.get('guild_invites') || {};
+            for (const [who, inv] of Object.entries(invites)) {
+                if (inv && typeof inv === 'object' && inv[g.id]) { delete inv[g.id]; store.put('guild_invites/' + who, inv); }
+            }
+            for (const m of members) {
+                const p = partyFor(m);
+                if (p) { if (p.gid === g.id) disbandParty(p, 'guild disbanded'); else { guildPartyOf.delete(m); p.members.delete(m); if (!p.members.size) disbandParty(p, 'left'); } }
+                raids.leaveRaid(m);
+            }
+            for (const m of members) {
+                store.delete(`users/${m}/guild`);
+                if (m !== user) pushTo(m, { event: 'guild', kind: 'disbanded', guild: g.id, name: g.name, by: user, refunded: refunds[m] || 0 });
+            }
+            store.delete('guilds/' + g.id);
+            console.log(`[guild] ${user} disbanded "${g.name}" [${g.tag}] (${members.length} members, treasury ${treasury})`);
+            return { disbanded: true, refunded: refunds[user] || 0, treasury, mats: Object.keys(vault).length ? mats : undefined, money: moneyOf(u) };
         }
 
         if (action === 'kick') {
@@ -4871,6 +5108,10 @@ const ECONOMY_OPS = {
         return out;
     },
     journey(user, msg) { return JOURNEY_SRV.op(user, msg); },
+    // THE SUNDERED CROWN: the Crown Arts collection (crown-arts.js, §6.3).
+    arts(user, msg) { return crownArts.op(user, msg); },
+    // THE SUNDERED CROWN II: the Ascension ladder, weekly challenge, mastery, essence crafting (ascension.js).
+    ascend(user, msg) { return ascension.op(user, msg); },
     delver(user, msg) { return progress.delverOp(user, msg); },
 
     guild_dungeon(user, msg) {
@@ -5018,7 +5259,8 @@ const ECONOMY_OPS = {
             const members = [...party.members].filter(u => byUser.has(u) && !guildRunOf.has(u));
             if (!members.includes(user)) throw new Error('You are not able to start right now.');
             const delve = msg.delve != null ? Math.max(0, msg.delve | 0) : (party.delve | 0);
-            const out = startGuildRun(user, party.tier, members, { continuous: msg.layout === 'continuous', delve, kind: 'party', weekly: msg.weekly != null ? !!msg.weekly : !!party.weekly });
+            const out = startGuildRun(user, party.tier, members, { continuous: msg.layout === 'continuous', delve, kind: 'party', weekly: msg.weekly != null ? !!msg.weekly : !!party.weekly,
+                ascension: msg.ascension | 0, challenge: !!msg.challenge });
             disbandParty(party, 'started');
             return out;
         }
@@ -5049,22 +5291,28 @@ const ECONOMY_OPS = {
             const hp = run.enemyHp[floor] || {}, meta = run.enemyMeta[floor] || {};
             const w = String(msg.weapon || '');
             const weapon = w === 'pistol' ? 'pistol' : w === 'thorns' ? 'thorns' : w === 'burst' ? 'burst' : 'sword';
-            const fx = gearFxOf(user);
-            if (weapon === 'thorns' && !(fx.thorns > 0)) throw new Error('You have no thorns.');
-            if (weapon === 'burst' && !(fx.onDashBurst && now - (run.dashAt[user] || 0) <= 600)) throw new Error('No dash to burst from.');
-            const minMs = weapon === 'thorns' ? 350 : weapon === 'burst' ? 2000 : ECON.DUNGEON_HIT_MIN_MS[weapon];
+            const gfx = gearFxOf(user);
+            if (weapon === 'thorns' && !(gfx.thorns > 0)) throw new Error('You have no thorns.');
+            if (weapon === 'burst' && !(gfx.onDashBurst && now - (run.dashAt[user] || 0) <= 600)) throw new Error('No dash to burst from.');
+            // WEAPONS: the swing's kind comes from the equipped item of that
+            // hand (thorns and the dash burst are the melee hand's).
+            const wpn = weaponOf(u, weapon === 'pistol' ? 'pistol' : 'sword');
+            const swing = weapon === 'sword' || weapon === 'pistol';
+            const fx = swing ? ECON.weaponFx(gfx, wpn.kind) : gfx;
+            const minMs = weapon === 'thorns' ? 350 : weapon === 'burst' ? 2000 : ECON.kindMinMs(wpn.kind, 'dungeon');
             const k = user + ':swing:' + weapon;
             if (now - (run.hitLast.get(k) || 0) < minMs) throw new Error('Too fast.');
             run.hitLast.set(k, now);
             const ids = (Array.isArray(msg.enemies) ? msg.enemies : [])
-                .slice(0, ECON.DUNGEON_HIT_MAX_TARGETS).map(x => String(x || ''));
-            const mult = ECON.masteryCombatMult(masteryLevelOf(u, 'combat')) * ECON.gearAttackMult(gearStatsOf(u).atk);
-            const legacyDmg = Math.max(1, Math.round(ECON.DUNGEON_HIT_DMG[weapon === 'pistol' ? 'pistol' : 'sword'] * mult));
+                .slice(0, swing ? ECON.kindTargets(wpn.kind) : ECON.DUNGEON_HIT_MAX_TARGETS).map(x => String(x || ''));
+            const mult = ECON.masteryCombatMult(masteryLevelOf(u, 'combat')) * ECON.gearAttackMult(wpn.atk);
+            const swingBase = ECON.kindHitDmg(wpn.kind, 'dungeon');
+            const legacyDmg = Math.max(1, Math.round((swing ? swingBase : ECON.DUNGEON_HIT_DMG.sword) * mult));
             const cfg = rowCfg(run, floor);
             const extra = swingBuffMult(run, user, now, fx, !!msg.afterDash);
             const pres = runPresence(run, user);
             const changed = [], refused = [], procOut = [], seen = new Set();
-            let firstDmg = null, anyCrit = false, firstRoll = null;
+            let firstDmg = null, anyCrit = false, firstRoll = null, landed = 0;
             const escapeMs = (DUNGEON.ENEMY_TYPES.goblin || {}).escapeMs || 22000;
             const hitOne = (id, scale) => {
                 if (seen.has(id) || !(hp[id] > 0)) return null;
@@ -5082,7 +5330,7 @@ const ECONOMY_OPS = {
                 let base;
                 if (weapon === 'thorns') base = Math.round(fx.thorns * (t.dmg || 8) * (cfg.hpMult || 1) * 3);
                 else if (weapon === 'burst') base = ECON.DUNGEON_HIT_DMG.sword * mult * (+fx.onDashBurst.frac || 0);
-                else base = ECON.DUNGEON_HIT_DMG[weapon] * mult;
+                else base = swingBase * mult;
                 base *= scale;
                 const r = ECON.rollHitDamage(base, fx, { kind: m.elite ? 'elite' : 'enemy', hpFrac: hp[id] / (m.maxHp || hp[id]) }, Math.random, run.counters[user]);
                 run.counters[user] = r.counterState;
@@ -5095,6 +5343,7 @@ const ECONOMY_OPS = {
                     const ab = Math.min(m.shield | 0, dmg); m.shield -= ab; dmg -= ab;
                 }
                 m.lastHitAt = now;
+                landed += Math.min(hp[id], dmg);
                 hp[id] = Math.max(0, hp[id] - dmg);
                 const c = { id, hp: hp[id], dead: hp[id] <= 0 };
                 if (m.shieldMax) c.shield = m.shield;
@@ -5128,7 +5377,9 @@ const ECONOMY_OPS = {
             if (changed.length || res.spawned.length) {
                 pushMany([...run.members].filter(m => m !== user), { event: 'guild_dungeon', kind: 'enemies', runId: run.id, floor, changed, by: user, cleared, spawned: res.spawned, drops: res.drops, trial: res.trial, procs: procOut });
             }
-            return { changed, dmg: firstDmg != null ? firstDmg : legacyDmg, crit: anyCrit, procs: procOut, cleared, spawned: res.spawned, drops: res.drops, trial: res.trial || undefined, refused };
+            // Lifesteal off what actually landed (never thorns), the server's call.
+            const heal = weapon === 'thorns' ? 0 : lifestealFor(run, user, landed, false, now);
+            return { changed, dmg: firstDmg != null ? firstDmg : legacyDmg, crit: anyCrit, procs: procOut, cleared, spawned: res.spawned, drops: res.drops, trial: res.trial || undefined, refused, heal };
         }
 
         // A bomber's self-detonation (and whatever it catches in the blast) is
@@ -5172,7 +5423,8 @@ const ECONOMY_OPS = {
         // instead, so nobody is pulled into a run without accepting it.
         if (action === 'start') {
             raids.leaveRaid(user);
-            return startGuildRun(user, String(msg.tier || ''), [], { continuous: msg.layout === 'continuous', delve: msg.delve | 0, kind: 'solo', weekly: !!msg.weekly });
+            return startGuildRun(user, String(msg.tier || ''), [], { continuous: msg.layout === 'continuous', delve: msg.delve | 0, kind: 'solo', weekly: !!msg.weekly,
+                ascension: msg.ascension | 0, challenge: !!msg.challenge });
         }
 
         // Run features (guild-features.js): keys, chests, shrines, secrets,
@@ -5291,9 +5543,14 @@ const ECONOMY_OPS = {
             if (now < (b.invulnUntil || 0)) throw new Error('It is still getting up.');
             if (run.spectators.has(user)) throw new Error('You are only watching now.');
             if (run.downed[user]) throw new Error('You are down.');
+            // THE SUNDERED CROWN: a mobile boss has no parts — reach, guard,
+            // block, veil and vulnerability are checked against its server-
+            // authoritative motion (crown-engine.js, MASTER-PLAN §4.4).
+            if (crownEngine.isMobile(b)) return crownEngine.hit(run, user, msg, now);
             const weapon = msg.weapon === 'pistol' ? 'pistol' : 'sword';
+            const wpn = weaponOf(u, weapon);
             const k = user + ':' + weapon;
-            if (now - (b.hitLast.get(k) || 0) < ECON.GUILD_BOSS.HIT_MIN_MS[weapon]) throw new Error('Too fast.');
+            if (now - (b.hitLast.get(k) || 0) < ECON.kindMinMs(wpn.kind, 'boss')) throw new Error('Too fast.');
             let target, idx = null;
             if (msg.part === 'head') {
                 if (realParts(b).some(p => p.hp > 0)) throw new Error('Break its guard first!');
@@ -5314,10 +5571,10 @@ const ECONOMY_OPS = {
             if (!(b.damage[user] > 0)) { b.damage[user] = 0; rescaleGuildBoss(run); }
             // Combat mastery and equipped attack scale the swing; the gear's
             // effects (crit, boss damage, counters) roll on top of it.
-            const fx = gearFxOf(user);
+            const fx = ECON.weaponFx(gearFxOf(user), wpn.kind);
             const mult = ECON.masteryCombatMult(masteryLevelOf(u, 'combat'))
-                * ECON.gearAttackMult(gearStatsOf(u).atk);
-            const r = ECON.rollHitDamage(ECON.GUILD_BOSS.HIT_DMG[weapon] * mult, fx, { kind: msg.part === 'head' ? 'boss' : 'part', hpFrac: bossHpOf(b) / b.maxHp }, Math.random, run.counters[user]);
+                * ECON.gearAttackMult(wpn.atk);
+            const r = ECON.rollHitDamage(ECON.kindHitDmg(wpn.kind, 'boss') * mult, fx, { kind: msg.part === 'head' ? 'boss' : 'part', hpFrac: bossHpOf(b) / b.maxHp }, Math.random, run.counters[user]);
             run.counters[user] = r.counterState;
             let dmg = Math.min(target.hp, Math.round(r.dmg * swingBuffMult(run, user, now, fx, !!msg.afterDash)));
             if (target === b.head && pendingThreshold(b) && dmg >= target.hp) dmg = target.hp - 1;
@@ -5326,27 +5583,7 @@ const ECONOMY_OPS = {
             if (run.tier === 'arcane_depths') run.segDamage[user] = (run.segDamage[user] | 0) + dmg;
             const reflected = b.wardUntil && now >= b.wardFrom && now <= b.wardUntil ? Math.round(dmg * (b.reflect || 0)) : 0;
             // Arena procs land on the living adds.
-            const procs = [];
-            if (r.procs.length && b.adds && b.adds.length) {
-                const hp = run.enemyHp[run.floor] || {};
-                const changed = [];
-                for (const pr of r.procs) {
-                    const targets = [];
-                    for (const id of b.adds) {
-                        if (targets.length >= (pr.n | 0)) break;
-                        if (!(hp[id] > 0)) continue;
-                        const d = Math.max(1, Math.round(dmg * (pr.frac || 0)));
-                        hp[id] = Math.max(0, hp[id] - d);
-                        changed.push({ id, hp: hp[id], dead: hp[id] <= 0 });
-                        targets.push(id);
-                    }
-                    if (targets.length) procs.push({ id: pr.id, targets, dmg: Math.round(dmg * (pr.frac || 0)) });
-                }
-                if (changed.length) {
-                    const res = features.onEnemyDamage(run, user, changed, now);
-                    pushMany(run.members, { event: 'guild_dungeon', kind: 'enemies', runId: run.id, floor: run.floor, changed, by: user, cleared: floorCleared(run, run.floor), spawned: res.spawned, drops: res.drops });
-                }
-            }
+            const procs = bossProcs(run, user, r, dmg, now);
             const downed = target.hp <= 0;
             let pylon;
             if (isPylon) { pylonUpdate(run, idx, now); pylon = { i: idx, hp: target.hp }; }
@@ -5359,9 +5596,17 @@ const ECONOMY_OPS = {
                 b.lastBroadcast = now;
                 runBroadcast(run, 'hp');
             }
-            const out = { part: msg.part, hp: target.hp, maxHp: target.maxHp, dmg, downed, dead: b.status === 'dead', mini: !!b.mini, crit: r.crit, procs, reflected };
+            const out = { part: msg.part, hp: target.hp, maxHp: target.maxHp, dmg, downed, dead: b.status === 'dead', mini: !!b.mini, crit: r.crit, procs, reflected, heal: lifestealFor(run, user, dmg, true, now) };
             if (pylon) out.pylon = pylon;
             return out;
+        }
+
+        // A Crown Art (crown-arts.js, MASTER-PLAN §4.6).
+        if (action === 'art_use') {
+            const run = runFor(user);
+            if (!run) throw new Error('Crown Arts only answer in a dungeon.');
+            run.lastActivity = now;
+            return crownArts.artUse(run, user, msg, now);
         }
 
         if (action === 'complete') {
@@ -5399,6 +5644,7 @@ const ECONOMY_OPS = {
             // to throw until the reading is over.
             if (run.boss && run.boss.status === 'alive') {
                 run.boss.nextAttackAt = Math.max(run.boss.nextAttackAt, now + ECON.GUILD_BOSS.TOME_CINE_MS + 600);
+                crownEngine.hold(run, now + ECON.GUILD_BOSS.TOME_CINE_MS + 600);
             }
             // Eruption (and Storms) are the tomes that DEAL damage, so their
             // damage is applied here rather than on the reader's client — a

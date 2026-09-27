@@ -75,9 +75,23 @@
   const bossName = (id) => { const b = (ECONg().GUILD_BOSSES || {})[id]; return b ? b.name : ""; };
   const raidableTiers = () => {
     const E = ECONg(), all = E.GUILD_DUNGEONS || {};
-    const order = (E.GUILD_DUNGEON_ORDER || []).concat(["raid_nexus", "arcane_depths"]);
+    // THE SUNDERED CROWN: every story tier in difficulty order (the Colosseum, Mirror Court and Throne are raidable).
+    const order = (E.STORY_LADDER || E.GUILD_DUNGEON_ORDER || []).concat(["raid_nexus", "arcane_depths"]);
     return order.filter(k => all[k] && all[k].raidable && all[k].mode !== "endless");
   };
+  // THE SUNDERED CROWN: what kind of fight the boss is, and which Crown Arts can drop.
+  const ARCH = { beast: "BEAST", duelist: "DUELIST", twins: "TWINS", multiform: "MULTI-FORM", parts: "CLASSIC" };
+  function archBadge(id) {
+    const E = ECONg(); if (!id || !(E.GUILD_BOSSES || {})[id]) return "";
+    const k = E.bossArchetype ? E.bossArchetype(id) : "parts";
+    return `<span class="scArch a-${esc(k)}">${ARCH[k] || "CLASSIC"}</span>`;
+  }
+  function artChips(tier) {
+    const list = W.gameArtsUI && W.gameArtsUI.artsForTier ? W.gameArtsUI.artsForTier(tier) : [];
+    const A = (W.CROWN && W.CROWN.ARTS) || {};
+    const chips = list.filter(a => A[a.id]).map(a => `<span class="scArtChip r-${esc(A[a.id].rarity)}" title="${esc(A[a.id].desc)}">${rIco("art", a.id, 16) || "♛"}${esc(A[a.id].name)}</span>`);
+    return chips.length ? `<div class="scArtChips"><small>CROWN ARTS</small>${chips.join("")}</div>` : "";
+  }
   function raidLimits() {
     const R = (DEP() && DEP().RAID) || {};
     return { MIN: R.MIN || 2, MAX: R.MAX || 24, MAX_GUILDS: R.MAX_GUILDS || 6, MAX_PER_GUILD: R.MAX_PER_GUILD || 16, VEST_MS: R.VEST_MS || 86400000, CREDIT_SHARE: R.CREDIT_SHARE || 0.5 };
@@ -178,6 +192,15 @@
     const ks = (g.research && g.research.keystone) | 0;
     try { return D.guildMaxDelve(rec, ks) | 0; } catch (e) { return 0; }
   }
+  // Is `tier` sealed to the player's guild? (false when unknown: the server has the final say.)
+  function sealedFor(tier) {
+    try {
+      const g = W.gameGuild && W.gameGuild.myGuild ? W.gameGuild.myGuild() : null;
+      const cfg = (ECONg().GUILD_DUNGEONS || {})[tier] || {};
+      if (!g || !cfg.unlockAfter || !(W.DEPTHS && W.DEPTHS.tierUnlocked)) return false;
+      return !W.DEPTHS.tierUnlocked(g.depths || { tiers: {} }, tier);
+    } catch (e) { return false; }
+  }
   function renderCreate(tier) {
     const tiers = raidableTiers();
     if (!tier || tiers.indexOf(tier) < 0) tier = tiers.indexOf("raid_nexus") >= 0 ? "raid_nexus" : tiers[0];
@@ -187,23 +210,27 @@
       <div class="adRunes" aria-hidden="true">${esc(runesOf(cfg.name || tier))}</div>
       <b>${esc(cfg.name || tier)}</b>
       <p class="muted">${esc(cfg.blurb || "")}</p>
-      <small>Boss: ${esc(bossName(cfg.boss))}${cfg.raidMin === 1 ? " · solo raids allowed" : cfg.raidMin ? ` · needs at least ${cfg.raidMin} delvers` : ""} · item level ${cfg.gearLvl || "?"}</small>
+      <small>Boss: ${esc(bossName(cfg.boss))} ${archBadge(cfg.boss)}${cfg.raidMin === 1 ? " · solo raids allowed" : cfg.raidMin ? ` · needs at least ${cfg.raidMin} delvers` : ""} · item level ${cfg.gearLvl || "?"}</small>
+      ${artChips(tier)}
+      ${sealedFor(tier) ? `<div class="adSeal">🔒 SEALED — your guild must clear <span class="gdEm">${esc(tierName(cfg.unlockAfter))}</span> before it can open a raid here.</div>` : ""}
     </div>
     <h3 class="section">DUNGEON</h3><div class="adChoice">`;
     for (const k of tiers) {
-      html += `<button class="menuBtn${k === tier ? " gold" : ""}" onclick="gameRaidUI.openCreate(${js(k)})">${esc(tierName(k))}</button>`;
+      const locked = sealedFor(k);
+      html += `<button class="menuBtn${k === tier ? " gold" : ""}${locked ? " gdLockedBtn" : ""}" onclick="gameRaidUI.openCreate(${js(k)})"${locked ? ` title="Sealed to your guild" aria-label="${esc(tierName(k))} (sealed to your guild)"` : ""}>${locked ? "🔒 " : ""}${esc(tierName(k))}</button>`;
     }
     html += `</div>
     <h3 class="section">DELVE LEVEL</h3>
-    <div class="formRow"><input id="rcDelve" class="menuInput" type="number" min="0" max="${max}" value="0" />
-      <small class="muted">0 – ${max} (the leader's guild ladder for this dungeon)</small></div>
+    <div class="formRow"><label class="gdSr" for="rcDelve">Delve level</label><input id="rcDelve" class="menuInput" type="number" min="0" max="${max}" value="0" />
+      <small class="muted">0 = normal difficulty. ${max ? `You can pick up to ${max} (the highest your guild has unlocked here).` : "Your guild unlocks higher levels by beating this dungeon's target time."}</small></div>
     <h3 class="section">WHO MAY JOIN</h3><div class="adChoice">`;
     for (const k of Object.keys(PRIVACY)) {
       html += `<label class="adRadio"><input type="radio" name="rcPriv" value="${k}"${k === "allies" ? " checked" : ""}/> <b>${PRIVACY[k].label}</b><br/><small class="muted">${PRIVACY[k].desc}</small></label>`;
     }
     html += `</div>
     <h3 class="section">MINIMUM COMBAT MASTERY</h3>
-    <div class="formRow"><input id="rcMin" class="menuInput" type="number" min="0" max="99" value="0" /></div>
+    <div class="formRow"><label class="gdSr" for="rcMin">Minimum combat mastery</label><input id="rcMin" class="menuInput" type="number" min="0" max="99" value="0" />
+      <small class="muted">Players below this Combat Mastery level can't join. 0 = anyone.</small></div>
     <div class="flexRow">
       <button class="menuBtn gold" onclick="gameRaidUI.create(${js(tier)})">OPEN THE LOBBY</button>
       <button class="menuBtn" onclick="gameRaidUI.openBoard()">BACK</button>
@@ -538,6 +565,15 @@
 
     const ml = matLine(res.mats);
     if (ml) html += `<h3 class="section">MATERIALS</h3><div class="adChips">${ml}</div>`;
+    // THE SUNDERED CROWN §6.4: arts granted at the settle, and crown shards.
+    const A = (W.CROWN && W.CROWN.ARTS) || {};
+    const arts = Array.isArray(res.arts) ? res.arts.filter(a => a && A[a.id]) : [];
+    if (arts.length || (res.crownShards | 0) > 0) {
+      const what = (a) => a.result === "new" ? "NEW" : a.result === "rank" ? `RANK ${a.rank | 0}` : a.result === "melt" ? `+${a.shards | 0} shards` : "copy";
+      html += `<h3 class="section">CROWN ARTS</h3><div class="adChips">${arts.map(a => `<span class="scArtChip r-${esc(A[a.id].rarity)}">${rIco("art", a.id, 16) || "♛"}${esc(A[a.id].name)} <b>${what(a)}</b></span>`).join(" ")}
+        ${(res.crownShards | 0) > 0 ? `<span class="adChip" style="--c:#fde047">Crown Shard ×${res.crownShards | 0}</span>` : ""}</div>`;
+      if (res.artPity) html += `<p class="muted">The crown owed you one — twelve clears without an art guarantee the next.</p>`;
+    }
     const gems = res.gems || {};
     const gk = Object.keys(gems).filter(k => gems[k] > 0);
     if (gk.length) html += `<div class="adChips">${gk.map(k => `<span class="adChip" style="--c:${esc(gemColor(k))}">${esc(gemName(k))} ×${gems[k] | 0}</span>`).join(" ")}</div>`;

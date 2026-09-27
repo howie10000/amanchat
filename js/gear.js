@@ -141,7 +141,8 @@ function announceLoot(loot, gear) {
       toast(`<b style="color:${r.color}">${r.label}</b> — <b>${def.emoji} ${gEsc(def.name)}</b> was in the chest. ${gEsc(def.blurb)} Carry it at the Armory and press R in a dungeon.`, 11000);
       continue;
     }
-    toast(`<b style="color:${r.color}">${r.label}</b> drop — ${gEsc(ECON.gearName(it))} (${statLine(it)}). It's in your pack; the Armory is in the Adventurers Guild.`, 7000);
+    const kd = wkDef(wkKindOf(it));
+    toast(`<b style="color:${r.color}">${r.label}</b> drop — ${kd ? kd.emoji + " " : ""}${gEsc(ECON.gearName(it))}${kd ? " (" + gEsc(kd.label) + ")" : ""} (${statLine(it)}). It's in your pack; the Armory is in the Adventurers Guild.`, 7000);
   }
 }
 
@@ -174,7 +175,7 @@ function itemRow(item, opts) {
       <b>${adIcon("gear", item, 28, "", slot.emoji)} ${gEsc(ECON.gearName(item))}</b>
       <span class="gearTag" style="color:${r.color};border-color:${r.color}">${r.label}</span>
       <span class="muted">Lv ${item.lvl} ${slot.label}</span><br/>
-      <small>${statLine(item)}</small><br/>
+      <small>${statLine(item)}</small><br/>${wkHtml(item, true)}
       ${worn ? `<small class="muted">worth ${gMoney(ECON.gearSellValue(item))} if sold</small>` : compareToWorn(item)}
     </div>
     <div class="flexRow">
@@ -183,6 +184,48 @@ function itemRow(item, opts) {
         : `<button class="menuBtn green" onclick="gameGear.equip('${gEsc(item.id)}')">EQUIP</button>
            <button class="menuBtn red" onclick="gameGear.sell('${gEsc(item.id)}')">SELL ${gMoney(ECON.gearSellValue(item))}</button>`}
     </div></div>`;
+}
+
+// ---------------- WEAPONS: the kind of a weapon (docs/sundered-crown/WEAPONS.md) ----------------
+// Every melee / ranged piece is a KIND (sword, mace, spear, dagger, axe, scythe ·
+// gun, boomerang, blowdart, crossbow); the card shows what that kind does.
+function wkIsWeapon(it) { return !!it && (it.slot === "weapon" || it.slot === "ranged") && !ECON.isTome(it); }
+function wkKindOf(it) { return wkIsWeapon(it) && ECON.weaponKindOf ? ECON.weaponKindOf(it) : null; }
+function wkDef(kind) { return (ECON.WEAPON_KINDS && ECON.WEAPON_KINDS[kind]) || null; }
+// {hit, speed, reach, targets, special} for UI; hit = the kind's base hit before ATK.
+function wkNumbers(kind) {
+  const K = wkDef(kind);
+  if (!K) return null;
+  const hit = Math.round((K.hand === "ranged" ? 22 : 55) * K.dmg);
+  return { K, hit, speed: Math.round(600 / K.cd[0]) / 10, reach: Math.round(ECON.kindReach(kind, "maze")), boss: K.bossReach, targets: K.targets, special: K.special };
+}
+function wkChip(kind, extra) {
+  const K = wkDef(kind);
+  return K ? `<span class="adKindTag k-${K.hand}"${extra || ""}>${K.emoji} ${gEsc(K.label)}</span>` : "";
+}
+function wkHtml(it, compact) {
+  const kind = wkKindOf(it), n = kind && wkNumbers(kind);
+  if (!n) return "";
+  return `<div class="adKind">${wkChip(kind)}
+    <span class="adKindStats" title="Base hit before attack power · attacks per second · reach in the maze (vs bosses: ${n.boss}px) · most foes per swing / shot">
+      hit <b>${n.hit}</b> · <b>${n.speed}</b>/s · reach <b>${n.reach}</b> · <b>${n.targets}</b> ${n.targets === 1 ? "foe" : "foes"}</span>
+    ${compact ? "" : `<small class="adKindSp">${gEsc(n.special)}</small>`}</div>`;
+}
+// What swapping `item` into its hand does to that hand: kind and damage.
+function wkCompare(item, worn) {
+  if (!wkIsWeapon(item) || !ECON.handAttackMult) return [];
+  const hand = item.slot === "ranged" ? "ranged" : "melee";
+  const out = [];
+  const k0 = worn ? wkKindOf(worn) : (hand === "ranged" ? "gun" : "sword"), k1 = wkKindOf(item);
+  if (k0 !== k1) out.push(`<span class="adKindSwap">${wkChip(k0)} → ${wkChip(k1)}</span>`);
+  try {
+    const cur = gearEquippedItems(), next = cur.filter(it => it.slot !== item.slot).concat([item]);
+    const n0 = wkNumbers(k0), n1 = wkNumbers(k1);
+    const d0 = ECON.handAttackMult(cur, hand) * n0.hit, d1 = ECON.handAttackMult(next, hand) * n1.hit;
+    const pct = d0 > 0 ? (d1 - d0) / d0 : 0;
+    if (Math.abs(pct) > 0.005) out.push(`<span class="${pct > 0 ? "up" : "dn"}">${pct > 0 ? "+" : "−"}${Math.round(Math.abs(pct) * 100)}% per hit (${hand})</span>`);
+  } catch (e) { /* older ECON */ }
+  return out;
 }
 
 // ---------------- Armory v2: shared item-card helpers ----------------
@@ -215,7 +258,7 @@ function adModText(m) {
   if (!def) return "";
   if (m.k === "resonance") return "Resonance: +5% to every other mod";
   if (m.k === "dashCd") return "-" + adPct(m.v) + " Dash cooldown";
-  const effective = (m.k === "lifesteal" || m.k === "regen") ? m.v * ECON.ITEM_HEALING_MULT : m.v;
+  const effective = m.k === "lifesteal" ? m.v * (ECON.LIFESTEAL_MULT != null ? ECON.LIFESTEAL_MULT : ECON.ITEM_HEALING_MULT) : m.k === "regen" ? m.v * ECON.ITEM_HEALING_MULT : m.v;
   if (!def.pct) return "+" + (Math.round((+effective || 0) * 100) / 100) + " " + def.label;
   return "+" + adPct(effective) + " " + def.label;
 }
@@ -224,17 +267,21 @@ const AD_FX_LABEL = {
   execute: "Damage to wounded (<30%)", lifesteal: "Lifesteal", thorns: "Thorns", maxHpPct: "Max HP",
   moveSpeed: "Move speed", dashDist: "Dash distance", magicFind: "Magic find", matFind: "Material find",
   defPct: "Defence", atkPct: "Attack", critIgnite: "Crits ignite for extra damage",
+  // THE SUNDERED CROWN (S16)
+  staggerDmg: "Damage to staggered bosses", artPower: "Crown Art power",
 };
+// Reductions read as a minus: "-12% Dash cooldown", "-15% Crown Art cooldown".
+const AD_FX_CD = { dashCd: "Dash cooldown", artCd: "Crown Art cooldown" };
 // Human lines for any fx object (unique signature, set bonus, rune, totals).
 function adFxLines(fx, effective = false) {
   const out = [];
   if (!fx || typeof fx !== "object") return out;
   for (const k of Object.keys(fx)) {
-    const v = !effective && (k === "lifesteal" || k === "regen") ? fx[k] * ECON.ITEM_HEALING_MULT : fx[k];
+    const v = effective ? fx[k] : k === "lifesteal" ? fx[k] * (ECON.LIFESTEAL_MULT != null ? ECON.LIFESTEAL_MULT : ECON.ITEM_HEALING_MULT) : k === "regen" ? fx[k] * ECON.ITEM_HEALING_MULT : fx[k];
     if (v == null || v === 0 || k === "sets") continue;
     if (AD_FX_LABEL[k] && typeof v === "number") out.push("+" + adPct(v) + " " + AD_FX_LABEL[k]);
     else if (k === "regen" && typeof v === "number") out.push("+" + (Math.round(v * 10) / 10) + " HP regen /s");
-    else if (k === "dashCd" && typeof v === "number") out.push("-" + adPct(v) + " Dash cooldown");
+    else if (AD_FX_CD[k] && typeof v === "number") out.push("-" + adPct(v) + " " + AD_FX_CD[k]);
     else if (k === "vaultExtraRoll" && typeof v === "number") out.push("+" + v + " extra roll from vault chests");
     else if (k === "takenMult" && typeof v === "number") { if (v < 1) out.push("Take " + adPct(1 - v) + " less damage"); }
     else if (k === "darkSight") { if (v) out.push("See clearly in the dark"); }
@@ -316,12 +363,12 @@ function adCompare(item) {
     const cur = gearEquippedItems();
     const next = cur.filter(it => it.slot !== item.slot).concat([item]);
     const f0 = ECON.gearFx(cur), f1 = ECON.gearFx(next);
-    for (const k of Object.keys(AD_FX_LABEL).concat(["regen", "dashCd"])) {
+    for (const k of Object.keys(AD_FX_LABEL).concat(["regen"], Object.keys(AD_FX_CD))) {
       const d = (+f1[k] || 0) - (+f0[k] || 0);
       if (Math.abs(d) < 1e-4) continue;
       const good = d > 0;
       const txt = k === "regen" ? (good ? "+" : "−") + (Math.round(Math.abs(d) * 10) / 10) + " regen/s"
-        : k === "dashCd" ? (good ? "−" : "+") + adPct(Math.abs(d)) + " dash cooldown"
+        : AD_FX_CD[k] ? (good ? "−" : "+") + adPct(Math.abs(d)) + " " + AD_FX_CD[k].toLowerCase()
         : (good ? "+" : "−") + adPct(Math.abs(d)) + " " + AD_FX_LABEL[k];
       parts.push(`<span class="${good ? "up" : "dn"}">${gEsc(txt)}</span>`);
     }
@@ -336,8 +383,18 @@ function adCompare(item) {
       if ((f1.sets || {})[sid] == null && was >= 2) parts.push(`<span class="dn">breaks ${gEsc(ECON.GEAR_SETS[sid].name)} (${was >= 4 ? 4 : 2})</span>`);
     }
   } catch (e) { /* ECON without gearFx — stats alone */ }
+  parts.unshift(...wkCompare(item, worn));
   if (!worn) parts.unshift(`<span class="up">empty slot</span>`);
-  return `<div class="adCmp"><small class="muted">vs worn:</small> ${parts.length ? parts.join(" ") : `<span class="muted">same</span>`}</div>`;
+  // A one-word verdict first (GUI-AUDIT C4): is this an upgrade over what you wear in that slot?
+  let verdict = "";
+  try {
+    const pa = ECON.gearPower(item), pb = worn ? ECON.gearPower(worn) : -1;
+    verdict = !worn ? `<span class="gdVerdict up" title="Nothing is worn in this slot">▲ FILLS AN EMPTY SLOT</span>`
+      : pa > pb ? `<span class="gdVerdict up" title="Higher total power than what you wear">▲ UPGRADE</span>`
+      : pa < pb ? `<span class="gdVerdict dn" title="Lower total power than what you wear">▼ WEAKER</span>`
+      : `<span class="gdVerdict eq">= SAME POWER</span>`;
+  } catch (e) { verdict = ""; }
+  return `<div class="adCmp">${verdict}<small class="muted">vs worn:</small> ${parts.length ? parts.join(" ") : `<span class="muted">same</span>`}</div>`;
 }
 // The v2 item card. opts: {worn, compact, actions:false, extraActions, reveal}
 function adCard(item, opts) {
@@ -371,8 +428,9 @@ function adCard(item, opts) {
   let acts = "";
   if (opts.actions === "extra") acts = opts.extraActions || "";
   else if (opts.actions !== false) {
-    const forge = `<button class="menuBtn adBtnForge" onclick="gameForge&&gameForge.open('${id}')" title="Enhance, reforge, socket">⚒</button>`;
-    const lock = `<button class="menuBtn gray adLockBtn" onclick="gameGear.toggleLock('${id}')" title="${it.lock ? "Unlock" : "Lock: it can't be sold or salvaged"}">${it.lock ? "🔒" : "🔓"}</button>`;
+    // Icon + word: the bare ⚒ / 🔓 buttons were unreadable to new players (GUI-AUDIT C4).
+    const forge = `<button class="menuBtn adBtnForge" onclick="gameForge&&gameForge.open('${id}')" title="Enhance, reforge, socket" aria-label="Upgrade this piece in the Forge">⚒<span class="gdBtnTxt">FORGE</span></button>`;
+    const lock = `<button class="menuBtn gray adLockBtn" onclick="gameGear.toggleLock('${id}')" title="${it.lock ? "Unlock" : "Lock: it can't be sold or salvaged"}" aria-label="${it.lock ? "Unlock this piece" : "Lock this piece so it can't be sold or salvaged"}">${it.lock ? "🔒" : "🔓"}<span class="gdBtnTxt">${it.lock ? "LOCKED" : "LOCK"}</span></button>`;
     acts = worn
       ? `<button class="menuBtn gray" onclick="gameGear.unequip('${gEsc(it.slot)}')">TAKE OFF</button>${forge}${lock}`
       : `<button class="menuBtn green" onclick="gameGear.equip('${id}')">EQUIP</button>
@@ -392,9 +450,10 @@ function adCard(item, opts) {
         <span class="adRBadge">${r.label}</span>
         ${uq ? `<span class="adUqBadge">UNIQUE</span>` : ""}
         ${set ? `<span class="adSetBadge">SET ${setN}/5</span>` : ""}
-        <span class="adIlvl">iLvl ${it.lvl} ${gEsc(slot.label)}</span>
+        <span class="adIlvl"${window.gameGuide && gameGuide.explain ? ` role="button" tabindex="0" data-gd-term="ilvl"` : ""}>iLvl ${it.lvl} ${gEsc(slot.label)}</span>
       </div>
       <div class="adIStats">${statHtml}</div>
+      ${wkHtml(it, !!opts.compact)}
       ${mods ? `<ul class="adMods">${mods}</ul>` : ""}
       ${uqLines.length ? `<div class="adUqFx">${uqLines.map(l => `<div>✦ ${gEsc(l)}</div>`).join("")}</div>` : ""}
       ${set && !opts.compact ? adSetBox(it.set, it.slot) : ""}
@@ -431,6 +490,7 @@ function armoryNav() {
     ${tab("gear", "ARMORY")}${tab("sets", "SETS")}${tab("lost", "LOST &amp; FOUND" + (lost ? ` <span class="adPill">${lost}</span>` : ""))}
     <span class="adNavGap"></span>
     <button class="menuBtn adNavForge" onclick="window.gameForge&&gameForge.open()">⚒ ARCANE FORGE</button>
+    <button class="menuBtn scNavArts" onclick="window.gameArtsUI?gameArtsUI.open():toast('The Crown Arts arrive with the update.')">♛ CROWN ARTS</button>
     <button class="menuBtn adNavCodex" onclick="window.gameCodex&&gameCodex.open('codex')">📖 CODEX</button>
     <button class="menuBtn adNavDelver" onclick="window.gameCodex&&gameCodex.open('delver')">✧ DELVER RANK</button>
   </div>`;
@@ -450,6 +510,16 @@ function walletRow() {
     ${gems ? `<span class="adMat" style="--mc:#f472b6"><i></i>Gems <b>${gems}</b></span>` : ""}</div>`;
 }
 
+// The two hands: what each holds and the attack power it swings with.
+function wkHandsLine() {
+  if (!ECON.handAttackMult) return "";
+  const items = gearEquippedItems();
+  const hand = (h) => {
+    const it = equippedItem(h === "ranged" ? "ranged" : "weapon"), kind = it ? wkKindOf(it) : (h === "ranged" ? "gun" : "sword");
+    return `${wkChip(kind)} x${ECON.handAttackMult(items, h).toFixed(2)}`;
+  };
+  return `<small class="adHands">1 ${hand("melee")} · 2 ${hand("ranged")}</small>`;
+}
 function renderArmory(tab) {
   if (tab) armoryTab = tab;
   const t = totals();
@@ -459,9 +529,9 @@ function renderArmory(tab) {
   const junk = loose.filter(isJunk);
   const junkValue = junk.reduce((s, it) => s + ECON.gearSellValue(it), 0);
 
-  let html = `<p>Everything the dungeons dropped. One piece per slot; the rest sits in your pack until you sell it.</p>
+  let html = `<p>Everything the dungeons dropped. Wear one piece per slot; the rest waits in your pack until you equip, forge or sell it. ${window.gameGuide && gameGuide.helpBtn ? gameGuide.helpBtn("armory") : ""}</p>
     <div class="statRow">
-      <div class="statBox"><small>ATTACK</small><b>+${t.atk} <span class="muted">(x${attackMult().toFixed(2)} dmg)</span></b></div>
+      <div class="statBox"><small>ATTACK</small><b>+${t.atk} <span class="muted">(x${attackMult().toFixed(2)} dmg)</span></b>${wkHandsLine()}</div>
       <div class="statBox"><small>DEFENCE</small><b>+${t.def} <span class="muted">(-${Math.round(mitigation() * 100)}% taken)</span></b></div>
       <div class="statBox"><small>VITALITY</small><b>+${t.vit} <span class="muted">(${maxHp()} HP)</span></b></div>
       <div class="statBox"><small>PACK</small><b>${loose.length + wornIds.size}/${gearView.packMax}</b></div>
@@ -480,8 +550,11 @@ function renderArmory(tab) {
       : `<div class="gearItem gearEmpty"><div class="info"><b>${info.emoji} ${info.label}</b><br/>
            <small class="muted">${slot === ECON.TOME_SLOT
              ? "empty — a guild dungeon's chest can hold one"
+             : slot === "weapon" ? "empty — key 1 swings a plain sword"
+             : slot === "ranged" ? "empty — key 2 fires the old pistol (a gun)"
              : "empty — nothing equipped"}</small></div></div>`;
   }
+  html += `<p class="muted">Two hands: key <b>1</b> swings your <b>melee</b> weapon, key <b>2</b> uses your <b>ranged</b> one. Each is a kind — a mace smashes, a spear pierces a line, a dagger stabs twice as fast, an axe cleaves the wounded, a scythe reaps a wide circle; a boomerang comes back, a blowdart reaches farthest, a crossbow bolt pierces. Each hand swings with its own weapon's attack (the other weapon's ATK does not count). Boss chests can hold a boss weapon of any kind.</p>`;
   html += `<p class="muted">A tome takes its own slot and adds no stats. It does one thing: press <b>R</b> once per dungeon run and everyone in the room gets the effect. Only the chest at the end of a <b>guild</b> dungeon can hold one.</p>`;
   if (state.isMayor) html += staffGrantPanel();
 
@@ -566,6 +639,7 @@ function renderLostTab() {
 function openArmory(tab) {
   if (typeof tab !== "string") tab = undefined;
   openMenu("THE ARMORY", renderArmory(tab));
+  if (window.gameGuide && gameGuide.autoTour && Object.keys(gearView.gear || {}).length) gameGuide.autoTour("armory");
 }
 
 // ---------------- the staff bench ----------------
@@ -715,5 +789,6 @@ window.gameGear = {
   // Card helpers shared with forge.js / codex.js / loot-reveal.js
   ui: { esc: gEsc, money: gMoney, card: adCard, legacyRow: itemRow, isV2: adIsV2, rar: adRar, rarIdx: adRarIdx, pct: adPct,
         title: adTitle, modText: adModText, fxLines: adFxLines, gem: adGemInfo, gemPip: adGemPip, matName: adMatName,
-        matColor: adMatColor, matIco: adMatIco, icon: adIcon, dungeonName: adDungeonName, bossName: adBossName, setBox: adSetBox, statLine, isJunk },
+        matColor: adMatColor, matIco: adMatIco, icon: adIcon, dungeonName: adDungeonName, bossName: adBossName, setBox: adSetBox, statLine, isJunk,
+        kindOf: wkKindOf, kindHtml: wkHtml, kindChip: wkChip, kindNumbers: wkNumbers },
 };

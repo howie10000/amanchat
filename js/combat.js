@@ -126,6 +126,7 @@ async function startDungeon(tier, party, joining, opts) {
   { const tut = document.getElementById("tutorial"); if (tut) tut.classList.add("hidden"); }
   const d = state.dungeon;
   if (cfg.guild && window.gameDepths) gameDepths.refreshStatus();
+  if (cfg.guild && window.gameCrownArts) gameCrownArts.refresh(true);
   toast(d.endless ? `The Arcane Depths open beneath you${d.weekly ? " (this week's descent)" : ""}. There is no bottom.`
     : `Entered ${cfg.name}${d.delve ? ` at Delve ${d.delve}` : ""} — explore the passages to find its guardian.`, 4500);
   updateHUD();
@@ -165,6 +166,7 @@ async function resumeGuildRunIfAny() {
   state.hp = state.maxHp;
   state.questReward = cfg.reward;
   state.swingT = 0;
+  if (window.gameCrownArts) gameCrownArts.refresh(true);
   if (run.continuous) {
     state.dungeon.plan = withServerHp(res.state);
     if (window.gameDepths) gameDepths.applyStatus(res);
@@ -435,6 +437,8 @@ function takePlayerDamage(amount, sourceId) {
     if (G && amount > 0 && Math.random() < 0.3) G.floatText(state.pos.x, state.pos.y - 26, "DODGE", "#a5f3fc", { size: 12, dur: 600 });
     return;
   }
+  // A Crown Art riposte stance eats the hit whole and answers it.
+  if (amount > 0 && state.area === "dungeon" && window.gameCrownArts && typeof gameCrownArts.absorb === "function" && gameCrownArts.absorb(amount, sourceId)) return;
   // Armour is applied here, once, rather than at each of the dozen places that
   // can hurt you — so a new hazard is protected against for free.
   if (window.gameGear) amount *= (1 - gameGear.mitigation());
@@ -570,10 +574,12 @@ function updateDungeon() {
   // The dash: Shift (or the touch button). Edge-triggered so holding it
   // does not chain dashes.
   const shift = !!keys["shift"];
-  if (shift && !_shiftHeld) tryDash(dx, dy);
+  // Roots (entangle, vinecallers, nets) hold your feet, not your sword.
+  const rooted = !!(state.rootedUntil && Date.now() < state.rootedUntil && !downed);
+  if (shift && !_shiftHeld && !rooted) tryDash(dx, dy);
   _shiftHeld = shift;
   if (state.dash) stepDash();
-  else if ((dx || dy) && !(downed && !(G && G.isSpectator()))) {
+  else if ((dx || dy) && !rooted && !(downed && !(G && G.isSpectator()))) {
     const speed = downed ? WALK_SPEED * 0.9 : WALK_SPEED * playerSpeedMult(); // Rage is what makes this fast
     const nx = state.pos.x + (dx/m) * speed;
     const ny = state.pos.y + (dy/m) * speed;
@@ -602,6 +608,14 @@ function updateDungeon() {
     const held = d.cine || d.phaseCine || (d.boss && d.boss.status === "reviving");
     if (!held) updateBossAttacks();
     if (!state.dungeon) return;
+    // The Sundered Crown's moving bosses: poses at display rate, body moves
+    // resolved against you (never during a cutscene).
+    const CB = window.gameCrownBoss;
+    if (CB && CB.active()) {
+      CB.update(held ? null : crownMe(), CROWN_HOOKS);
+      if (!state.dungeon) return;
+      if (CB.takeWallsDirty()) rebuildArenaWalls();
+    }
     // Summoned adds run the same brain as the maze, homing in directly.
     const adds = d.arenaEnemies || [];
     for (const e of adds) if (stepEnemy(e, adds, true) === false) return;
@@ -618,7 +632,17 @@ function updateDungeon() {
       if (Math.hypot(state.pos.x - ex.x, state.pos.y - ex.y) < 34) { if (d.continuous) gameExpedition.leave(); else advanceGuildFloor(); }
     }
     if (d.tracers && d.tracers.length) {
-      for (const tr of d.tracers) { tr.x += tr.vx; tr.y += tr.vy; tr.life--; }
+      for (const tr of d.tracers) {
+        if (tr.boom) {
+          // WEAPONS: a boomerang strikes when it reaches the target, and
+          // again when it comes home (the server allows exactly that cadence).
+          const wasBack = tr.back, done = boomerangStep(tr, state.pos.x, state.pos.y);
+          if (tr.back && !wasBack) bossAttackAt(tr.ax, tr.ay);
+          if (done) { tr.life = 0; bossAttackAt(tr.ax, tr.ay); if (window.gameWeapons && gameWeapons.setInFlight) gameWeapons.setInFlight(false); }
+          continue;
+        }
+        tr.x += tr.vx; tr.y += tr.vy; tr.life--;
+      }
       d.tracers = d.tracers.filter(tr => tr.life > 0);
     }
     state.particles = state.particles.filter(p => p.life > 0);
@@ -630,27 +654,34 @@ function updateDungeon() {
   for (const e of state.enemies) if (stepEnemy(e, state.enemies, false) === false) return;
   // Player bullets
   for (const b of state.bullets) {
+    // WEAPONS: a boomerang flies its own out-and-back path (stepShotBoomerang).
+    if (b.boom) { stepShotBoomerang(b); continue; }
     const nx = b.x + b.vx, ny = b.y + b.vy;
-    if (collidesWalls(nx, ny, 3)) { b.life = 0; continue; }
+    if (collidesWalls(nx, ny, 3)) { b.life = 0; flushShot(b); continue; }
     b.x = nx; b.y = ny; b.life--;
     for (const e of state.enemies) {
       if (e.gone || (e.ai === "mimic" && !e.awake)) continue;
+      if (b.hitIds && b.hitIds.includes(e.id)) continue;     // a piercing bolt strikes each foe once
       if (Math.hypot(b.x - e.x, b.y - e.y) < e.size + 4) {
+        if (guardBlocks(e, b.x - b.vx * 6, b.y - b.vy * 6)) { blockedFx(e); b.life = 0; break; }
         const isGuild = !!state.dungeon.cfg.guild;
-        const dmg = isGuild ? b.dmg : localHitDamage(b.dmg, e);
+        const dmg = isGuild ? b.dmg : localHitDamage(b.dmg, e, b.kind);
         if (!isGuild || !e.shield) e.hp -= dmg;
-        reportEnemyHits([e.id], "pistol");
+        // The gun reports each hit at once (as it always has); a dart / bolt
+        // reports its hits when it stops, so a pierce is ONE server swing.
+        if (b.hitIds) b.hitIds.push(e.id); else reportEnemyHits([e.id], "pistol");
         onLocalHit(e, dmg, !isGuild);
         e.hitFlash = 6;
         wakeEnemy(e); e.lurking = false;
-        const k = 1.5;
+        const k = b.knock || 1.5;
         e.kbX += (b.vx / Math.hypot(b.vx, b.vy)) * k;
         e.kbY += (b.vy / Math.hypot(b.vx, b.vy)) * k;
-        b.life = 0;
+        if (!b.hitIds || b.hitIds.length > (b.pierce | 0)) b.life = 0;
         addParticles(e.x, e.y, e.color, 5);
         break;
       }
     }
+    if (b.life <= 0) flushShot(b);
   }
   state.bullets = state.bullets.filter(b => b.life > 0);
   if (stepEnemyBullets() === false) return;
@@ -733,6 +764,7 @@ function stepEnemyBullets() {
       b.life = 0;
       takePlayerDamage(b.dmg, b.src);
       if (b.bleed && window.gameDepths) gameDepths.bleed(3, 4000);
+      if (b.net) rootPlayer(b.net);
       if (playerDead()) return false;
     }
   }
@@ -746,6 +778,59 @@ function stepEnemyBullets() {
 // false when the player died and the caller must stop.
 const _PROTECTED = /^(m\d|g0|vk|t\d|add|ls|r\d)/;
 function isProtectedEnemy(e) { return !!(e.elite || e.treasure || e.trial || e.arena || _PROTECTED.test(String(e.id))); }
+// Guard mobs (hoplite, mirror knight, crownguard): a strike from inside the
+// shield's front arc is blocked — client-enforced by not reporting it (§3.3).
+function guardBlocks(e, fromX, fromY) {
+  if (!e || e.ai !== "guard" || e.face == null || e.bashT > 0) return false;
+  const T = ENEMY_TYPES[e.type] || {};
+  const a = Math.atan2(fromY - e.y, fromX - e.x);
+  return Math.abs(DepthsCore.angleDiff(e.face, a)) <= (T.blockArc || 2.4) / 2;
+}
+function blockedFx(e) {
+  e.blockFlash = 10;
+  const G = window.gameDepths;
+  if (G && Date.now() - (e._blockTxt || 0) > 500) { e._blockTxt = Date.now(); G.floatText(e.x, e.y - 26, "BLOCKED", "#e2e8f0", { size: 11, dur: 600 }); }
+  if (G) G.burst(e.x + Math.cos(e.face) * e.size, e.y + Math.sin(e.face) * e.size, ["#fde68a", "#e2e8f0"], 5, { speed: 3, life: 16 });
+}
+// How visible an enemy is (the masked courtier fades out at range).
+function enemyAlpha(e) { return e && e.ai === "phaser" ? (e.vis == null ? 0.06 : e.vis) : 1; }
+// The new mobs' tells, drawn over whatever js/mobs.js drew for the body.
+function drawEnemyTells(ctx, e, t) {
+  if (!e || e.hp <= 0) return;
+  const TAU = Math.PI * 2;
+  if (e.chWarn > 0 || e.pWarn > 0) {
+    const ang = e.chWarn > 0 ? e.chAng : e.pAng, T = ENEMY_TYPES[e.type] || {};
+    const len = e.chWarn > 0 ? (T.chargeSpeed || 7.5) * (T.chargeFrames || 26) : (T.pounceSpeed || 9) * (T.pounceFrames || 16);
+    const k = e.chWarn > 0 ? 1 - e.chWarn / (T.chargeWarn || 40) : 1 - e.pWarn / (T.pounceWarn || 28);
+    ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(ang);
+    ctx.fillStyle = "#ef4444"; ctx.globalAlpha = 0.12 + 0.2 * k; ctx.fillRect(0, -e.size, len, e.size * 2);
+    ctx.globalAlpha = 0.28; ctx.fillRect(0, -e.size, len * k, e.size * 2);
+    ctx.globalAlpha = 0.8; ctx.strokeStyle = "#f87171"; ctx.lineWidth = 1.5; ctx.strokeRect(0, -e.size, len, e.size * 2);
+    ctx.restore();
+  }
+  if (e.rootWarn > 0 && e.rootAt) {
+    const T = ENEMY_TYPES[e.type] || {}, R = T.rootR || 44, k = 1 - e.rootWarn / (T.rootWarn || 50);
+    ctx.save(); ctx.globalAlpha = 0.15 + 0.25 * k; ctx.fillStyle = "#15803d";
+    ctx.beginPath(); ctx.arc(e.rootAt.x, e.rootAt.y, R, 0, TAU); ctx.fill();
+    ctx.globalAlpha = 0.9; ctx.strokeStyle = "#bef264"; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(e.rootAt.x, e.rootAt.y, R, -Math.PI / 2, -Math.PI / 2 + TAU * k); ctx.stroke();
+    ctx.restore();
+  }
+  if (e.netWarn > 0) {
+    ctx.save(); ctx.strokeStyle = "#5eead4"; ctx.globalAlpha = 0.7; ctx.setLineDash([6, 6]); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.lineTo(e.x + Math.cos(e.netAng) * 220, e.y + Math.sin(e.netAng) * 220); ctx.stroke(); ctx.restore();
+  }
+  if (e.ai === "guard" && e.face != null) {
+    const T = ENEMY_TYPES[e.type] || {}, arc = T.blockArc || 2.4;
+    ctx.save(); ctx.strokeStyle = e.blockFlash > 0 ? "#fff" : "#fde68a"; ctx.globalAlpha = e.blockFlash > 0 ? 0.95 : 0.5; ctx.lineWidth = e.blockFlash > 0 ? 5 : 3;
+    ctx.beginPath(); ctx.arc(e.x, e.y, e.size + 7, e.face - arc / 2, e.face + arc / 2); ctx.stroke(); ctx.restore();
+    if (e.blockFlash > 0) e.blockFlash--;
+  }
+  if (e.bashT > 0 || e.atkT > 0) {
+    ctx.save(); ctx.globalAlpha = 0.5; ctx.strokeStyle = "#f87171"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(e.x, e.y, e.size + 26, 0, TAU); ctx.stroke(); ctx.restore();
+  }
+}
 function wakeEnemy(e) {
   if (e.awake) return;
   e.awake = true;
@@ -1030,6 +1115,132 @@ function stepEnemy(e, list, arena) {
     e.lungeT = (e.lungeT + 1) % 150;
     walkPath(e.lungeT < 30 ? 1.8 : 1);
     if (contact(40) === false) return false;
+  } else if (e.ai === "charger") {
+    // The Sundered Crown (§3.3): a boar / oathbreaker. It plants, glares down a
+    // lane (the tell), then thunders along it — the lane is locked, sidestep.
+    if (e.chT > 0) {
+      e.chT--;
+      const bx = e.x, by = e.y;
+      moveWithWalls(e, e.x + e.dvx, e.y + e.dvy, e.size);
+      if (!e.chHit && !ghost && d < e.size + 16) { e.chHit = true; hitPlayer(e, enemyDmg(e) * 1.3); if (playerDead()) return false; }
+      if (G && (e.chT & 1)) G.burst(e.x, e.y + e.size * 0.6, ["#a8a29e", "#57534e"], 1, { speed: 1, life: 18 });
+      if (Math.hypot(e.x - bx, e.y - by) < 0.5) e.chT = 0;          // hit a wall
+      if (e.chT === 0) e.tired = 34;
+    } else if (e.chWarn > 0) {
+      if (--e.chWarn === 0) {
+        const sp = T.chargeSpeed || 7.5;
+        e.dvx = Math.cos(e.chAng) * sp; e.dvy = Math.sin(e.chAng) * sp;
+        e.chT = T.chargeFrames || 26; e.chHit = false;
+      }
+    } else if (e.tired > 0) {
+      e.tired--;
+    } else {
+      walkPath(1);
+      if (contact(45) === false) return false;
+      if (e.chCd == null) e.chCd = 60 + Math.floor(Math.random() * (T.chargeCd || 180));
+      if (--e.chCd <= 0 && !ghost && d > 70 && d < 360 && LOS()) {
+        e.chCd = Math.round((T.chargeCd || 180) * frz);
+        e.chWarn = T.chargeWarn || 40; e.chAng = Math.atan2(ey, ex);
+      }
+    }
+  } else if (e.ai === "spore") {
+    // A sporecap: it shuffles closer and puffs a slowing cloud around itself.
+    walkPath(0.8);
+    if (contact(50) === false) return false;
+    if (e.spCd == null) e.spCd = 40 + Math.floor(Math.random() * (T.sporeCd || 200));
+    if (--e.spCd <= 0 && !ghost && d < (T.sporeR || 80) * 2.4) {
+      e.spCd = Math.round((T.sporeCd || 200) * frz);
+      e.puffAt = now;
+      if (G) {
+        G.addPool({ x: e.x, y: e.y, r: T.sporeR || 80, until: now + (T.sporeFrames || 150) * 16.7, slow: T.slow || 0.5, kind: "spore" });
+        G.burst(e.x, e.y, ["#ca8a04", "#fde68a", "#a3e635"], 18, { speed: 2.4, life: 40, up: 0.4 });
+      }
+    }
+  } else if (e.ai === "rooter") {
+    // A vinecaller: keeps its distance and calls roots up under you — the
+    // green circle is the tell, step out of it.
+    const ideal = T.ideal || 220, clear = LOS();
+    if (!clear) walkPath(0.9);
+    else if (d < ideal - 30) moveWithWalls(e, e.x - (ex / d) * spd, e.y - (ey / d) * spd, e.size);
+    else if (d > ideal + 30) moveWithWalls(e, e.x + (ex / d) * spd * 0.7, e.y + (ey / d) * spd * 0.7, e.size);
+    if (e.rootWarn > 0) {
+      if (--e.rootWarn === 0 && e.rootAt) {
+        const R = T.rootR || 44;
+        if (G) G.burst(e.rootAt.x, e.rootAt.y, ["#15803d", "#65a30d", "#bef264"], 16, { speed: 3 });
+        if (!ghost && Math.hypot(px - e.rootAt.x, py - e.rootAt.y) < R + 10) {
+          hitPlayer(e, enemyDmg(e));
+          rootPlayer((T.rootFrames || 70) * 16.7);
+          if (playerDead()) return false;
+        }
+        e.rootAt = null;
+      }
+    } else {
+      if (e.rtCd == null) e.rtCd = 60 + Math.floor(Math.random() * (T.rootCd || 240));
+      if (--e.rtCd <= 0 && clear && !ghost && d < e.sight) {
+        e.rtCd = Math.round((T.rootCd || 240) * frz);
+        e.rootWarn = T.rootWarn || 50; e.rootAt = { x: px, y: py };
+      }
+    }
+  } else if (e.ai === "guard") {
+    // Hoplites, mirror knights, crownguard: a shield up front that turns only
+    // slowly. Swings into the front arc are blocked (see doAttack); flank it.
+    const want = Math.atan2(ey, ex);
+    if (e.face == null) e.face = want;
+    e.face += Math.max(-(T.turn || 0.06), Math.min(T.turn || 0.06, DepthsCore.angleDiff(e.face, want)));
+    walkPath(1);
+    if (e.bashT > 0) {
+      if (--e.bashT === 0 && !ghost && d < e.size + 30 && Math.abs(DepthsCore.angleDiff(e.face, want)) < 1.2) { hitPlayer(e, enemyDmg(e)); if (playerDead()) return false; }
+    } else if (e.shootCd <= 0 && d < e.size + 26 && !ghost) { e.bashT = 18; e.shootCd = Math.round(70 * frz); }
+  } else if (e.ai === "netter") {
+    // A retiarius: dances at range and throws a weighted net that roots you.
+    const ideal = T.ideal || 200, clear = LOS();
+    if (!clear) walkPath(0.9);
+    else if (d < ideal - 30) moveWithWalls(e, e.x - (ex / d) * spd, e.y - (ey / d) * spd, e.size);
+    else if (d > ideal + 30) moveWithWalls(e, e.x + (ex / d) * spd * 0.7, e.y + (ey / d) * spd * 0.7, e.size);
+    else { const s = Math.sin(now / 700 + e.x) > 0 ? 1 : -1; moveWithWalls(e, e.x - ey / d * spd * 0.5 * s, e.y + ex / d * spd * 0.5 * s, e.size); }
+    if (e.netWarn > 0) {
+      if (--e.netWarn === 0 && !ghost) {
+        const sp = T.netSpeed || 6, a = e.netAng;
+        state.enemyBullets.push({ x: e.x, y: e.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 90, dmg: enemyDmg(e) * 0.6, color: "#5eead4", src: e.id, net: (T.netFrames || 60) * 16.7 });
+      }
+    } else {
+      if (e.ntCd == null) e.ntCd = 50 + Math.floor(Math.random() * (T.netCd || 220));
+      if (--e.ntCd <= 0 && clear && !ghost && d < e.sight) { e.ntCd = Math.round((T.netCd || 220) * frz); e.netWarn = T.netWarn || 40; e.netAng = Math.atan2(ey, ex); }
+    }
+  } else if (e.ai === "pounce") {
+    // An ash lion: stalks in, crouches (the tell), and leaps.
+    if (e.lpT > 0) {
+      e.lpT--;
+      moveWithWalls(e, e.x + e.dvx, e.y + e.dvy, e.size);
+      if (!e.lpHit && !ghost && d < e.size + 16) { e.lpHit = true; hitPlayer(e, enemyDmg(e) * 1.2); if (playerDead()) return false; }
+    } else if (e.pWarn > 0) {
+      if (--e.pWarn === 0) { const sp = T.pounceSpeed || 9; e.dvx = Math.cos(e.pAng) * sp; e.dvy = Math.sin(e.pAng) * sp; e.lpT = T.pounceFrames || 16; e.lpHit = false; }
+    } else {
+      walkPath(1);
+      if (contact(45) === false) return false;
+      if (e.pCd == null) e.pCd = 40 + Math.floor(Math.random() * (T.pounceCd || 150));
+      if (--e.pCd <= 0 && !ghost && d > 60 && d < 230 && LOS()) { e.pCd = Math.round((T.pounceCd || 150) * frz); e.pWarn = T.pounceWarn || 28; e.pAng = Math.atan2(ey, ex); }
+    }
+  } else if (e.ai === "mirror") {
+    // A reflection: it copies your movement mirrored left-right — step
+    // toward it and it steps toward you; run and it runs the other way.
+    if (e.lpx == null) { e.lpx = px; e.lpy = py; }
+    const mdx = px - e.lpx, mdy = py - e.lpy;
+    e.lpx = px; e.lpy = py;
+    if (Math.abs(mdx) + Math.abs(mdy) < 40 && !ghost) moveWithWalls(e, e.x - mdx * 0.95, e.y + mdy * 0.95, e.size);
+    if (d > 260 || !LOS()) walkPath(0.7);
+    else if (d < 160) moveWithWalls(e, e.x + (ex / d) * spd * 0.45, e.y + (ey / d) * spd * 0.45, e.size);
+    if (contact(45) === false) return false;
+  } else if (e.ai === "phaser") {
+    // A masked courtier: all but invisible until it is close — or striking.
+    const near = d < 110;
+    e.vis = Math.max(0.06, Math.min(1, (e.vis == null ? 0.06 : e.vis) + (near || e.atkT > 0 ? 0.08 : -0.04)));
+    if (e.atkT > 0) {
+      if (--e.atkT === 0 && !ghost && d < e.size + 30) { hitPlayer(e, enemyDmg(e)); if (playerDead()) return false; }
+    } else {
+      walkPath(near ? 0.8 : 1.15);
+      if (d < e.size + 22 && e.shootCd <= 0 && !ghost) { e.atkT = 20; e.shootCd = Math.round(60 * frz); }
+    }
   } else if (e.ai === "flee") {
     // The Glimmerthief never fights. It runs, erratically, and after
     // escapeMs it opens a portal and is gone.
@@ -1199,7 +1410,26 @@ function drawSelf(ctx) {
   if (state.iframesUntil && now < state.iframesUntil) {
     ctx.fillStyle = "rgba(165,243,252,.25)"; ctx.beginPath(); ctx.arc(state.pos.x, state.pos.y - 6, 22, 0, Math.PI * 2); ctx.fill();
   }
+  const veiled = !!(window.gameCrownArts && gameCrownArts.veiled && gameCrownArts.veiled());
+  if (veiled) ctx.globalAlpha = 0.45;
+  // WEAPONS: what the active hand holds, animated (js/player-weapons.js)
+  const W = window.gameWeapons, aim = Math.atan2(state.mouse.y - state.pos.y, state.mouse.x - state.pos.x);
+  if (W && W.drawHeld) W.drawHeld(ctx, state.pos.x, state.pos.y, "back", aim);
   GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance, { facing: state.facing, walking: state.walking });
+  if (W && W.drawHeld) W.drawHeld(ctx, state.pos.x, state.pos.y, "front", aim);
+  ctx.globalAlpha = 1;
+  if (state.rootedUntil && now < state.rootedUntil) {
+    // roots: thorny vines wound round your feet until they let go
+    const left = Math.min(1, (state.rootedUntil - now) / 400);
+    ctx.strokeStyle = "#65a30d"; ctx.lineWidth = 3; ctx.globalAlpha = 0.9 * left;
+    for (let i = 0; i < 5; i++) {
+      const a = i * 1.26 + now / 900;
+      ctx.beginPath(); ctx.moveTo(state.pos.x + Math.cos(a) * 16, state.pos.y + 6 + Math.sin(a) * 6);
+      ctx.quadraticCurveTo(state.pos.x + Math.cos(a + 0.8) * 6, state.pos.y - 6, state.pos.x + Math.cos(a + 1.4) * 10, state.pos.y - 14 + Math.sin(a) * 3);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
 }
 
 // ---------- BOSS ROOM (guild dungeons) ----------
@@ -1234,6 +1464,46 @@ function setArenaOpen(open) {
 // to open with "something on this floor is still standing" even after every
 // visible enemy was gone. Queue instead of drop: nothing reported ever goes
 // unsent, it's just sent right after the in-flight call resolves.
+// WEAPONS: a dart / bolt that stops reports everything it struck as one swing.
+function flushShot(b) {
+  if (!b || b.flushed || !b.hitIds || !b.hitIds.length) return;
+  b.flushed = true;
+  reportEnemyHits(b.hitIds.slice(0, handKindCap(b.kind)), "pistol");
+}
+function handKindCap(kind) { const K = ECON.WEAPON_KINDS && ECON.WEAPON_KINDS[kind]; return K ? Math.max(1, K.targets | 0) : 1; }
+// A maze boomerang: out to the apex, home to the thrower. It strikes each foe
+// at most once per leg (up to the kind's targets per leg) and reports each leg
+// as one swing — at the apex, and when it is caught.
+function stepShotBoomerang(b) {
+  const wasBack = b.back;
+  const done = boomerangStep(b, state.pos.x, state.pos.y);
+  if (b.hold > 0) return;
+  // a wall on the way out turns it round early
+  if (!b.back && collidesWalls(b.x, b.y, 3)) { b.ax = b.x; b.ay = b.y; b.back = true; b.t = Math.max(b.t, Math.ceil(b.T / 2)); }
+  if (b.back && !wasBack && b.out.length) reportEnemyHits(b.out.slice(), "pistol");
+  const leg = b.back ? b.home : b.out, cap = handKindCap(b.kind);
+  const isGuild = !!(state.dungeon && state.dungeon.cfg.guild);
+  for (const e of state.enemies) {
+    if (leg.length >= cap) break;
+    if (e.gone || e.hp <= 0 || (e.ai === "mimic" && !e.awake) || leg.includes(e.id) || (b.blocked && b.blocked.includes(e.id))) continue;
+    if (Math.hypot(b.x - e.x, b.y - e.y) >= e.size + 9) continue;
+    if (guardBlocks(e, b.x - b.vx * 4, b.y - b.vy * 4)) { blockedFx(e); (b.blocked || (b.blocked = [])).push(e.id); continue; }
+    const dmg = isGuild ? b.dmg : localHitDamage(b.dmg, e, b.kind);
+    if (!isGuild || !e.shield) e.hp -= dmg;
+    leg.push(e.id);
+    onLocalHit(e, dmg, !isGuild);
+    e.hitFlash = 6; wakeEnemy(e); e.lurking = false;
+    const m = Math.hypot(b.vx, b.vy) || 1;
+    e.kbX += b.vx / m * (b.knock || 2.5); e.kbY += b.vy / m * (b.knock || 2.5);
+    addParticles(e.x, e.y, e.color, 5);
+  }
+  if (done) {
+    b.life = 0;
+    if (b.home.length) reportEnemyHits(b.home.slice(), "pistol");
+    if (window.gameWeapons && gameWeapons.setInFlight) gameWeapons.setInFlight(false);
+  } else b.life = 1;
+}
+
 let _swingPending = false;
 let _queuedIds = null, _queuedWeapon = null;
 let _queuedAfterDash = false;
@@ -1300,6 +1570,27 @@ function findEnemy(id) {
   return state.enemies.find(x => x.id === id) || (d.arenaEnemies || []).find(x => x.id === id)
     || (d.continuous && d.bossRoom ? (d.worldEnemies || []).find(x => x.id === id) : null) || null;
 }
+// Lifesteal (docs/sundered-crown/BALANCE.md). In a guild run the server's
+// reply carries the heal it allowed (`heal`: boss efficiency and the per-second
+// cap already applied); the quest board (no server) runs the same shared rule
+// on a local bucket. Returns the HP actually restored.
+let _lsBucket = null;
+function applyLifesteal(res, dealt, boss) {
+  const G = window.gameDepths;
+  if (G && G.isDowned()) return 0;
+  let heal;
+  if (res && res.heal != null) heal = +res.heal || 0;
+  else {
+    const fx = playerFx();
+    if (!(fx.lifesteal > 0) || !(dealt > 0) || !ECON.lifestealHeal) return 0;
+    _lsBucket = _lsBucket || ECON.lifestealBucket();
+    heal = ECON.lifestealHeal(fx.lifesteal, dealt, { boss: !!boss, maxHp: state.maxHp, bucket: _lsBucket, now: Date.now() });
+  }
+  if (!(heal > 0)) return 0;
+  const before = state.hp;
+  state.hp = Math.min(state.maxHp, state.hp + heal);
+  return Math.max(0, state.hp - before);
+}
 // The server's answer to a swing: authoritative HP, crits and procs to show,
 // lifesteal to take, and whatever the hit set loose (split children, drops,
 // trial waves).
@@ -1322,13 +1613,11 @@ function handleHitReply(res, weapon) {
     }
     if (res.crit) shakeDungeon(4);
   }
-  // Lifesteal heals off the damage the server says actually landed.
-  if (fx.lifesteal > 0 && res.dmg > 0 && weapon !== "thorns" && !(G && G.isDowned())) {
-    const heal = fx.lifesteal * res.dmg * Math.max(1, changed.length);
-    if (heal >= 0.5) {
-      state.hp = Math.min(state.maxHp, state.hp + heal);
-      if (G && Math.random() < 0.6) G.floatText(state.pos.x, state.pos.y - 36, "+" + Math.round(heal), "#4ade80", { size: 11, dur: 700 });
-    }
+  // Lifesteal: the server decides the heal (`heal`, capped per second —
+  // ECON.lifestealHeal); an older server's reply falls back to the same rule.
+  if (weapon !== "thorns") {
+    const heal = applyLifesteal(res, (res.dmg || 0) * Math.max(1, changed.length), false);
+    if (heal >= 0.5 && G && Math.random() < 0.6) G.floatText(state.pos.x, state.pos.y - 36, "+" + Math.round(heal), "#4ade80", { size: 11, dur: 700 });
   }
   if (res.procs) showProcs(res.procs);
   if (res.spawned && res.spawned.length) adoptSpawned(res.spawned, {});
@@ -1353,14 +1642,15 @@ function showProcs(procs) {
     const tg = (p.targets || []).map(findEnemy).filter(Boolean);
     if (!tg.length) continue;
     const col = /frost|shatter/.test(p.id) ? "#bae6fd" : /star|ley/.test(p.id) ? "#c4b5fd" : /knell/.test(p.id) ? "#fca5a5" : "#93c5fd";
-    G.procArcs(state.dungeon && state.dungeon.bossRoom ? bossHeadScreenPos() : tg[0], tg, col);
+    G.procArcs(state.dungeon && state.dungeon.bossRoom ? bossFocusPos() : tg[0], tg, col);
     for (const e of tg) { G.burst(e.x, e.y, col, 8, { speed: 3 }); if (p.dmg) G.floatText(e.x, e.y - 24, Math.round(p.dmg), col, { size: 11 }); }
   }
 }
 // Quest-board runs have no server: the same pipeline, rolled locally.
 let _localCounter = undefined;
-function localHitDamage(base, e) {
-  const fx = playerFx();
+function localHitDamage(base, e, kind) {
+  // WEAPONS: the kind's specials (dagger crits, axe execute, ...) ride on the gear fx.
+  const fx = kind && ECON.weaponFx ? ECON.weaponFx(playerFx(), kind) : playerFx();
   const r = ECON.rollHitDamage ? ECON.rollHitDamage(base, fx, { kind: e.elite ? "elite" : "enemy", hpFrac: e.maxHp ? e.hp / e.maxHp : 1 }, Math.random, _localCounter) : { dmg: base, crit: false };
   if (r.counterState) _localCounter = r.counterState;
   e._lastCrit = !!r.crit;
@@ -1374,7 +1664,7 @@ function onLocalHit(e, dmg, showNumber) {
   if (showNumber) {
     G.floatText(e.x, e.y - 22, (e._lastCrit ? "✦" : "") + Math.round(dmg), e._lastCrit ? "#fde047" : "#fff", { size: e._lastCrit ? 19 : 12, crit: !!e._lastCrit });
     const fx = playerFx();
-    if (fx.lifesteal > 0) state.hp = Math.min(state.maxHp, state.hp + fx.lifesteal * dmg);
+    applyLifesteal(null, dmg, false);
     if (fx.onHitSlow && Math.random() < (fx.onHitSlow.chance || 0)) { e.slowUntil = Date.now() + (fx.onHitSlow.ms || 1500); e.slowMult = 1 - (fx.onHitSlow.pct || 0.3); }
   }
   G.burst(e.x, e.y, [e.color || "#fff", "#fde68a"], 5, { speed: 2.6, life: 20 });
@@ -1448,13 +1738,15 @@ function applyEnemyChanges(changed) {
   checkFloorCleared();
 }
 
-function combatDamageMult() {
+function combatDamageMult(hand) {
   const m = state.mastery && state.mastery.combat;
   // Mastery is what you have learned, gear is what you are carrying. They
   // multiply: the server applies exactly the same pair to guild-boss hits.
-  return ECON.masteryCombatMult(m ? m.level : 1)
-    * (window.gameGear ? gameGear.attackMult() : 1)
-    * buffDamageMult();
+  // WEAPONS: the gear part is the HAND's attack power (the melee hand never
+  // counts the ranged weapon's ATK and vice versa — see ECON.handAtk).
+  const W = window.gameWeapons;
+  const gear = W && W.attackMult ? W.attackMult(hand === "ranged" ? "ranged" : "melee") : (window.gameGear ? gameGear.attackMult() : 1);
+  return ECON.masteryCombatMult(m ? m.level : 1) * gear * buffDamageMult();
 }
 
 function bossRoomWalls() {
@@ -1471,6 +1763,147 @@ function bossPartScreenPos(i, n) {
   return p;
 }
 function bossHeadScreenPos() { return ECON.guildBossHeadPos(DUNGEON_W, DUNGEON_H); }
+
+// ---------- THE SUNDERED CROWN: the moving bosses (js/crown-boss.js) ----------
+// Everything here is guarded: without js/crown-boss.js (or js/shared/crown.js)
+// a crown boss simply has no body to strike, and nothing throws.
+function crownMobile(b) {
+  return !!(b && window.gameCrownBoss && gameCrownBoss.isMobileId(b.id));
+}
+// Where to aim effects "at the boss": the moving body, else the fixed head.
+function bossFocusPos() {
+  const d = state.dungeon;
+  if (d && crownMobile(d.boss)) { const p = gameCrownBoss.focusPos(); if (p) return p; }
+  return bossHeadScreenPos();
+}
+const _crownMe = { x: 0, y: 0, alive: true };
+function crownMe() {
+  const G = window.gameDepths;
+  _crownMe.x = state.pos.x; _crownMe.y = state.pos.y;
+  _crownMe.alive = !(G && G.isDowned());
+  return _crownMe;
+}
+function rootPlayer(ms) {
+  if (!(ms > 0)) return;
+  const G = window.gameDepths;
+  if (G && G.isDowned()) return;
+  if (state.iframesUntil && Date.now() < state.iframesUntil) return;
+  state.rootedUntil = Math.max(state.rootedUntil || 0, Date.now() + ms);
+  if (G) G.floatText(state.pos.x, state.pos.y - 34, "ROOTED", "#bef264", { size: 13, dur: 800 });
+}
+const CROWN_HOOKS = {
+  hurt(dmg, atk) {
+    if (!(dmg > 0)) return;
+    const dodging = !!(state.iframesUntil && Date.now() < state.iframesUntil);
+    takePlayerDamage(dmg);
+    shakeDungeon(atk && atk.shape === "lane" ? 11 : 7);
+    // a charge or a dash knocks you out of its lane
+    if (atk && atk.shape === "lane" && !dodging) {
+      const dx = atk.x1 - atk.x0, dy = atk.y1 - atk.y0, L = Math.hypot(dx, dy) || 1;
+      const side = ((state.pos.x - atk.x0) * -dy + (state.pos.y - atk.y0) * dx) >= 0 ? 1 : -1;
+      moveWithWalls(state.pos, state.pos.x + (-dy / L) * 26 * side, state.pos.y + (dx / L) * 26 * side, 12);
+    }
+    if (atk && atk.rootMs && !dodging) rootPlayer(atk.rootMs);
+    playerDead();
+  },
+};
+// The arena walls plus the standing stone pillars (Gorehorn). If a pillar
+// regrows under you, you are nudged out of it.
+function rebuildArenaWalls() {
+  const d = state.dungeon;
+  if (!d || !d.bossRoom) return;
+  const CB = window.gameCrownBoss;
+  const extra = CB && CB.active() && !d.openField ? CB.pillarRects() : [];
+  d.walls = bossRoomWalls().concat(extra);
+  for (const w of extra) {
+    if (!rectOverlap(state.pos.x, state.pos.y, 12, w)) continue;
+    const cx = w.x + w.w / 2, cy = w.y + w.h / 2, dx = state.pos.x - cx, dy = state.pos.y - cy, m = Math.hypot(dx, dy) || 1;
+    const out = w.w / 2 * 1.45 + 14;
+    state.pos.x = cx + dx / m * out; state.pos.y = cy + dy / m * out;
+  }
+}
+// A Crown Art's dash / blink: the Shift dash's wall clipping and i-frames,
+// on a longer path. Returns where it ends.
+function crownArtMove(len, ang, ms, iframes) {
+  const d = state.dungeon;
+  if (!d || state.area !== "dungeon") return null;
+  const dx = Math.cos(ang), dy = Math.sin(ang);
+  const end = window.DepthsCore && DepthsCore.dashEnd ? DepthsCore.dashEnd(state.pos.x, state.pos.y, dx, dy, len, collidesWalls, 12, 6) : { x: state.pos.x + dx * len, y: state.pos.y + dy * len };
+  const now = Date.now();
+  state.dash = { x0: state.pos.x, y0: state.pos.y, x1: end.x, y1: end.y, t0: now, dur: ms || 180, trail: [] };
+  state.iframesUntil = Math.max(state.iframesUntil || 0, now + (iframes || 250));
+  state.rootedUntil = 0;
+  state.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
+  return { x: end.x, y: end.y };
+}
+// A swing at a moving boss: pick what is actually in reach (CROWN.canHit,
+// the same check the server makes) and only then ask.
+let _crownWhyAt = 0;
+async function crownBossHit(mx, my, hand) {
+  const CB = window.gameCrownBoss, d = state.dungeon, G = window.gameDepths;
+  hand = hand || (state.weapon === "pistol" ? "ranged" : "melee");
+  const weapon = hand === "ranged" ? "pistol" : "sword";
+  // WEAPONS: the equipped kind's boss reach (the server checks the same number)
+  const tg = CB.strikeTarget({ x: state.pos.x, y: state.pos.y }, { x: mx, y: my }, weapon, handKind(hand).bossReach);
+  if (!tg) return;
+  if (tg.why) {
+    if (G && Date.now() - _crownWhyAt > 700) {
+      _crownWhyAt = Date.now();
+      const txt = tg.why === "veiled" ? "VEILED — strike the exposed one" : tg.why === "crown" ? "THE CROWN SHIELDS HIM — break the shards" : "";
+      if (txt) G.floatText(state.pos.x, state.pos.y - 40, txt, "#cbd5e1", { size: 11, dur: 800 });
+    }
+    return;
+  }
+  _bossHitPending = true;
+  try {
+    const req = { action: "boss_hit", weapon, body: tg.body };
+    if (afterDashActive()) req.afterDash = true;
+    const res = await netGuildDungeon(req);
+    if (state.dungeon === d) applyBossHit(Object.assign({ body: tg.body }, res || {}), tg);
+  } catch (e) {
+    const msg = (e && e.message) || "";
+    if (/Move closer/.test(msg)) { if (typeof pushPresence === "function") pushPresence(); }
+    else if (/Too fast/.test(msg)) { /* the next swing lands */ }
+    else if (/veiled|reach|shields|gone|broken|No such target/i.test(msg)) { if (G) G.floatText(tg.x, tg.y - 50, msg.replace(/\.$/, ""), "#94a3b8", { size: 11 }); }
+    else toast(escapeHtml(msg), 1200);
+  }
+  _bossHitPending = false;
+}
+// The server's answer to a boss_hit (or a Crown Art) on a moving boss.
+function applyBossHit(res, tg) {
+  const d = state.dungeon, b = d && d.boss, CB = window.gameCrownBoss, G = window.gameDepths;
+  if (!res || !b) return;
+  const key = res.body || (tg && tg.body) || "main";
+  const pos = (tg && tg.x != null) ? tg : (CB && CB.posOf(key)) || bossFocusPos();
+  if (res.parried) {
+    if (G) { G.floatText(pos.x, pos.y - 70, "PARRIED!", "#f8fafc", { size: 26, crit: true, dur: 1300 }); G.burst(pos.x, pos.y - 20, ["#fff", "#fde047"], 30, { speed: 7 }); }
+    shakeDungeon(12);
+    return;
+  }
+  if (res.blocked) {
+    if (G) { G.floatText(pos.x, pos.y - 50, "BLOCKED", "#e2e8f0", { size: 15 }); G.burst(pos.x, pos.y - 10, ["#e2e8f0", "#fde68a"], 10, { speed: 4 }); }
+    return;
+  }
+  if (res.clone && CB) { if (res.clone.down !== false) CB.onPush({ kind: "clone_down", id: res.clone.id }); return; }
+  if (res.shard && CB) CB.onPush({ kind: "shard", i: res.shard.i, hp: res.shard.hp });
+  else if (res.hp != null) {
+    if ((key === "sol" || key === "umbra") && CB) CB.setHp(key, res.hp);
+    else { if (b.head) b.head.hp = res.hp; b.hp = res.hp; }
+  }
+  if (res.poolHp != null) b.hp = res.poolHp;
+  if (res.poolMax > 0) b.maxHp = res.poolMax;
+  if (res.bossHp != null) b.hp = res.bossHp;
+  if (CB) CB.flash(key);
+  const dealt = +res.dmg || 0, vuln = +res.vuln || 1;
+  if (G && dealt > 0) {
+    G.floatText(pos.x + (Math.random() - 0.5) * 30, pos.y - 40, (res.crit ? "✦" : "") + Math.round(dealt) + (vuln > 1 ? "  ×" + vuln.toFixed(1) : ""), vuln > 1 || res.crit ? "#fde047" : "#fff", { size: res.crit || vuln > 1 ? 21 : 14, crit: !!res.crit, dur: 1000 });
+    G.burst(pos.x, pos.y - 16, vuln > 1 ? ["#fde047", "#fff"] : ["#fcd34d"], vuln > 1 ? 14 : 6, { speed: vuln > 1 ? 5 : 3 });
+  }
+  if (res.crit || vuln > 1) shakeDungeon(5);
+  if (res.procs) showProcs(res.procs);
+  if (res.reflected > 0) { takePlayerDamage(res.reflected); playerDead(); }
+  applyLifesteal(res, dealt, true);
+}
 
 // Arena setup, shared by the mini fight halfway through a run and the sealed
 // boss room at the end. The maze is torn down; what's left is one open floor
@@ -1493,8 +1926,11 @@ function enterArena(boss) {
   state.pos.x = DUNGEON_W / 2;
   state.pos.y = BOSS_ROOM.y + BOSS_ROOM.h - 70;
   state.facing = "up";
+  state.rootedUntil = 0;
+  if (window.gameCrownBoss) gameCrownBoss.enter(null);
   adoptBoss(boss);
   if (boss) d.cine = gameBosses.startCinematic(boss);
+  if (window.gameCrownArts) gameCrownArts.refresh();
 }
 // Keep the local copy of the boss in step with the server's, and stamp the two
 // timestamps the renderer animates from.
@@ -1537,6 +1973,11 @@ function adoptBoss(view, summonIds) {
     for (const e of d.arenaEnemies || []) if (!live.has(e.id) && view.adds.some(a => a.id === e.id)) e.hp = 0;
   }
   if (view.status === "dead" && d.arenaEnemies) for (const e of d.arenaEnemies) e.hp = 0;
+  // The Sundered Crown: motion plans, pillars, shards, polarity ride in the view.
+  if (window.gameCrownBoss) {
+    gameCrownBoss.adopt(view);
+    if (gameCrownBoss.takeWallsDirty()) rebuildArenaWalls();
+  }
 }
 // How many of the boss's parts are real weak points (pylons sit after them).
 function bossPartCount(b) {
@@ -1646,7 +2087,14 @@ if (window.NET) NET.on("guild_boss", (m) => {
   const d = state.dungeon;
   if (!d || !d.bossRoom) return;
   const summonIds = m.kind === "attack" && m.attack && Array.isArray(m.attack.adds) ? new Set(m.attack.adds.map(a => a && a.id)) : null;
+  // Every push carries the server's clock: the moving bosses are drawn on it.
+  if (window.gameCrownBoss) gameCrownBoss.sample(m);
   if (m.boss) adoptBoss(m.boss, summonIds);
+  // motion / pillar / stagger / parried / clone_down / polarity / twin / form / shards / shard / sundered
+  if (window.gameCrownBoss && gameCrownBoss.onPush(m)) {
+    if (gameCrownBoss.takeWallsDirty()) rebuildArenaWalls();
+    return;
+  }
   const G = window.gameDepths;
   if (m.kind === "attack" && m.attack) queueBossAttack(m.attack);
   else if (m.kind === "part_down") {
@@ -1719,7 +2167,7 @@ function onBossPhase(m) {
       try { d.phaseShift.b3 = gameBosses.startPhaseShift(b); } catch (e) { d.phaseShift.b3 = null; }
     }
     if (G) {
-      const h = bossHeadScreenPos();
+      const h = bossFocusPos();
       G.burst(h.x, h.y, [look.accent || "#fff", look.color || "#888", "#ffffff"], 70, { speed: 8, life: 60, size: 3.2 });
       G.ring(h.x, h.y, 300, look.accent || "#fff", { width: 10, dur: 900 });
       G.ring(h.x, h.y, 520, look.accent || "#fff", { width: 6, dur: 1200, delay: 180 });
@@ -1772,7 +2220,8 @@ function queueBossAttack(a) {
   const d = state.dungeon;
   if (!d || !d.bossRoom) return;
   const now = Date.now();
-  const head = bossHeadScreenPos();
+  // A moving boss throws its casts from where its body stands (ox, oy).
+  const head = Number.isFinite(+a.ox) && Number.isFinite(+a.oy) ? { x: +a.ox, y: +a.oy } : bossFocusPos();
   const rng = mulberry32(a.seed >>> 0);
   const shot = Object.assign({}, a, { at: now, fireAt: now + a.warnMs, resolved: false, head });
   // Roars are local blasts, never a disk covering the entire arena. Use the
@@ -1960,6 +2409,33 @@ function queueBossAttack(a) {
     d.wardUntil = Math.max(d.wardUntil || 0, shot.fireAt + shot.durMs);
     d.wardReflect = a.reflect;
   }
+  // ---- the Sundered Crown casts (MASTER-PLAN §3.4) ----
+  if (a.type === "entangle") {
+    // Green root rings where you (and around where you) stand.
+    shot.r = a.r || 56; shot.rootMs = a.rootMs || 1500;
+    shot.points = pts.map((p, i) => i ? p : clampPt({ x: state.pos.x + jitter(30), y: state.pos.y + jitter(24) }, 30));
+  }
+  if (a.type === "crescent") {
+    // An arc of steel flying straight from the body toward where you stood.
+    shot.from = head;
+    // B1 sends `ang` (toward the server's target); without it, aim at us.
+    shot.angle = Number.isFinite(+a.ang) ? +a.ang : Math.atan2(state.pos.y - head.y, state.pos.x - head.x);
+    shot.band = a.band || 60;
+    shot.pxPerMs = Math.max(0.2, (a.speed || 7) * 0.06);
+    shot.arc = a.arc || 1.1;
+    shot.durMs = Math.max(a.durMs || 0, Math.round(1150 / shot.pxPerMs));
+    shot.points = [head];
+  }
+  if (a.type === "eclipse") {
+    // The line between the two Monarchs, as the server saw them (or as we do).
+    const CB = window.gameCrownBoss;
+    const s = CB && CB.posOf("sol"), u = CB && CB.posOf("umbra");
+    const num = (v, f) => (Number.isFinite(+v) ? +v : f);
+    shot.x0 = num(a.x0, s ? s.x : room.x + room.w * 0.2); shot.y0 = num(a.y0, s ? s.y : room.y + room.h * 0.3);
+    shot.x1 = num(a.x1, u ? u.x : room.x + room.w * 0.8); shot.y1 = num(a.y1, u ? u.y : room.y + room.h * 0.7);
+    shot.w = a.w || 96; shot.durMs = a.durMs || 900;
+    shot.points = [{ x: shot.x0, y: shot.y0 }, { x: shot.x1, y: shot.y1 }];
+  }
   if (a.type === "soak") {
     shot.sx = a.x != null ? a.x : room.x + room.w / 2;
     shot.sy = a.y != null ? a.y : room.y + room.h * 0.62;
@@ -2094,6 +2570,28 @@ function updateBossAttacks() {
       continue;
     }
     if (a.type === "ward") { if (now >= a.fireAt) a.resolved = true; continue; }
+    if (a.type === "crescent") {
+      // The wave front flies out at pxPerMs; you are hit as it passes you.
+      if (now < a.fireAt) continue;
+      if (now > a.fireAt + a.durMs) { a.resolved = true; continue; }
+      if (a._hit || ghost) continue;
+      const front = (now - a.fireAt) * a.pxPerMs, dist = Math.hypot(px - a.from.x, py - a.from.y);
+      const off = Math.abs(DepthsCore.angleDiff(a.angle, Math.atan2(py - a.from.y, px - a.from.x)));
+      if (Math.abs(dist - front) < a.band / 2 + 10 && off < a.arc / 2 + 12 / Math.max(40, dist)) {
+        a._hit = true; takePlayerDamage(a.dmg); shakeDungeon(7);
+        if (playerDead()) return;
+      }
+      continue;
+    }
+    if (a.type === "eclipse") {
+      if (now < a.fireAt) continue;
+      if (now > a.fireAt + a.durMs) { a.resolved = true; continue; }
+      if (!a._hit && !ghost && DepthsCore.segDist(px, py, a.x0, a.y0, a.x1, a.y1) < a.w / 2 + 12) {
+        a._hit = true; takePlayerDamage(a.dmg); shakeDungeon(10);
+        if (playerDead()) return;
+      }
+      continue;
+    }
     if (a.type === "soak") {
       if (a.reported || now < a.fireAt) continue;
       a.reported = true; a.resolved = true;
@@ -2112,11 +2610,12 @@ function updateBossAttacks() {
     if (a.resolved || now < a.fireAt) continue;
     a.resolved = true;
     let hit = false;
-    if (a.type === "slam" || a.type === "spit" || a.type === "rift" || a.type === "bolt" || a.type === "divebomb") {
+    if (a.type === "slam" || a.type === "spit" || a.type === "rift" || a.type === "bolt" || a.type === "divebomb" || a.type === "entangle") {
       for (const p of a.points) {
         if (Math.hypot(px - p.x, py - p.y) < (a.r || 60)) hit = true;
-        addParticles(p.x, p.y, a.type === "bolt" ? "#7dd3fc" : "#f97316", 18);
+        addParticles(p.x, p.y, a.type === "bolt" ? "#7dd3fc" : a.type === "entangle" ? "#65a30d" : "#f97316", 18);
       }
+      if (hit && a.type === "entangle" && !ghost) rootPlayer(a.rootMs || 1500);
     } else if (a.type === "sweep" || a.type === "firewall") {
       if (Math.abs(py - a.y) < (a.band || 40)) hit = true;
       addParticles(px, a.y, "#fbbf24", 14);
@@ -2173,14 +2672,18 @@ function updateBossAttacks() {
 // Clicking near a weak point (or the head once the guard is down) sends a hit.
 // Adds and pylons come first: what is in your face is what you swing at.
 let _bossHitPending = false;
-async function bossAttackAt(mx, my) {
+async function bossAttackAt(mx, my, handOverride) {
   const d = state.dungeon;
   const b = d && d.boss;
   if (window.gameDepths && gameDepths.isDowned()) return;
-  if (d && hitArenaAdds(mx, my)) return;
+  // WEAPONS: the hand that struck (a boomerang coming home still counts as the ranged hand)
+  const hand = handOverride || (state.weapon === "pistol" ? "ranged" : "melee"), K = handKind(hand), wire = hand === "ranged" ? "pistol" : "sword";
+  if (d && hitArenaAdds(mx, my, hand)) return;
   if (!b || b.status !== "alive" || _bossHitPending) return;
   if (d.cine || d.phaseCine || d.victoryCine || state.tomeCine) return;
-  const reach = ECON.GUILD_BOSS.REACH[state.weapon === "pistol" ? "pistol" : "sword"];
+  // A moving boss has no weak points: it has bodies, clones and shards.
+  if (crownMobile(b)) return crownBossHit(mx, my, hand);
+  const reach = K.bossReach;
   const PR = ECON.GUILD_BOSS.PART_HIT_R, HR = ECON.GUILD_BOSS.HEAD_HIT_R;
   const nParts = bossPartCount(b);
   // A weak point is a DISC, not a point, and both checks measure to the EDGE of
@@ -2227,7 +2730,7 @@ async function bossAttackAt(mx, my) {
   if (part === null) return;
   _bossHitPending = true;
   try {
-    const req = { action: "boss_hit", part, weapon: state.weapon === "pistol" ? "pistol" : "sword" };
+    const req = { action: "boss_hit", part, weapon: wire };
     if (afterDashActive()) req.afterDash = true;
     const res = await netGuildDungeon(req);
     const pos = part === "head" ? bossHeadScreenPos() : part >= nParts ? pylonScreenPos(part - nParts) : bossPartScreenPos(part, nParts);
@@ -2250,31 +2753,35 @@ async function bossAttackAt(mx, my) {
       shakeDungeon(6);
       playerDead();
     }
-    const fx = playerFx();
-    if (fx.lifesteal > 0 && dealt > 0 && !(G && G.isDowned())) state.hp = Math.min(state.maxHp, state.hp + fx.lifesteal * dealt);
+    applyLifesteal(res, dealt, true);
   } catch (e) {
     if (!/Too fast/.test(e.message)) toast(escapeHtml(e.message), 1200);
   }
   _bossHitPending = false;
 }
 // A swing in the arena that lands on summoned adds instead of the boss.
-function hitArenaAdds(mx, my) {
+function hitArenaAdds(mx, my, hand) {
   const d = state.dungeon, adds = (d.arenaEnemies || []).filter(e => e.hp > 0);
   if (!adds.length) return false;
-  const pistol = state.weapon === "pistol";
+  hand = hand || (state.weapon === "pistol" ? "ranged" : "melee");
+  const pistol = hand === "ranged", K = handKind(hand);
   const ang = Math.atan2(my - state.pos.y, mx - state.pos.x);
   const hits = [];
   for (const e of adds) {
     const ex = e.x - state.pos.x, ey = e.y - state.pos.y, dist = Math.hypot(ex, ey);
     const diff = Math.abs(DepthsCore.angleDiff(ang, Math.atan2(ey, ex)));
-    if (pistol ? (dist < ECON.GUILD_BOSS.REACH.pistol && Math.hypot(mx - e.x, my - e.y) < e.size + 30) : (dist < 70 + e.size && diff < Math.PI / 1.6)) hits.push(e);
+    // WEAPONS: the kind's reach / shape (the sword and gun are exactly the old tests)
+    if (pistol ? (dist < K.bossReach && Math.hypot(mx - e.x, my - e.y) < e.size + 30)
+      : K.id === "sword" ? (dist < 70 + e.size && diff < Math.PI / 1.6) : inMeleeShape(K, ex, ey, Math.atan2(my - state.pos.y, mx - state.pos.x), e.size + 8)) hits.push(e);
   }
   if (!hits.length) return false;
-  const take = hits.slice(0, pistol ? 1 : ECON.DUNGEON_HIT_MAX_TARGETS);
+  const open = hits.filter(e => { if (guardBlocks(e, state.pos.x, state.pos.y)) { blockedFx(e); return false; } return true; });
+  if (!open.length) return true;
+  const take = open.slice(0, pistol ? (K.shape === "boomerang" || K.pierce ? K.targets : 1) : K.targets);
   for (const e of take) {
     e.hitFlash = 6;
     const m = Math.hypot(e.x - state.pos.x, e.y - state.pos.y) || 1;
-    e.kbX += (e.x - state.pos.x) / m * 4; e.kbY += (e.y - state.pos.y) / m * 4;
+    e.kbX += (e.x - state.pos.x) / m * (K.knock || 4); e.kbY += (e.y - state.pos.y) / m * (K.knock || 4);
     addParticles(e.x, e.y, "#fcd34d", 6);
     if (window.gameDepths) gameDepths.burst(e.x, e.y, [e.color, "#fff"], 6, { speed: 3 });
   }
@@ -2289,7 +2796,7 @@ async function onBossDead() {
   shakeDungeon(12);
   for (const e of d.arenaEnemies || []) e.hp = 0;
   const G = window.gameDepths;
-  if (G && d.boss) { const h = bossHeadScreenPos(); G.burst(h.x, h.y, ["#fde68a", "#fff", (ECON.GUILD_BOSSES[d.boss.id] || {}).accent || "#c084fc"], 90, { speed: 9, life: 70, size: 3.4 }); }
+  if (G && d.boss) { const h = bossFocusPos(); G.burst(h.x, h.y, ["#fde68a", "#fff", (ECON.GUILD_BOSSES[d.boss.id] || {}).accent || "#c084fc"], 90, { speed: 9, life: 70, size: 3.4 }); }
   // A mini is an obstacle, not the end of the run: the stair opens and the
   // party walks on. Its bounty is held by the server until the run is cleared.
   // The Heart of the Depths is the same: the sanctuary is behind it.
@@ -2367,7 +2874,8 @@ async function endDungeon(victory, alreadyPaid) {
   }
   clearTimeout(_openFieldT); _openFieldT = null;
   Object.assign(BOSS_ROOM, ARENA_ROOM);
-  state.dash = null; state.iframesUntil = 0;
+  state.dash = null; state.iframesUntil = 0; state.rootedUntil = 0;
+  if (window.gameCrownBoss) gameCrownBoss.reset();
   if (window.gameDepths) gameDepths.teardown();
   state.maxHp = window.gameGear ? gameGear.maxHp() : 100;
   state.hp = state.maxHp;
@@ -2385,6 +2893,13 @@ async function endDungeon(victory, alreadyPaid) {
 function doAttack() {
   if (state.attackCooldown > 0) return;
   if (window.gameDepths && gameDepths.isDowned && gameDepths.isDowned()) return;
+  // WEAPONS: the hand is state.weapon ('sword' = melee, 'pistol' = ranged);
+  // what that hand holds (its kind) decides the pattern and the numbers. The
+  // wire still says 'sword' / 'pistol' — the server reads the kind from the
+  // equipped item itself.
+  const hand = state.weapon === "pistol" ? "ranged" : "melee";
+  const K = handKind(hand);
+  const W = window.gameWeapons;
   // In the boss room the swing is a request to the server, which owns the
   // boss's HP — the local animation still plays either way.
   if (state.dungeon && state.dungeon.bossRoom) {
@@ -2395,35 +2910,37 @@ function doAttack() {
     if (d.boss && d.boss.status !== "alive" && !(d.arenaEnemies && d.arenaEnemies.length)) return;
     const dx = state.mouse.x - state.pos.x, dy = state.mouse.y - state.pos.y;
     const m = Math.hypot(dx, dy) || 1;
-    if (state.weapon === "pistol") {
+    if (hand === "ranged") {
+      if (K.shape === "boomerang" && W && W.boomerangOut && W.boomerangOut()) return;   // one in the air
       // A shot, not a slash: a tracer down the barrel and a muzzle flash. The
       // arena has no local physics, so the tracer is purely cosmetic and dies
-      // at the end of the pistol's reach.
-      state.attackCooldown = 16;
+      // at the end of the weapon's reach. A boomerang's tracer strikes twice:
+      // when it reaches the target and when it comes back (updateDungeon).
+      state.attackCooldown = K.cd[1];
       d.tracers = d.tracers || [];
-      d.tracers.push({
-        x: state.pos.x + dx / m * 16, y: state.pos.y + dy / m * 16,
-        vx: dx / m * 11, vy: dy / m * 11,
-        life: Math.round(ECON.GUILD_BOSS.REACH.pistol / 11),
-      });
+      d.tracers.push(makeTracer(K, dx / m, dy / m, m));
       addParticles(state.pos.x + dx / m * 16, state.pos.y + dy / m * 16, "#fde047", 3);
+      if (W && W.startAttack) W.startAttack(hand, K.id, Math.atan2(dy, dx));
+      if (K.shape === "boomerang") { if (W && W.setInFlight) W.setInFlight(true); return; }
     } else {
-      state.attackCooldown = 12;
+      state.attackCooldown = K.cd[1];
       state.swingT = 14;
       state.swingAng = Math.atan2(dy, dx);
+      if (W && W.startAttack) W.startAttack(hand, K.id, state.swingAng);
     }
     bossAttackAt(state.mouse.x, state.mouse.y);
     return;
   }
-  if (state.weapon === "sword") {
-    // Sword: fast cooldown, very high damage, wide arc, hits multiple enemies, knockback
-    state.attackCooldown = 14;
-    const dx = state.mouse.x - state.pos.x;
-    const dy = state.mouse.y - state.pos.y;
+  const dx = state.mouse.x - state.pos.x;
+  const dy = state.mouse.y - state.pos.y;
+  if (hand === "melee") {
+    // Sword: fast cooldown, very high damage, wide arc, hits multiple enemies,
+    // knockback. Every melee kind is the same pipeline with its own shape.
+    state.attackCooldown = K.cd[0];
     const ang = Math.atan2(dy, dx);
     let hit = 0;
     const swept = [];
-    // A guild swing can only ever REPORT DUNGEON_HIT_MAX_TARGETS ids — the
+    // A guild swing can only ever REPORT the kind's target cap — the
     // rest of `swept` used to be damaged and removed locally anyway (and
     // silently sliced off before ever reaching the server), so a pile of
     // more than 6 enemies died on screen while several of them stayed alive
@@ -2432,51 +2949,127 @@ function doAttack() {
     // just what gets reported, keeps the two in sync — the rest just take
     // another swing, same as a real crowd would.
     const isGuild = !!(state.dungeon && state.dungeon.cfg.guild);
-    const cap = isGuild ? ECON.DUNGEON_HIT_MAX_TARGETS : Infinity;
-    for (const e of state.enemies) {
+    const cap = isGuild ? K.targets : (K.id === "sword" ? Infinity : K.targets);
+    const base = 55 * K.dmg * combatDamageMult("melee");
+    const list = K.id === "sword" ? state.enemies : meleeOrder(state.enemies);
+    for (const e of list) {
       const ex = e.x - state.pos.x, ey = e.y - state.pos.y;
-      const d = Math.hypot(ex, ey);
-      if (d < 70) {
-        const a2 = Math.atan2(ey, ex);
-        let diff = Math.abs(a2 - ang); if (diff > Math.PI) diff = 2*Math.PI - diff;
-        if (diff < Math.PI / 1.6) { // ~112° arc
-          if (swept.length >= cap) continue;
-          if (e.ai === "mimic" && !e.awake) { e.awake = true; }
-          const dmg = isGuild ? 55 * combatDamageMult() : localHitDamage(55 * combatDamageMult(), e);
-          if (!isGuild || !e.shield) e.hp -= dmg;
-          onLocalHit(e, dmg, !isGuild);
-          swept.push(e.id);
-          e.hitFlash = 6;
-          e.awake = true; e.lurking = false;
-          const km = 4;
-          const m = Math.hypot(ex, ey) || 1;
-          e.kbX += (ex / m) * km;
-          e.kbY += (ey / m) * km;
-          addParticles(e.x, e.y, "#fcd34d", 6);
-          hit++;
-        }
-      }
+      if (!inMeleeShape(K, ex, ey, ang, e.size || 12)) continue;
+      if (swept.length >= cap) continue;
+      // A shield-bearer blocks what comes at its front (never reported).
+      if (guardBlocks(e, state.pos.x, state.pos.y)) { blockedFx(e); continue; }
+      if (e.ai === "mimic" && !e.awake) { e.awake = true; }
+      const dmg = isGuild ? base : localHitDamage(base, e, K.id);
+      if (!isGuild || !e.shield) e.hp -= dmg;
+      onLocalHit(e, dmg, !isGuild);
+      swept.push(e.id);
+      e.hitFlash = 6;
+      e.awake = true; e.lurking = false;
+      const km = K.knock || 4;
+      const m = Math.hypot(ex, ey) || 1;
+      e.kbX += (ex / m) * km;
+      e.kbY += (ey / m) * km;
+      addParticles(e.x, e.y, "#fcd34d", 6);
+      hit++;
     }
     state.swingT = 14;
     state.swingAng = ang;
+    if (W && W.startAttack) W.startAttack(hand, K.id, ang);
     reportEnemyHits(swept, "sword");
     // A swing against a cracked wall is how a secret is found.
     if (window.gameDepths && gameDepths.onSwing) gameDepths.onSwing(state.pos.x + Math.cos(ang) * 40, state.pos.y + Math.sin(ang) * 40);
     if (hit > 1) toast(`Multi-hit x${hit}!`, 800);
   } else {
-    // Pistol: slower fire, ranged, less damage per shot
-    state.attackCooldown = 18;
+    // Pistol: slower fire, ranged, less damage per shot. Every ranged kind
+    // is a projectile with its own speed, life, pierce and flight path.
+    if (K.shape === "boomerang" && W && W.boomerangOut && W.boomerangOut()) return;
+    state.attackCooldown = K.cd[0];
     state.swingT = 0;
-    const dx = state.mouse.x - state.pos.x;
-    const dy = state.mouse.y - state.pos.y;
     const m = Math.hypot(dx, dy) || 1;
-    state.bullets.push({
+    const shot = {
       x: state.pos.x, y: state.pos.y,
-      vx: dx/m * 8, vy: dy/m * 8,
-      life: 80, dmg: 22 * combatDamageMult(),
-    });
+      vx: dx/m * K.speed, vy: dy/m * K.speed,
+      life: K.life, dmg: 22 * K.dmg * combatDamageMult("ranged"),
+    };
+    if (K.id !== "gun") {
+      shot.kind = K.id; shot.pierce = K.pierce | 0; shot.hitIds = []; shot.knock = K.knock;
+      if (K.shape === "boomerang") {
+        // out to the cursor (at most its range, at least a short hop), then home
+        const L = Math.max(90, Math.min(K.range || 260, m));
+        Object.assign(shot, { boom: true, t: 0, T: K.life, ox: state.pos.x, oy: state.pos.y, ax: state.pos.x + dx / m * L, ay: state.pos.y + dy / m * L,
+          side: (Math.random() < 0.5 ? -1 : 1), back: false, out: [], home: [], spin: 0, hold: 8 });
+        if (W && W.setInFlight) W.setInFlight(true);
+      }
+    }
+    state.bullets.push(shot);
+    if (W && W.startAttack) W.startAttack(hand, K.id, Math.atan2(dy, dx));
     addParticles(state.pos.x + dx/m * 14, state.pos.y + dy/m * 14, "#fde047", 3);
   }
+}
+// WEAPONS helpers (kept beside doAttack: js/firstperson.test.js runs this slice).
+// The kind in a hand: gameWeapons when it is loaded, today's sword / pistol otherwise.
+function handKind(hand) {
+  const W = typeof window !== "undefined" ? window.gameWeapons : null;
+  const id = W && W.kindOf ? W.kindOf(hand) : (hand === "ranged" ? "gun" : "sword");
+  return (ECON.WEAPON_KINDS && ECON.WEAPON_KINDS[id]) || (hand === "ranged"
+    ? { id: "gun", hand: "ranged", shape: "bullet", dmg: 1, cd: [18, 16], speed: 8, life: 80, bossReach: 420, targets: 1, pierce: 0, knock: 1.5 }
+    : { id: "sword", hand: "melee", shape: "arc", dmg: 1, cd: [14, 12], reach: 70, bossReach: 58, arc: Math.PI / 1.6, targets: 6, knock: 4 });
+}
+// Is an enemy at (ex, ey) from you inside this melee kind's strike? The sword
+// is exactly the old test (70px, ~112° either side of the aim).
+function inMeleeShape(K, ex, ey, ang, size) {
+  const d = Math.hypot(ex, ey);
+  if (K.shape === "line") {
+    const c = Math.cos(ang), s = Math.sin(ang), along = ex * c + ey * s, perp = Math.abs(-ex * s + ey * c);
+    return along > -8 && along < K.reach + size * 0.5 && perp < (K.width || 30) / 2 + size * 0.6;
+  }
+  if (K.shape === "smash") {
+    const cx = Math.cos(ang) * 30, cy = Math.sin(ang) * 30;
+    return Math.hypot(ex - cx, ey - cy) < (K.smashR || 44) + size * 0.5 || d < 22;
+  }
+  if (!(d < K.reach)) return false;
+  let diff = Math.abs(Math.atan2(ey, ex) - ang); if (diff > Math.PI) diff = 2 * Math.PI - diff;
+  return diff < K.arc;
+}
+// Nearest first, so a capped kind takes the ones in its face.
+function meleeOrder(list) {
+  const px = state.pos.x, py = state.pos.y;
+  return list.slice().sort((a, b) => Math.hypot(a.x - px, a.y - py) - Math.hypot(b.x - px, b.y - py));
+}
+// A cosmetic boss-room projectile for a ranged kind.
+function makeTracer(K, ux, uy, dist) {
+  const x = state.pos.x + ux * 16, y = state.pos.y + uy * 16;
+  if (K.id === "gun" || !K.id) return { x, y, vx: ux * 11, vy: uy * 11, life: Math.round(ECON.GUILD_BOSS.REACH.pistol / 11) };
+  if (K.shape === "boomerang") {
+    const L = Math.max(90, Math.min(K.bossReach || 300, dist));
+    return { kind: K.id, boom: true, t: 0, T: K.life, x, y, vx: ux, vy: uy, ox: state.pos.x, oy: state.pos.y,
+      ax: state.pos.x + ux * L, ay: state.pos.y + uy * L, side: (Math.random() < 0.5 ? -1 : 1), back: false, spin: 0, life: K.life, struck: 0, hold: 8 };
+  }
+  const sp = Math.max(8, (K.speed || 8) * 1.2);
+  return { kind: K.id, x, y, vx: ux * sp, vy: uy * sp, life: Math.round((K.bossReach || 420) / sp) };
+}
+// Where a boomerang is at frame t of T: out to the apex along a gentle curve,
+// then home to wherever its thrower is NOW (it is caught, not landed).
+function boomerangStep(b, homeX, homeY) {
+  // held while the arm winds up (the throw animation releases it at ~45%)
+  if (b.hold > 0) { b.hold--; b.x = homeX; b.y = homeY; b.ox = homeX; b.oy = homeY; return false; }
+  b.t++;
+  const u = b.t / b.T, px = b.x, py = b.y;
+  const nx = -(b.ay - b.oy), ny = b.ax - b.ox, nl = Math.hypot(nx, ny) || 1;
+  if (u <= 0.5 && !b.back) {
+    const k = 1 - Math.pow(1 - u * 2, 2);               // decelerates into the apex
+    const bow = Math.sin(k * Math.PI) * 26 * b.side;
+    b.x = b.ox + (b.ax - b.ox) * k + nx / nl * bow; b.y = b.oy + (b.ay - b.oy) * k + ny / nl * bow;
+    if (u >= 0.5) b.back = true;
+  } else {
+    if (!b.back) { b.back = true; b.t = Math.max(b.t, Math.ceil(b.T / 2)); }
+    const k = Math.pow(Math.min(1, (b.t / b.T - 0.5) * 2), 2); // accelerates home
+    const bow = Math.sin(k * Math.PI) * 26 * -b.side;
+    b.x = b.ax + (homeX - b.ax) * k + nx / nl * bow; b.y = b.ay + (homeY - b.ay) * k + ny / nl * bow;
+  }
+  b.vx = b.x - px; b.vy = b.y - py;
+  b.spin = (b.spin || 0) + 0.55;
+  return b.t >= b.T;
 }
 
 // Your guildmates, drawn from the same presence feed the town uses. Only the
@@ -2524,7 +3117,7 @@ function guildTagColor(gid) {
 // The new attack shapes, drawn here until js/bosses.js says it draws them
 // itself (gameBosses.drawsAttack(type) -> true). The name/dodge label is
 // already printed by gameBosses.drawAttacks for every shape with `points`.
-const NEW_SHAPES = new Set(["constellation", "lance", "sigils", "spiral", "hazard", "collapse", "summon", "ward", "soak"]);
+const NEW_SHAPES = new Set(["constellation", "lance", "sigils", "spiral", "hazard", "collapse", "summon", "ward", "soak", "entangle", "crescent", "eclipse"]);
 // Per-frame fields the drawings read (see the field contract above
 // ARCANE_SHAPES in js/bosses.js): a soak's `inside` is how many of the party
 // are standing in it right now, frozen at the count it resolved with.
@@ -2550,6 +3143,43 @@ function drawAttackFallbacks(ctx, attacks, t, look) {
     const left = a.fireAt - t, winding = left > 0;
     const warn = Math.max(0, Math.min(1, 1 - left / Math.max(1, a.warnMs)));
     const after = -left;
+    if (a.type === "entangle") {
+      if (!winding && after > 500) continue;
+      for (const p of a.points || []) {
+        ctx.globalAlpha = winding ? 0.18 + 0.2 * warn : 0.5 * (1 - after / 500);
+        ctx.fillStyle = "#4d7c0f"; ctx.beginPath(); ctx.arc(p.x, p.y, a.r, 0, TAU); ctx.fill();
+        ctx.globalAlpha = 0.9; ctx.strokeStyle = "#bef264"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(p.x, p.y, a.r, -Math.PI / 2, -Math.PI / 2 + TAU * (winding ? warn : 1)); ctx.stroke();
+        for (let i = 0; i < 6; i++) { const an = i * 1.05 + p.x * 0.01, rr = a.r * (winding ? 0.4 + 0.5 * warn : 1); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.quadraticCurveTo(p.x + Math.cos(an + 0.5) * rr * 0.6, p.y + Math.sin(an + 0.5) * rr * 0.6, p.x + Math.cos(an) * rr, p.y + Math.sin(an) * rr); ctx.stroke(); }
+      }
+      ctx.globalAlpha = 1;
+      continue;
+    }
+    if (a.type === "crescent") {
+      const f = a.from || a.head;
+      if (winding) {
+        ctx.globalAlpha = 0.15 + 0.25 * warn; ctx.fillStyle = acc;
+        ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.arc(f.x, f.y, 900, a.angle - a.arc / 2, a.angle + a.arc / 2); ctx.closePath(); ctx.fill();
+      } else if (after < a.durMs) {
+        const front = after * a.pxPerMs;
+        ctx.globalAlpha = 0.9; ctx.strokeStyle = "#fff1f2"; ctx.lineWidth = a.band * 0.35;
+        ctx.beginPath(); ctx.arc(f.x, f.y, Math.max(1, front), a.angle - a.arc / 2, a.angle + a.arc / 2); ctx.stroke();
+        ctx.globalAlpha = 0.4; ctx.strokeStyle = acc; ctx.lineWidth = a.band;
+        ctx.beginPath(); ctx.arc(f.x, f.y, Math.max(1, front), a.angle - a.arc / 2, a.angle + a.arc / 2); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      continue;
+    }
+    if (a.type === "eclipse") {
+      if (!winding && after > (a.durMs || 900)) continue;
+      ctx.lineCap = "round";
+      ctx.globalAlpha = winding ? 0.15 + 0.35 * warn : 0.85; ctx.strokeStyle = winding ? "#fde68a" : "#1e1b4b"; ctx.lineWidth = winding ? a.w * (0.3 + 0.7 * warn) : a.w;
+      ctx.beginPath(); ctx.moveTo(a.x0, a.y0); ctx.lineTo(a.x1, a.y1); ctx.stroke();
+      ctx.globalAlpha = winding ? 0.8 : 1; ctx.strokeStyle = winding ? "#fef3c7" : "#fde047"; ctx.lineWidth = winding ? 2 : 6;
+      ctx.beginPath(); ctx.moveTo(a.x0, a.y0); ctx.lineTo(a.x1, a.y1); ctx.stroke();
+      ctx.globalAlpha = 1;
+      continue;
+    }
     if (a.type === "constellation") {
       const n = a.stars.length, shown = winding ? Math.max(1, Math.ceil(n * Math.min(1, warn * 1.6))) : n;
       const segs = DepthsCore.constellationSegments(a.stars);
@@ -2764,7 +3394,7 @@ function drawDarkMask(ctx, t) {
   if (d.runId && state.others) for (const o of Object.values(state.others)) {
     if (o && o.area === "dungeon" && o.run === d.runId) lights.push({ x: o.dx == null ? o.x : o.dx, y: o.dy == null ? o.y : o.dy, r: 120 });
   }
-  const h = bossHeadScreenPos();
+  const h = bossFocusPos();
   lights.push({ x: h.x, y: h.y, r: 90 });
   ctx.save();
   ctx.beginPath(); ctx.rect(-50, -50, DUNGEON_W + 100, DUNGEON_H + 100);
@@ -2804,10 +3434,10 @@ function drawPhaseShiftCard(ctx, t) {
   ctx.restore();
 }
 // Phase pips, the enrage clock and what is shielding it — under the HP bar.
-function drawBossStatusHud(ctx, b, t, x0, w, accent) {
+function drawBossStatusHud(ctx, b, t, x0, w, accent, y0) {
   if (!b) return;
   const count = b.phaseCount || (ECON.bossPhaseCount ? ECON.bossPhaseCount(b.id) : 1);
-  let y = 96;
+  let y = y0 || 96;
   if (count > 1) {
     const ph = b.phase || 1;
     for (let i = 0; i < count; i++) {
@@ -2841,7 +3471,10 @@ function drawArenaAdds(ctx, t) {
   const adds = (d.arenaEnemies || []).slice().sort((a, b) => a.y - b.y);
   for (const e of adds) {
     if (G) G.drawEnemyUnder(ctx, e, t);
+    ctx.globalAlpha = enemyAlpha(e);
     gameMobs.drawEnemy(ctx, e, t, ENEMY_TYPES);
+    ctx.globalAlpha = 1;
+    drawEnemyTells(ctx, e, t);
     if (G) G.drawEnemyOver(ctx, e, t);
   }
   for (const b of (state.enemyBullets || [])) {
@@ -3066,7 +3699,11 @@ function drawBossRoom() {
     ctx.fillText(d.exitReady ? 'E · RETURN HOME' : 'CLAIM THE CHEST TO LEAVE', x, y + 44);
   }
   // ---- the boss, its attacks, and the player ----
-  if (b) gameBosses.drawBoss(ctx, b, t);
+  // A moving boss is drawn from its interpolated pose: telegraphs on the
+  // floor, then every body behind you; the ones in front come after you.
+  const CB = crownMobile(b) ? window.gameCrownBoss : null;
+  if (CB) { CB.drawGround(ctx, t); CB.drawBodies(ctx, t, "back", state.pos.y); }
+  else if (b) gameBosses.drawBoss(ctx, b, t);
   drawArenaAdds(ctx, t);
   const G = window.gameDepths;
   if (G) { G.drawPools(ctx, t); G.drawRings(ctx, t); }
@@ -3086,14 +3723,23 @@ function drawBossRoom() {
   }
   drawPartyMembers(t);
   drawSelf(ctx);
+  if (CB) CB.drawBodies(ctx, t, "front", state.pos.y);
+  if (window.gameCrownArts) gameCrownArts.drawEffects(ctx, t);
   if (G) G.drawWorldTop(ctx, t);
+  const PW = window.gameWeapons;
   for (const tr of (d.tracers || [])) {
+    if (tr.hold > 0) continue;
+    if (tr.kind && PW && PW.drawProjectile) { PW.drawProjectile(ctx, tr, t); continue; }
     ctx.fillStyle = "rgba(253,224,71,.4)";
     ctx.beginPath(); ctx.arc(tr.x, tr.y, 8, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "#fde047";
     ctx.beginPath(); ctx.arc(tr.x, tr.y, 4, 0, Math.PI * 2); ctx.fill();
   }
-  if (state.swingT > 0 && state.weapon === "sword") {
+  if (PW && PW.drawReach) {
+    // WEAPONS: the held weapon draws its own swing (trails, craters); this is
+    // how far — and in what shape — it can actually reach a boss.
+    if (b && b.status === "alive" && !(PW.attackAnim && PW.attackAnim())) PW.drawReach(ctx, state.pos.x, state.pos.y, Math.atan2(state.mouse.y - state.pos.y, state.mouse.x - state.pos.x), "boss");
+  } else if (state.swingT > 0 && state.weapon === "sword") {
     const ang = state.swingAng || 0;
     ctx.strokeStyle = "rgba(252,211,77," + (state.swingT / 14) + ")"; ctx.lineWidth = 6;
     ctx.beginPath(); ctx.arc(state.pos.x, state.pos.y, 50, ang - Math.PI / 1.6, ang + Math.PI / 1.6); ctx.stroke();
@@ -3145,6 +3791,18 @@ function drawBossRoom() {
       ctx.fillStyle = "#fff"; ctx.font = "bold 11px sans-serif";
       ctx.fillText(Math.round(b.maxHp * fill).toLocaleString() + " / " + b.maxHp.toLocaleString(),
         canvas.width / 2, 72);
+    } else if (CB) {
+      // Moving bosses: one bar (the Monarchs: two), then what it is doing.
+      if (!CB.drawTwinBars(ctx, x0 + 20, 46, w - 40)) {
+        ctx.fillStyle = "#000"; ctx.fillRect(x0 + 20, 46, w - 40, 13);
+        ctx.fillStyle = b.enraged ? "#ef4444" : "#22c55e";
+        ctx.fillRect(x0 + 20, 46, (w - 40) * Math.max(0, b.hp / b.maxHp), 13);
+      }
+      const dead = b.status === "dead" || b.hp <= 0;
+      if (dead) { ctx.fillStyle = "#fff"; ctx.font = "bold 11px sans-serif"; ctx.fillText(b.mini ? "DEFEATED · THE SEAL IS BROKEN" : "DEFEATED", canvas.width / 2, 74); }
+      const yNext = dead ? 96 : CB.drawHud(ctx, b, t, canvas.width / 2, 74);
+      ctx.textAlign = "center";
+      drawBossStatusHud(ctx, b, t, x0, w, accent, Math.max(96, yNext + 4));
     } else {
       ctx.fillStyle = "#000"; ctx.fillRect(x0 + 20, 46, w - 40, 13);
       ctx.fillStyle = b.enraged ? "#ef4444" : "#22c55e";
@@ -3164,7 +3822,7 @@ function drawBossRoom() {
       ctx.fillStyle = "#94a3b8"; ctx.font = "9px sans-serif"; ctx.textAlign = "right";
       ctx.fillText("MINI BOSS", x0 + w - 14, 34);
     }
-    if (!rising) drawBossStatusHud(ctx, b, t, x0, w, accent);
+    if (!rising && !CB) drawBossStatusHud(ctx, b, t, x0, w, accent);
   }
   drawPhaseShiftCard(ctx, t);
   if (window.gameDepths) gameDepths.drawScreen(ctx, t);
@@ -3175,10 +3833,14 @@ function drawBossRoom() {
   if (!d.cine && !d.phaseCine && !state.tomeCine) {
     GFX.roundFill(ctx, 12, canvas.height - 64, 380, 48, 8, "rgba(0,0,0,.72)");
     ctx.fillStyle = "#fcd34d"; ctx.textAlign = "left"; ctx.font = "bold 12px sans-serif";
-    ctx.fillText("Click a glowing weak point to strike it", 24, canvas.height - 42);
+    ctx.fillText(CB ? "Strike it when it is open — never the glowing guard" : "Click a glowing weak point to strike it", 24, canvas.height - 42);
     ctx.fillStyle = "#9ca3af"; ctx.font = "11px sans-serif";
-    ctx.fillText("click or SPACE to attack · 1 = sword (close, hits hard) · 2 = pistol (reach) · read the red, then move", 24, canvas.height - 24);
+    const WH = window.gameWeapons, hands = WH && WH.hint ? WH.hint() : "1 sword · 2 pistol";
+    ctx.fillText(CB ? "click or SPACE to attack · " + hands + " · SHIFT dash · F / C Crown Arts · read the red, then move"
+      : "click or SPACE to attack · " + hands + " · read the red, then move", 24, canvas.height - 24);
+    if (WH && WH.drawHud) WH.drawHud(ctx, 12, canvas.height - 106, t);
     drawTomeHud();
+    if (window.gameCrownArts) gameCrownArts.drawSlots(ctx, canvas.width - 250 - 124, canvas.height - 66, t);
   }
 }
 
@@ -3292,13 +3954,16 @@ function drawDungeon() {
   // Enemies — real models, sorted so the ones lower down overlap the ones
   // behind them instead of z-fighting at random.
   const order = state.enemies.slice().sort((a, b) => a.y - b.y);
-  for (const e of order) gameMobs.drawEnemy(ctx, e, t, ENEMY_TYPES);
+  for (const e of order) { ctx.globalAlpha = enemyAlpha(e); gameMobs.drawEnemy(ctx, e, t, ENEMY_TYPES); ctx.globalAlpha = 1; drawEnemyTells(ctx, e, t); }
 
   drawPartyMembers(t);
 
 
-  // Bullets (player)
+  // Bullets (player) — WEAPONS: darts, bolts and boomerangs draw themselves
+  const PWb = window.gameWeapons;
   for (const b of state.bullets) {
+    if (b.hold > 0) continue;
+    if (b.kind && PWb && PWb.drawProjectile) { PWb.drawProjectile(ctx, b, t); continue; }
     ctx.fillStyle = "#fde047";
     ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = "rgba(253,224,71,0.4)";
@@ -3320,8 +3985,10 @@ function drawDungeon() {
   }
   // Player
   drawSelf(ctx);
-  // Sword swing arc
-  if (state.swingT > 0 && state.weapon === "sword") {
+  // Sword swing arc (WEAPONS: the held weapon draws its own trail; this is its reach)
+  if (PWb && PWb.drawReach) {
+    if (!(PWb.attackAnim && PWb.attackAnim())) PWb.drawReach(ctx, state.pos.x, state.pos.y, Math.atan2(state.mouse.y - state.pos.y, state.mouse.x - state.pos.x), "maze");
+  } else if (state.swingT > 0 && state.weapon === "sword") {
     const ang = Math.atan2(state.mouse.y - state.pos.y, state.mouse.x - state.pos.x);
     ctx.strokeStyle = `rgba(252,211,77,${state.swingT/14})`; ctx.lineWidth = 6;
     ctx.beginPath();
@@ -3372,7 +4039,11 @@ function drawDungeon() {
   ctx.fillText(`Floor ${state.dungeon ? state.dungeon.floor + 1 : 1} / ${state.dungeon ? state.dungeon.cfg.floors : 1}`, 22, canvas.height - 60);
   ctx.fillText(`Reward: $${state.questReward}`, 22, canvas.height - 42);
   ctx.fillStyle = "#fcd34d";
-  ctx.fillText(`Weapon: ${state.weapon.toUpperCase()} (1=sword, 2=pistol)`, 22, canvas.height - 22);
+  const PWh = window.gameWeapons;
+  if (PWh && PWh.hint) {
+    ctx.fillText("Weapons: " + PWh.hint(), 22, canvas.height - 22);
+    if (PWh.drawHud) PWh.drawHud(ctx, 12, canvas.height - 144, t);
+  } else ctx.fillText(`Weapon: ${state.weapon.toUpperCase()} (1=sword, 2=pistol)`, 22, canvas.height - 22);
   // HP bar
   ctx.fillStyle = "#000"; ctx.fillRect(canvas.width - 232, 12, 220, 22);
   ctx.fillStyle = "#10b981"; ctx.fillRect(canvas.width - 232, 12, 220 * Math.max(0, state.hp / (state.maxHp || 100)), 22);
@@ -3536,6 +4207,7 @@ function drawDuel() {
     ctx.fillStyle = p.color; ctx.globalAlpha = p.life / 40;
     ctx.fillRect(p.x - 2, p.y - 2, 4, 4); ctx.globalAlpha = 1;
   }
+  const PWd = window.gameWeapons, aimD = Math.atan2(state.mouse.y - state.pos.y, state.mouse.x - state.pos.x);
   const opp = state.others[state.duel.opponent];
   if (opp) {
     // Rendered position is eased (dispX/dispY); hit-testing in updateDuel
@@ -3545,9 +4217,11 @@ function drawDuel() {
     GFX.drawCharacter(ctx, ox, oy, opp.appearance, { facing: opp.facing });
     GFX.drawNameAndBubble(ctx, ox, oy, state.duel.opponent, opp.msgs || opp.msg, false, opp.appearance, opp.role);
   }
+  if (PWd && PWd.drawHeld) PWd.drawHeld(ctx, state.pos.x, state.pos.y, "back", aimD);
   GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance,
                      { facing: state.facing, walking: state.walking });
-  if (state.swingT > 0 && state.weapon === "sword") {
+  if (PWd && PWd.drawHeld) PWd.drawHeld(ctx, state.pos.x, state.pos.y, "front", aimD);
+  if (state.swingT > 0 && state.weapon === "sword" && !(PWd && PWd.drawHeld)) {
     const ang = Math.atan2(state.mouse.y - state.pos.y, state.mouse.x - state.pos.x);
     ctx.strokeStyle = `rgba(252,211,77,${state.swingT/14})`; ctx.lineWidth = 6;
     ctx.beginPath();
@@ -3594,6 +4268,7 @@ function doAttackWithDuel() {
       }
     }
     state.swingT = 14;
+    if (window.gameWeapons && gameWeapons.startAttack) gameWeapons.startAttack("melee", "sword", ang);
   } else {
     origDoAttack();
   }
@@ -3900,7 +4575,7 @@ function applyTome(def, by, mine) {
       else e.hitFlash = 8;
     }
     if (d && d.cfg.guild) for (let i = 0; i < killed.length; i += ECON.DUNGEON_HIT_MAX_TARGETS) reportEnemyKill(killed.slice(i, i + ECON.DUNGEON_HIT_MAX_TARGETS));
-    if (d && d.bossRoom && G) { const h = bossHeadScreenPos(); for (let i = 0; i < 6; i++) G.procArcs({ x: h.x + (Math.random() - 0.5) * 600, y: 0 }, [h], "#e0f2fe"); }
+    if (d && d.bossRoom && G) { const h = bossFocusPos(); for (let i = 0; i < 6; i++) G.procArcs({ x: h.x + (Math.random() - 0.5) * 600, y: 0 }, [h], "#e0f2fe"); }
     shakeDungeon(20);
     toast(`${escapeHtml(who)} the Tome of Storms — the sky answers.`, 4000);
   }
@@ -3940,4 +4615,7 @@ window.gameCombat = {
   // Arcane Depths (MASTER-PLAN §6.7)
   dashReady, fx: playerFx, dash: () => tryDash(0, 0), dashState, cancelDash,
   adoptSpawned, showProcs, playerMaxHp, shake: () => _dungeonShake,
+  // The Sundered Crown (MASTER-PLAN §6.5): Crown Arts and the new mobs
+  allEnemies, artMove: crownArtMove, applyBossHit, bossFocus: bossFocusPos,
+  enemyAlpha, drawEnemyTells, rootPlayer,
 };

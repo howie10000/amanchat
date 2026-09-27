@@ -1572,7 +1572,8 @@
       const par = parMs(d);
       const elapsed = (d.clearMs != null ? d.clearMs : t - (d.startedAt || t)) + rt.downs * 8000;
       const stt = Core.parState(elapsed, par);
-      timer = `<span class="adHud-timer" data-state="${stt}" title="Par ${Core.fmtClock(par)} — beat it for a Swift chest and a delve upgrade">${Core.fmtClock(elapsed)}<small> / ${Core.fmtClock(par)}</small></span>`;
+      // "target", not a bare "/ 12:00": it read as a time limit (docs/sundered-crown/GUI-AUDIT.md B2).
+      timer = `<span class="adHud-timer" data-state="${stt}" title="Target time ${Core.fmtClock(par)} — beat it for a Swift chest and a delve upgrade. Not a time limit.">${Core.fmtClock(elapsed)}<small> target ${Core.fmtClock(par)}</small></span>`;
     }
     parts.push(`<div class="adHud-top">${badge}${timer}</div>`);
     // affixes
@@ -1584,7 +1585,8 @@
     // keys
     const K = rt.feat.keys;
     if (rt.plan && rt.plan.features) {
-      parts.push(`<div class="adHud-keys"><span class="adKey silver${K.silver ? ' on' : ''}" title="Silver keys open silver chests">${itemIcon('key', 'silver', 18, '⚿')} ${K.silver | 0}</span><span class="adKey gold${K.gold ? ' on' : ''}" title="The gold key opens the gold chest">${itemIcon('key', 'gold', 18, '⚿')} ${K.gold | 0}</span><span class="adKey shard${K.shard ? ' on' : ''}" title="Three sigil shards open the Arcane Vault">${itemIcon('key', 'shard', 18, '◆')} ${Math.min(3, K.shard | 0)}/3</span></div>`);
+      // Each counter says what it is (the hover titles never reached touch players).
+      parts.push(`<div class="adHud-keys"><span class="adKey silver${K.silver ? ' on' : ''}" title="Silver keys open silver chests">${itemIcon('key', 'silver', 18, '⚿')} ${K.silver | 0}<em>silver key</em></span><span class="adKey gold${K.gold ? ' on' : ''}" title="The gold key opens the gold chest">${itemIcon('key', 'gold', 18, '⚿')} ${K.gold | 0}<em>gold key</em></span><span class="adKey shard${K.shard ? ' on' : ''}" title="Three sigil shards open the Arcane Vault">${itemIcon('key', 'shard', 18, '◆')} ${Math.min(3, K.shard | 0)}/3<em>vault shards</em></span></div>`);
     }
     // buffs
     const buffs = [];

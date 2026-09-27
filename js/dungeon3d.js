@@ -500,7 +500,10 @@
   const BOSS_THEME = { curator: "archive", astraea: "archive", prismgolem: "geode", khyra: "geode", halvard: "rime", iskarra: "rime",
     heart: "depths", concordant: "nexus", ley_ember: "nexus", ley_tide: "nexus", ley_star: "nexus",
     // the three minis that used to borrow the brick room
-    ogrelord: "warpit", herald: "belfry", broodmother: "nest" };
+    ogrelord: "warpit", herald: "belfry", broodmother: "nest",
+    // THE SUNDERED CROWN
+    gorehorn: "thornwild", briar_matron: "thornwild", kael: "colosseum", pit_champion: "colosseum",
+    twin_monarchs: "mirror", veiled_assassin: "mirror", sundered_king: "throne", kael_crownbound: "throne" };
   const THEME_LOOK = {
     //          stone tint           ambient   hemi-sky  fog       bg        torch     key light
     archive: { tint: [0.5, 0.56, 1.0], amb: 0x2a2a55, sky: 0x4a4a8a, fog: 0x05060f, bg: 0x070918, torch: 0xfde68a, key: 0xfff0c8 },
@@ -515,6 +518,11 @@
     belfry:  { tint: [0.5, 0.5, 0.57], amb: 0x1a1826, sky: 0x37344e, fog: 0x06050b, bg: 0x07060c, torch: 0xffd9a8, key: 0xdcd6ee, flame: 0.4, torchI: 0.8 },
     // Broodmother: the Ashen Roost's nest, a basalt cave cut by lava.
     nest:    { tint: [0.5, 0.36, 0.3], amb: 0x2a120a, sky: 0x4a2010, fog: 0x0e0503, bg: 0x0a0302, torch: 0xff7a2e, key: 0xffc890, flame: 0.8, torchI: 0.45 },
+    // THE SUNDERED CROWN chambers
+    thornwild: { tint: [0.55, 0.7, 0.45], amb: 0x1a2410, sky: 0x3c5a1e, fog: 0x050803, bg: 0x040603, torch: 0xbef264, key: 0xe8ffc8 },
+    colosseum: { tint: [0.85, 0.66, 0.5], amb: 0x2a1a10, sky: 0x6a4020, fog: 0x0b0604, bg: 0x0a0503, torch: 0xfb923c, key: 0xffd6a8 },
+    mirror:    { tint: [0.7, 0.66, 0.9], amb: 0x241e3a, sky: 0x5a4a8a, fog: 0x040308, bg: 0x06040c, torch: 0xf5d0fe, key: 0xf0e6ff },
+    throne:    { tint: [0.62, 0.52, 0.44], amb: 0x2a1c0c, sky: 0x5a4010, fog: 0x050302, bg: 0x050302, torch: 0xfde047, key: 0xfff0c0 },
   };
   let themeNow = null, roomMats = null, flameK = 1, torchK = 1;
   const decor = {};
@@ -1525,7 +1533,7 @@
     if(rig){rig.body.emissive.copy(rig.color);if(rig.dragon&&rig.dragon.crown){rig.dragon.crown.visible=false;rig.dragon.crown.rotation.set(0,0,0);rig.dragon.crown.position.set(0,2.1,-.6);}}
     if(R.backWall)R.backWall.position.y=ROOM.wallH/2;
     for(const w of R.sideWalls){w.position.y=ROOM.wallH/2;w.rotation.z=0;}
-    for(const p of R.pillars){p.g.position.y=0;p.g.rotation.set(0,0,0);}
+    for(const p of R.pillars){p.g.position.set(p.sx*(ROOM.halfW-1.8),0,p.z);p.g.rotation.set(0,0,0);}
     fx.sky.visible=false;fx.flood.visible=false;fx.tear.visible=fx.tearGlow.visible=false;
     fx.shaft.material.opacity=0;fx.wash.material.opacity=0;coalLight.intensity=0;scene.fog.density=.012;
   }
@@ -1703,11 +1711,19 @@
   // `people` is [{ appearance }] from bosses.js — you first, then whoever else
   // is on this floor of this run. `walk` is 0 standing, 1 walking; `face` is
   // the yaw they hold. `phase` drives the stride.
-  function poseParty(people, x0, z0, walk, phase, face) {
+  function poseParty(people, x0, z0, walk, phase, face, act) {
     const n = Math.max(0, Math.min(PARTY_MAX, (people && people.length) || 0));
     for (let i = 0; i < PARTY_MAX; i++) {
       const m = fx.party[i];
-      if (i >= n) { m.g.visible = false; continue; }
+      const sk = skinMember(m);
+      if (i >= n) { m.g.visible = false; if (sk) sk.root.visible = false; continue; }
+      if (sk) {
+        // the Blender hero: faces +Z, so the same yaw turns it toward the boss on the way in
+        m.g.visible = false; sk.root.visible = true;
+        sk.root.position.set(x0 + (i - (n - 1) / 2) * 1.9, 0, z0 + (i % 2) * 1.1); sk.root.rotation.y = face;
+        poseSkinnedMember(m, people[i], i, walk, phase, act);
+        continue;
+      }
       m.g.visible = true;
       dressMember(m, people[i] && people[i].appearance);
 
@@ -3146,12 +3162,520 @@
       return { eyes, eyeY, limbs, parts: [], idle, torso };
     };
   }
+  // ---------------------------------------------------------------
+  //  THE SUNDERED CROWN (B3) — cutscene rigs
+  // ---------------------------------------------------------------
+  // One jointed humanoid kit for the duellists, the monarchs and the king
+  // (hips -> knees, shoulders -> elbows -> weapon hands, all groups so the
+  // entrance / death poses can swing them), a quadruped for Gorehorn, and the
+  // King's spectral colossus for his phase-2 cinematic.
+  function crownMat(color, o) { return new THREE.MeshStandardMaterial(Object.assign({ color: new THREE.Color(color), roughness: 0.6, metalness: 0.3 }, o || {})); }
+  function crownHuman(o) {
+    return function (root, shell, body, trim, accent) {
+      const S = o.scale || 1, g = new THREE.Group(); g.scale.setScalar(S); g.position.x = o.x || 0; shell.add(g);
+      const armorM = crownMat(o.armor || 0x3a2a2e, { metalness: 0.55, roughness: 0.42 });
+      const clothM = crownMat(o.cloth || 0x7f1d1d, { metalness: 0.05, roughness: 0.9, side: THREE.DoubleSide });
+      const skinM = crownMat(o.skin || 0xe7c1a0, { metalness: 0, roughness: 0.8 });
+      const metalM = crownMat(o.metal || 0xcbd5e1, { metalness: 0.92, roughness: 0.22 });
+      const trimM = crownMat(o.trim || accent || 0xfde68a, { metalness: 0.7, roughness: 0.3, emissive: new THREE.Color(o.trim || accent || 0xfde68a), emissiveIntensity: 0.25 });
+      const bladeM = crownMat(0xe8edf3, { metalness: 0.95, roughness: 0.12, emissive: new THREE.Color(o.bladeGlow || accent || 0xffffff), emissiveIntensity: 0.15 });
+      const hipY = 5.6;
+      // legs (a robe hides them)
+      const legs = [];
+      for (const sx of [-1, 1]) {
+        const hip = new THREE.Group(); hip.position.set(sx * 0.9, hipY, 0); g.add(hip);
+        limbOf(hip, o.robe ? clothM : clothM, [[0, 0, 0], [0, -1.4, 0.15], [0, -2.8, 0.1]], 0.72, 0.55, 6, 10);
+        const knee = new THREE.Group(); knee.position.set(0, -2.8, 0.1); hip.add(knee);
+        limbOf(knee, armorM, [[0, 0, 0], [0, -1.3, -0.05], [0, -2.6, 0]], 0.55, 0.42, 6, 10);
+        blob(knee, armorM, 0.5, 0.35, 0.95, 0, -2.75, 0.35);
+        legs.push({ hip, knee, sx });
+      }
+      if (o.robe) { const robe = mesh(g, lathe([[o.robeR || 3.1, 0], [2.4, 2.5], [1.5, 5.2], [1.25, 6.6]], 28), clothM, 0, 0, 0); robe.material = clothM;
+        for (let k = 0; k < 3; k++) { const hem = mesh(g, new THREE.TorusGeometry((o.robeR || 3.1) - 0.05 - k * 0.3, 0.07, 5, 40), trimM, 0, 0.12 + k * 0.9, 0); hem.rotation.x = Math.PI / 2; } }
+      // torso: a lathed chest flattened front-to-back, a belt, a tabard
+      const torsoG = lathe([[1.15, 0], [1.3, 0.9], [1.7, 2.3], [1.85, 3.3], [1.45, 4.0], [0.7, 4.3]], 24);
+      sculpt(torsoG, (v) => { v.z *= 0.72; });
+      const torso = mesh(g, torsoG, o.bareChest ? skinM : armorM, 0, hipY, 0);
+      const belt = mesh(g, new THREE.TorusGeometry(1.22, 0.14, 6, 24), trimM, 0, hipY + 0.2, 0); belt.rotation.x = Math.PI / 2; belt.scale.y = 0.72;
+      if (!o.robe) { const tab = mesh(g, new THREE.PlaneGeometry(1.5, 2.4, 1, 4), clothM, 0, hipY - 1.1, 0.95); tab.rotation.x = 0.08; }
+      // shoulders + arms
+      const arms = [];
+      for (const sx of [-1, 1]) {
+        const sh = new THREE.Group(); sh.position.set(sx * 1.95, hipY + 3.6, 0); g.add(sh);
+        if (o.pauldron) { const p = blob(sh, metalM, 1.0, 0.7, 1.0, sx * 0.2, 0.25, 0); p.rotation.z = -sx * 0.3; }
+        limbOf(sh, o.bareArms ? skinM : clothM, [[0, 0, 0], [sx * 0.2, -1.2, 0.1], [sx * 0.25, -2.3, 0.2]], 0.5, 0.42, 6, 10);
+        const el = new THREE.Group(); el.position.set(sx * 0.25, -2.3, 0.2); sh.add(el);
+        limbOf(el, armorM, [[0, 0, 0], [0, -1.0, 0.35], [0, -1.9, 0.55]], 0.42, 0.34, 6, 10);
+        const hand = blob(el, o.bareArms ? skinM : armorM, 0.36, 0.4, 0.36, 0, -2.05, 0.6);
+        arms.push({ arm: sh, el, hand, sx });
+      }
+      // the weapon, in the right hand
+      const R = arms[1], weap = new THREE.Group(); weap.position.set(0, -2.05, 0.6); R.el.add(weap);
+      if (o.weapon === "sword" || o.weapon === "greatsword") {
+        const L = o.weapon === "greatsword" ? 6.2 : 4.8, W = o.weapon === "greatsword" ? 0.42 : 0.26;
+        const bg = new THREE.BoxGeometry(W, L, 0.07, 1, 8, 1); sculpt(bg, (v) => { const f = v.y + L / 2; if (f > L - 0.7) v.x *= (L - f) / 0.7 + 0.02; });
+        mesh(weap, bg, bladeM, 0, L / 2 + 0.5, 0);
+        mesh(weap, new THREE.BoxGeometry(1.3, 0.14, 0.2), trimM, 0, 0.45, 0);
+        mesh(weap, new THREE.CylinderGeometry(0.11, 0.12, 0.9, 8), clothM, 0, 0, 0);
+        weap.rotation.x = -0.4;
+      } else if (o.weapon === "spear") {
+        mesh(weap, new THREE.CylinderGeometry(0.08, 0.08, 8, 6), crownMat(0x7c5a35), 0, 1.5, 0);
+        mesh(weap, new THREE.ConeGeometry(0.24, 1.1, 6), metalM, 0, 6.0, 0);
+        weap.rotation.x = -0.25;
+      } else if (o.weapon === "daggers") {
+        for (const a of [R, arms[0]]) { const d = new THREE.Group(); d.position.set(0, -2.05, 0.6); a.el.add(d); mesh(d, new THREE.ConeGeometry(0.14, 1.5, 4), bladeM, 0, -0.9, 0).rotation.x = Math.PI; }
+      } else if (o.weapon === "claws") {
+        for (const a of [R, arms[0]]) for (let f = -1; f <= 1; f++) { const c = mesh(a.el, new THREE.ConeGeometry(0.07, 0.9, 4), trimM, f * 0.18, -2.6, 0.7); c.rotation.x = Math.PI + 0.3; }
+      }
+      if (o.shield) { const sh = mesh(arms[0].el, new THREE.CylinderGeometry(1.7, 1.7, 0.18, 24), clothM, -0.2, -1.2, 1.0); sh.rotation.x = Math.PI / 2; const bo = mesh(arms[0].el, new THREE.SphereGeometry(0.35, 12, 8), metalM, -0.2, -1.2, 1.15); const rim = mesh(arms[0].el, new THREE.TorusGeometry(1.7, 0.1, 6, 28), metalM, -0.2, -1.2, 1.1); }
+      // head
+      const head = new THREE.Group(); head.position.set(0, hipY + 4.85, 0.05); g.add(head);
+      blob(head, o.helm === "greathelm" || o.helm === "crest" ? metalM : o.helm === "hood" ? clothM : skinM, 0.78, 0.88, 0.8, 0, 0, 0);
+      if (o.helm === "hair" || o.helm === "sun") { blob(head, crownMat(o.hair || 0x1c1917, { roughness: 0.9 }), 0.84, 0.6, 0.86, 0, 0.35, -0.12); limbOf(head, crownMat(o.hair || 0x1c1917), [[0, 0.3, -0.7], [0, -0.6, -1.2], [0, -1.8, -1.3]], 0.28, 0.12, 6, 8); const band = mesh(head, new THREE.TorusGeometry(0.82, 0.07, 5, 24), trimM, 0, 0.3, 0); band.rotation.x = Math.PI / 2; }
+      if (o.helm === "crest") { limbOf(head, crownMat(0xdc2626, { roughness: 0.9 }), [[0, 0.7, 0.6], [0, 1.25, 0], [0, 0.9, -0.9]], 0.2, 0.12, 8, 8); mesh(head, new THREE.TorusGeometry(0.95, 0.08, 5, 24, Math.PI), metalM, 0, -0.2, 0).rotation.y = Math.PI / 2; }
+      if (o.helm === "hood") { const hood = blob(head, clothM, 0.95, 1.05, 0.98, 0, 0.12, -0.08, (n, v) => { if (n.z > 0.55) v.z -= 0.35; }); const veil = mesh(head, new THREE.PlaneGeometry(1.3, 0.8), crownMat(0xe9d5ff, { transparent: true, opacity: 0.55, side: THREE.DoubleSide }), 0, -0.35, 0.8); }
+      if (o.helm === "greathelm") { mesh(head, new THREE.BoxGeometry(1.1, 0.14, 0.3), new THREE.MeshBasicMaterial({ color: 0x0c0a09 }), 0, 0.05, 0.78); }
+      if (o.crown) { const cr = new THREE.Group(); cr.position.y = 0.85; head.add(cr); mesh(cr, new THREE.CylinderGeometry(0.85, 0.8, 0.28, 16, 1, true), trimM);
+        for (let k = 0; k < 7; k++) { if (o.brokenCrown && k === 4) continue; const a = k / 7 * TAU; spike(cr, trimM, 0.13, 0.55 + (k % 2) * 0.25, Math.cos(a) * 0.8, 0.1, Math.sin(a) * 0.8); } }
+      if (o.helm === "antlers") for (const sx of [-1, 1]) { limbOf(head, crownMat(0x3f2a14), [[sx * 0.5, 0.6, 0], [sx * 1.3, 1.6, -0.1], [sx * 1.2, 2.7, 0]], 0.13, 0.06, 8, 6); limbOf(head, crownMat(0x3f2a14), [[sx * 1.1, 1.5, 0], [sx * 2.0, 1.9, 0.1]], 0.08, 0.04, 4, 6); }
+      if (o.helm === "sun") { const halo = mesh(head, new THREE.TorusGeometry(1.5, 0.08, 6, 40), glowMat(0xfde68a, 0.8), 0, 0.3, -0.6); for (let k = 0; k < 12; k++) { const r2 = mesh(head, new THREE.BoxGeometry(0.08, 0.7, 0.05), glowMat(0xfde68a, 0.7), Math.cos(k / 12 * TAU) * 2, 0.3 + Math.sin(k / 12 * TAU) * 2, -0.6); r2.rotation.z = k / 12 * TAU + Math.PI / 2; } }
+      if (o.helm === "moon") { for (const sx of [-1, 1]) limbOf(head, trimM, [[sx * 0.5, 0.7, 0], [sx * 1.1, 1.3, 0], [sx * 0.7, 1.9, 0]], 0.1, 0.05, 6, 6); }
+      const eyeY = (hipY + 4.85) * S;
+      const eyes = eyeMeshes(root, o.eye || accent || 0xffffff, [[(o.x || 0) - 0.3 * S, eyeY + 0.05, 0.75 * S], [(o.x || 0) + 0.3 * S, eyeY + 0.05, 0.75 * S]], 0.08 * S);
+      // cape
+      let cape = null;
+      if (o.cape) { const cg = new THREE.PlaneGeometry(3.6, 7.4, 6, 10); sculpt(cg, (v) => { const h = (v.y + 3.7) / 7.4; v.z = -0.35 * (1 - (v.x / 1.8) ** 2) + 0.2 * Math.sin(v.x * 2.5 + v.y * 0.6) * (1 - h); if (h < 0.1) v.y += 0.4 * Math.abs(Math.sin(v.x * 4)); });
+        cape = mesh(g, cg, clothM, 0, hipY + 0.2, -1.25); cape.rotation.x = 0.08; }
+      const rest = () => { for (const l of legs) { l.hip.rotation.set(0, 0, 0); l.knee.rotation.set(0, 0, 0); } for (const a of arms) { a.arm.rotation.set(0, 0, a.sx * 0.12); a.el.rotation.set(-0.5, 0, 0); } head.rotation.set(0, 0, 0); g.rotation.set(0, 0, 0); g.position.y = 0; };
+      // a stance per kind: the duellist holds a guard, the king plants his sword
+      function stance(t, k) {
+        rest();
+        const breathe = Math.sin(t / 600) * 0.03;
+        if (o.weapon === "sword" || o.weapon === "daggers") { arms[1].arm.rotation.set(-0.9, 0, 0.25); arms[1].el.rotation.set(-0.9, 0, 0); arms[0].arm.rotation.set(-0.7, 0, -0.35); arms[0].el.rotation.set(-1.1, 0, 0); legs[0].hip.rotation.x = -0.35; legs[0].knee.rotation.x = 0.4; legs[1].hip.rotation.x = 0.3; g.position.y = -0.25; }
+        else if (o.weapon === "greatsword") { arms[1].arm.rotation.set(-0.35, 0, 0.35); arms[1].el.rotation.set(-0.9, 0, 0); arms[0].arm.rotation.set(-0.35, 0, -0.35); arms[0].el.rotation.set(-0.9, 0, 0); weap.rotation.x = Math.PI - 0.1; }
+        else if (o.shield) { arms[0].arm.rotation.set(-1.1, 0, -0.2); arms[0].el.rotation.set(-0.6, 0, 0); arms[1].arm.rotation.set(0.2, 0, 0.9); arms[1].el.rotation.set(-1.4, 0, 0); legs[0].hip.rotation.x = -0.3; legs[0].knee.rotation.x = 0.3; }
+        else { const up = o.robe ? 0.4 : 0; arms[1].arm.rotation.set(-0.6 - up, 0, 0.5); arms[0].arm.rotation.set(-0.6 - up, 0, -0.5); }
+        torso.scale.set(1, 1 + breathe, 1); head.rotation.x = Math.sin(t / 1300) * 0.05;
+        if (cape) cape.rotation.x = 0.08 + Math.sin(t / 700) * 0.04;
+        if (o.hover) g.position.y = 0.8 + Math.sin(t / 700) * 0.3;
+      }
+      function idle(t) { stance(t, 0); }
+      // the mini's entrance beat: land, straighten, lift the weapon at you
+      function miniPose(s) {
+        stance(s.t, 0);
+        const crouch = s.land > 0 && s.up < 1 ? (1 - easeOut(s.up)) : 0;
+        for (const l of legs) { l.hip.rotation.x -= 0.9 * crouch; l.knee.rotation.x += 1.5 * crouch; }
+        g.position.y -= 1.4 * crouch;
+        const L = easeOut(s.look); arms[1].arm.rotation.x -= 0.8 * L; weap.rotation.z = 0.3 * L;
+        bladeM.emissiveIntensity = 0.15 + 1.2 * L;
+      }
+      // entrance for the bosses (awakeCrown): k 0..1 of "it stands and draws"
+      function rise(k, t) {
+        stance(t, 0);
+        const kneel = 1 - easeOut(clamp01(k / 0.55));
+        for (const l of legs) { l.hip.rotation.x -= 1.2 * kneel * (l.sx > 0 ? 1 : 0.2); l.knee.rotation.x += 1.9 * kneel * (l.sx > 0 ? 1 : 0.4); }
+        g.position.y -= 1.8 * kneel; head.rotation.x = 0.45 * kneel;
+        const draw = easeOut(clamp01((k - 0.55) / 0.35));
+        arms[1].arm.rotation.x -= 1.4 * draw * (1 - draw * 0.4); bladeM.emissiveIntensity = 0.15 + 1.6 * draw;
+      }
+      function deathPose(c, t) {
+        stance(t, 0);
+        for (const l of legs) { l.hip.rotation.x = -1.3 * c; l.knee.rotation.x = 2.1 * c; }
+        g.position.y = -2.4 * c; g.rotation.x = 0.5 * easeIn(clamp01((c - 0.4) / 0.6)); head.rotation.x = 0.6 * c;
+        arms[1].arm.rotation.x = -0.3 * (1 - c); weap.rotation.x = -0.4 - 1.2 * c;
+      }
+      idle(0);
+      return { eyes, eyeY, limbs: arms, parts: [], idle, miniPose, rise, deathPose, torso, head, sculpted: true, crownHuman: true, weapon: weap, bladeM, g };
+    };
+  }
+  const CROWN_HUMANS = {
+    kael: { scale: 1.35, armor: 0x3a2a2e, cloth: 0x7f1d1d, weapon: "sword", helm: "hair", eye: 0xfecdd3, bladeGlow: 0xf43f5e },
+    kael_crownbound: { scale: 1.35, armor: 0x1c1917, cloth: 0x292524, weapon: "sword", helm: "hair", hair: 0xe7e5e4, cape: true, pauldron: true, trim: 0xfde047, eye: 0xfde047, bladeGlow: 0xfde047 },
+    pit_champion: { scale: 1.4, armor: 0x7c4a1e, cloth: 0x92400e, skin: 0xb07a52, weapon: "spear", shield: true, helm: "crest", bareChest: true, bareArms: true, cape: true, metal: 0xd6a45a, eye: 0xfde68a },
+    veiled_assassin: { scale: 1.2, armor: 0x1e1b4b, cloth: 0x312e81, weapon: "daggers", helm: "hood", eye: 0xe9d5ff },
+    briar_matron: { scale: 1.5, armor: 0x3f2a14, cloth: 0x3f6212, skin: 0x9dbb6a, weapon: "claws", helm: "antlers", robe: true, bareArms: true, trim: 0xbef264, eye: 0xd9f99d },
+  };
+  // THE TWIN MONARCHS: two robed rulers in one rig, a sun disc and a dark moon between them
+  function buildTwinMonarchs(root, shell, body, trim, accent) {
+    const sol = crownHuman({ x: -5.5, scale: 1.45, cloth: 0xf59e0b, armor: 0xb45309, skin: 0xf5d7a8, trim: 0xfef3c7, robe: true, helm: "sun", crown: true, hover: true, eye: 0xffffff, hair: 0xfef3c7 })(root, shell, body, trim, accent);
+    const umbra = crownHuman({ x: 5.5, scale: 1.45, cloth: 0x4c1d95, armor: 0x2e1065, skin: 0xb9a6d6, trim: 0xc4b5fd, robe: true, helm: "moon", hover: true, eye: 0xf5d0fe })(root, shell, body, trim, accent);
+    const sun = mesh(shell, new THREE.SphereGeometry(1.6, 24, 16), emissiveMat(0xfde68a, 1.4), -5.5, 17.5, -2);
+    const sunGlow = glowSprite(0xfbbf24, 9, 0.55); sunGlow.position.set(-5.5, 17.5, -2.2); shell.add(sunGlow);
+    const moon = mesh(shell, new THREE.SphereGeometry(1.5, 24, 16), new THREE.MeshStandardMaterial({ color: 0x0c0620, roughness: 1 }), 5.5, 17.5, -2);
+    const moonRim = mesh(shell, new THREE.TorusGeometry(1.6, 0.08, 6, 40), glowMat(0xc4b5fd, 0.8), 5.5, 17.5, -1.95);
+    const eyes = sol.eyes.concat(umbra.eyes);
+    function idle(t) { sol.idle(t); umbra.idle(t + 900); sun.rotation.y = t / 3000; sunGlow.material.opacity = 0.45 + 0.15 * Math.sin(t / 500); moonRim.rotation.z = t / 4000; }
+    function rise(k, t) { sol.rise(k, t); umbra.rise(clamp01(k * 1.1 - 0.05), t); sun.scale.setScalar(Math.max(0.01, easeOutBack(clamp01((k - 0.4) / 0.4)))); moon.scale.setScalar(Math.max(0.01, easeOutBack(clamp01((k - 0.5) / 0.4)))); }
+    function deathPose(c, t) { sol.deathPose(c, t); umbra.deathPose(c, t); sun.position.y = 17.5 - 15 * easeIn(c); moon.position.y = 17.5 - 15 * easeIn(c); }
+    return { eyes, eyeY: sol.eyeY, limbs: sol.limbs.concat(umbra.limbs), parts: [], idle, rise, deathPose, torso: sol.torso, head: sol.head, sculpted: true, crownHuman: true };
+  }
+  // THE SUNDERED KING: the knight, and the colossus that rises behind him (hidden until phase 2)
+  function buildSunderedKing(root, shell, body, trim, accent) {
+    const knight = crownHuman({ scale: 1.6, armor: 0x57534e, cloth: 0x7f1d1d, weapon: "greatsword", helm: "greathelm", crown: true, brokenCrown: true, cape: true, pauldron: true, trim: 0xfde047, eye: 0xfde047, metal: 0xa8a29e, bladeGlow: 0xfde047 })(root, shell, body, trim, accent);
+    const col = new THREE.Group(); col.position.set(0, 0, -13); root.add(col); col.visible = false;
+    const ghost = new THREE.MeshStandardMaterial({ color: 0xfde68a, emissive: 0xfacc15, emissiveIntensity: 0.6, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+    const ghostRim = glowMat(0xfde047, 0.55);
+    const cTorso = mesh(col, lathe([[4.5, 0], [6, 6], [8.5, 13], [8, 17], [4, 19.5]], 24), ghost, 0, 8, 0); cTorso.scale.z = 0.6;
+    const cHead = blob(col, ghost, 3.2, 3.6, 3.0, 0, 31, 0);
+    const cCrown = new THREE.Group(); cCrown.position.set(0, 34.5, 0); col.add(cCrown);
+    mesh(cCrown, new THREE.CylinderGeometry(3.1, 2.9, 1, 20, 1, true), ghostRim);
+    for (let k = 0; k < 8; k++) { if (k === 5) continue; const a = k / 8 * TAU; spike(cCrown, ghostRim, 0.45, 2.2 + (k % 2), Math.cos(a) * 3, 0.3, Math.sin(a) * 3); }
+    const cHands = [];
+    for (const sx of [-1, 1]) {
+      const arm = new THREE.Group(); arm.position.set(sx * 8.2, 24, 0); col.add(arm);
+      limbOf(arm, ghost, [[0, 0, 0], [sx * 3, -6, 3], [sx * 3.5, -12, 7]], 1.9, 1.3, 8, 10);
+      const hand = blob(arm, ghost, 2.4, 1.3, 2.8, sx * 3.5, -13, 8); cHands.push({ arm, hand, sx });
+    }
+    const cEyes = eyeMeshes(col, 0xfff7d6, [[-1.2, 31.3, 2.6], [1.2, 31.3, 2.6]], 0.35);
+    const mist = glowSprite(0xfacc15, 40, 0.28); mist.position.set(0, 12, -1); col.add(mist);
+    function colossus(u, t) {
+      col.visible = u > 0.001;
+      col.position.y = -26 * (1 - easeOut(u)); col.scale.setScalar(0.5 + 0.42 * easeOut(u));
+      ghost.opacity = 0.32 * u; ghostRim.opacity = 0.55 * u; mist.material.opacity = 0.28 * u;
+      for (const h of cHands) { h.arm.rotation.z = h.sx * (0.5 - 0.7 * easeOut(u) + Math.sin(t / 900 + h.sx) * 0.05); h.arm.rotation.x = -0.4 * u; }
+      cCrown.rotation.y = t / 2500;
+    }
+    function idle(t) { knight.idle(t); colossus(0, t); }
+    return Object.assign({}, knight, { idle, colossus, colGroup: col, colEyes: cEyes });
+  }
+  // GOREHORN: the quadruped
+  function buildGorehorn(root, shell, body, trim, accent) {
+    const hide = crownMat(0x5a3413, { roughness: 0.95, metalness: 0 });
+    const dark = crownMat(0x24130a, { roughness: 1, metalness: 0 });
+    const horn = crownMat(0xefe2c2, { roughness: 0.45, metalness: 0.05 });
+    const hoof = crownMat(0x1c1210, { roughness: 0.7 });
+    const g = new THREE.Group(); g.scale.setScalar(1.25); shell.add(g);
+    // barrel, hump, rump
+    const barrel = blob(g, hide, 3.6, 3.0, 6.2, 0, 7.2, -0.6, (n, v) => { v.y += 0.35 * Math.max(0, n.y) * Math.max(0, n.z + 0.3); v.x *= 1 - 0.1 * Math.max(0, -n.y); });
+    const hump = blob(g, dark, 3.3, 2.6, 3.0, 0, 9.3, 2.2, (n, v) => { v.y += 0.25 * snoise(n.x * 5, n.y * 5, n.z * 5); });
+    const rump = blob(g, hide, 3.1, 2.8, 2.6, 0, 7.8, -5.2);
+    const legs = [];
+    for (const [x, z, front] of [[-2.2, 3.4, 1], [2.2, 3.4, 1], [-2.3, -5.0, 0], [2.3, -5.0, 0]]) {
+      const top = new THREE.Group(); top.position.set(x, 6.4, z); g.add(top);
+      limbOf(top, hide, [[0, 0, 0], [0, -2.0, front ? 0.3 : -0.6], [0, -3.4, front ? 0 : -0.2]], 1.15, 0.8, 6, 10);
+      const knee = new THREE.Group(); knee.position.set(0, -3.4, front ? 0 : -0.2); top.add(knee);
+      limbOf(knee, dark, [[0, 0, 0], [0, -1.6, front ? -0.2 : 0.4], [0, -2.8, 0]], 0.75, 0.6, 6, 10);
+      blob(knee, hoof, 0.8, 0.45, 0.95, 0, -2.95, 0.15);
+      legs.push({ top, knee, front, sx: x > 0 ? 1 : -1 });
+    }
+    // neck + head with the two great horns
+    const head = new THREE.Group(); head.position.set(0, 8.2, 6.4); g.add(head);
+    blob(head, hide, 1.9, 1.9, 2.8, 0, 0, 1.2, (n, v) => { if (n.z > 0.5) v.y -= 0.35; });
+    blob(head, dark, 1.3, 1.1, 1.0, 0, -0.9, 3.6);
+    const ring = mesh(head, new THREE.TorusGeometry(0.45, 0.08, 6, 16), crownMat(0xfbbf24, { metalness: 0.9, roughness: 0.3 }), 0, -1.5, 4.3);
+    for (const sx of [-1, 1]) {
+      limbOf(head, horn, [[sx * 1.3, 0.8, 0.8], [sx * 3.6, 1.8, 0.8], [sx * 4.8, 3.6, 2.2], [sx * 4.2, 5.8, 4.2]], (u) => 0.75 * (1 - u) + 0.06, null, 16, 10);
+    }
+    const eyes = eyeMeshes(root, 0xfbbf24, [[-1.3 * 1.25, 8.6 * 1.25, 8.4 * 1.25], [1.3 * 1.25, 8.6 * 1.25, 8.4 * 1.25]], 0.18);
+    const tail = new THREE.Group(); tail.position.set(0, 8.4, -7.4); g.add(tail);
+    limbOf(tail, dark, [[0, 0, 0], [0, -1.5, -1.0], [0, -3.4, -1.3]], 0.3, 0.16, 8, 8); blob(tail, dark, 0.45, 0.9, 0.45, 0, -3.8, -1.3);
+    // the mane: a row of dark spikes along the neck and hump
+    for (let k = 0; k < 9; k++) { const s2 = spike(g, dark, 0.35, 1.2 + (k % 3) * 0.4, (k % 2 ? 0.3 : -0.3), 10.3 - Math.abs(k - 3) * 0.35, 4.6 - k * 0.9, -0.5, 0); }
+    function stand(t) {
+      for (const l of legs) { l.top.rotation.set(0, 0, 0); l.knee.rotation.set(0, 0, 0); }
+      g.position.y = 0; g.rotation.set(0, 0, 0); head.rotation.set(0.1 + Math.sin(t / 1400) * 0.05, Math.sin(t / 2300) * 0.1, 0); tail.rotation.x = Math.sin(t / 500) * 0.2;
+      barrel.scale.set(1, 1 + Math.sin(t / 700) * 0.015, 1);
+    }
+    function idle(t) { stand(t); }
+    // it paws, lowers its head, then rears and bellows
+    function rise(k, t) {
+      stand(t);
+      const paw = clamp01(k / 0.5), rear = Math.sin(clamp01((k - 0.55) / 0.35) * Math.PI);
+      legs[1].top.rotation.x = -0.6 * Math.max(0, Math.sin(t / 120)) * paw * (1 - rear);
+      head.rotation.x = 0.45 * paw * (1 - rear) - 0.6 * rear;
+      g.rotation.x = -0.45 * rear; g.position.y = 1.2 * rear;
+      legs[0].top.rotation.x = legs[1].top.rotation.x - 0.8 * rear; legs[0].knee.rotation.x = 1.2 * rear; legs[1].knee.rotation.x = 1.2 * rear;
+    }
+    function miniPose(s) { rise(s.look, s.t); }
+    function deathPose(c, t) {
+      stand(t);
+      for (const l of legs) { l.top.rotation.x = (l.front ? -1 : 1) * 0.8 * c; l.knee.rotation.x = (l.front ? 1.4 : -1.2) * c; }
+      g.position.y = -2.2 * c; g.rotation.z = 1.25 * easeIn(clamp01((c - 0.35) / 0.65)); head.rotation.x = 0.5 * c;
+    }
+    return { eyes, eyeY: 8.6 * 1.25, limbs: legs.map(l => ({ arm: l.top, sx: l.sx })), parts: [], idle, rise, miniPose, deathPose, torso: barrel, head, sculpted: true };
+  }
+  const CROWN_BUILDERS = { gorehorn: buildGorehorn, twin_monarchs: buildTwinMonarchs, sundered_king: buildSunderedKing };
+  for (const id in CROWN_HUMANS) CROWN_BUILDERS[id] = crownHuman(CROWN_HUMANS[id]);
+
+  // the crown chambers, dressed lightly (they are transient: freed when the tier changes)
+  function crownDecor(kind) {
+    return function () {
+      const group = new THREE.Group(); scene.add(group);
+      const stone = new THREE.MeshStandardMaterial({ color: 0x57534e, roughness: 0.95 });
+      if (kind === "thornwild") {
+        const bramble = new THREE.MeshStandardMaterial({ color: 0x16230a, roughness: 1 });
+        for (let i = 0; i < 26; i++) { const sx = i % 2 ? 1 : -1, z = 6 - i * 1.9; blob(group, bramble, 2.2, 1.6 + (i % 3) * 0.6, 2.2, sx * (ROOM.halfW - 2), 1.2, z, (n, v) => { v.addScaledVector(n, 0.4 * snoise(n.x * 6, n.y * 6, n.z * 6)); }, 12); }
+        for (const [x, z] of [[-9, -24], [9, -24], [-9, -36], [9, -36]]) { mesh(group, new THREE.CylinderGeometry(1.6, 1.9, 8, 10), new THREE.MeshStandardMaterial({ color: 0x3a3530, roughness: 1 }), x, 4, z); blob(group, new THREE.MeshStandardMaterial({ color: 0x2b400d, roughness: 1 }), 1.9, 0.5, 1.9, x, 0.3, z); }
+      } else if (kind === "colosseum") {
+        const sand = new THREE.Mesh(new THREE.CircleGeometry(16, 40), new THREE.MeshStandardMaterial({ color: 0x8a6a44, roughness: 1 })); sand.rotation.x = -Math.PI / 2; sand.position.set(0, 0.05, ROOM.bossZ + 4); group.add(sand);
+        for (let i = 0; i < 12; i++) { const sx = i % 2 ? 1 : -1, z = 4 - Math.floor(i / 2) * 8; mesh(group, new THREE.CylinderGeometry(1.1, 1.3, 11 - (i % 3) * 3, 12), stone, sx * (ROOM.halfW - 2.5), 5.5 - (i % 3) * 1.5, z); }
+        for (let i = 0; i < 6; i++) { const b = mesh(group, new THREE.PlaneGeometry(2.2, 6), new THREE.MeshStandardMaterial({ color: i % 2 ? 0x7f1d1d : 0x92400e, side: THREE.DoubleSide }), -10 + i * 4, 14, ROOM.backZ + 0.5); }
+      } else if (kind === "mirror") {
+        const glass = crystalMat(0x8b86a8, 0xf5d0fe, 0.85), frame = crownMat(0xcbd5e1, { metalness: 0.9, roughness: 0.25 });
+        for (let i = 0; i < 10; i++) { const sx = i % 2 ? 1 : -1, z = 2 - Math.floor(i / 2) * 9; const p = mesh(group, new THREE.BoxGeometry(0.2, 9, 4), glass, sx * (ROOM.halfW - 0.8), 5.5, z); mesh(group, new THREE.BoxGeometry(0.3, 9.6, 0.3), frame, sx * (ROOM.halfW - 0.8), 5.5, z + 2.1); }
+        const checker = canvasTex(256, 256, (c) => { for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { c.fillStyle = (x + y) % 2 ? "#1a1528" : "#9d98b8"; c.fillRect(x * 32, y * 32, 32, 32); } });
+        checker.wrapS = checker.wrapT = THREE.RepeatWrapping; checker.repeat.set(6, 6);
+        const fl = new THREE.Mesh(new THREE.PlaneGeometry(34, 50), new THREE.MeshStandardMaterial({ map: checker, roughness: 0.25, metalness: 0.4 })); fl.rotation.x = -Math.PI / 2; fl.position.set(0, 0.04, -18); group.add(fl);
+        return { group, transient: true, texs: [checker] };
+      } else if (kind === "throne") {
+        const gold = crownMat(0xca8a04, { metalness: 0.85, roughness: 0.3 });
+        const dais = mesh(group, new THREE.BoxGeometry(14, 1.2, 6), stone, 0, 0.6, ROOM.backZ + 4);
+        const throne = new THREE.Group(); throne.position.set(0, 1.2, ROOM.backZ + 3); group.add(throne);
+        mesh(throne, new THREE.BoxGeometry(4, 2, 3), crownMat(0x2b211b), 0, 1, 0); mesh(throne, new THREE.BoxGeometry(4, 8, 0.8), crownMat(0x2b211b), 0, 5, -1.2);
+        for (let k = 0; k < 4; k++) spike(throne, gold, 0.3, 1.6, -1.5 + k, 9, -1.2);
+        for (let i = 0; i < 8; i++) { const sh = mesh(group, new THREE.OctahedronGeometry(0.4 + (i % 3) * 0.15, 0), crystalMat(0xfde047, 0xfacc15, 0.95), (i - 4) * 2.4, 0.4, -20 + (i % 3) * 4); sh.rotation.set(i, i * 2, 0); }
+        // the throne room's roof is broken open (as in the 2D arena): the colossus stands up through it
+        return { group, transient: true, hideCeiling: true };
+      }
+      return { group, transient: true };
+    };
+  }
+
+  // =====================================================================
+  //  BLENDER-AUTHORED CHARACTERS
+  // =====================================================================
+  // The Sundered Crown bosses and the party heroes are rigged, skinned and
+  // animated in Blender (tools/blender/build-dungeon-models.py) and shipped as
+  // js/dungeon-models.js, played through js/dungeon-skin.js (SkinnedMesh +
+  // AnimationMixer). Both are fetched lazily after login (warmup) so the login
+  // screen and town never pay for them. Until they arrive — or if they fail —
+  // the procedural builders above are used unchanged.
+  const SCRIPT_URL = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
+  const SKIN = { state: "idle", promise: null, fresh: false };
+  function skinReady() {
+    if (SKIN.state === "ready") return true;
+    if (SKIN.state === "failed") return false;
+    if (window.DungeonSkin && DungeonSkin.ready && DungeonSkin.ready()) { SKIN.state = "ready"; return true; }
+    return false;
+  }
+  // `id`: the boss about to be shown. Its Blender pack part (js/dungeon-models-<dungeon>.js) and its film
+  // direction (js/cutscenes/<boss>.js) are fetched alongside the core; until they land the built-in beats
+  // and procedural rigs cover the frame.
+  function loadSkins(id) {
+    if (id && window.DungeonCutscenes && DungeonCutscenes.ensure) { try { DungeonCutscenes.ensure(id); } catch (e) {} }
+    if (skinReady()) { if (id) loadPart(id); return Promise.resolve(true); }
+    if (SKIN.promise) { if (id) SKIN.promise.then((ok) => { if (ok) loadPart(id); }); return SKIN.promise; }
+    if (!SCRIPT_URL || typeof document === "undefined" || !document.head || typeof URL === "undefined") return Promise.resolve(false);
+    const one = (name) => new Promise((ok, no) => {
+      const el = document.createElement("script"); el.src = new URL(name + "?v=skin-2", SCRIPT_URL).href; el.async = true;
+      el.onload = ok; el.onerror = () => { el.remove(); no(new Error("could not load " + name)); }; document.head.appendChild(el);
+    });
+    SKIN.state = "loading";
+    SKIN.promise = one("dungeon-models.js").then(() => one("dungeon-skin.js")).then(() => {
+      SKIN.state = (window.DungeonSkin && DungeonSkin.ready && DungeonSkin.ready()) ? "ready" : "failed";
+      SKIN.fresh = SKIN.state === "ready"; if (SKIN.fresh && id) loadPart(id); return SKIN.state === "ready";
+    }).catch((e) => { SKIN.state = "failed"; console.warn("Dungeon models unavailable; using procedural rigs", e); return false; });
+    return SKIN.promise;
+  }
+  function loadPart(id) {
+    const S = SKINNED[id] || SKINNED[artOf(id)];
+    if (!S || !window.DungeonSkin || !DungeonSkin.ensure) return;
+    const cids = S.actors.map((a) => a.cid).concat(S.colossus ? [S.colossus.cid] : []).filter((c) => !DungeonSkin.has(c));
+    if (!cids.length) return;
+    Promise.all(cids.map((c) => DungeonSkin.ensure(c))).then((r) => { if (r.every(Boolean)) SKIN.fresh = true; }).catch(() => {});
+  }
+  // game height of each actor (the procedural rigs' sizes), and which clip plays each beat
+  const SKINNED = {
+    kael: { actors: [{ cid: "kael", h: 15, eye: 0xfecdd3 }], special: "thousand_cuts" },
+    kael_crownbound: { actors: [{ cid: "kael_crownbound", h: 15, eye: 0xfde047 }], mini: "land", special: "riposte" },
+    pit_champion: { actors: [{ cid: "pit_champion", h: 15.5, eye: 0xfde68a }], mini: "entrance", special: "thrust" },
+    veiled_assassin: { actors: [{ cid: "veiled_assassin", h: 13, eye: 0xe9d5ff }], mini: "entrance", special: "ambush" },
+    briar_matron: { actors: [{ cid: "briar_matron", h: 16.5, eye: 0xd9f99d }], mini: "entrance", special: "summon" },
+    twin_monarchs: { actors: [{ cid: "sol", h: 14.5, x: -5.5, hover: 1, eye: 0xffffff }, { cid: "umbra", h: 14.5, x: 5.5, hover: 1, delay: 0.9, eye: 0xf5d0fe }], special: "cast" },
+    sundered_king: { actors: [{ cid: "sundered_king", h: 17, eye: 0xfde047 }], special: "swing", colossus: { cid: "colossus", h: 34, z: -13 } },
+    gorehorn: { actors: [{ cid: "gorehorn", h: 11.5, eye: 0xfbbf24 }], special: ["charge", "impact"] },
+    // the older majors, rebuilt in Blender; their built-in entrances are procedural-only, so the
+    // skinned versions go through awakeCrown (or their js/cutscenes/legacy.js direction)
+    warden: { actors: [{ cid: "warden", h: 16, eye: 0x67e8f9 }], special: "swing", legacy: true },
+    smith: { actors: [{ cid: "smith", h: 17, eye: 0xffb347 }], special: "smash", legacy: true },
+    tyrant: { actors: [{ cid: "tyrant", h: 15, hover: 1, eye: 0xd8b4fe }], special: "cast", legacy: true },
+  };
+  function skinKey(id) {
+    if (!skinReady()) return null;
+    const key = SKINNED[id] ? id : (SKINNED[artOf(id)] ? artOf(id) : null);
+    if (!key) return null;
+    const S = SKINNED[key];
+    return S.actors.every((a) => DungeonSkin.has(a.cid)) && (!S.colossus || DungeonSkin.has(S.colossus.cid)) ? key : null;
+  }
+  const smoothW = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+  function skinnedBuilder(id, fallback) {
+    const spec = SKINNED[id];
+    return function (root, shell, body, trim, accent) {
+      try { return buildSkinned(id, spec, root, shell, trim, accent); }
+      catch (e) {
+        console.warn("Skinned " + id + " failed; procedural rig used", e); SKIN.state = "failed";
+        while (shell.children.length) shell.remove(shell.children[0]);
+        return fallback(root, shell, body, trim, accent);
+      }
+    };
+  }
+  function eyesOn(actor, color, r, out) {
+    for (const n of ["eyeL", "eyeR"]) {
+      const so = actor.socket(n); if (!so) continue;
+      const e = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), glowMat(color));
+      e.add(new THREE.Mesh(new THREE.SphereGeometry(r * 2.6, 10, 8), glowMat(color, 0.22)));
+      so.add(e); out.push(e);
+    }
+  }
+  function buildSkinned(id, spec, root, shell, trim, accent) {
+    const actors = [], eyes = [];
+    let trimMat = null;
+    for (const s of spec.actors) {
+      const a = DungeonSkin.create(s.cid, { height: s.h });
+      a.spec = s; a.root.position.x = s.x || 0; shell.add(a.root); actors.push(a);
+      const meta = (DungeonSkin.meta(s.cid) || {}).meta || {};
+      if (!trimMat && meta.trim && a.mats[meta.trim]) trimMat = a.mats[meta.trim];
+      eyesOn(a, s.eye || accent || 0xffffff, 0.016, eyes);
+    }
+    // the King's spectral colossus, hidden until his second phase
+    let col = null, colA = null, mist = null;
+    const colEyes = [];
+    if (spec.colossus) {
+      col = new THREE.Group(); col.position.z = spec.colossus.z; col.visible = false; root.add(col);
+      colA = DungeonSkin.create(spec.colossus.cid, { height: spec.colossus.h, shadows: false }); col.add(colA.root);
+      eyesOn(colA, 0xfff7d6, 0.03, colEyes);
+      mist = glowSprite(0xfacc15, 40, 0.28); mist.position.set(0, 12, -1); col.add(mist);
+    }
+    // Sol's sun and Umbra's dark moon hang above the pair
+    let deco = null;
+    if (id === "twin_monarchs") {
+      const Y = 20;
+      const sun = mesh(shell, new THREE.SphereGeometry(1.6, 24, 16), emissiveMat(0xfde68a, 1.4), -5.5, Y, -2);
+      const sunGlow = glowSprite(0xfbbf24, 9, 0.55); sunGlow.position.set(-5.5, Y, -2.2); shell.add(sunGlow);
+      const moon = mesh(shell, new THREE.SphereGeometry(1.5, 24, 16), new THREE.MeshStandardMaterial({ color: 0x0c0620, roughness: 1 }), 5.5, Y, -2);
+      const moonRim = mesh(shell, new THREE.TorusGeometry(1.6, 0.08, 6, 40), glowMat(0xc4b5fd, 0.8), 5.5, Y, -1.95);
+      deco = { sun, sunGlow, moon, moonRim, Y };
+    }
+    root.updateMatrixWorld(true);
+    const rp = root.getWorldPosition(new THREE.Vector3());
+    const eyeY = eyes.length ? eyes[0].getWorldPosition(new THREE.Vector3()).y - rp.y : spec.actors[0].h * 0.9;
+    const secs = (t, s) => t / 1000 + ((s && s.delay) || 0);
+    const hover = (a, s, t, down) => { if (s.hover) a.root.position.y = (0.9 + Math.sin((t + (s.delay || 0) * 1000) / 700) * 0.35) * (1 - (down || 0)); };
+    const each = (fn) => actors.forEach((a) => fn(a, a.spec));
+    const clipOr = (a, n) => (a.has(n) ? n : "idle");
+    function decoIdle(t) { if (!deco) return; deco.sun.rotation.y = t / 3000; deco.sunGlow.material.opacity = 0.45 + 0.15 * Math.sin(t / 500); deco.moonRim.rotation.z = t / 4000; }
+    function colossus(u, t) {
+      if (!col) return;
+      col.visible = u > 0.001; if (!col.visible) return;
+      col.position.y = -12 * (1 - easeOut(u));
+      const w = smoothW(0.92, 1, u);
+      colA.pose([["rise", u * colA.duration("rise"), 1 - w], ["idle", t / 1000, w]]);
+      for (const k in colA.mats) { const m = colA.mats[k]; m.opacity = (m.userData.baseOpacity == null ? 1 : m.userData.baseOpacity) * u; }
+      mist.material.opacity = 0.28 * u;
+    }
+    function idle(t) {
+      each((a, s) => { a.pose([["idle", secs(t, s), 1]]); hover(a, s, t); });
+      if (col) col.visible = false;
+      decoIdle(t);
+    }
+    // the boss entrance: the authored entrance clip across the beat, settling into the idle loop
+    function rise(k, t) {
+      each((a, s) => {
+        const n = clipOr(a, "entrance"), kk = s.delay ? clamp01(k * 1.1 - 0.05) : k, w = smoothW(0.9, 1, kk);
+        a.pose([[n, kk * a.duration(n), 1 - w], ["idle", secs(t, s), w]]); hover(a, s, t);
+      });
+      if (deco) { deco.sun.scale.setScalar(Math.max(0.01, easeOutBack(clamp01((k - 0.4) / 0.4)))); deco.moon.scale.setScalar(Math.max(0.01, easeOutBack(clamp01((k - 0.5) / 0.4)))); }
+    }
+    // the minis drop in: the first frame while falling, then the clip plays through the stand-up and the look
+    function miniPose(s) {
+      each((a, sp) => {
+        const n = clipOr(a, spec.mini || "entrance"), u = s.land <= 0 ? 0 : 0.06 + 0.94 * clamp01(0.55 * s.up + 0.45 * s.look), w = smoothW(0.85, 1, s.look);
+        a.pose([[n, u * a.duration(n), 1 - w], ["idle", secs(s.t, sp), w]]); hover(a, sp, s.t);
+      });
+    }
+    function deathPose(c, t) {
+      each((a, s) => { const n = clipOr(a, "death"); a.pose([[n, c * a.duration(n), 1]]); hover(a, s, t, easeOut(c)); });
+      if (deco) { deco.sun.position.y = deco.Y - 17 * easeIn(c); deco.moon.position.y = deco.Y - 17 * easeIn(c); deco.sunGlow.position.y = deco.sun.position.y; deco.moonRim.position.y = deco.moon.position.y; }
+    }
+    // a phase cinematic: the signature move, played out and settled back into the guard
+    function phase2Pose(k, t) {
+      const sp = Array.isArray(spec.special) ? spec.special : [spec.special];
+      each((a, s) => {
+        if (sp.length === 2) {
+          const wc = smoothW(0.06, 0.12, k) * (1 - smoothW(0.42, 0.48, k)), wi = smoothW(0.42, 0.48, k) * (1 - smoothW(0.85, 0.95, k));
+          const ui = clamp01((k - 0.45) / 0.4);
+          a.pose([[clipOr(a, sp[0]), t / 1000, wc], [clipOr(a, sp[1]), ui * a.duration(clipOr(a, sp[1])), wi], ["idle", secs(t, s), Math.max(0, 1 - wc - wi)]]);
+        } else {
+          const n = clipOr(a, sp[0]), w = smoothW(0.06, 0.14, k) * (1 - smoothW(0.8, 0.94, k)), u = clamp01((k - 0.1) / 0.66);
+          a.pose([[n, u * a.duration(n), w], ["idle", secs(t, s), 1 - w]]);
+        }
+        hover(a, s, t);
+      });
+      decoIdle(t);
+    }
+    // the King's second phase: down onto one knee over the sword
+    function phaseKing(k, t) {
+      each((a, s) => { const n = clipOr(a, "kneel"); a.pose([[n, clamp01(k / 0.45) * a.duration(n), 1]]); });
+    }
+    const A0 = actors[0];
+    return { eyes, eyeY, limbs: [], parts: [], idle, rise, miniPose, deathPose, phase2Pose, phaseKing: spec.colossus ? phaseKing : null,
+      colossus: spec.colossus ? colossus : null, colGroup: col, colActor: colA, colEyes, torso: A0.bones.chest || A0.bones.body || A0.root, head: A0.bones.head || A0.root,
+      sculpted: true, skinned: true, crownHuman: true, actors, trim: trimMat || trim };
+  }
+
+  // ---- the party heroes, skinned: appearance tints, the weapon each is carrying, and what they are doing
+  const WEAPON_KINDS = ["sword", "mace", "spear", "dagger", "axe", "scythe", "gun", "boomerang", "blowdart", "crossbow"];
+  const ATTACK_CLIP = { sword: "slash", mace: "smash", spear: "thrust", dagger: "stab", axe: "chop", scythe: "sweep", gun: "shoot", boomerang: "throw", blowdart: "puff", crossbow: "loose" };
+  function kindOf(x) {
+    if (!x) return null;
+    if (typeof x === "string") return WEAPON_KINDS.includes(x) ? x : (x === "pistol" ? "gun" : null);
+    try { const k = window.ECON && ECON.weaponKindOf ? ECON.weaponKindOf(x) : null; return WEAPON_KINDS.includes(k) ? k : (x.kind && WEAPON_KINDS.includes(x.kind) ? x.kind : null); } catch (e) { return null; }
+  }
+  // The weapon system's contract (read guarded): gameWeapons.loadout() -> { melee, ranged, active }; before it
+  // exists, state.weapon is 'sword' | 'pistol'.
+  function heroWeapon(person, i) {
+    try {
+      if (person && (person.weaponKind || person.weapon)) { const k = kindOf(person.weaponKind || person.weapon); if (k) return k; }
+      if (i === 0) {
+        const GW = window.gameWeapons;
+        if (GW && GW.loadout) { const L = GW.loadout() || {}; const k = kindOf(L.active === "ranged" ? L.ranged : L.melee); if (k) return k; }
+        if (typeof state !== "undefined" && state && state.weapon) return kindOf(state.weapon) || "sword";
+      } else if (person && person.name && typeof state !== "undefined" && state && state.others && state.others[person.name]) {
+        const o = state.others[person.name], k = kindOf(o.weaponKind || o.weapon); if (k) return k;
+      }
+    } catch (e) {}
+    return "sword";
+  }
+  function skinMember(m) {
+    if (m.skin || m.skinTried || !skinReady() || !DungeonSkin.has("hero")) return m.skin;
+    m.skinTried = true;
+    try {
+      m.skin = DungeonSkin.create("hero", { height: 3.4 });
+      m.skin.root.visible = false; scene.add(m.skin.root);
+      m.skin.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    } catch (e) { console.warn("Skinned hero failed", e); m.skin = null; }
+    return m.skin;
+  }
+  function poseSkinnedMember(m, person, i, walk, phase, act) {
+    const S = m.skin;
+    if (S.appearance !== (person && person.appearance)) { S.appearance = person && person.appearance; S.tint(S.appearance || {}); }
+    const kind = heroWeapon(person, i);
+    if (S.weaponKind !== kind) S.setWeapon(kind);
+    const info = DungeonSkin.weaponInfo(kind) || {}, ready = "ready_" + (info.cls || "onehand");
+    const secs = cinematicTime / 1000 + i * 0.37, w = walk;
+    const L = [];
+    if (w > 0) L.push(["walk|noarms", ((phase + i * 0.7) / TAU) * S.duration("walk"), w], [ready + "|arms", secs, w]);
+    if (w < 1) L.push([ready, secs, 1 - w]);
+    if (act && act.w > 0) {
+      const n = act.kind === "attack" ? (ATTACK_CLIP[kind] || "slash") : act.kind;
+      for (const l of L) l[2] *= 1 - act.w;
+      L.push([n, act.u * S.duration(n), act.w]);
+    }
+    S.pose(L);
+  }
+
   const BUILDERS = { warden: buildWarden, smith: buildSmith, tyrant: buildTyrant, ogrelord: buildOgre, tempest: buildTempest,
     curator: buildCurator, astraea: buildAstraea, prismgolem: buildPrismGolem, khyra: buildKhyra, halvard: buildHalvard,
     iskarra: buildIskarra, herald: buildHerald, broodmother: buildBroodmother, heart: buildHeart, concordant: buildConcordant,
     ley_ember: buildLeyWarden("ember"), ley_tide: buildLeyWarden("tide"), ley_star: buildLeyWarden("star") };
+  Object.assign(BUILDERS, CROWN_BUILDERS);
+  BUILD_DECOR.thornwild = crownDecor("thornwild"); BUILD_DECOR.colosseum = crownDecor("colosseum"); BUILD_DECOR.mirror = crownDecor("mirror"); BUILD_DECOR.throne = crownDecor("throne");
   function artOf(id) { try { return (window.ECON && ECON.bossArt) ? ECON.bossArt(id) : id; } catch (e) { return id; } }
-  function builderFor(id) { return id === "dragon" ? buildDragon : (BUILDERS[id] || BUILDERS[artOf(id)] || buildTyrant); }
+  function builderFor(id) {
+    const proc = id === "dragon" ? buildDragon : (BUILDERS[id] || BUILDERS[artOf(id)] || buildTyrant);
+    const key = skinKey(id);
+    return key ? skinnedBuilder(key, proc) : proc;
+  }
 
   function buildRig(id, color, accent) {
     if (rig) {
@@ -3215,8 +3739,80 @@
     }
     for (const e of rig.eyes) { e.userData.restY=e.position.y; e.userData.baseScale=e.scale.clone(); }
     rig.root.traverse(o=>{if(o.isMesh){o.castShadow=!o.material.transparent;o.receiveShadow=true;}});
+    rigBounds(rig);
     currentId = id;
     return rig;
+  }
+  // World-space boxes the camera must stay out of (js/cutscenes/director.js `clear`). Measured once at
+  // the rest pose with the root at the boss mark; bounds() re-offsets them by wherever the root is now,
+  // so a boss that charges across the room carries its no-fly zone with it. The colossus is its own box,
+  // counted only while it is up.
+  // The room's own no-fly zones: the pillars, the braziers and whatever tall dressing the theme adds
+  // (the Thornwild's trunks, the Colosseum's columns). Cached per theme; the low stuff is ignored.
+  const STATIC_BOUNDS={key:null,list:[]};
+  function staticBounds(){
+    const key=themeNow||"";
+    if(STATIC_BOUNDS.key===key)return STATIC_BOUNDS.list;
+    const out=[],R=room.userData,T=new THREE.Box3();
+    for(const p of R.pillars)out.push({min:[p.g.position.x-1.4,0,p.z-1.4],max:[p.g.position.x+1.4,ROOM.wallH,p.z+1.4]});
+    for(const b of R.braziers)out.push({min:[b.g.position.x-0.9,0,b.g.position.z-0.9],max:[b.g.position.x+0.9,4.2,b.g.position.z+0.9]});
+    const D=key&&decor[key];
+    if(D&&D.group){D.group.updateMatrixWorld(true);D.group.traverse(o=>{ if(!o.isMesh||!o.geometry)return; if(!o.geometry.boundingBox)o.geometry.computeBoundingBox();
+      T.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld); const h=T.max.y-T.min.y,w=Math.max(T.max.x-T.min.x,T.max.z-T.min.z);
+      if(!isFinite(h)||h<3||w>20||(o.material&&o.material.transparent))return; out.push({min:[T.min.x,T.min.y,T.min.z],max:[T.max.x,T.max.y,T.max.z]}); });}
+    STATIC_BOUNDS.key=key;STATIC_BOUNDS.list=out;return out;
+  }
+  function rigBounds(rig){
+    const home=new THREE.Vector3(0,0,ROOM.bossZ);
+    // Varkaal is authored with its own flipped, offset shell and animated by root flight paths: its
+    // body box cannot be read off the meshes, so its shots are kept clear by construction instead
+    if(rig.id==="dragon"){rig.bounds=()=>[];return;}
+    const skip=new Set();
+    const measure=(obj)=>{
+      const box=new THREE.Box3(),tmp=new THREE.Box3();
+      obj.updateMatrixWorld(true);
+      obj.traverse(o=>{ if(!o.isMesh||!o.geometry||skip.has(o)||o.material&&o.material.transparent&&!o.isSkinnedMesh)return;
+        if(!o.geometry.boundingBox)o.geometry.computeBoundingBox(); tmp.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld); if(isFinite(tmp.min.x))box.union(tmp); });
+      if(box.isEmpty())box.set(new THREE.Vector3(-3,0,ROOM.bossZ-3),new THREE.Vector3(3,12,ROOM.bossZ+3));
+      // fatten a little: the rest pose is narrower than a swing
+      box.expandByVector(new THREE.Vector3(0.8,0.4,0.8));
+      return {min:[box.min.x-home.x,box.min.y,box.min.z-home.z],max:[box.max.x-home.x,box.max.y,box.max.z-home.z]};
+    };
+    const prevPos=rig.root.position.clone(),prevRot=rig.root.rotation.clone(),prevScale=rig.root.scale.clone();
+    rig.root.position.copy(home);rig.root.rotation.set(0,0,0);rig.root.scale.setScalar(1);
+    if(rig.colGroup)rig.colGroup.visible=false;
+    const body=measure(rig.shell.children.length?rig.shell:rig.root);
+    let col=null;
+    if(rig.colGroup){rig.colGroup.visible=true;rig.colGroup.position.y=0;col=measure(rig.colGroup);rig.colGroup.visible=false;}
+    rig.root.position.copy(prevPos);rig.root.rotation.copy(prevRot);rig.root.scale.copy(prevScale);
+    rig.boundsLocal={body,col};
+    if(rig.skinned&&rig.actors){
+      // skinned rigs: a pose-accurate hull each frame — every bone's world position plus the rigid
+      // attachments (the weapons), padded by a body's thickness. Close-ups can get close; nothing gets in.
+      const V=new THREE.Vector3(),T=new THREE.Box3();
+      const hull=(a)=>{
+        const box=new THREE.Box3();a.root.updateMatrixWorld(true);
+        for(const b of a.skeleton.bones){b.getWorldPosition(V);box.expandByPoint(V);}
+        for(const m of a.attached||[]){if(!m.geometry.boundingBox)m.geometry.computeBoundingBox();T.copy(m.geometry.boundingBox).applyMatrix4(m.matrixWorld);if(isFinite(T.min.x))box.union(T);}
+        if(box.isEmpty())return null;
+        box.expandByScalar(0.07*a.height);
+        return {min:[box.min.x,box.min.y,box.min.z],max:[box.max.x,box.max.y,box.max.z]};
+      };
+      rig.bounds=function(){
+        const out=[];
+        if(rig.shell.visible!==false)for(const a of rig.actors){const h=hull(a);if(h)out.push(h);}
+        if(rig.colActor&&rig.colGroup&&rig.colGroup.visible){const h=hull(rig.colActor);if(h)out.push(h);}
+        return out;
+      };
+      return;
+    }
+    rig.bounds=function(){
+      const p=rig.root.position,s=rig.root.scale.x||1,out=[];
+      const off=(b)=>({min:[p.x+b.min[0]*s,p.y+b.min[1]*s,p.z+b.min[2]*s],max:[p.x+b.max[0]*s,p.y+b.max[1]*s,p.z+b.max[2]*s]});
+      if(rig.shell.visible!==false)out.push(off(body));
+      if(col&&rig.colGroup&&rig.colGroup.visible){const c=rig.colGroup.position,b=off(col);b.min[1]+=c.y;b.max[1]+=c.y;out.push(b);}
+      return out;
+    };
   }
 
   // ---------------------------------------------------------------
@@ -3495,15 +4091,25 @@
     let i=0;while(i<keys.length-2&&k>keys[i+1][0])i++;
     const u=clamp01((k-keys[i][0])/Math.max(.0001,keys[i+1][0]-keys[i][0]));
     const v=axis=>cameraValue(keys,i,u,axis);
-    const s=reducedMotion.matches?0:Math.min(.7,shake||0);
+    // the built-in shots are audited too: skinned rigs by their bone hull, every rig against the
+    // pillars and the themed dressing (procedural bodies are judged by their authored keys)
+    const DC=window.DungeonCutscenes,pos=[v(1),v(2),v(3)],look=[v(4),v(5),v(6)];
+    if(DC&&DC.clear&&rig&&rig.bounds)DC.clear(pos,look,(rig.skinned?rig.bounds():[]).concat(rig.id==="dragon"?[]:staticBounds()),ROOM,1.2);
+    placeCamera(pos[0],pos[1],pos[2],look[0],look[1],look[2],v(7),shake);
+  }
+  // Put the camera somewhere and look at something. The one place every
+  // cutscene (built-in or js/cutscenes/*) sets the lens, so shake, the gate
+  // rule and the depth-of-field focus stay consistent.
+  function placeCamera(x,y,z,lx,ly,lz,fov,shake){
+    const s=reducedMotion.matches?0:Math.min(1.2,shake||0);
     const t=cinematicTime/1000;
-    camera.position.set(v(1)+Math.sin(t*31)*s*.45,v(2)+Math.sin(t*37+.7)*s*.3,v(3));
-    camera.lookAt(v(4),v(5),v(6));
+    camera.position.set(x+Math.sin(t*31)*s*.45,y+Math.sin(t*37+.7)*s*.3,z+Math.sin(t*23+1.3)*s*.12);
+    camera.lookAt(lx,ly,lz);
     // Wide reverse shots may back through the entrance; its bars must not
     // obscure the subject after the seal beat has already been established.
-    room.userData.gate.visible=!(v(6)<0 && camera.position.z>ROOM.doorZ-3);
-    focusDistance=camera.position.distanceTo(new THREE.Vector3(v(4),v(5),v(6)));
-    const fov=v(7);if(Math.abs(camera.fov-fov)>.001){camera.fov=fov;camera.updateProjectionMatrix();}
+    room.userData.gate.visible=!(lz<0 && camera.position.z>ROOM.doorZ-3);
+    focusDistance=camera.position.distanceTo(new THREE.Vector3(lx,ly,lz));
+    if(Math.abs(camera.fov-fov)>.001){camera.fov=fov;camera.updateProjectionMatrix();}
   }
 
   // ---------------------------------------------------------------
@@ -4294,6 +4900,7 @@
     rig.shell.visible = true;
     litBraziers(1, t, 0, 0.1);
     const flare = beat(k, 0.15, 0.45), settle = beat(k, 0.45, 1);
+    if (rig.phase2Pose) rig.phase2Pose(k, t);
     rig.root.position.y = Math.sin(flare * Math.PI) * 1.5;
     rig.trim.emissiveIntensity = 0.5 + 2 * Math.sin(flare * Math.PI);
     if (p.accent) rig.trim.emissive.set(p.accent);
@@ -4344,16 +4951,53 @@
       if (rig.deathPose) rig.deathPose(collapse, p.t); else for (const l of rig.limbs) l.arm.rotation.z = l.sx * lerp(-0.2, -1, collapse);
     }
   }
+  // ================= THE SUNDERED CROWN — they rise out of the dark and draw ==
+  const CAM_CROWN = OPEN_CAM.concat([
+    [E.dark, 0, 3, -6, 0, 5, ROOM.bossZ, 50],
+    [0.55, -8, 6, ROOM.bossZ + 18, 0, 8, ROOM.bossZ, 44],
+    [0.8, 0, 10, ROOM.bossZ + 24, 0, 12, ROOM.bossZ, 40],
+    [1.0, 0, 10, 6, 0, 12, ROOM.bossZ, 58],
+  ]);
+  function awakeCrown(p) {
+    const { k, t } = p;
+    let shake = 0;
+    litBraziers(k, t, E.seal, 0.1);
+    rig.shell.visible = k > E.dark * 0.9;
+    const u = beat(k, E.dark, 0.9);
+    if (rig.rise) rig.rise(u, t);
+    eyesOpen(beat(k, 0.45, 0.6));
+    const flare = beat(k, 0.62, 0.8);
+    if (flare > 0 && flare < 1) { shake = 0.6 * (1 - flare); shockwaves(0, ROOM.bossZ, flare, rig.accent, 50); } else hideWaves();
+    eyeLight.color.copy(rig.accent).lerp(WHITE, 0.4); eyeLight.intensity = 2.2 * u; eyeLight.distance = 50; eyeLight.position.set(0, rig.eyeY, ROOM.bossZ + 6);
+    sigilGlow(k, u, 1600, t);
+    fx.wash.material.color.copy(rig.accent); fx.wash.material.opacity = clamp01(1 - Math.abs(flare - 0.1) / 0.1) * 0.5;
+    ambient.intensity = 0.14 + 0.2 * u; hemi.intensity = 0.14 + 0.2 * u;
+    return shake;
+  }
+  // the King's second phase: the knight goes to one knee and the colossus climbs out of the floor behind him
+  function posePhaseKing(p) {
+    posePhaseGeneric(p);
+    const { k, t } = p;
+    if (rig.phaseKing) rig.phaseKing(k, t); else if (rig.rise) rig.rise(1 - 0.85 * Math.sin(clamp01(k / 0.45) * Math.PI * 0.5), t);
+    if (rig.colossus) rig.colossus(beat(k, 0.22, 0.8), t);
+    if (rig.colEyes) for (const e of rig.colEyes) e.scale.setScalar(Math.max(0.01, beat(k, 0.7, 0.85)));
+    const up = beat(k, 0.22, 0.8);
+    flyCamera([[0, 0, 8, 10, 0, 10, ROOM.bossZ, 60], [0.3, -6, 5, ROOM.bossZ + 18, 0, 8, ROOM.bossZ, 48], [0.65, 0, 7, 6, 0, 24, ROOM.bossZ - 10, 80], [1, 0, 8, 8, 0, 25, ROOM.bossZ - 10, 82]], k, 0.7 * Math.sin(up * Math.PI));
+  }
   const AWAKE = { warden: awakeWarden, smith: awakeSmith, tyrant: awakeTyrant, dragon: awakeDragon,
-    astraea: awakeAstraea, khyra: awakeKhyra, iskarra: awakeIskarra, heart: awakeHeart, concordant: awakeConcordant };
+    astraea: awakeAstraea, khyra: awakeKhyra, iskarra: awakeIskarra, heart: awakeHeart, concordant: awakeConcordant,
+    gorehorn: awakeCrown, kael: awakeCrown, twin_monarchs: awakeCrown, sundered_king: awakeCrown };
   const AWAKE_CAM = { warden: CAM_WARDEN, smith: CAM_SMITH, tyrant: CAM_TYRANT, dragon: CAM_DRAGON,
-    astraea: CAM_ASTRAEA, khyra: CAM_KHYRA, iskarra: CAM_ISKARRA, heart: CAM_HEART, concordant: CAM_CONCORDANT };
+    astraea: CAM_ASTRAEA, khyra: CAM_KHYRA, iskarra: CAM_ISKARRA, heart: CAM_HEART, concordant: CAM_CONCORDANT,
+    gorehorn: CAM_CROWN, kael: CAM_CROWN, twin_monarchs: CAM_CROWN, sundered_king: CAM_CROWN };
 
   function poseEntrance(p) {
     const shake = poseArrival(p);
-    const awake = AWAKE[p.id] || AWAKE.tyrant;
+    // a skinned rig has none of the procedural parts the old entrances animate (chains, assembly blocks, the
+    // mantle): it rises the way the Crown cast does instead
+    const awake = (rig.skinned && SKINNED[skinKey(p.id) || ""] && SKINNED[skinKey(p.id)].legacy) ? awakeCrown : (AWAKE[p.id] || AWAKE.tyrant);
     const extra = awake(p) || 0;
-    flyCamera(AWAKE_CAM[p.id] || CAM_TYRANT, p.k, Math.max(shake, extra));
+    flyCamera((awake === awakeCrown ? CAM_CROWN : AWAKE_CAM[p.id]) || CAM_TYRANT, p.k, Math.max(shake, extra));
   }
 
   // ---------------------------------------------------------------
@@ -4707,7 +5351,7 @@
     const R=room.userData;
     rig.root.rotation.z=0;rig.root.scale.setScalar(mini?.62:1);
     // Each silhouette dies with its own weight. Corpses do not shrink away.
-    if(p.id==='warden'){
+    if(p.id==='warden'&&!rig.skinned){
       rig.root.position.y=-9*collapse;
       if(rig.chains)for(const chain of rig.chains)chain.g.rotation.z=chain.sx*.4*collapse;
       fx.flood.visible=true;fx.flood.position.y=.3;fx.flood.material.opacity=.68;
@@ -4718,12 +5362,15 @@
       for(const l of rig.limbs){l.arm.rotation.z=-l.sx*collapse*.8;l.arm.rotation.y=l.sx*collapse*1.2;}
       if(D.crown){D.crown.visible=true;D.crown.position.y=2.1-3.2*collapse;D.crown.rotation.z=.8*collapse;}
       R.ceil.position.y=150;R.backWall.position.y=-40;for(const w of R.sideWalls)w.position.y=-40;fx.sky.visible=true;scene.fog.density=.008;
-    }else if(p.id==='tyrant'||p.id==='tempest'){
+    }else if((p.id==='tyrant'&&!rig.skinned)||p.id==='tempest'){
       rig.root.position.y=-5*collapse;rig.root.rotation.z=.3*collapse;
       if(Array.isArray(rig.crown))for(const c of rig.crown){c.position.y=21-18*collapse;c.rotation.z=collapse*2;}
       if(rig.stormRings)for(let i=0;i<rig.stormRings.length;i++){const r=rig.stormRings[i];r.rotation.y=p.t/1000+i;r.position.y=7+i*2-collapse*(5+i*2);}
     }else if(ARCANE_IDS[p.id]){
       victoryArcane(p,collapse);
+    }else if(rig.skinned){
+      // the authored death does the falling; the root stays on the floor
+      rig.deathPose(collapse,p.t);
     }else{
       rig.root.position.y=-3.8*collapse;rig.root.rotation.x=.6*collapse;
       if(rig.deathPose)rig.deathPose(collapse,p.t);else for(const l of rig.limbs)l.arm.rotation.z=l.sx*lerp(-.2,-1,collapse);
@@ -4734,14 +5381,80 @@
     fx.wash.material.opacity=0;fx.shaft.material.opacity=.06*(1-collapse);
     R.gate.position.y=13*release;doorLight.color.setHex(0xffe2a2);doorLight.intensity=4.5*release;R.doorGlow.material.opacity=.8*release;
     litBraziers(1,p.t,0,.1);ambient.intensity=.2;hemi.intensity=.23;
-    poseParty(p.people,0,1.5+release*4,release>0&&release<1?1:0,p.t/150,0);
+    // the party lands the last blow, cheers as it falls, then turns and walks out
+    const blow=beat(p.k,0,.16),cheer=beat(p.k,.3,.62);
+    const act=blow<1?{kind:'attack',u:blow,w:clamp01(blow*10)*(1-smoothW(.8,1,blow))}:{kind:'cheer',u:cheer,w:Math.sin(cheer*Math.PI)};
+    poseParty(p.people,0,1.5+release*4,release>0&&release<1?1:0,p.t/150,Math.PI*(1-clamp01((p.k-.58)/.08)),act);
     if(collapse>0&&collapse<1)for(let i=0;i<3;i++)spawnMote({x:(Math.random()-.5)*16,y:Math.random()*12,z:ROOM.bossZ+Math.random()*8,vx:0,vy:.035,vz:.025,max:100,r:.68,g:.61,b:.45,s:.055});
     flyCamera([[0,-9,9,4,0,mini?8:13,ROOM.bossZ,43],[.32,-5,5,0,0,mini?5:8,ROOM.bossZ,46],[.62,8,6,5,0,3,ROOM.bossZ,54],[.82,11,7,0,0,5,ROOM.doorZ,58],[1,8,5,-6,0,5,ROOM.doorZ,50]],p.k,.28*Math.sin(collapse*Math.PI));
     if(p.id==='dragon')flyCamera([[0,-25,12,28,0,19,ROOM.bossZ,58],[.5,30,10,22,0,8,ROOM.bossZ,62],[1,25,12,-8,0,12,52,55]],p.k,.2*Math.sin(collapse*Math.PI));
   }
+  // ---------------------------------------------------------------
+  //  the director bridge — js/cutscenes/*.js
+  // ---------------------------------------------------------------
+  // A boss with registered film direction draws its own frames through the
+  // context below; everything it needs from this file is handed over here, so
+  // the per-boss files never reach into the closure. A direction that throws
+  // is retired for the session and the built-in beats take the frame.
+  const DIR = { ctx: null, state: {}, kept: {}, failed: {} };
+  function posePhaseBuiltin(q) {
+    if (q.id === "dragon") posePhase2(q); else if (q.id === "iskarra") posePhaseIskarra(q); else if (q.id === "sundered_king" && rig.colossus) posePhaseKing(q); else posePhaseGeneric(q);
+  }
+  function resetDirector() {
+    DIR.state = {};
+    for (const k in DIR.kept) { const o = DIR.kept[k]; if (o && typeof o.hide === "function") { try { o.hide(); } catch (e) {} } }
+  }
+  function directorCtx(q, p, mode) {
+    let cx = DIR.ctx;
+    if (!cx) {
+      cx = DIR.ctx = {
+        THREE, ROOM, E, RW, RH, scene, camera, room, fx, WHITE,
+        lights: { ambient, hemi, key: keyLight, eye: eyeLight, coal: coalLight, door: doorLight, rim: rimLight },
+        beat, lerp, clamp01, easeIn, easeOut, easeInOut, easeOutBack, smoothW, smooth,
+        // the camera: audited against the rig's boxes, the floor and the walls before it is placed
+        place(pos, look, fov, shake) {
+          const DC = window.DungeonCutscenes, pp = pos.slice(), ll = look.slice();
+          if (DC && rig && rig.bounds) DC.clear(pp, ll, rig.bounds().concat(cx.id === "dragon" ? [] : staticBounds()), ROOM, cx.margin == null ? 1.6 : cx.margin);
+          placeCamera(pp[0], pp[1], pp[2], ll[0], ll[1], ll[2], fov || 52, shake || 0);
+          return pp;
+        },
+        // the built-in beats, callable as building blocks
+        arrival(k) { return poseArrival(Object.assign({}, cx.q, { k: k == null ? cx.q.k : k })); },
+        awake(id, k) { const fn = AWAKE[id || cx.id]; return fn ? (fn(Object.assign({}, cx.q, { k: k == null ? cx.q.k : k })) || 0) : 0; },
+        awakeCam(id) { return AWAKE_CAM[id || cx.id] || null; },
+        entrance(k) { poseEntrance(Object.assign({}, cx.q, { k: k == null ? cx.q.k : k })); },
+        mini(k) { poseMini(Object.assign({}, cx.q, { k: k == null ? cx.q.k : k })); },
+        victory(k) { poseVictory(Object.assign({}, cx.q, { k: k == null ? cx.q.k : k })); },
+        phase(k) { posePhaseBuiltin(Object.assign({}, cx.q, { k: k == null ? cx.q.k : k })); },
+        phaseGeneric(k) { posePhaseGeneric(Object.assign({}, cx.q, { k: k == null ? cx.q.k : k })); },
+        braziers: litBraziers, sigil: sigilGlow, shockwaves, hideWaves, mote: spawnMote, party: poseParty, eyesOpen, flyCamera,
+        decor: () => decor, theme: () => themeNow, isMini: (id) => !!((window.ECON && ECON.isMiniBoss) ? ECON.isMiniBoss(id) : 0),
+        // long-lived scene objects owned by the directions (instanced debris, light cones): created once, hidden between scenes
+        keep(name, factory) { if (!DIR.kept[name]) DIR.kept[name] = factory(); return DIR.kept[name]; },
+        margin: null,
+      };
+    }
+    cx.rig = rig; cx.q = q; cx.k = q.k; cx.t = q.t; cx.id = q.id; cx.mode = mode; cx.people = q.people; cx.phase = q.phase;
+    cx.accent = rig.accent; cx.color = rig.color; cx.state = DIR.state; cx.mini = !!p.mini; cx.time = cinematicTime; cx.frameStep = frameStep;
+    cx.lights.rim = rimLight;
+    return cx;
+  }
+  function directed(q, p) {
+    const DC = window.DungeonCutscenes;
+    if (!DC || !DC.get) return false;
+    const def = DC.get(p.id);
+    if (!def) return false;
+    const mode = p.mode === "victory" ? "victory" : p.mode === "phase2" ? "phase2" : p.mini ? "mini" : "entrance";
+    const fn = def[mode];
+    if (typeof fn !== "function" || DIR.failed[p.id + "|" + mode]) return false;
+    try { return fn(directorCtx(q, p, mode)) === true; }
+    catch (e) { console.warn("Cutscene direction failed for " + p.id + "/" + mode + "; built-in beats used", e); DIR.failed[p.id + "|" + mode] = true; return false; }
+  }
+
   let lastMode = null, lastProgress=-1, lastTime=0;
   function render(p) {
     if (dead) return null;
+    loadSkins(p && p.id);
     if (!renderer && !init()) return null;
     try { poseScene(p); }
     catch (e) { renderer.setRenderTarget(null);console.warn('Dungeon cinematic failed',e);dead = true; return null; }
@@ -4769,9 +5482,10 @@
 
     // Rebuild the rig when the boss changes; reset the motes when a new
     // cutscene starts so the last one's ash does not bleed into it.
+    if (SKIN.fresh) { SKIN.fresh = false; currentId = null; if (fx && fx.party) for (const m of fx.party) m.skinTried = false; }
     if (!rig || currentId !== p.id) buildRig(p.id, p.color, p.accent);
     const modeKey = p.mode + "|" + p.id + "|" + (p.sceneId || "");
-    if (modeKey !== lastMode || p.k < lastProgress) { lastMode = modeKey; t0=p.t;lastTime=p.t;clearMotes();moteHead=0;resetStage(); }
+    if (modeKey !== lastMode || p.k < lastProgress) { lastMode = modeKey; t0=p.t;lastTime=p.t;clearMotes();moteHead=0;resetStage();resetDirector(); }
     frameStep=Math.max(.1,Math.min(3,(p.t-lastTime)/(1000/60)||1));lastTime=p.t;lastProgress=p.k;cinematicTime=p.t-t0;
 
     const people = (p.people && p.people.length) ? p.people.slice(0, PARTY_MAX) : [{ appearance: null }];
@@ -4788,8 +5502,9 @@
     applyTheme(TH);
     if (rig.idle) rig.idle(q.t, q.k);
     {
-      if (p.mode === "victory") poseVictory(q);
-      else if (p.mode === "phase2") { if (p.id === "dragon") posePhase2(q); else if (p.id === "iskarra") posePhaseIskarra(q); else posePhaseGeneric(q); }
+      if (directed(q, p)) { /* js/cutscenes/<boss>.js drew this frame */ }
+      else if (p.mode === "victory") poseVictory(q);
+      else if (p.mode === "phase2") posePhaseBuiltin(q);
       else if (p.mini) poseMini(q);
       else poseEntrance(q);
       if(rig.stormRings && p.mode!=='victory'){
@@ -4818,14 +5533,19 @@
   // Gameplay owns this independent model; no cutscene camera or renderer is
   // initialized, and disposal cannot invalidate an active cinematic rig.
   function createModel(id,color,accent) {
+    loadSkins(id);
     const root=new THREE.Group(),shell=new THREE.Group();root.add(shell);
     const body=new THREE.MeshStandardMaterial({color:color||'#65596b',roughness:.8});
     const trim=new THREE.MeshStandardMaterial({color:accent||'#ffc976',emissive:accent||'#ffc976',emissiveIntensity:.25});
     const builder=builderFor(id);
-    builder(root,shell,body,trim,accent||'#ffc976');
-    root.userData.ownedMaterials=[body,trim];return root;
+    const d=builder(root,shell,body,trim,accent||'#ffc976');
+    const owned=[body,trim];
+    if(d&&d.actors)for(const a of d.actors)for(const k in a.mats)owned.push(a.mats[k]);
+    root.userData.ownedMaterials=owned;root.userData.rig=d;return root;
   }
   function warmup(stage) {
+    loadSkins();
+    if (window.DungeonCutscenes && DungeonCutscenes.preload) { try { DungeonCutscenes.preload(); } catch (e) {} }
     if (dead) return false;
     if (!renderer && !init()) return false;
     if (stage !== 'build' && renderer.compile) renderer.compile(scene, camera);
@@ -4834,5 +5554,18 @@
   // Headless hook for js/arcane-art.test.js: build the scene with no renderer
   // and pose any frame. Not used by the game.
   function headless() { if (!scene) buildScene(); return { pose: poseScene, rig: () => rig, scene: () => scene, camera: () => camera }; }
-  window.DungeonGL = { render, createModel, warmup, available: () => !dead, _headless: headless, BOSS_THEME };
+  // Content waves register a boss's cutscene rig here (js/cutscenes/*.js):
+  // {build(root, shell, body, trim, accent) -> rig, awake?(p) -> shake, cam?: fly path}.
+  function registerBoss(id, o) {
+    if (!id || !o) return false;
+    if (typeof o.build === "function") BUILDERS[id] = o.build;
+    // default entrance: the Crown "it stands and draws" beat (uses rig.rise when the rig has one)
+    AWAKE[id] = typeof o.awake === "function" ? o.awake : awakeCrown;
+    AWAKE_CAM[id] = Array.isArray(o.cam) ? o.cam : CAM_CROWN;
+    return true;
+  }
+  window.DungeonGL = { render, createModel, warmup, registerBoss, available: () => !dead, _headless: headless, BOSS_THEME,
+    skins: { load: loadSkins, ready: skinReady, state: () => SKIN.state, skinned: (id) => !!skinKey(id) },
+    // js/cutscenes: which directions have been retired after throwing, and the live context (tests, review pages)
+    director: { failed: () => Object.keys(DIR.failed), ctx: () => DIR.ctx, bounds: () => (rig && rig.bounds ? rig.bounds().concat(rig.id === "dragon" ? [] : staticBounds()) : []), renderer: () => renderer } };
 })();

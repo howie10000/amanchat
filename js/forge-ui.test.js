@@ -130,7 +130,7 @@ function legacyExpected(item, worn) {
       <b>${slot.emoji} ${gEsc(ECON.gearName(item))}</b>
       <span class="gearTag" style="color:${r.color};border-color:${r.color}">${r.label}</span>
       <span class="muted">Lv ${item.lvl} ${slot.label}</span><br/>
-      <small>${statLine(item)}</small><br/>
+      <small>${statLine(item)}</small><br/>${G.ui.kindHtml ? G.ui.kindHtml(item, true) : ""}
       ${worn ? `<small class="muted">worth ${gMoney(ECON.gearSellValue(item))} if sold</small>` : compareToWorn(item)}
     </div>
     <div class="flexRow">
@@ -260,6 +260,34 @@ function legacyExpected(item, worn) {
   ok(h.includes("Tidebreaker") && h.includes("Tome of Storms"), "found unique + tome named");
   ok(h.includes("<b>12</b> " + G.ui.bossName("warden")), "boss kill counter (" + G.ui.bossName("warden") + ")");
   ok(h.includes("of the Drowned"), "page reward");
+  // GUI clarity (docs/sundered-crown/GUI-AUDIT.md): labelled kills, plain page header
+  ok(h.includes("YOUR KILLS") && h.includes("your fastest clear") && !h.includes("iLvl 4 · fastest"), "codex page header in plain words");
+  ok(h.includes("Find every item on this page") || h.includes("PAGE COMPLETE"), "page reward says how to earn it");
+  {
+    // Forge: one sentence per tab, and the empty bench says what to do.
+    for (const t of ["enhance", "reforge", "sockets", "gems", "ascend", "craft", "transmute", "salvage"]) {
+      FO.tab(t); const fh = FO.render();
+      ok(/class="gdTabHelp"><b>[^<]+:<\/b> \S/.test(fh), "forge tab help: " + t);
+      ok(fh.includes('role="tab"') && fh.includes('aria-selected="true"'), "forge tabs are a tablist: " + t);
+    }
+    FO.tab("enhance"); FO._state.pick = null; const fh = FO.render();
+    ok(fh.includes("Pick a piece from the list") && !fh.includes(">Choose a piece.<"), "empty bench explains the next step");
+    ok(!fh.includes("rolled by the server"), "no developer wording in the forge header");
+    // Armory: upgrade verdicts and labelled icon buttons.
+    const ah = G.renderArmory("gear");
+    ok(/gdVerdict (up|dn|eq)/.test(ah), "armory cards carry an upgrade verdict");
+    ok(ah.includes('<span class="gdBtnTxt">FORGE</span>') && /<span class="gdBtnTxt">(LOCK|LOCKED)<\/span>/.test(ah), "forge / lock buttons have words");
+  }
+  {
+    // With the glossary loaded, forge materials and item levels explain themselves.
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "ui-guide.js"), "utf8"), env, { filename: "ui-guide.js" });
+    FO.tab("enhance"); const fh = FO.render();
+    ok(fh.includes('data-gd-term="dust"') && fh.includes('data-gd-term="shard"') && fh.includes('data-gd-term="gems"'), "wallet chips carry glossary terms");
+    ok(fh.includes("How this works") && fh.includes("gameGuide.replay(&quot;forge&quot;)"), "forge tour can be replayed");
+    ok(G.renderArmory("gear").includes('data-gd-term="ilvl"'), "item level explains itself on armory cards");
+    delete env.gameGuide;
+  }
+  CX.tab("codex"); CX.page("guild_crypt"); h = CX.render();
   CX.tab("achievements"); h = CX.render(); ok(h.includes("adAch done") && h.includes("7/25"), "achievements with progress");
   CX.tab("delver"); h = CX.render(); ok(h.includes("<b>21</b><small>RANK") && h.includes("adTrackNode got") && h.includes("Vaultbreaker"), "delver rank panel");
   ok(h.includes("Lantern-light") && h.includes("✓ The Sunken Crypt"), "cosmetic unlocks + weekly checklist");
@@ -290,6 +318,40 @@ function legacyExpected(item, worn) {
   const res = await LR.show(settlement, { source: "boss" });
   ok(res && res.fallback === true && toasts.length >= 1, "no DOM: falls back to announceLoot toasts");
   ok((await LR.show({ loot: [] })).empty === true, "empty result resolves at once");
+
+  // ---- THE SUNDERED CROWN (B4): L11/L12 items, uniques, sets, new fx labels, codex pages, achievements ----
+  const kb = ECON.makeUnique("kingsbane", "mythic", 12, R, { id: "kb1", now: 1758000000000 });
+  const tsc = ECON.makeUnique("the_sundered_crown", "mythic", 12, R, { id: "tsc1", now: 1758000000000 });
+  const mc = ECON.makeUnique("mirror_crown", "mythic", 11, R, { id: "mc1", now: 1758000000000 });
+  const l11 = mk("mirrorplate", "legendary", "l11");
+  h = G.ui.card(kb, { actions: false }); clean(h, "kingsbane card");
+  ok(h.includes("Damage to staggered bosses") && h.includes("iLvl 12"), "staggerDmg label + iLvl 12");
+  h = G.ui.card(tsc, { actions: false }); ok(h.includes("-15% Crown Art cooldown"), "artCd reads as a reduction");
+  h = G.ui.card(mc, { actions: false }); ok(h.includes("+15% Crown Art power"), "artPower label");
+  h = G.ui.card(l11, { actions: false }); clean(h, "L11 card"); ok(h.includes("iLvl 11") && h.includes("Mirrorplate"), "L11 base");
+  ok(G.ui.fxLines(ECON.GEAR_SETS.sundered_regalia.bonus[4]).join("|") === "+30% Damage to staggered bosses|-10% Crown Art cooldown|+25% Critical damage", "Kingbreaker set bonus lines");
+  G.applyView(Object.assign({}, gearStatus, { gear: Object.assign({}, G.view().gear, { kb1: kb }) }));
+  ok(/class="up">\+\d+% Damage to staggered bosses/.test(G.ui.card(kb, {})), "compare panel shows the new fx delta");
+  h = G.renderArmory("sets"); clean(h, "sets tab (crown)");
+  for (const s of ["thornhide", "pit_sovereign", "mirror_regalia", "sundered_regalia"]) ok(h.includes(G.ui.esc(ECON.GEAR_SETS[s].name)), "set tracker lists " + s);
+  ok(h.includes("Kingbreaker") && h.includes("The Crowd&#39;s Favour"), "named 4-piece bonuses");
+  ok(G.renderArmory("gear").includes("CROWN ARTS"), "armory links the Crown Arts panel");
+  FO.tab("craft"); FO.craftPick("sundered_regalia", "helmet"); h = FO.render(); clean(h, "forge craft crown set");
+  ok(h.includes("Sundered Crown") && h.includes(G.ui.esc(G.ui.matName("sigil_sundered_king"))), "crown set forging costs the king's sigils");
+  FO._state.mats = Object.assign({}, FO._state.mats, { crown_shard: 42 }); h = FO.render();
+  ok(h.includes("Crown Shard <b>42</b>") && h.includes("gameArtsUI.open('forge')"), "forge wallet shows crown shards + arts link");
+  CX.tab("codex"); CX.page("guild_throne"); h = CX.render(); clean(h, "codex throne page");
+  ok(h.includes("The Sundered Throne") && h.includes("Crownbreaker") && h.includes("scArch a-multiform"), "throne codex page: reward title + archetype");
+  const side = h.slice(0, h.indexOf("adCxMain"));
+  const ladderPos = ECON.STORY_LADDER.map(t => side.indexOf("gameCodex.page('" + t + "')"));
+  ok(ladderPos.every((p, i) => p > 0 && (i === 0 || p > ladderPos[i - 1])), "codex pages follow STORY_LADDER (11 pages)");
+  ok(h.includes(G.ui.bossName("gorehorn")) && h.includes(G.ui.bossName("kael_crownbound")), "boss kills include the crown bosses");
+  CX.tab("achievements"); h = CX.render(); clean(h, "achievements (crown)");
+  ok(h.includes("Crown Arts") && h.includes("Immovable Object") && h.includes("Kingbreaker") && h.includes("Gorehorn&#39;s Bane I"), "18 new achievements listed");
+  ok(h.includes(`of ${ECON.ACHIEVEMENTS.length} achievements`) && ECON.ACHIEVEMENTS.length === 61, "61 achievements");
+  CX.tab("arts"); h = CX.render(); clean(h, "codex arts tab without the panel");
+  ok(h.includes("CROWN ARTS") && h.includes("arrive with the update"), "codex arts tab degrades without arts-ui");
+  CX.tab("delver"); h = CX.render(); ok(h.includes("The Thornwild Warren") && h.includes("Pillar stuns"), "weekly checklist + tallies include the crown");
 
   console.log(`forge-ui.test.js: ${checks} checks passed`);
 })().catch(e => { console.error(e); process.exit(1); });

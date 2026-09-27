@@ -133,6 +133,19 @@ function drawAura(ctx, x, y, kind) {
     }
     ctx.strokeStyle = "#fde68a"; ctx.lineWidth = 1; ctx.strokeRect(bx + 1, by + wave * 0.5, 16, 18);
     ctx.fillStyle = "#fef3c7"; ctx.beginPath(); ctx.arc(bx + 9, by + 9 + wave * 0.5, 2.2, 0, Math.PI * 2); ctx.fill();
+  } else if (kind === "sundered_halo") {
+    // Kingbreaker: a broken crown of light turning over your head, shards orbiting it
+    for (let i = 0; i < 2; i++) {
+      const a0 = t * 0.9 + i * Math.PI + 0.25, a1 = a0 + Math.PI - 0.5;
+      ctx.strokeStyle = i ? "#fde047" : "#facc15"; ctx.lineWidth = 2.2; ctx.globalAlpha = 0.9;
+      ctx.beginPath(); ctx.ellipse(x, y - 30, 13, 4, 0, a0, a1); ctx.stroke();
+    }
+    for (let i = 0; i < 5; i++) {
+      const a = t * 1.6 + i / 5 * Math.PI * 2, px = x + Math.cos(a) * 17, py = y - 26 + Math.sin(a) * 5;
+      ctx.globalAlpha = Math.sin(a) > 0 ? 1 : 0.5; ctx.fillStyle = i % 2 ? "#fef3c7" : "#fde047";
+      ctx.beginPath(); ctx.moveTo(px, py - 3); ctx.lineTo(px + 1.8, py); ctx.lineTo(px, py + 2.2); ctx.lineTo(px - 1.8, py); ctx.closePath(); ctx.fill();
+    }
+    ctx.globalAlpha = 0.35 + 0.15 * Math.sin(t * 3); ctx.fillStyle = "#fde047"; ctx.fillRect(x - 0.8, y - 34, 1.6, 8);
   } else if (kind === "electric") {
     ctx.strokeStyle = "#7dd3fc"; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.9;
     for (let i = 0; i < 3; i++) {
@@ -391,6 +404,35 @@ function drawCharacter(ctx, x, y, appearance, opts = {}) {
       ctx.fillRect(x - 9, y - 19, 18, 2);
       for (let k = -4; k <= 4; k++) { const h = 3 + (k % 2 ? 2 : 5) - Math.abs(k) * 0.3; ctx.beginPath(); ctx.moveTo(x + k * 2 - 1, y - 19); ctx.lineTo(x + k * 2, y - 19 - h); ctx.lineTo(x + k * 2 + 1, y - 19); ctx.fill(); }
       ctx.fillStyle = "rgba(94,234,212,.9)"; ctx.beginPath(); ctx.arc(x, y - 21, 1.4, 0, Math.PI * 2); ctx.fill();
+    } else if (a.hat === "briar_crown_hat") {
+      // THE SUNDERED CROWN codex hats. The Thornwild: a woven bramble circlet with a rose
+      ctx.strokeStyle = "#3f2a14"; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.ellipse(x, y - 19, 9.5, 3, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = "#4d7c0f"; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.ellipse(x, y - 19.5, 9, 2.6, 0.15, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = "#3f2a14"; for (const k of [-8, -4, 0, 4, 8]) { ctx.beginPath(); ctx.moveTo(x + k - 1, y - 20); ctx.lineTo(x + k + 0.5, y - 24 - (k === 0 ? 2 : 0)); ctx.lineTo(x + k + 1.5, y - 20); ctx.fill(); }
+      ctx.fillStyle = "#be123c"; ctx.beginPath(); ctx.arc(x + 5, y - 21, 2.2, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#fb7185"; ctx.beginPath(); ctx.arc(x + 5, y - 21.5, 1, 0, Math.PI * 2); ctx.fill();
+    } else if (a.hat === "laurel_of_the_pit") {
+      // The Ashen Colosseum: a champion's gold laurel, leaves swept back
+      ctx.fillStyle = "#d6a45a";
+      for (const sd of [-1, 1]) for (let k = 0; k < 4; k++) { const lx = x + sd * (8 - k * 1.8), ly = y - 18 - k * 1.6; ctx.beginPath(); ctx.ellipse(lx, ly, 2.6, 1.3, sd * (0.9 - k * 0.2), 0, Math.PI * 2); ctx.fill(); }
+      ctx.strokeStyle = "#a16207"; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(x, y - 18, 9, 2.8, 0, Math.PI * 0.05, Math.PI * 0.95); ctx.stroke();
+      ctx.fillStyle = `rgba(254,243,199,${0.5 + 0.5 * Math.sin(Date.now() / 260)})`; ctx.fillRect(x - 0.6, y - 25, 1.2, 2.4);
+    } else if (a.hat === "mirror_masque_hat") {
+      // The Mirror Court: a half-mask of silvered glass, one side sun, one side night
+      if (facing !== "up") {
+        const ex = facing === "left" ? -2 : facing === "right" ? 2 : 0;
+        ctx.fillStyle = "#e2e8f0"; ctx.beginPath(); ctx.ellipse(x - 3 + ex, y - 13, 5, 3.2, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#312e81"; ctx.beginPath(); ctx.ellipse(x + 3 + ex, y - 13, 5, 3.2, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#0a0a0a"; ctx.fillRect(x - 5 + ex, y - 14, 3, 1.6); ctx.fillRect(x + 2 + ex, y - 14, 3, 1.6);
+        const sh = (Date.now() / 1500) % 1; ctx.fillStyle = `rgba(255,255,255,${0.6 * Math.sin(sh * Math.PI)})`; ctx.fillRect(x - 8 + sh * 16 + ex, y - 16, 1.2, 6);
+      }
+      ctx.fillStyle = "#fde68a"; ctx.beginPath(); ctx.arc(x - 6, y - 22, 1.6, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#c4b5fd"; ctx.beginPath(); ctx.arc(x + 6, y - 22, 1.6, 0, Math.PI * 2); ctx.fill();
+    } else if (a.hat === "sundered_circlet_hat") {
+      // The Sundered Throne: a gold circlet broken in two, the halves held apart by light
+      const gap = 1.5 + Math.sin(Date.now() / 420) * 0.8;
+      ctx.fillStyle = "#ca8a04";
+      for (const sd of [-1, 1]) { ctx.beginPath(); ctx.moveTo(x + sd * gap, y - 18); ctx.lineTo(x + sd * 9.5, y - 18); ctx.lineTo(x + sd * 9, y - 22); ctx.lineTo(x + sd * 6.5, y - 20); ctx.lineTo(x + sd * 4.5, y - 24); ctx.lineTo(x + sd * (gap + 1), y - 20.5); ctx.closePath(); ctx.fill(); }
+      ctx.fillStyle = `rgba(253,224,71,${0.55 + 0.35 * Math.sin(Date.now() / 200)})`; ctx.fillRect(x - gap + 0.3, y - 22, gap * 2 - 0.6, 3.5);
+      ctx.fillStyle = "#ef4444"; ctx.beginPath(); ctx.arc(x - 6.5, y - 19.3, 1, 0, Math.PI * 2); ctx.arc(x + 6.5, y - 19.3, 1, 0, Math.PI * 2); ctx.fill();
     } else if (a.hat === "pirate") {
       ctx.fillStyle = "#0a0a0a";
       ctx.beginPath(); ctx.moveTo(x - 15, y - 18); ctx.quadraticCurveTo(x, y - 34, x + 15, y - 18); ctx.closePath(); ctx.fill();

@@ -23,6 +23,9 @@ function createJourney(deps) {
     deps = deps || {};
     const ECON = deps.ECON || require(path.join(__dirname, '..', 'js', 'shared', 'economy.js'));
     const J = deps.JOURNEY || require(path.join(__dirname, '..', 'js', 'shared', 'journey.js'));
+    // THE SUNDERED CROWN hooks (first clears, the crown bounty). journey.js is frozen (S18).
+    const CROWN = deps.CROWN || require(path.join(__dirname, '..', 'js', 'shared', 'crown.js'));
+    const HOOKS = CROWN.JOURNEY_HOOKS || { firsts: {}, firstText: {}, bounties: [], stats: [] };
     const store = deps.store;
     if (!store || typeof store.get !== 'function' || typeof store.put !== 'function') throw new Error('guild-journey: deps.store is required');
     const userRec = deps.userRec || ((user) => store.get('users/' + user) || {});
@@ -130,10 +133,10 @@ function createJourney(deps) {
         store.put('announcements/' + id, data);
         if (deps.broadcast) deps.broadcast({ event: 'announce', data });
     }
-    function claimFirst(key, who, gid, tag, t) {
+    function claimFirst(key, who, gid, tag, t, textOverride) {
         const reg = store.get('journey_firsts') || {};
         if (reg[key]) return null;
-        const text = J.firstText(key, who);
+        const text = textOverride || J.firstText(key, who);
         store.put('journey_firsts/' + key.replace(/\//g, '_'), { key, who, gid: gid || null, tag: tag || '', at: t, text });
         announce('⚡ ' + text);
         if (deps.broadcast) deps.broadcast({ event: 'journey', kind: 'world_first', key, text, gid: gid || null, tag: tag || '' });
@@ -223,6 +226,25 @@ function createJourney(deps) {
         return ups;
     }
 
+    // ------------------------------------------------------------ the crown bounty
+    // One Sundered Crown bounty a day from CROWN.JOURNEY_HOOKS.bounties, kept
+    // in the same j.bnt.p / j.bnt.done maps (ids 'c<day>:0', reset daily).
+    function crownBounties(day) {
+        const L = HOOKS.bounties || [];
+        if (!L.length) return [];
+        const t = L[((day % L.length) + L.length) % L.length];
+        const lo = (t.n && t.n[0]) || 1, hi = (t.n && t.n[1]) || lo;
+        const n = lo + (((day * 7) % (hi - lo + 1)) + (hi - lo + 1)) % (hi - lo + 1);
+        return [{ id: 'c' + day + ':0', diff: 'crown', kind: 'crown', crown: t.id, stat: t.stat, tier: t.tier || null, n,
+            text: String(t.text).replace('{n}', n), reward: J.BOUNTY_REWARD.medium }];
+    }
+    function crownStep(b, ev) {
+        if (!ev || ev.spectator || !ev.crown) return 0;
+        if (b.tier && ev.tier !== b.tier) return 0;
+        return int(ev.crown[b.stat]);
+    }
+    function findAnyBounty(id, day, week) { return J.findBounty(id, day, week) || crownBounties(day).find(b => b.id === id) || null; }
+
     // ------------------------------------------------------------ view
     function view(user, u, j, t) {
         const week = J.weekOf(t), day = J.dayOf(t), sid = J.seasonOf(week);
@@ -239,6 +261,8 @@ function createJourney(deps) {
         const bnt = j.bnt;
         const daily = J.dailyBounties(day).map(b => Object.assign({}, b, { p: int(bnt.p[b.id]), claimed: !!bnt.done[b.id], lines: J.rewardLines(b.reward) }));
         const hunts = J.weeklyHunts(week).map(b => Object.assign({}, b, { p: int(bnt.hp[b.id]), claimed: !!bnt.hdone[b.id], lines: J.rewardLines(b.reward) }));
+        const crown = bnt.day === day ? crownBounties(day).map(b => Object.assign({}, b, { p: int(bnt.p[b.id]), claimed: !!bnt.done[b.id], lines: J.rewardLines(b.reward) }))
+            : crownBounties(day).map(b => Object.assign({}, b, { p: 0, claimed: false, lines: J.rewardLines(b.reward) }));
         const events = J.activeEvents(t, eventOverrides).map(e => ({ id: e.id, name: e.name, blurb: e.blurb, endsAt: J.eventWindow(e, eventOverrides).end,
             giftReady: !j.ev[e.id], gift: J.rewardLines(e.gift), xp: e.xp }));
         const chain = j.ret.chain && j.ret.chain.n < J.WAY_BACK.length ? (() => {
@@ -274,7 +298,7 @@ function createJourney(deps) {
                 bracket: (J.seasonBracket(j.season.sid === sid ? j.season.f : 0) || {}).name || null,
                 myRank: seasonBoard.findIndex(x => x.user === user) + 1,
                 top: seasonBoard.slice(0, 10), brackets: J.SEASON.BRACKETS.map(b => ({ id: b.id, name: b.name, f: b.f, lines: J.rewardLines(b.reward) })) },
-            bounties: { day, resetAt: (day + 1) * J.DAY_MS, daily, hunts },
+            bounties: { day, resetAt: (day + 1) * J.DAY_MS, daily, hunts, crown },
             artifacts: J.ARTIFACTS.map(a => {
                 const s = (j.art[a.id] || {}).s | 0;
                 return { id: a.id, name: a.name, boss: a.boss, bossName: J.bossName(a.boss), tier: a.tier, title: a.title, stage: s, total: J.ARTIFACT_STAGES.length,
@@ -287,7 +311,7 @@ function createJourney(deps) {
         };
         out.next = J.nextAction({ retPending: !!pending, eventGift: events.some(e => e.giftReady), pathClaimable: ps.claimable,
             vaultPick: !!(prev && prev.picked < 0 && (prev.opts || []).length),
-            bountyClaim: daily.concat(hunts).some(b => !b.claimed && b.p >= b.n), pathStep: ps.step, chainStep: chain && chain.step });
+            bountyClaim: daily.concat(hunts, crown).some(b => !b.claimed && b.p >= b.n), pathStep: ps.step, chainStep: chain && chain.step });
         return out;
     }
 
@@ -403,7 +427,14 @@ function createJourney(deps) {
             j.vault = J.vaultRecord(j.vault, ev, week);
             const ba = J.bountyApply(j.bnt, ev, day, week);
             j.bnt = ba.bnt;
-            out.bounties = ba.completed.map(id => { const b = J.findBounty(id, day, week); return { id, text: b ? b.text : id }; });
+            for (const b of crownBounties(day)) {
+                if (j.bnt.done[b.id]) continue;
+                const was = int(j.bnt.p[b.id]);
+                const now2 = Math.min(b.n, was + crownStep(b, Object.assign({ crown: m.crown }, ev)));
+                if (now2 !== was) j.bnt.p[b.id] = now2;
+                if (was < b.n && now2 >= b.n) ba.completed.push(b.id);
+            }
+            out.bounties = ba.completed.map(id => { const b = findAnyBounty(id, day, week); return { id, text: b ? b.text : id }; });
             if (!m.spectator) {
                 // weekly challenge
                 const quals = J.challengeQualifies(ch, ev);
@@ -485,6 +516,12 @@ function createJourney(deps) {
             const who = (lead && guilds[lead] ? '[' + guilds[lead].tag + '] ' + guilds[lead].name + ' — ' : '') + clearers.join(', ');
             for (const key of J.firstKeys(evRun)) {
                 const text = claimFirst(key, who, lead, lead && guilds[lead] ? guilds[lead].tag : '', t);
+                if (text) firsts.push(text);
+            }
+            // The Sundered Crown's first clears (CROWN.JOURNEY_HOOKS.firsts).
+            const ck = !endless && HOOKS.firsts[ctx.tier];
+            if (ck) {
+                const text = claimFirst(ck, who, lead, lead && guilds[lead] ? guilds[lead].tag : '', t, 'WORLD FIRST — ' + who + ' ' + (HOOKS.firstText[ck] || 'cleared ' + J.tierName(ctx.tier)) + '!');
                 if (text) firsts.push(text);
             }
             for (const gid of gids) {
@@ -614,7 +651,7 @@ function createJourney(deps) {
             }
             case 'bounty_claim': {
                 const id = String(msg.fid != null ? msg.fid : (msg.id || ''));
-                const b = J.findBounty(id, day, week);
+                const b = findAnyBounty(id, day, week);
                 if (!b) throw new Error('That bounty has expired.');
                 const hunt = b.kind === 'hunt';
                 const done = hunt ? j.bnt.hdone : j.bnt.done, prog = hunt ? j.bnt.hp : j.bnt.p;

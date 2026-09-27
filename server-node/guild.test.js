@@ -13,6 +13,7 @@ const MODS = path.resolve(process.argv[2] || __dirname);
 const PORT = +(process.argv[3] || 18377);
 const WebSocket = require(path.join(MODS, 'node_modules', 'ws'));
 const ECON = require(path.join(__dirname, '..', 'js', 'shared', 'economy.js'));
+require(path.join(__dirname, '..', 'js', 'shared', 'ascension.js'));   // the server loads it too: appends the Sundered Crown II tiers
 
 let fails = 0, passes = 0;
 function assert(cond, msg) { if (cond) { passes++; console.log('  ok  ' + msg); } else { fails++; console.log('  FAIL ' + msg); } }
@@ -426,7 +427,8 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
         assert(arch && !arch.unlocked && /Ashen Roost/.test(arch.lockedWhy), 'the Starlit Archive is locked until the Roost is cleared, and says so');
         r = await tryRpc(master, 'guild_dungeon', { action: 'party_create', tier: 'guild_archive' });
         assert(!r.ok && /sealed/.test(r.err), 'a sealed tier cannot be entered');
-        assert(info.tiers.filter(t => t.mode === 'story').length === 7 && info.tiers.some(t => t.key === 'raid_nexus') && info.tiers.some(t => t.key === 'arcane_depths'), 'depths_info lists the 7 story tiers, the raid and the Depths');
+        // The Sundered Crown II tiers (also crown:true) are appended after the four (ECON.ASCEND_DUNGEON_ORDER, docs/sundered-crown/NEW-CONTENT.md).
+        assert(info.tiers.filter(t => t.mode === 'story' && !t.crown).length === 7 && info.tiers.filter(t => t.crown).map(t => t.key).join() === ECON.CROWN_DUNGEON_ORDER.concat(ECON.ASCEND_DUNGEON_ORDER || []).join() && info.tiers.some(t => t.key === 'raid_nexus') && info.tiers.some(t => t.key === 'arcane_depths'), 'depths_info lists the 7 story tiers, the raid, the Depths and (appended) the Crown tiers of both waves');
         const rec = await master.rpc('guild_dungeon', { action: 'records', tier: 'guild_crypt' });
         assert(rec.mine && rec.mine.tiers.guild_crypt.clears === 1 && rec.top.guild_crypt.deep.some(e => e.gid === gid && e.n === 1 && !e.raid), 'records: the guild\'s own tier record and the top board');
 
@@ -504,6 +506,39 @@ const moneyOf = async (c, u) => (await c.rpc('get', { path: `users/${u}/money` }
     assert((await moneyOf(member, 'gmember')) === memberCash + memberBanked, 'the refund actually reaches the wallet');
     r = await tryRpc(member, 'guild', { action: 'status' });
     assert(r.ok && r.data.guild === null, 'you are guildless after leaving');
+
+    console.log('disbanding');
+    const before = (await master.rpc('guild', { action: 'status' })).guild;
+    const offStatus = await tryRpc(officer, 'guild', { action: 'status' });
+    const offIn = offStatus.ok && offStatus.data.guild && offStatus.data.guild.id === gid;
+    const offBanked = offIn ? offStatus.data.guild.myBank : 0;
+    const offCash = await moneyOf(officer, 'gofficer');
+    const masterCash = await moneyOf(master, 'gmaster');
+    if (offIn) {
+        r = await tryRpc(officer, 'guild', { action: 'disband', confirm: before.name });
+        assert(!r.ok, 'only the Guild Master can disband');
+    }
+    r = await tryRpc(master, 'guild', { action: 'disband' });
+    assert(!r.ok, 'disbanding without typing the name is refused');
+    r = await tryRpc(master, 'guild', { action: 'disband', confirm: 'not the name' });
+    assert(!r.ok, 'disbanding with the wrong name is refused');
+    assert(!!(await boss.rpc('get', { path: 'guilds/' + gid })), 'a refused disband leaves the guild intact');
+    const evBefore = officer.events.length;
+    r = await tryRpc(master, 'guild', { action: 'disband', confirm: before.name.toUpperCase() });
+    assert(r.ok && r.data.disbanded === true, 'the Master can disband after confirming the name');
+    assert(r.ok && r.data.treasury === before.treasury && (await moneyOf(master, 'gmaster')) === masterCash + before.treasury + (r.data.refunded || 0), 'the treasury and the Master\'s own balance come back to the Master');
+    assert(!(await boss.rpc('get', { path: 'guilds/' + gid })), 'the guild record is deleted');
+    r = await tryRpc(master, 'guild', { action: 'status' });
+    assert(r.ok && r.data.guild === null, 'the Master is guildless afterwards');
+    if (offIn) {
+        r = await tryRpc(officer, 'guild', { action: 'status' });
+        assert(r.ok && r.data.guild === null, 'every member is removed');
+        assert((await moneyOf(officer, 'gofficer')) === offCash + offBanked, 'each member gets their guild-bank balance back');
+        await sleep(150);
+        assert(officer.events.slice(evBefore).some(e => e.event === 'guild' && e.kind === 'disbanded'), 'members are told the guild was disbanded');
+    }
+    r = await tryRpc(master, 'guild', { action: 'create', name: before.name, tag: before.tag });
+    assert(r.ok || /costs/.test(r.err || ''), 'the old name and tag are free again');
 
     console.log('');
     console.log(fails ? `${fails} FAILURES (${passes} passed)` : `ALL ${passes} PASSED`);

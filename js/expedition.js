@@ -96,6 +96,7 @@
       // (story, Depths guardian floors) or the Heart's (Depths, every 10th).
       const room = prev === 'final' && p.final ? p.final : (p.mini || p.final);
       if (room === p.mini) d.miniDone=!!msg.miniDone || d.miniDone;
+      if(window.gameCrownBoss)gameCrownBoss.reset();
       d.encounter=null; d.boss=null; d.cine=null; d.phaseCine=null; d.phaseShift=null; d.arenaEnemies=[];
       if (typeof setArenaOpen === 'function') setArenaOpen(false);
       setup(p,room.exit || {x:room.x+512,y:room.y-96});
@@ -236,9 +237,12 @@
     if(e.ai==='mimic'&&!e.awake&&g){g.drawMimicAsleep(ctx,e,t);return;}
     if(e.gone)return;
     if(g)g.drawEnemyUnder(ctx,e,t);
+    const C=window.gameCombat;
+    ctx.globalAlpha=C&&C.enemyAlpha?C.enemyAlpha(e):1;
     if(e.escaping){ctx.globalAlpha=Math.max(0,1-(Date.now()-e.escaping)/1200);}
     gameMobs.drawEnemy(ctx,e,t,ENEMY_TYPES);
     ctx.globalAlpha=1;
+    if(C&&C.drawEnemyTells)C.drawEnemyTells(ctx,e,t);
     if(g)g.drawEnemyOver(ctx,e,t);
   }
   function draw() {
@@ -270,9 +274,12 @@
     const actors=state.enemies.filter(visible).map(e=>({y:e.y,draw:()=>drawEnemyFull(e,t)}));
     actors.push({y:state.pos.y,draw:()=>drawSelf(ctx)});
     actors.sort((a,b)=>a.y-b.y).forEach(a=>a.draw());drawPartyMembers(t);
-    for(const b of state.bullets.concat(state.enemyBullets||[])){ctx.fillStyle=b.color||'#ffe097';ctx.beginPath();ctx.arc(b.x,b.y,4,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.35;ctx.beginPath();ctx.arc(b.x,b.y,8,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
+    const PW=window.gameWeapons;
+    // WEAPONS: darts, bolts and boomerangs draw themselves (js/player-weapons.js)
+    for(const b of state.bullets.concat(state.enemyBullets||[])){if(b.hold>0)continue;if(b.kind&&PW&&PW.drawProjectile&&state.bullets.includes(b)){PW.drawProjectile(ctx,b,t);continue;}ctx.fillStyle=b.color||'#ffe097';ctx.beginPath();ctx.arc(b.x,b.y,4,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.35;ctx.beginPath();ctx.arc(b.x,b.y,8,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
     for(const a of state.particles){ctx.fillStyle=a.color;ctx.globalAlpha=Math.max(0,Math.min(1,a.life/40));ctx.fillRect(a.x-2,a.y-2,4,4);}ctx.globalAlpha=1;
-    if(state.swingT>0&&state.weapon==='sword'){const a=Math.atan2(state.mouse.y-state.pos.y,state.mouse.x-state.pos.x);ctx.strokeStyle='#fbd981';ctx.lineWidth=5;ctx.beginPath();ctx.arc(state.pos.x,state.pos.y,50,a-Math.PI/1.6,a+Math.PI/1.6);ctx.stroke();}
+    if(PW&&PW.drawReach){if(!(PW.attackAnim&&PW.attackAnim()))PW.drawReach(ctx,state.pos.x,state.pos.y,Math.atan2(state.mouse.y-state.pos.y,state.mouse.x-state.pos.x),'maze');}
+    else if(state.swingT>0&&state.weapon==='sword'){const a=Math.atan2(state.mouse.y-state.pos.y,state.mouse.x-state.pos.x);ctx.strokeStyle='#fbd981';ctx.lineWidth=5;ctx.beginPath();ctx.arc(state.pos.x,state.pos.y,50,a-Math.PI/1.6,a+Math.PI/1.6);ctx.stroke();}
     drawMotes(v,th,t);drawTorch(th);
     // The final room is fully lit for ordinary quests too.
     const litRoom=inside(state.pos,p.final)?p.final:(p.mini&&inside(state.pos,p.mini)?p.mini:(p.sanctuary&&inside(state.pos,p.sanctuary)?p.sanctuary:null));
@@ -281,6 +288,7 @@
     try{DungeonSight.draw(ctx,state.pos.x,state.pos.y,d.walls,p.width,p.height,v,litRoom);}finally{if(ds)window.DungeonScenes=ds;}
     if(d.chest)(typeof drawRunChest==='function'?drawRunChest:gameBosses.drawChest)(ctx,d.chest,t);
     if(G())G().drawWorldTop(ctx,t);
+    if(window.gameCrownArts)gameCrownArts.drawEffects(ctx,t);
     ctx.restore();
     // Title + objective, top-centre: the top-left corner belongs to the DOM HUD
     // (money card + run HUD), which used to cover this panel (QA B7).
@@ -290,10 +298,12 @@
     ctx.font='12px sans-serif';ctx.fillStyle='#d8dadd';
     ctx.fillText(p.depth?(p.heart?'The Heart beats somewhere below':p.guardian&&!d.miniDone?'A guardian bars the way':'Find the rift stair · slay enough to descend'):(p.mini&&!d.miniDone?'Find the guardian · break the far seal':'Explore the passages · find the final chamber'),canvas.width/2,54);ctx.textAlign='left';}
     ctx.fillStyle='#181b21';ctx.fillRect(18,canvas.height-42,220,16);ctx.fillStyle='#72bb91';ctx.fillRect(18,canvas.height-42,220*Math.max(0,state.hp/state.maxHp),16);
-    ctx.fillStyle='#eee';ctx.font='12px sans-serif';ctx.fillText('HP '+Math.max(0,Math.ceil(state.hp))+' / '+state.maxHp+' · 1 sword / 2 pistol · SHIFT dash',20,canvas.height-10);
+    ctx.fillStyle='#eee';ctx.font='12px sans-serif';ctx.fillText('HP '+Math.max(0,Math.ceil(state.hp))+' / '+state.maxHp+' · '+(window.gameWeapons&&gameWeapons.hint?gameWeapons.hint():'1 sword / 2 pistol')+' · SHIFT dash',20,canvas.height-10);
+    if(window.gameWeapons&&gameWeapons.drawHud)gameWeapons.drawHud(ctx,18,canvas.height-84,t);
     if(state.tomeCine){ctx.save();ctx.translate(VIEW_OX,VIEW_OY);gameBosses.drawTomeCinematic(ctx,state.tomeCine,t);ctx.restore();}
     if(G())G().drawScreen(ctx,t);
     minimap();
+    if(window.gameCrownArts)gameCrownArts.drawSlots(ctx,canvas.width-250,canvas.height-70,t); /* clear of the phone button (GUI-AUDIT) */
   }
   window.gameExpedition={setup,tick,draw,minimap,flowTarget,apply,leave,inside};
   if(window.NET)NET.on('guild_dungeon',m=>{if(m.kind==='expedition')apply(m);});

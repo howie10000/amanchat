@@ -12,8 +12,11 @@
   const esc = (s) => U().esc(s);
 
   const C = { tab: "codex", page: null, data: null, loading: false };
-  const TABS = [["codex", "COLLECTION"], ["achievements", "ACHIEVEMENTS"], ["delver", "DELVER RANK"]];
-  const ACH_CATS = { bane: "Bosses", feat: "Feats", loot: "Loot", codex: "Collection", delve: "Delving", depths: "The Arcane Depths", raid: "Raids", forge: "The Forge" };
+  const TABS = [["codex", "COLLECTION"], ["weapons", "WEAPONS"], ["arts", "CROWN ARTS"], ["achievements", "ACHIEVEMENTS"], ["delver", "DELVER RANK"]];
+  const ACH_CATS = { bane: "Bosses", feat: "Feats", loot: "Loot", codex: "Collection", delve: "Delving", depths: "The Arcane Depths", raid: "Raids", forge: "The Forge", arts: "Crown Arts" };
+  // Every story dungeon in difficulty order (THE SUNDERED CROWN adds four); an older ECON has only the seven.
+  const LADDER = () => (ECON.STORY_LADDER || ECON.GUILD_DUNGEON_ORDER);
+  const ARCH_LABEL = { beast: "BEAST", duelist: "DUELIST", twins: "TWINS", multiform: "MULTI-FORM" };
 
   function call(msg) {
     if (typeof window.netDelver === "function") return window.netDelver(msg);
@@ -77,7 +80,7 @@
   function fmtMs(ms) { if (!ms) return "—"; const s = Math.round(ms / 1000); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
   function renderCodex() {
     const d = data(), codex = d.codex || {};
-    const tiers = ECON.GUILD_DUNGEON_ORDER.filter(t => ECON.CODEX_PAGES[t]);
+    const tiers = LADDER().filter(t => ECON.CODEX_PAGES[t]);
     if (!C.page || !ECON.CODEX_PAGES[C.page]) C.page = tiers[0];
     const total = tiers.reduce((s, t) => s + (ECON.CODEX_PAGES[t] || []).length, 0);
     const found = Object.keys(codex.i || {}).length;
@@ -97,21 +100,53 @@
       ["Tomes", ids.filter(id => entryOf(id).kind === "tome")],
     ].filter(g => g[1].length);
     const kills = codex.b || {};
-    const bossRow = [row.boss, cfg.mini].filter(Boolean).map(b => `<span class="adKill">${U().icon("boss", b, 20, "", "")}<b>${(kills[b] | 0).toLocaleString()}</b> ${esc(U().bossName(b))}</span>`).join("");
+    const arch = (b) => { const k = ECON.bossArchetype ? ECON.bossArchetype(b) : "parts"; return ARCH_LABEL[k] ? ` <span class="scArch a-${k}">${ARCH_LABEL[k]}</span>` : ""; };
+    const bossRow = [row.boss, cfg.mini].filter(Boolean).map(b => `<span class="adKill">${U().icon("boss", b, 20, "", "")}<b>${(kills[b] | 0).toLocaleString()}</b> ${esc(U().bossName(b))}${arch(b)}</span>`).join("");
+    const arts = window.gameArtsUI && gameArtsUI.artsForTier ? gameArtsUI.artsForTier(tier) : [];
+    const artRow = arts.length ? `<div class="scArtChips"><small>CROWN ARTS</small>${arts.map(a => { const d = window.CROWN && CROWN.ARTS[a.id];
+      return `<span class="scArtChip r-${esc(d ? d.rarity : "rare")}" title="${esc(d ? d.desc : "")}">${U().icon("art", a.id, 16, "", "♛")}${esc(d ? d.name : a.id)} <small>${(a.p * 100).toFixed(a.p < 0.01 ? 1 : 0)}%</small></span>`; }).join("")}</div>` : "";
     const main = `<div class="adCxHead">
-        <div><h3>${esc(U().dungeonName(tier))}</h3><small class="muted">iLvl ${row.lvl || "?"} · fastest ${fmtMs((codex.f || {})[tier])} · deepest delve ${(codex.d || {})[tier] | 0}</small></div>
+        <div><h3>${esc(U().dungeonName(tier))}</h3><small class="muted">item level ${row.lvl || "?"} · your fastest clear ${fmtMs((codex.f || {})[tier])} · deepest delve ${(codex.d || {})[tier] | 0}</small></div>
         <div class="adCxPct"><b>${ps.total ? Math.round(100 * ps.have / ps.total) : 0}%</b><small>${ps.have}/${ps.total}</small></div>
       </div>
-      <div class="adKills">${bossRow}</div>
-      ${reward ? `<div class="adCxReward ${ps.done ? "done" : ""}"><b>${ps.done ? "PAGE COMPLETE" : "Complete the page"}</b> —
+      <div class="adKills"><small class="gdRowLabel">YOUR KILLS</small>${bossRow}</div>${artRow}
+      ${reward ? `<div class="adCxReward ${ps.done ? "done" : ""}"><b>${ps.done ? "PAGE COMPLETE" : "Find every item on this page"}</b> ${ps.done ? "— earned:" : "to earn:"}
         ${hat ? `hat <i>${esc(hat.name)}</i>, ` : ""}title <i>“${esc(reward.title)}”</i>${reward.sigil ? `, ${reward.sigil.n} ${esc(U().matName(reward.sigil.id))}` : ""}</div>` : ""}
       ${groups.map(([label, list]) => `<h4 class="adCxGroup">${label} <small>${list.filter(id => (codex.i || {})[id]).length}/${list.length}</small></h4>
         <div class="adCxGrid">${list.map(id => tile(id, codex)).join("")}</div>`).join("")}`;
-    const allKills = ECON.GUILD_BOSS_ORDER.concat(ECON.GUILD_MINIS, ECON.GUILD_SPECIAL_BOSSES || [])
+    const allKills = ECON.GUILD_BOSS_ORDER.concat(ECON.GUILD_MINIS, ECON.CROWN_BOSS_ORDER || [], ECON.CROWN_MINIS || [], ECON.GUILD_SPECIAL_BOSSES || [])
       .map(b => `<span class="adKill ${kills[b] ? "" : "zero"}">${U().icon("boss", b, 20, "", "")}<b>${(kills[b] | 0).toLocaleString()}</b> ${esc(U().bossName(b))}</span>`).join("");
-    return `<div class="adCxTop"><b>${found}</b> of ${total} entries found. Silhouettes are pieces you have never looted. Staff-granted pieces never count.</div>
+    return `<div class="adCxTop"><b>${found}</b> of ${total} entries found. Dark tiles are items you have not found yet — loot one from that dungeon to fill it in. Finish a page for a hat, a title and sigils.</div>
       <div class="adCxLayout"><div class="adCxSide">${side}</div><div class="adCxMain">${main}</div></div>
       <h3 class="section">BOSS KILLS</h3><div class="adKills all">${allKills}</div>`;
+  }
+
+  // ---------------- weapons (docs/sundered-crown/WEAPONS.md) ----------------
+  // Every weapon kind (what it does) and the boss-weapon collection: one of
+  // each kind per item level plus the bosses' signature ranged weapons.
+  function renderWeapons() {
+    const d = data(), codex = d.codex || {}, have = codex.i || {};
+    if (!ECON.WEAPON_KINDS || !ECON.ARMAMENT_BASE) return `<p class="muted">Weapon kinds arrive with the update.</p>`;
+    const ui = U();
+    const kinds = ECON.MELEE_KINDS.concat(ECON.RANGED_KINDS);
+    const rows = kinds.map(k => {
+      const n = ui.kindNumbers ? ui.kindNumbers(k) : null, K = ECON.WEAPON_KINDS[k];
+      return `<tr class="h-${K.hand}"><td>${ui.kindChip ? ui.kindChip(k) : esc(K.label)}</td><td>${K.hand === "melee" ? "1 · melee" : "2 · ranged"}</td>
+        <td><b>${n ? n.hit : ""}</b></td><td>${n ? n.speed : ""}/s</td><td>${n ? n.reach : ""}${K.hand === "melee" ? "" : " · boss " + K.bossReach}</td><td>${K.targets}</td>
+        <td class="sp">${esc(K.special)}</td></tr>`;
+    }).join("");
+    const table = `<table class="scWkTable"><thead><tr><th>Kind</th><th>Hand</th><th>Hit</th><th>Speed</th><th>Reach</th><th>Foes</th><th>Special</th></tr></thead><tbody>${rows}</tbody></table>`;
+    const all = [].concat(...kinds.map(k => ECON.ARMAMENT_BASE[k].filter(Boolean)));
+    const sig = Object.keys(ECON.ARMAMENT_UNIQUES || {});
+    const found = all.concat(sig).filter(id => have[id]).length;
+    const grid = kinds.map(k => `<h4 class="adCxGroup">${ui.kindChip ? ui.kindChip(k) : esc(k)} <small>${ECON.ARMAMENT_BASE[k].filter(id => id && have[id]).length}/12</small></h4>
+      <div class="adCxGrid">${ECON.ARMAMENT_BASE[k].filter(Boolean).map(id => tile(id, codex)).join("")}</div>`).join("");
+    const sigs = sig.map(id => { const u = ECON.GEAR_UNIQUES[id]; return `<div class="scWkSig">${tile(id, codex)}<small>${esc(ui.bossName(u.boss))} · ${ui.kindChip ? ui.kindChip(u.kind) : ""}</small></div>`; }).join("");
+    return `<p class="muted">Two hands: key <b>1</b> is your melee weapon, key <b>2</b> your ranged one (empty = a plain sword and the old pistol). Every weapon is a kind — the numbers below are one hit before attack power. Boss chests can hold a boss weapon of any kind at the dungeon's item level.</p>
+      ${table}
+      <div class="adCxTop"><b>${found}</b> of ${all.length + sig.length} boss weapons found.</div>
+      <h3 class="section">SIGNATURE WEAPONS</h3><div class="adCxGrid scWkSigs">${sigs}</div>
+      <h3 class="section">BOSS WEAPONS</h3>${grid}`;
   }
 
   // ---------------- achievements ----------------
@@ -122,7 +157,7 @@
     if (a.id === "collector_100") return [Object.keys(cx.i || {}).length, 100];
     if (a.id === "collector_300") return [Object.keys(cx.i || {}).length, 300];
     m = /^concord_(\d)$/.exec(a.id); if (m) return [st.raids | 0, [0, 10, 50, 200][+m[1]]];
-    const tallies = { goblin_slayer: ["goblins", 25], vaultbreaker: ["vaults", 10], trialmaster: ["trials", 25], secret_keeper: ["secrets", 50], plus_ten: ["maxPlus", 10], plus_twelve: ["maxPlus", 12] };
+    const tallies = { immovable_object: ["stuns", 50], crown_collector: ["arts", 10], crown_master: ["artMax", 5], goblin_slayer: ["goblins", 25], vaultbreaker: ["vaults", 10], trialmaster: ["trials", 25], secret_keeper: ["secrets", 50], plus_ten: ["maxPlus", 10], plus_twelve: ["maxPlus", 12] };
     if (tallies[a.id]) return [st[tallies[a.id][0]] | 0, tallies[a.id][1]];
     m = /^delve_(\d+)$/.exec(a.id);
     if (m) return [Object.values(cx.d || {}).reduce((x, v) => Math.max(x, v | 0), 0), +m[1]];
@@ -208,24 +243,26 @@
               .replace(/^journey:(.*)$/, (m, k) => "Journey: " + ({ path: "walk the whole Path", awakening: "the Awakening", paragon: "reach Paragon", season: "a Season reward", lantern: "carry the Lantern", returner: "come back after a long absence" }[k] || U().title(k)));
             return `<span class="${ok ? "got" : ""}"><b>${esc(c.name)}</b> <small>${esc(U().title(c.kind))} · ${esc(how)}</small></span>`; }).join("")}</div>
           <h4 class="adCxGroup">This week's first clears <small>${esc(d.weekly && d.weekly.wk || "")}</small></h4>
-          <div class="adWeekly">${ECON.GUILD_DUNGEON_ORDER.map(t => `<span class="${weeklyTiers[t] ? "got" : ""}">${weeklyTiers[t] ? "✓" : "○"} ${esc(U().dungeonName(t))}</span>`).join("")}</div>
+          <div class="adWeekly">${LADDER().map(t => `<span class="${weeklyTiers[t] ? "got" : ""}">${weeklyTiers[t] ? "✓" : "○"} ${esc(U().dungeonName(t))}</span>`).join("")}</div>
           <small class="muted">The first clear of each dungeon every week rolls a guaranteed Legendary, a Gilded Key and double Delver XP.</small>
           <h4 class="adCxGroup">Tallies</h4>
-          <div class="adTallies">${[["goblins", "Goblins"], ["vaults", "Vaults"], ["trials", "Trials"], ["secrets", "Secrets"], ["raids", "Raid clears"], ["maxPlus", "Best enhancement"]]
+          <div class="adTallies">${[["goblins", "Goblins"], ["vaults", "Vaults"], ["trials", "Trials"], ["secrets", "Secrets"], ["raids", "Raid clears"], ["stuns", "Pillar stuns"], ["artHits", "Crown Art hits"], ["maxPlus", "Best enhancement"]]
             .map(([k, l]) => `<span><b>${k === "maxPlus" ? "+" + (stats[k] | 0) : (stats[k] | 0).toLocaleString()}</b> ${l}</span>`).join("")}</div>
         </div>
       </div>`;
   }
 
   function render() {
-    const body = C.tab === "achievements" ? renderAchievements() : C.tab === "delver" ? renderDelver() : renderCodex();
+    const body = C.tab === "achievements" ? renderAchievements() : C.tab === "delver" ? renderDelver()
+      : C.tab === "weapons" ? renderWeapons()
+      : C.tab === "arts" ? (window.gameArtsUI && gameArtsUI.codexHtml ? gameArtsUI.codexHtml() : `<p class="muted">The Crown Arts arrive with the update.</p>`) : renderCodex();
     return `<div id="adCodexRoot" class="adCodex">
       <div class="adNav">${TABS.map(([id, l]) => `<button class="menuBtn ${C.tab === id ? "gold" : "gray"}" onclick="gameCodex.tab('${id}')">${l}</button>`).join("")}
         <span class="adNavGap"></span><button class="menuBtn gray" onclick="gameGear.openArmory()">← ARMORY</button></div>
       ${data().local && !C.loading ? `<p class="muted adOffline">Showing your saved record — live numbers arrive with the Delver service.</p>` : ""}
       ${body}</div>`;
   }
-  function title() { return C.tab === "delver" ? "DELVER RANK" : C.tab === "achievements" ? "ACHIEVEMENTS" : "THE CODEX"; }
+  function title() { return C.tab === "delver" ? "DELVER RANK" : C.tab === "weapons" ? "WEAPONS" : C.tab === "arts" ? "CROWN ARTS" : C.tab === "achievements" ? "ACHIEVEMENTS" : "THE CODEX"; }
   function paint() {
     const root = typeof document !== "undefined" && document.getElementById && document.getElementById("adCodexRoot");
     // Closed while the status load was in flight: don't re-open over another menu.

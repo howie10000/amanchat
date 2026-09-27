@@ -241,6 +241,11 @@
     raid_nexus:    { cap: 76000, cooldown: 0 },
     // Endless segments are bounded by DEPTHS.depthsSegmentCap(f), not this row.
     arcane_depths: { cap: 0, cooldown: 0 },
+    // ---- THE SUNDERED CROWN (docs/sundered-crown/MASTER-PLAN.md §3.1) ----
+    guild_thornwild: { cap: 7000, cooldown: 0 },
+    guild_colosseum: { cap: 26000, cooldown: 0 },
+    guild_mirror:    { cap: 86000, cooldown: 0 },
+    guild_throne:    { cap: 103000, cooldown: 0 },
   };
 
   // ---------- seeded rng (shared by the market shelf and fish prices) ----------
@@ -967,8 +972,46 @@
       roster: rosterOf([["melee", 3], ["fast", 2], ["ranged", 1], ["archer", 1], ["tank", 1], ["shaman", 1], ["warden", 1], ["stalker", 1]]),
     },
   };
+  // ---- THE SUNDERED CROWN: four story tiers spread across progression
+  // (docs/sundered-crown/MASTER-PLAN.md §3.1). Appended, so every legacy key,
+  // list and iteration order is unchanged. All four are expedition runs.
+  Object.assign(GUILD_DUNGEONS, {
+    guild_thornwild: {
+      name: "The Thornwild Warren", tier: "guild_thornwild", boss: "gorehorn", mini: "briar_matron",
+      floors: 7, enemyMin: 15, enemyMax: 20, hpMult: 2.6, speedMult: 1.42, reward: 2600,
+      blurb: "Something big has been sharpening its horns on the old stones.",
+      theme: "thornwild", dmgMult: 1.0, gearLvl: 4, unlockAfter: null, raidable: false, mode: "story", continuousOnly: true, crown: true,
+      roster: rosterOf([["thornling", 4], ["boar", 2], ["sporecap", 2], ["vinecaller", 2], ["melee", 1], ["fast", 1]]),
+    },
+    guild_colosseum: {
+      name: "The Ashen Colosseum", tier: "guild_colosseum", boss: "kael", mini: "pit_champion",
+      floors: 7, enemyMin: 15, enemyMax: 20, hpMult: 4.6, speedMult: 1.68, reward: 10000,
+      blurb: "The crowd is ash. The champion is not.",
+      theme: "colosseum", dmgMult: 1.0, gearLvl: 7, unlockAfter: "guild_void", raidable: true, mode: "story", continuousOnly: true, crown: true,
+      roster: rosterOf([["hoplite", 3], ["retiarius", 2], ["ash_lion", 2], ["archer", 2], ["melee", 1], ["bomber", 1]]),
+    },
+    guild_mirror: {
+      name: "The Mirror Court", tier: "guild_mirror", boss: "twin_monarchs", mini: "veiled_assassin",
+      floors: 7, enemyMin: 15, enemyMax: 20, hpMult: 10.8, speedMult: 1.90, reward: 36000,
+      blurb: "Two thrones. One reflection. Neither of them is yours.",
+      theme: "mirror", dmgMult: 1.46, gearLvl: 11, unlockAfter: "guild_rime", raidable: true, mode: "story", continuousOnly: true, crown: true,
+      roster: rosterOf([["reflection", 3], ["courtier", 3], ["mirror_knight", 2], ["wisp", 1], ["sentinel", 1], ["wraith", 1]]),
+    },
+    guild_throne: {
+      name: "The Sundered Throne", tier: "guild_throne", boss: "sundered_king", mini: "kael_crownbound",
+      floors: 7, enemyMin: 15, enemyMax: 20, hpMult: 12.4, speedMult: 1.94, reward: 42000,
+      blurb: "The crown broke. The king did not notice.",
+      theme: "throne", dmgMult: 1.55, gearLvl: 12, unlockAfter: "guild_mirror", raidable: true, mode: "story", continuousOnly: true, crown: true,
+      roster: rosterOf([["crownguard", 3], ["oathbreaker", 2], ["crown_wisp", 2], ["revenant", 2], ["courtier", 1], ["reflection", 1], ["golem", 1]]),
+    },
+  });
   // The 7 story tiers only: the UI list and the unlock ladder (MASTER-PLAN D27).
   const GUILD_DUNGEON_ORDER = ["guild_crypt", "guild_forge", "guild_void", "guild_dragon", "guild_archive", "guild_geode", "guild_rime"];
+  // The Sundered Crown tiers, and every story tier in difficulty order (the
+  // list new UIs show). GUILD_DUNGEON_ORDER stays the frozen legacy seven.
+  const CROWN_DUNGEON_ORDER = ["guild_thornwild", "guild_colosseum", "guild_mirror", "guild_throne"];
+  const STORY_LADDER = ["guild_crypt", "guild_thornwild", "guild_forge", "guild_void", "guild_colosseum", "guild_dragon",
+    "guild_archive", "guild_geode", "guild_rime", "guild_mirror", "guild_throne"];
   // Which floor the mini blocks: the middle of the run, never the first or the
   // boss floor.
   function miniFloorOf(cfg) { return Math.max(1, Math.floor(((cfg && cfg.floors) || 4) / 2)); }
@@ -1429,6 +1472,307 @@
     },
   };
 
+  // ================================================================
+  // THE SUNDERED CROWN (docs/sundered-crown/MASTER-PLAN.md §3.5).
+  // These bosses do NOT use the parts engine: `archetype` picks the engine
+  // (beast / duelist / twins / multiform), `parts: 0`, and the whole pool is
+  // one body (twins: two). CROWN.planBoss (js/shared/crown.js) turns the deck
+  // below into timed motion steps the server ticks and the client
+  // interpolates. Deck entries with a `kind` are BODY moves (lunge, combo,
+  // cone, nova, guard, vanish, cuts, clones, slam); entries without one are
+  // arena-scale casts thrown through the existing attack payload path, with
+  // the moving body as their origin. `range` [min,max] px and `cdMs` gate
+  // body moves; `vuln` is the damage-taken multiplier of its recover step.
+  // ================================================================
+  Object.assign(GUILD_BOSSES, {
+    // ===== EARLY — THE THORNWILD WARREN =====
+    // GOREHORN: a beast. It charges down a telegraphed lane; a charge that
+    // ends in a stone pillar STUNS it (x2 damage taken for 3.6s) and cracks
+    // the pillar; a charge into the wall shakes rocks loose. No weak points.
+    gorehorn: {
+      name: "GOREHORN, THE RAMPAGER", archetype: "beast", parts: 0, partName: "hide", color: "#78350f", accent: "#fbbf24",
+      baseHp: 10500, reward: 3400, tier: "boss", enrageMs: 6 * 60000, maxAdds: 4,
+      cry: "*THE GROUND ANSWERS BEFORE IT DOES*", title: "THE RAMPAGER OF THE THORNWILD",
+      body: { r: 58, walk: 120, run: 190, turn: 3.2 },
+      beast: { maxLen: 980, stunMs: 3600, stunVuln: 2.0, wallRecoverMs: 900, wallVuln: 1.2, pillarHits: 2, castChance: 0.12,
+               wallFall: { type: "meteor", targets: 4, r: 44, dmg: 14, warnMs: 900, durMs: 1200 } },
+      arena: { pillars: [{ x: 300, y: 230, r: 36 }, { x: 724, y: 230, r: 36 }, { x: 300, y: 430, r: 36 }, { x: 724, y: 430, r: 36 }] },
+      attacks: [
+        { type: "gore_charge", kind: "lunge", beast: true, weight: 34, warnMs: 1150, range: [200, 2000], w: 118, len: 980, speed: 820, overshoot: 220, dmg: 26, cdMs: 2600, tell: "GOREHORN CHARGES", dodge: "stand in front of a pillar, then step aside" },
+        { type: "gore", kind: "cone", weight: 24, warnMs: 750, activeMs: 200, recoverMs: 600, range: [0, 190], r: 175, arc: 2.0, dmg: 20, vuln: 1.15, tell: "GORE", dodge: "get behind the horns" },
+        { type: "stomp", kind: "nova", weight: 18, warnMs: 900, activeMs: 250, recoverMs: 700, range: [0, 250], r: 215, dmg: 18, tell: "STOMP", dodge: "back away before the hooves land" },
+        { type: "grasp", weight: 10, warnMs: 1400, r: 50, dmg: 14, targets: 4, durMs: 900, tell: "ROOTS", dodge: "keep walking — they come up where you stood" },
+      ],
+      phases: [
+        { at: 0.50, shiftMs: 3000, attackEveryMs: 2300, onEnterAdds: { type: "boar", n: 2 }, pillars: "regrow",
+          beast: { chain: 3, chainWarnMs: 760 }, name: "GOREHORN, BLOODED", color: "#991b1b", accent: "#fcd34d",
+          cry: "*IT PAWS THE STONE. IT IS NOT TIRED.*", title: "THE RAMPAGE BEGINS",
+          attacks: [
+            { type: "gore_charge", kind: "lunge", beast: true, weight: 38, warnMs: 1000, range: [180, 2000], w: 124, len: 1000, speed: 880, overshoot: 220, dmg: 28, cdMs: 3400, tell: "RAMPAGE", dodge: "three charges — lead each one into a pillar" },
+            { type: "gore", kind: "cone", weight: 22, warnMs: 700, activeMs: 200, recoverMs: 560, range: [0, 190], r: 180, arc: 2.1, dmg: 22, vuln: 1.15, tell: "GORE", dodge: "get behind the horns" },
+            { type: "stomp", kind: "nova", weight: 18, warnMs: 850, activeMs: 250, recoverMs: 650, range: [0, 260], r: 225, dmg: 20, tell: "STOMP", dodge: "back away before the hooves land" },
+            { type: "summon", weight: 10, warnMs: 1500, n: 2, addType: "boar", tell: "THE HERD ANSWERS", dodge: "the boars charge too — keep moving" },
+            { type: "grasp", weight: 12, warnMs: 1300, r: 52, dmg: 15, targets: 5, durMs: 900, tell: "ROOTS", dodge: "keep walking" },
+          ] },
+        { at: 0.20, shiftMs: 2600, attackEveryMs: 2000, windupMult: 0.82, stunMult: 0.8,
+          beast: { chain: 2, chainWarnMs: 640 }, name: "GOREHORN, THE RAMPAGE", color: "#7f1d1d", accent: "#f97316",
+          cry: "*EVERY STONE IN THE WARREN SHAKES*", title: "NOTHING LEFT TO BREAK BUT YOU",
+          attacks: [
+            { type: "gore_charge", kind: "lunge", beast: true, weight: 36, warnMs: 900, range: [160, 2000], w: 130, len: 1020, speed: 940, overshoot: 240, dmg: 30, cdMs: 3000, tell: "BLOODRAGE", dodge: "lead it into what is left of the stones" },
+            { type: "gore", kind: "cone", weight: 20, warnMs: 620, activeMs: 200, recoverMs: 520, range: [0, 190], r: 185, arc: 2.2, dmg: 24, tell: "GORE", dodge: "get behind the horns" },
+            { type: "stomp", kind: "nova", weight: 16, warnMs: 800, activeMs: 250, recoverMs: 600, range: [0, 270], r: 235, dmg: 22, tell: "STOMP", dodge: "back away" },
+            { type: "ring", weight: 16, warnMs: 1300, r: 460, band: 56, dmg: 22, durMs: 1400, count: 2, gapMs: 520, tell: "QUAKE", dodge: "let each ring pass" },
+          ] },
+      ],
+    },
+    // BRIAR MATRON (mini): a summoner that hides in the bramble patches and
+    // must come out to cast. Untargetable while hidden.
+    briar_matron: {
+      name: "THE BRIAR MATRON", archetype: "duelist", profile: "caster", parts: 0, partName: "bark", color: "#3f6212", accent: "#bef264",
+      baseHp: 3800, reward: 800, tier: "mini", maxAdds: 4, cry: "HUSH NOW. THE ROOTS ARE LISTENING.",
+      body: { r: 30, walk: 90, run: 120, turn: 4 },
+      duelist: { castChance: 0.55, keepDist: 260, strafe: 0, footwork: 0.08 },
+      arena: { patches: [{ x: 230, y: 180, r: 64 }, { x: 794, y: 180, r: 64 }, { x: 230, y: 470, r: 64 }, { x: 794, y: 470, r: 64 }] },
+      attacks: [
+        { type: "burrow", kind: "vanish", to: "patch", weight: 26, warnMs: 300, hideMs: 1300, hidden: 1500, range: [0, 2000], cdMs: 4200, tell: "SHE SINKS INTO THE BRAMBLE", dodge: "watch which patch rustles" },
+        { type: "entangle", weight: 30, warnMs: 1300, r: 56, dmg: 10, targets: 3, rootMs: 1500, durMs: 900, tell: "ENTANGLE", dodge: "step out of the green rings" },
+        { type: "spit", weight: 22, warnMs: 1000, r: 30, dmg: 12, speed: 5, targets: 3, tell: "THORN VOLLEY", dodge: "keep moving sideways" },
+        { type: "summon", weight: 22, warnMs: 1500, n: 2, addType: "thornling", tell: "THE BROOD WAKES", dodge: "cut the thornlings down" },
+      ],
+    },
+
+    // ===== MID — THE ASHEN COLOSSEUM =====
+    // KAEL, THE SUNDERED BLADE: a swordsman who RUNS. Dash-slashes, three-hit
+    // combos, a glowing guard stance that ripostes whoever strikes it,
+    // afterimage clones in phase 2 and the Thousand Cuts in phase 3. His
+    // position is server-authoritative; every hit is checked against it.
+    kael: {
+      name: "KAEL, THE SUNDERED BLADE", archetype: "duelist", profile: "blade", parts: 0, partName: "guard", color: "#7f1d1d", accent: "#fda4af",
+      baseHp: 34000, reward: 14000, tier: "boss", enrageMs: 7 * 60000, maxAdds: 4,
+      cry: "STEEL, THEN. LET US SEE WHAT YOURS REMEMBERS.", title: "CHAMPION OF THE ASHEN COLOSSEUM",
+      body: { r: 34, walk: 170, run: 300, turn: 7.5 },
+      duelist: { castChance: 0.14, keepDist: 120, strafe: 0.55, strafeBelow: 260, stance: "flowing", clones: 2, cloneDmgMult: 0.5, cloneLifeMs: 12000, cloneEveryMs: 20000, cutsEveryMs: 26000 },
+      attacks: [
+        { type: "dash_slash", kind: "lunge", weight: 24, warnMs: 520, activeMs: 190, recoverMs: 520, range: [170, 620], len: 560, w: 70, overshoot: 90, speed: 1500, dmg: 30, vuln: 1.25, cdMs: 2600, tell: "BLADE DASH", dodge: "step off the line he is staring down" },
+        { type: "combo", kind: "combo", weight: 28, warnMs: 300, activeMs: 120, recoverMs: 760, range: [0, 175], vuln: 1.2, cdMs: 1800,
+          hits: [{ warnMs: 300, arc: 2.2, r: 120, dmg: 14, lunge: 40 }, { warnMs: 220, arc: 2.2, r: 120, dmg: 14, lunge: 40 }, { warnMs: 420, arc: 3.4, r: 150, dmg: 24, lunge: 70 }],
+          dmg: 14, tell: "THREE-CUT COMBO", dodge: "back off after the second cut — the third is wider" },
+        { type: "parry", kind: "guard", weight: 14, warnMs: 250, guardMs: 1500, recoverMs: 500, range: [0, 420], cdMs: 7000,
+          riposte: { warnMs: 200, activeMs: 160, len: 240, w: 84, dmg: 38, recoverMs: 420 },
+          dmg: 38, tell: "GUARD STANCE", dodge: "do not strike the glowing guard — wait it out" },
+        { type: "crescent", weight: 12, warnMs: 1100, band: 60, dmg: 24, durMs: 900, speed: 7, tell: "CRESCENT WAVE", dodge: "the wave flies straight — sidestep it" },
+      ],
+      phases: [
+        { at: 0.60, shiftMs: 3200, attackEveryMs: 2300, name: "KAEL, IRON STANCE", color: "#450a0a", accent: "#fecaca",
+          cry: "ONE OF ME WAS NEVER ENOUGH FOR THE CROWD.", title: "THE AFTERIMAGES",
+          duelist: { stance: "iron", strafe: 0.45 },
+          attacks: [
+            { type: "afterimage", kind: "clones", weight: 10, warnMs: 900, range: [0, 2000], cdMs: 20000, tell: "AFTERIMAGES", dodge: "only the real Kael casts a shadow — strike him" },
+            { type: "dash_slash", kind: "lunge", weight: 24, warnMs: 480, activeMs: 190, recoverMs: 500, range: [170, 640], len: 600, w: 74, overshoot: 100, speed: 1600, dmg: 32, vuln: 1.25, cdMs: 2400, tell: "BLADE DASH", dodge: "step off the line he is staring down" },
+            { type: "combo", kind: "combo", weight: 26, warnMs: 280, activeMs: 120, recoverMs: 720, range: [0, 180], vuln: 1.2, cdMs: 1700,
+              hits: [{ warnMs: 280, arc: 2.3, r: 125, dmg: 15, lunge: 44 }, { warnMs: 210, arc: 2.3, r: 125, dmg: 15, lunge: 44 }, { warnMs: 400, arc: 3.6, r: 160, dmg: 26, lunge: 76 }],
+              dmg: 15, tell: "THREE-CUT COMBO", dodge: "back off after the second cut" },
+            { type: "parry", kind: "guard", weight: 20, warnMs: 240, guardMs: 1700, recoverMs: 480, range: [0, 460], cdMs: 6000,
+              riposte: { warnMs: 190, activeMs: 160, len: 260, w: 90, dmg: 42, recoverMs: 400 },
+              dmg: 42, tell: "GUARD STANCE", dodge: "do not strike the glowing guard" },
+            { type: "crescent", weight: 12, warnMs: 1000, band: 64, dmg: 26, durMs: 900, speed: 7.5, tell: "CRESCENT WAVE", dodge: "sidestep the wave" },
+          ] },
+        { at: 0.25, shiftMs: 3600, attackEveryMs: 2000, windupMult: 0.85, name: "KAEL, THE THOUSAND CUTS", color: "#1c1917", accent: "#f43f5e",
+          cry: "WATCH CLOSELY. YOU WILL ONLY SEE THIS ONCE.", title: "CRIMSON STANCE",
+          duelist: { stance: "crimson", strafe: 0.35 },
+          attacks: [
+            { type: "thousand_cuts", kind: "cuts", weight: 8, warnMs: 700, cuts: 12, gapMs: 260, w: 46, exhaustMs: 2600, vuln: 1.5, dmg: 26, range: [0, 2000], cdMs: 26000, tell: "THOUSAND CUTS", dodge: "watch every line — then punish him while he is spent" },
+            { type: "afterimage", kind: "clones", weight: 8, warnMs: 800, range: [0, 2000], cdMs: 22000, tell: "AFTERIMAGES", dodge: "only the real Kael casts a shadow" },
+            { type: "dash_slash", kind: "lunge", weight: 26, warnMs: 440, activeMs: 180, recoverMs: 480, range: [160, 660], len: 620, w: 78, overshoot: 110, speed: 1700, dmg: 34, vuln: 1.25, cdMs: 2200, tell: "BLADE DASH", dodge: "step off the line" },
+            { type: "combo", kind: "combo", weight: 26, warnMs: 260, activeMs: 110, recoverMs: 680, range: [0, 185], vuln: 1.2, cdMs: 1600,
+              hits: [{ warnMs: 260, arc: 2.4, r: 130, dmg: 16, lunge: 48 }, { warnMs: 200, arc: 2.4, r: 130, dmg: 16, lunge: 48 }, { warnMs: 380, arc: 3.8, r: 170, dmg: 28, lunge: 80 }],
+              dmg: 16, tell: "THREE-CUT COMBO", dodge: "back off after the second cut" },
+            { type: "parry", kind: "guard", weight: 16, warnMs: 230, guardMs: 1500, recoverMs: 460, range: [0, 460], cdMs: 6500,
+              riposte: { warnMs: 180, activeMs: 150, len: 280, w: 96, dmg: 46, recoverMs: 380 },
+              dmg: 46, tell: "GUARD STANCE", dodge: "do not strike the glowing guard" },
+          ] },
+      ],
+    },
+    // THE PIT CHAMPION (mini): shield and spear. Blocks every hit from the
+    // front 150°; turns slowly — flank him, or hit him while he recovers.
+    pit_champion: {
+      name: "THE PIT CHAMPION", archetype: "duelist", profile: "guard", parts: 0, partName: "shield", color: "#92400e", accent: "#fde68a",
+      baseHp: 5600, reward: 1200, tier: "mini", maxAdds: 2, cry: "THE CROWD WANTS BLOOD. I AM HAPPY TO SHARE.",
+      body: { r: 32, walk: 130, run: 190, turn: 2.2 },
+      duelist: { castChance: 0.1, keepDist: 110, strafe: 0.2, block: { arc: 2.6 } },
+      attacks: [
+        { type: "spear_thrust", kind: "lunge", weight: 30, warnMs: 600, activeMs: 160, recoverMs: 700, range: [90, 300], len: 260, w: 50, overshoot: 40, speed: 1300, dmg: 20, vuln: 1.2, cdMs: 1600, tell: "SPEAR THRUST", dodge: "sidestep — then hit his open flank" },
+        { type: "shield_bash", kind: "cone", weight: 24, warnMs: 500, activeMs: 160, recoverMs: 600, range: [0, 130], r: 115, arc: 1.6, dmg: 16, tell: "SHIELD BASH", dodge: "get beside him, not in front" },
+        { type: "spear_sweep", kind: "nova", weight: 18, warnMs: 800, activeMs: 220, recoverMs: 700, range: [0, 170], r: 155, dmg: 18, vuln: 1.25, tell: "SPEAR SWEEP", dodge: "back out of the circle" },
+        { type: "shield_charge", kind: "lunge", weight: 18, warnMs: 900, activeMs: 300, recoverMs: 900, range: [220, 700], len: 520, w: 90, overshoot: 60, speed: 900, dmg: 22, vuln: 1.35, cdMs: 3500, tell: "SHIELD CHARGE", dodge: "step out of the lane, then strike his back" },
+        { type: "roar", weight: 10, warnMs: 1300, r: 280, dmg: 12, tell: "THE CROWD ROARS", dodge: "back away from the middle" },
+      ],
+    },
+
+    // ===== LATE — THE MIRROR COURT =====
+    // THE TWIN MONARCHS, SOL & UMBRA: two bodies, one pool each. Only the
+    // EXPOSED twin (polarity, swapping every swapMs, telegraphed) takes
+    // damage. When one falls the other enrages and raises it at 40% after
+    // linkMs — unless it falls too inside that window.
+    twin_monarchs: {
+      name: "THE TWIN MONARCHS", archetype: "twins", parts: 0, partName: "crown", color: "#312e81", accent: "#fde68a",
+      baseHp: 140000, reward: 46000, tier: "boss", enrageMs: 9 * 60000, maxAdds: 6,
+      cry: "WE HAVE ALWAYS BEEN TWO. YOU WILL ONLY EVER BE ONE.", title: "SOL & UMBRA, MONARCHS OF THE MIRROR COURT",
+      body: { r: 38, walk: 150, run: 150, turn: 3 },
+      twins: { swapMs: 11000, warnMs: 1500, linkMs: 15000, reviveFrac: 0.40, enrage: { dmgMult: 1.25, cadenceMult: 0.8 },
+        bodies: [
+          { key: "sol", name: "SOL, THE BRIGHT MONARCH", color: "#f59e0b", accent: "#fef3c7", hpFrac: 0.5,
+            attacks: [
+              { type: "lance", weight: 24, warnMs: 1400, len: 900, w: 50, dmg: 14, durMs: 3400, turn: 1.0, tell: "NOONDAY LANCE", dodge: "keep circling" },
+              { type: "safezone", weight: 20, warnMs: 2000, r: 110, dmg: 40, durMs: 1600, tell: "HIGH NOON", dodge: "stand in Umbra's shade — the marked circle" },
+              { type: "ring", weight: 18, warnMs: 1500, r: 520, band: 56, dmg: 28, durMs: 1500, count: 2, gapMs: 480, tell: "CORONA", dodge: "let each ring pass" },
+              { type: "solar_flare", kind: "nova", weight: 14, warnMs: 900, activeMs: 220, recoverMs: 600, range: [0, 240], r: 220, dmg: 26, tell: "SOLAR FLARE", dodge: "get away from Sol" },
+            ] },
+          { key: "umbra", name: "UMBRA, THE DARK MONARCH", color: "#4c1d95", accent: "#c4b5fd", hpFrac: 0.5,
+            attacks: [
+              { type: "grasp", weight: 22, warnMs: 1400, r: 54, dmg: 24, targets: 5, durMs: 900, tell: "UMBRAL HANDS", dodge: "keep walking" },
+              { type: "rift", weight: 20, warnMs: 1600, r: 100, dmg: 26, durMs: 2400, targets: 2, tell: "NIGHTFALL", dodge: "do not stand in the tear" },
+              { type: "hazard", weight: 20, warnMs: 1300, targets: 4, r: 72, dmg: 12, lingerMs: 7000, slow: 0.55, tell: "POOLS OF NIGHT", dodge: "keep ground open" },
+              { type: "shadow_step", kind: "vanish", weight: 14, warnMs: 300, hideMs: 900, behind: 90, range: [0, 2000], cdMs: 9000,
+                strike: { warnMs: 420, r: 120, arc: 2.4, dmg: 30, recoverMs: 600, vuln: 1.2 }, dmg: 30, tell: "SHADOW STEP", dodge: "she appears behind you — turn and move" },
+            ] },
+        ] },
+      attacks: [
+        { type: "eclipse", weight: 10, warnMs: 1500, w: 96, dmg: 36, durMs: 900, tell: "ECLIPSE", dodge: "never stand between the Monarchs when they swap" },
+        { type: "lance", weight: 24, warnMs: 1400, len: 900, w: 50, dmg: 14, durMs: 3400, turn: 1.0, tell: "NOONDAY LANCE", dodge: "keep circling" },
+        { type: "safezone", weight: 20, warnMs: 2000, r: 110, dmg: 40, durMs: 1600, tell: "HIGH NOON", dodge: "stand in the marked circle" },
+        { type: "grasp", weight: 22, warnMs: 1400, r: 54, dmg: 24, targets: 5, durMs: 900, tell: "UMBRAL HANDS", dodge: "keep walking" },
+        { type: "hazard", weight: 20, warnMs: 1300, targets: 4, r: 72, dmg: 12, lingerMs: 7000, slow: 0.55, tell: "POOLS OF NIGHT", dodge: "keep ground open" },
+      ],
+      phases: [
+        { at: 0.50, shiftMs: 3600, attackEveryMs: 1900, onEnterAdds: { type: "reflection", n: 4 },
+          twins: { swapMs: 8000, linkMs: 12000 }, name: "THE MONARCHS, ECLIPSED", color: "#1e1b4b", accent: "#fef08a",
+          cry: "THEN LET THE SUN AND THE DARK SHARE ONE SKY.", title: "TOTAL ECLIPSE",
+          bodyAttacks: {
+            sol: [
+              { type: "lance", weight: 22, warnMs: 1300, len: 900, w: 54, dmg: 16, durMs: 3600, turn: 1.15, beams: 2, tell: "TWIN LANCES", dodge: "stay between the beams and keep turning" },
+              { type: "safezone", weight: 20, warnMs: 1900, r: 104, dmg: 46, durMs: 1600, tell: "HIGH NOON", dodge: "the marked circle" },
+              { type: "spiral", weight: 18, warnMs: 1500, arms: 3, points: 28, r: 42, dmg: 30, durMs: 2200, turns: 1.6, tell: "SUNWHEEL", dodge: "move across the arms" },
+              { type: "solar_flare", kind: "nova", weight: 14, warnMs: 820, activeMs: 220, recoverMs: 560, range: [0, 250], r: 230, dmg: 30, tell: "SOLAR FLARE", dodge: "get away from Sol" },
+            ],
+            umbra: [
+              { type: "collapse", weight: 20, warnMs: 1700, rStart: 520, rEnd: 150, dmg: 18, durMs: 3800, tell: "THE LONG NIGHT", dodge: "stay in the last light" },
+              { type: "grasp", weight: 20, warnMs: 1300, r: 56, dmg: 26, targets: 6, durMs: 900, tell: "UMBRAL HANDS", dodge: "keep walking" },
+              { type: "hazard", weight: 18, warnMs: 1200, targets: 5, r: 74, dmg: 14, lingerMs: 8000, slow: 0.5, tell: "POOLS OF NIGHT", dodge: "keep ground open" },
+              { type: "shadow_step", kind: "vanish", weight: 16, warnMs: 280, hideMs: 800, behind: 90, range: [0, 2000], cdMs: 8000,
+                strike: { warnMs: 380, r: 125, arc: 2.5, dmg: 34, recoverMs: 560, vuln: 1.2 }, dmg: 34, tell: "SHADOW STEP", dodge: "turn and move" },
+            ],
+          },
+          attacks: [
+            { type: "eclipse", weight: 14, warnMs: 1400, w: 104, dmg: 42, durMs: 900, tell: "ECLIPSE", dodge: "never stand between the Monarchs" },
+            { type: "lance", weight: 22, warnMs: 1300, len: 900, w: 54, dmg: 16, durMs: 3600, turn: 1.15, beams: 2, tell: "TWIN LANCES", dodge: "stay between the beams" },
+            { type: "collapse", weight: 20, warnMs: 1700, rStart: 520, rEnd: 150, dmg: 18, durMs: 3800, tell: "THE LONG NIGHT", dodge: "stay in the last light" },
+            { type: "spiral", weight: 18, warnMs: 1500, arms: 3, points: 28, r: 42, dmg: 30, durMs: 2200, turns: 1.6, tell: "SUNWHEEL", dodge: "move across the arms" },
+            { type: "summon", weight: 12, warnMs: 1600, n: 2, addType: "reflection", tell: "THE MIRRORS WAKE", dodge: "break the reflections" },
+          ] },
+      ],
+    },
+    // THE VEILED ASSASSIN (mini): vanishes, reappears behind a player, strikes.
+    veiled_assassin: {
+      name: "THE VEILED ASSASSIN", archetype: "duelist", profile: "assassin", parts: 0, partName: "veil", color: "#1e1b4b", accent: "#e9d5ff",
+      baseHp: 12500, reward: 2600, tier: "mini", maxAdds: 3, cry: "YOU WERE NEVER ALONE IN HERE.",
+      body: { r: 26, walk: 200, run: 340, turn: 9 },
+      duelist: { castChance: 0.2, keepDist: 160, strafe: 0.6, strafeBelow: 300 },
+      attacks: [
+        { type: "ambush", kind: "vanish", weight: 30, warnMs: 280, hideMs: 1200, behind: 64, range: [0, 2000], cdMs: 3800,
+          strike: { warnMs: 380, r: 100, arc: 2.2, dmg: 34, recoverMs: 650, vuln: 1.3 }, dmg: 34, tell: "SHE IS GONE", dodge: "she comes from behind — keep moving and turn" },
+        { type: "shadow_lunge", kind: "lunge", weight: 22, warnMs: 420, activeMs: 150, recoverMs: 520, range: [140, 480], len: 420, w: 56, overshoot: 60, speed: 1800, dmg: 26, vuln: 1.2, cdMs: 2200, tell: "SHADOW LUNGE", dodge: "sidestep the line" },
+        { type: "spit", weight: 22, warnMs: 900, r: 28, dmg: 16, speed: 6.5, targets: 5, tell: "FAN OF KNIVES", dodge: "keep moving sideways" },
+        { type: "hazard", weight: 16, warnMs: 1100, targets: 3, r: 70, dmg: 10, lingerMs: 6000, slow: 0.6, tell: "SMOKE", dodge: "stay out of the smoke" },
+      ],
+    },
+
+    // ===== ENDGAME — THE SUNDERED THRONE =====
+    // THE SUNDERED KING: a multiform fight. KNIGHT (duelist on foot) ->
+    // COLOSSUS (towers over the arena; only a resting hand or a kneel can be
+    // struck) -> CROWN (untargetable while crown shards orbit; break every
+    // shard and he is SUNDERED, x1.5 damage for 8s; the shards reform, one
+    // fewer each time).
+    sundered_king: {
+      name: "THE SUNDERED KING", archetype: "multiform", parts: 0, partName: "crown", color: "#44403c", accent: "#fde047",
+      baseHp: 220000, reward: 56000, tier: "boss", enrageMs: 10 * 60000, maxAdds: 8,
+      cry: "KNEEL. THE CROWN IS BROKEN, NOT THE KING.", title: "THE SUNDERED KING",
+      body: { r: 40, walk: 150, run: 250, turn: 5 },
+      forms: [
+        { key: "knight", driver: "duelist", name: "THE KNIGHT", body: { r: 40, walk: 150, run: 250, turn: 5 } },
+        { key: "colossus", driver: "colossus", name: "THE COLOSSUS", body: { r: 130, walk: 0, run: 0, turn: 1 } },
+        { key: "crown", driver: "crown", name: "THE CROWN", body: { r: 60, walk: 0, run: 0, turn: 1 } },
+      ],
+      duelist: { castChance: 0.18, keepDist: 130, strafe: 0.3, block: null },
+      colossus: { home: { x: 512, y: 150 }, kneel: { x: 512, y: 250 }, kneelEvery: 3, kneelMs: 4200, kneelVuln: 1.4, kneelR: 110 },
+      crown: { shards: 4, perFighters: 3, maxShards: 8, shardHpFrac: 0.025, sunderMs: 8000, sunderVuln: 1.5, minShards: 3 },
+      attacks: [
+        { type: "kings_cleave", kind: "combo", weight: 28, warnMs: 420, activeMs: 150, recoverMs: 900, range: [0, 200], vuln: 1.25, cdMs: 2200,
+          hits: [{ warnMs: 420, arc: 2.8, r: 150, dmg: 30, lunge: 50 }, { warnMs: 520, arc: 3.6, r: 175, dmg: 40, lunge: 70 }],
+          dmg: 30, tell: "KING'S CLEAVE", dodge: "two swings — the second is wider and slower" },
+        { type: "crown_dash", kind: "lunge", weight: 22, warnMs: 650, activeMs: 220, recoverMs: 650, range: [200, 700], len: 620, w: 96, overshoot: 90, speed: 1300, dmg: 38, vuln: 1.3, cdMs: 2800, tell: "ROYAL CHARGE", dodge: "step out of the lane" },
+        { type: "parry", kind: "guard", weight: 14, warnMs: 280, guardMs: 1600, recoverMs: 520, range: [0, 460], cdMs: 7500,
+          riposte: { warnMs: 220, activeMs: 170, len: 260, w: 100, dmg: 48, recoverMs: 460 },
+          dmg: 48, tell: "THE KING'S GUARD", dodge: "do not strike the glowing guard" },
+        { type: "decree", kind: "nova", weight: 14, warnMs: 900, activeMs: 250, recoverMs: 700, range: [0, 260], r: 240, dmg: 30, tell: "DECREE", dodge: "back away from the king" },
+        { type: "cross", weight: 12, warnMs: 1600, arms: 4, len: 620, w: 58, dmg: 32, durMs: 1100, tell: "ROYAL CROSS", dodge: "stand between the beams" },
+      ],
+      phases: [
+        { at: 0.60, shiftMs: 5200, attackEveryMs: 2000, form: "colossus", cinematic: true, name: "THE SUNDERED KING, ASCENDANT", color: "#1c1917", accent: "#facc15",
+          cry: "YOU THOUGHT THAT WAS ALL OF ME?", title: "THE COLOSSUS",
+          attacks: [
+            { type: "colossus_slam", kind: "slam", weight: 30, warnMs: 1100, r: 115, restMs: 2600, handR: 72, dmg: 44, range: [0, 2000], tell: "THE HAND FALLS", dodge: "move out of the shadow — then strike the hand" },
+            { type: "orbit", weight: 16, warnMs: 1700, len: 780, w: 90, dmg: 34, durMs: 2600, sweep: 5.0, tell: "SPECTRAL SWEEP", dodge: "run the way the arm is going" },
+            { type: "meteor", weight: 16, warnMs: 1500, r: 56, dmg: 28, targets: 14, durMs: 1800, tell: "CROWNFALL", dodge: "never stop moving" },
+            { type: "cross", weight: 14, warnMs: 1600, arms: 6, len: 640, w: 56, dmg: 32, durMs: 1200, tell: "ROYAL DECREE", dodge: "stand between the beams" },
+            { type: "safezone", weight: 12, warnMs: 2000, r: 110, dmg: 48, durMs: 1800, tell: "KNEEL", dodge: "get inside the marked circle" },
+            { type: "summon", weight: 12, warnMs: 1600, n: 3, addType: "crownguard", tell: "THE KINGSGUARD", dodge: "cut the guard down" },
+          ] },
+        { at: 0.25, shiftMs: 4200, attackEveryMs: 1900, form: "crown", name: "THE SUNDERED KING, CROWNLESS", color: "#0c0a09", accent: "#fde047",
+          cry: "TAKE IT, THEN. TAKE EVERY PIECE.", title: "THE CROWN SHATTERS",
+          attacks: [
+            { type: "collapse", weight: 20, warnMs: 1700, rStart: 520, rEnd: 150, dmg: 20, durMs: 3800, tell: "THE CROWN FALLS IN", dodge: "stay in the light" },
+            { type: "spiral", weight: 20, warnMs: 1400, arms: 4, points: 32, r: 44, dmg: 32, durMs: 2200, turns: 1.8, tell: "SHARD STORM", dodge: "cross the arms" },
+            { type: "meteor", weight: 18, warnMs: 1400, r: 56, dmg: 30, targets: 16, durMs: 1800, tell: "CROWNFALL", dodge: "never stop moving" },
+            { type: "ring", weight: 18, warnMs: 1400, r: 560, band: 58, dmg: 32, durMs: 1500, count: 3, gapMs: 420, tell: "REGAL PULSE", dodge: "let each ring pass" },
+            { type: "lance", weight: 16, warnMs: 1300, len: 900, w: 54, dmg: 16, durMs: 3600, turn: 1.2, beams: 2, tell: "BROKEN LIGHT", dodge: "stay between the beams" },
+          ] },
+      ],
+    },
+    // KAEL, CROWNBOUND (mini): the rematch. The duelist engine, harder numbers,
+    // clones from the start of his second phase.
+    kael_crownbound: {
+      name: "KAEL, CROWNBOUND", archetype: "duelist", profile: "blade", parts: 0, partName: "guard", color: "#1c1917", accent: "#fde047",
+      baseHp: 16000, reward: 3000, tier: "mini", maxAdds: 2, cry: "THE KING KEPT ME. I KEPT MY BLADE.",
+      body: { r: 34, walk: 180, run: 320, turn: 8 },
+      duelist: { castChance: 0.12, keepDist: 120, strafe: 0.5, strafeBelow: 260, stance: "crimson", clones: 2, cloneDmgMult: 0.5, cloneLifeMs: 10000 },
+      attacks: [
+        { type: "dash_slash", kind: "lunge", weight: 26, warnMs: 440, activeMs: 180, recoverMs: 480, range: [160, 660], len: 620, w: 78, overshoot: 110, speed: 1700, dmg: 38, vuln: 1.25, cdMs: 2200, tell: "BLADE DASH", dodge: "step off the line" },
+        { type: "combo", kind: "combo", weight: 28, warnMs: 260, activeMs: 110, recoverMs: 680, range: [0, 185], vuln: 1.2, cdMs: 1600,
+          hits: [{ warnMs: 260, arc: 2.4, r: 130, dmg: 18, lunge: 48 }, { warnMs: 200, arc: 2.4, r: 130, dmg: 18, lunge: 48 }, { warnMs: 380, arc: 3.8, r: 170, dmg: 30, lunge: 80 }],
+          dmg: 18, tell: "THREE-CUT COMBO", dodge: "back off after the second cut" },
+        { type: "parry", kind: "guard", weight: 16, warnMs: 230, guardMs: 1500, recoverMs: 460, range: [0, 460], cdMs: 6500,
+          riposte: { warnMs: 180, activeMs: 150, len: 280, w: 96, dmg: 52, recoverMs: 380 },
+          dmg: 52, tell: "GUARD STANCE", dodge: "do not strike the glowing guard" },
+        { type: "crescent", weight: 12, warnMs: 950, band: 64, dmg: 30, durMs: 900, speed: 7.5, tell: "CRESCENT WAVE", dodge: "sidestep the wave" },
+      ],
+      phases: [
+        { at: 0.50, shiftMs: 2800, attackEveryMs: 2000, name: "KAEL, CROWNBOUND — UNCHAINED", color: "#0c0a09", accent: "#fef08a",
+          cry: "AGAIN. AND THIS TIME, ALL OF US.", title: "AFTERIMAGES",
+          attacks: [
+            { type: "afterimage", kind: "clones", weight: 10, warnMs: 800, range: [0, 2000], cdMs: 18000, tell: "AFTERIMAGES", dodge: "only the real Kael casts a shadow" },
+            { type: "dash_slash", kind: "lunge", weight: 26, warnMs: 420, activeMs: 180, recoverMs: 460, range: [160, 680], len: 640, w: 80, overshoot: 110, speed: 1800, dmg: 40, vuln: 1.25, cdMs: 2000, tell: "BLADE DASH", dodge: "step off the line" },
+            { type: "combo", kind: "combo", weight: 26, warnMs: 250, activeMs: 110, recoverMs: 660, range: [0, 185], vuln: 1.2, cdMs: 1500,
+              hits: [{ warnMs: 250, arc: 2.4, r: 130, dmg: 19, lunge: 48 }, { warnMs: 190, arc: 2.4, r: 130, dmg: 19, lunge: 48 }, { warnMs: 360, arc: 3.8, r: 170, dmg: 32, lunge: 80 }],
+              dmg: 19, tell: "THREE-CUT COMBO", dodge: "back off after the second cut" },
+            { type: "parry", kind: "guard", weight: 16, warnMs: 220, guardMs: 1500, recoverMs: 440, range: [0, 460], cdMs: 6000,
+              riposte: { warnMs: 170, activeMs: 150, len: 290, w: 100, dmg: 56, recoverMs: 360 },
+              dmg: 56, tell: "GUARD STANCE", dodge: "do not strike the glowing guard" },
+          ] },
+      ],
+    },
+  });
+  for (const id of ["gorehorn", "briar_matron", "kael", "pit_champion", "twin_monarchs", "veiled_assassin", "sundered_king", "kael_crownbound"]) GUILD_BOSSES[id].id = id;
   // Varkaal's revival. When its head goes down for the FIRST time it does not
   // die: it collapses, the ash around it catches, and it rises lit. The client
   // plays the cinematic; the server owns the HP it comes back with.
@@ -1505,6 +1849,13 @@
   const GUILD_MINIS = ["ogrelord", "tempest", "herald", "broodmother", "curator", "prismgolem", "halvard"];
   const GUILD_RAID_MINIS = ["ley_ember", "ley_tide", "ley_star"];
   const GUILD_SPECIAL_BOSSES = ["heart", "concordant"];
+  // The Sundered Crown (docs/sundered-crown/MASTER-PLAN.md §3.4): new lists,
+  // so the frozen legacy ones above keep their exact contents.
+  const CROWN_BOSS_ORDER = ["gorehorn", "kael", "twin_monarchs", "sundered_king"];
+  const CROWN_MINIS = ["briar_matron", "pit_champion", "veiled_assassin", "kael_crownbound"];
+  const BOSS_ARCHETYPES = ["parts", "beast", "duelist", "twins", "multiform"];
+  // 'parts' (no archetype field) is the legacy break-the-weak-points engine.
+  function bossArchetype(id) { const d = GUILD_BOSSES[id]; return d && BOSS_ARCHETYPES.includes(d.archetype) ? d.archetype : "parts"; }
   function isMiniBoss(id) { return !!GUILD_BOSSES[id] && GUILD_BOSSES[id].tier === "mini"; }
   function isSpecialBoss(id) { return GUILD_SPECIAL_BOSSES.includes(id); }
   // Party/raid HP curve (MASTER-PLAN §3.5). Identical to the legacy
@@ -1552,14 +1903,17 @@
   // decides the slot, the flavour and how its power is split between the three
   // stats, the rarity multiplies that power, and a +/-15% roll makes two of
   // the same thing worth comparing.
-  const GEAR_SLOTS = ["weapon", "helmet", "chest", "legs", "ring", "tome"];
+  // WEAPONS (docs/sundered-crown/WEAPONS.md): the slot id "weapon" stays the
+  // MELEE hand so every stored save keeps working; "ranged" is appended.
+  const GEAR_SLOTS = ["weapon", "helmet", "chest", "legs", "ring", "tome", "ranged"];
   const GEAR_SLOT_INFO = {
-    weapon: { label: "Weapon",     emoji: "⚔️" },
+    weapon: { label: "Melee Weapon", emoji: "⚔️" },
     helmet: { label: "Helmet",     emoji: "⛑️" },
     chest:  { label: "Chestplate", emoji: "🧥" },
     legs:   { label: "Leggings",   emoji: "👖" },
     ring:   { label: "Ring",       emoji: "💍" },
     tome:   { label: "Tome",       emoji: "📕" },
+    ranged: { label: "Ranged Weapon", emoji: "🏹" },
   };
   const GEAR_STATS = ["atk", "def", "vit"];
   const GEAR_STAT_INFO = {
@@ -1589,10 +1943,12 @@
   // Item level 1-10. Level is what the DUNGEON was worth, not what the player
   // is: a legendary out of the Goblin Caves is still a level-1 legendary, so
   // the quest board can never out-drop a guild run. 8-10 are the Arcane
-  // Depths story tiers (Archive / Geode / Rime) and the raid.
-  const GEAR_MAX_LEVEL = 10;
-  const GEAR_POWER = [0, 9, 15, 24, 38, 56, 78, 104, 126, 150, 176];   // indexed by level
-  const GEAR_BASE_VALUE = [0, 25, 55, 130, 300, 650, 1200, 2000, 2900, 4000, 5400];
+  // Depths story tiers (Archive / Geode / Rime) and the raid; 11-12 are the
+  // Sundered Crown's Mirror Court and Sundered Throne (appended: levels 1-10
+  // are untouched).
+  const GEAR_MAX_LEVEL = 12;
+  const GEAR_POWER = [0, 9, 15, 24, 38, 56, 78, 104, 126, 150, 176, 204, 234];   // indexed by level
+  const GEAR_BASE_VALUE = [0, 25, 55, 130, 300, 650, 1200, 2000, 2900, 4000, 5400, 7000, 9000];
   // From this much ATK up, each extra point is worth half (protects every
   // existing Mythic set: the best possible legacy set is ~716 ATK).
   const GEAR_ATK_SOFTCAP = 720;
@@ -1835,6 +2191,213 @@
       GEAR_BASES.push({ id: bid, slot, lvl: s.lvl, name: s.names[i], split: Object.assign({}, SET_SLOT_SPLITS[slot]), set: id });
     });
   }
+  // ================================================================
+  // THE SUNDERED CROWN gear (docs/sundered-crown/MASTER-PLAN.md §3.8).
+  // Appended AFTER every legacy base so no existing pool, index or roll moves:
+  // item levels 11-12 (a new random pool), 12 uniques and 4 sets. The Thornwild
+  // (L4) and the Colosseum (L7) roll the EXISTING L4/L7 random pools; only
+  // their uniques and sets are new.
+  // ================================================================
+  DEEP_BASE_NAMES[11] = {
+    weapon: [["gleamglass_saber", "Gleamglass Saber"], ["eclipse_rapier", "Eclipse Rapier"], ["courtly_warhammer", "Courtly Warhammer"]],
+    helmet: [["silvered_visage", "Silvered Visage"], ["masque_of_umbra", "Masque of Umbra"], ["looking_glass_helm", "Looking-Glass Helm"]],
+    chest:  [["mirrorplate", "Mirrorplate"], ["duskweave_doublet", "Duskweave Doublet"], ["gilded_bulwark", "Gilded Bulwark"]],
+    legs:   [["glasswalk_greaves", "Glasswalk Greaves"], ["velvet_striders", "Velvet Striders"], ["court_tassets", "Court Tassets"]],
+    ring:   [["twin_moon_band", "Twin-Moon Band"], ["sunspot_signet", "Sunspot Signet"], ["silver_vow", "Silver Vow"]],
+  };
+  DEEP_BASE_NAMES[12] = {
+    weapon: [["crownsplitter", "Crownsplitter"], ["regicide_blade", "Regicide Blade"], ["throne_maul", "Throne Maul"]],
+    helmet: [["kingsguard_greathelm", "Kingsguard Greathelm"], ["usurpers_circlet", "Usurper's Circlet"], ["throneward_helm", "Throneward Helm"]],
+    chest:  [["royal_hauberk", "Royal Hauberk"], ["regents_mantle", "Regent's Mantle"], ["sundered_aegis_plate", "Sundered Aegis Plate"]],
+    legs:   [["kingsroad_greaves", "Kingsroad Greaves"], ["heralds_striders", "Herald's Striders"], ["throne_tassets", "Throne Tassets"]],
+    ring:   [["signet_of_ruin", "Signet of Ruin"], ["broken_oath_band", "Broken Oath Band"], ["coronation_loop", "Coronation Loop"]],
+  };
+  for (const lvl of [11, 12]) for (const slot of ["weapon", "helmet", "chest", "legs", "ring"]) {
+    DEEP_BASE_NAMES[lvl][slot].forEach(([id, name], i) => GEAR_BASES.push({ id, slot, lvl, name, split: Object.assign({}, DEEP_SPLITS[slot][i]) }));
+  }
+  const CROWN_UNIQUES = {
+    gorehorn_tusk:      { name: "Gorehorn's Broken Tusk", slot: "weapon", lvl: 4, minRarity: "legendary", boss: "gorehorn", split: { atk: 0.90, vit: 0.10 },
+                          fx: { staggerDmg: 0.25, onHitKnock: { chance: 0.10 } } },
+    rampager_hide:      { name: "Rampager's Hide", slot: "chest", lvl: 4, minRarity: "legendary", boss: "gorehorn", split: { def: 0.60, vit: 0.40 },
+                          fx: { thorns: 0.18, maxHpPct: 0.06 } },
+    matrons_briar:      { name: "The Matron's Briar", slot: "ring", lvl: null, minRarity: "legendary", boss: "briar_matron", split: { atk: 0.60, vit: 0.40 },
+                          fx: { thorns: 0.10, onHitSlow: { chance: 0.15, pct: 0.35, ms: 1800 } } },
+    kaels_edge:         { name: "Kael's Edge", slot: "weapon", lvl: 7, minRarity: "mythic", boss: "kael", split: { atk: 0.92, def: 0.08 },
+                          fx: { crit: 0.06, afterDashHit: { mult: 1.5, ms: 1200 }, procs: [{ id: "afterimage", chance: 0.12, frac: 0.5, n: 2, shape: "chain" }] } },
+    duelists_mask:      { name: "The Duelist's Mask", slot: "helmet", lvl: 7, minRarity: "legendary", boss: "kael", split: { def: 0.55, atk: 0.30, vit: 0.15 },
+                          fx: { artCd: 0.12, crit: 0.03 } },
+    champions_aegis:    { name: "The Champion's Aegis", slot: "chest", lvl: null, minRarity: "legendary", boss: "pit_champion", split: { def: 0.70, vit: 0.30 },
+                          fx: { takenMult: 0.92, thorns: 0.12 } },
+    sol_and_umbra:      { name: "Sol and Umbra", slot: "weapon", lvl: 11, minRarity: "mythic", boss: "twin_monarchs", split: { atk: 0.90, vit: 0.10 },
+                          fx: { bossDmg: 0.14, procs: [{ id: "eclipse", chance: 0.12, frac: 0.8, n: 3, shape: "nova" }] } },
+    mirror_crown:       { name: "The Mirror Crown", slot: "helmet", lvl: 11, minRarity: "mythic", boss: "twin_monarchs", split: { def: 0.60, atk: 0.25, vit: 0.15 },
+                          fx: { magicFind: 0.12, artPower: 0.15 } },
+    veilpiercer:        { name: "Veilpiercer", slot: "ring", lvl: null, minRarity: "legendary", boss: "veiled_assassin", split: { atk: 0.80, vit: 0.20 },
+                          fx: { crit: 0.05, critDmg: 0.20 } },
+    kingsbane:          { name: "Kingsbane", slot: "weapon", lvl: 12, minRarity: "mythic", boss: "sundered_king", split: { atk: 0.93, vit: 0.07 },
+                          fx: { staggerDmg: 0.35, critDmg: 0.30, procs: [{ id: "crown_shatter", chance: 0.10, frac: 1.0, n: 4, shape: "nova" }] } },
+    the_sundered_crown: { name: "The Sundered Crown", slot: "helmet", lvl: 12, minRarity: "mythic", boss: "sundered_king", split: { def: 0.55, atk: 0.25, vit: 0.20 },
+                          fx: { bossDmg: 0.12, artCd: 0.15, maxHpPct: 0.06 } },
+    crownbound_oath:    { name: "The Crownbound Oath", slot: "legs", lvl: null, minRarity: "legendary", boss: "kael_crownbound", split: { def: 0.70, vit: 0.30 },
+                          fx: { moveSpeed: 0.08, dashCd: 0.15, staggerDmg: 0.12 } },
+  };
+  for (const [id, u] of Object.entries(CROWN_UNIQUES)) {
+    u.id = id; u.crown = true;
+    GEAR_UNIQUES[id] = u;
+    GEAR_BASES.push({ id, slot: u.slot, lvl: u.lvl || 0, anyLvl: !u.lvl, name: u.name, split: Object.assign({}, u.split), unique: true });
+  }
+  const CROWN_SETS = {
+    thornhide:        { name: "Thornhide Regalia", tier: "guild_thornwild", boss: "gorehorn", lvl: 4,
+                        names: ["Thornhide Tusk", "Thornhide Hood", "Thornhide Jerkin", "Thornhide Leggings", "Thornhide Knot"],
+                        bonus: { 2: { thorns: 0.10, maxHpPct: 0.05 }, 4: { staggerDmg: 0.25, onHitSlow: { chance: 0.12, pct: 0.30, ms: 1500 } } },
+                        bonusName: { 4: "Rampager's Hide" } },
+    pit_sovereign:    { name: "Sovereign of the Pit", tier: "guild_colosseum", boss: "kael", lvl: 7,
+                        names: ["Sovereign Gladius", "Sovereign Galea", "Sovereign Cuirass", "Sovereign Greaves", "Sovereign Laurel"],
+                        bonus: { 2: { crit: 0.05, moveSpeed: 0.05 }, 4: { artCd: 0.15, afterDashHit: { mult: 1.4, ms: 1500 } } },
+                        bonusName: { 4: "The Crowd's Favour" } },
+    mirror_regalia:   { name: "Regalia of the Mirror Court", tier: "guild_mirror", boss: "twin_monarchs", lvl: 11,
+                        names: ["Mirrorsteel Blade", "Mirrored Crown", "Mirrored Vestment", "Mirrored Sabatons", "Mirror Signet"],
+                        bonus: { 2: { magicFind: 0.08, defPct: 0.06 }, 4: { takenMult: 0.90, artPower: 0.20 } },
+                        bonusName: { 4: "Twin Reflection" } },
+    sundered_regalia: { name: "The Sundered Regalia", tier: "guild_throne", boss: "sundered_king", lvl: 12,
+                        names: ["Sundered Greatsword", "Sundered Crown", "Sundered Hauberk", "Sundered Greaves", "Sundered Seal"],
+                        bonus: { 2: { bossDmg: 0.08, maxHpPct: 0.08 }, 4: { staggerDmg: 0.30, artCd: 0.10, critDmg: 0.25 } },
+                        bonusName: { 4: "Kingbreaker" } },
+  };
+  for (const [id, s] of Object.entries(CROWN_SETS)) {
+    s.id = id; s.crown = true; s.pieces = {};
+    GEAR_SETS[id] = s;
+    SET_SLOTS.forEach((slot, i) => {
+      const bid = id + "_" + slot;
+      s.pieces[slot] = bid;
+      GEAR_BASES.push({ id: bid, slot, lvl: s.lvl, name: s.names[i], split: Object.assign({}, SET_SLOT_SPLITS[slot]), set: id });
+    });
+  }
+  // ================================================================
+  // WEAPONS (docs/sundered-crown/WEAPONS.md). Two hands: MELEE (the legacy
+  // "weapon" slot) and RANGED (the appended "ranged" slot). Every weapon is
+  // a KIND; the kind decides the attack pattern and its numbers, the item
+  // decides the power. The wire keeps 'sword' (melee hand) / 'pistol' (ranged
+  // hand); the SERVER resolves the kind from the equipped item.
+  //
+  // Everything here is appended: no legacy base, unique, set or seeded roll
+  // moves (js/crown-legacy.js). Kinds of existing bases live in a side map.
+  // ================================================================
+  const WEAPON_HANDS = {
+    melee:  { label: "Melee",  key: "1", wire: "sword",  slot: "weapon", fallback: "sword" },
+    ranged: { label: "Ranged", key: "2", wire: "pistol", slot: "ranged", fallback: "gun" },
+  };
+  // dmg: x the hand's base hit (sword 55 / pistol 22). rate: x the hand's
+  // server min interval (DUNGEON_HIT_MIN_MS / GUILD_BOSS.HIT_MIN_MS /
+  // KRAKEN.HIT_MIN_MS). cd: client cooldown in frames [maze, boss room] —
+  // always >= the server interval so no legitimate swing is refused.
+  // reach: maze reach from your centre (melee) · bossReach: to the edge of a
+  // boss's hit disc (GUILD_BOSS.REACH) · krakenReach (KRAKEN.REACH).
+  // targets: most enemies one swing / one projectile leg may strike.
+  // fx: added to the gear fx for this hand's hits (rollHitDamage keys).
+  // sword and gun ARE today's sword and pistol, number for number.
+  const WEAPON_KINDS = {
+    sword:     { hand: "melee", label: "Sword", emoji: "🗡️", shape: "arc", dmg: 1, rate: 1, cd: [14, 12], reach: 70, bossReach: 58, krakenReach: 110,
+                 arc: Math.PI / 1.6, targets: 6, knock: 4, fx: {},
+                 special: "Balanced slash that sweeps a wide arc (up to 6 foes)." },
+    mace:      { hand: "melee", label: "Mace", emoji: "🔨", shape: "smash", dmg: 1.55, rate: 1.5, cd: [21, 18], reach: 64, bossReach: 54, krakenReach: 100,
+                 arc: Math.PI / 1.6, smashR: 40, targets: 6, knock: 9, fx: { staggerDmg: 0.30 },
+                 special: "Slow overhead smash: a crater at the impact, huge knockback, +30% vs staggered bosses." },
+    spear:     { hand: "melee", label: "Spear", emoji: "🔱", shape: "line", dmg: 1.05, rate: 1.1, cd: [15, 13], reach: 118, bossReach: 96, krakenReach: 160,
+                 arc: Math.PI / 7, width: 30, targets: 3, knock: 5, fx: { eliteDmg: 0.10 },
+                 special: "Long, narrow thrust that pierces 3 foes in a line. +10% vs elites." },
+    dagger:    { hand: "melee", label: "Dagger", emoji: "🔪", shape: "arc", dmg: 0.55, rate: 0.55, cd: [8, 7], reach: 54, bossReach: 44, krakenReach: 90,
+                 arc: Math.PI / 3, targets: 2, knock: 1.5, fx: { crit: 0.12, critDmg: 0.25 },
+                 special: "Lightning-quick stabs at close range: +12% crit chance, +25% crit damage." },
+    axe:       { hand: "melee", label: "Axe", emoji: "🪓", shape: "arc", dmg: 1.4, rate: 1.35, cd: [19, 16], reach: 74, bossReach: 60, krakenReach: 112,
+                 arc: Math.PI / 1.9, targets: 4, knock: 6, fx: { execute: 0.35 },
+                 special: "Heavy cleave (up to 4 foes): +35% damage to the wounded (<30% HP)." },
+    scythe:    { hand: "melee", label: "Scythe", emoji: "🌙", shape: "arc", dmg: 0.82, rate: 1.2, cd: [17, 14], reach: 92, bossReach: 66, krakenReach: 124,
+                 arc: Math.PI * 0.85, targets: 8, knock: 3, fx: {},
+                 special: "Huge sweeping arc all around you that reaps up to 8 foes." },
+    gun:       { hand: "ranged", label: "Gun", emoji: "🔫", shape: "bullet", dmg: 1, rate: 1, cd: [18, 16], speed: 8, life: 80, bossReach: 420, krakenReach: 340,
+                 targets: 1, pierce: 0, knock: 1.5, fx: {},
+                 special: "Quick, reliable shots at long range." },
+    boomerang: { hand: "ranged", label: "Boomerang", emoji: "🪃", shape: "boomerang", dmg: 1.4, rate: 1.3, cd: [30, 30], speed: 9, range: 260, life: 40,
+                 bossReach: 300, krakenReach: 260, targets: 4, pierce: 99, knock: 2.5, fx: {},
+                 special: "Flies out and back, striking up to 4 foes on each leg. One in the air at a time." },
+    blowdart:  { hand: "ranged", label: "Blowdart", emoji: "🎯", shape: "dart", dmg: 1.9, rate: 1.9, cd: [34, 29], speed: 12, life: 55, bossReach: 520, krakenReach: 420,
+                 targets: 1, pierce: 0, knock: 0.5, fx: { bossDmg: 0.25, eliteDmg: 0.25 },
+                 special: "Very long reach, slow to reload. Venom: +25% vs bosses and elites." },
+    crossbow:  { hand: "ranged", label: "Crossbow", emoji: "🏹", shape: "bolt", dmg: 2.0, rate: 2.1, cd: [38, 32], speed: 14, life: 40, bossReach: 460, krakenReach: 380,
+                 targets: 2, pierce: 1, knock: 5, fx: {},
+                 special: "Slow draw, heavy bolt that pierces through 2 foes and knocks them back." },
+  };
+  const MELEE_KINDS = ["sword", "mace", "spear", "dagger", "axe", "scythe"];
+  const RANGED_KINDS = ["gun", "boomerang", "blowdart", "crossbow"];
+  for (const [id, k] of Object.entries(WEAPON_KINDS)) k.id = id;
+  // Kinds of every weapon base that existed before this update (never stored
+  // on the base record itself: GEAR_BASES[0..] is fingerprinted).
+  const WEAPON_KIND_BY_BASE = {
+    // legacy L1-7
+    chipped_sword: "sword", iron_cleaver: "axe", hunters_edge: "dagger", crypt_fang: "dagger", emberbrand: "sword",
+    hollow_glaive: "spear", ashen_maw: "scythe",
+    // Arcane Depths L4-7
+    brinehook_sabre: "sword", chapel_maul: "mace", bellows_hammer: "mace", rivet_knives: "dagger",
+    riftpiercer: "spear", sigil_scythe: "scythe", emberwing_lance: "spear", cinderfang: "dagger",
+    // L8-10
+    starwrit_blade: "sword", comet_quill: "dagger", orrery_mace: "mace",
+    resonant_edge: "sword", shardspitter: "axe", geode_maul: "mace",
+    rimefang: "sword", glacier_cleaver: "axe", oathkeeper_blade: "sword",
+    // L11-12
+    gleamglass_saber: "sword", eclipse_rapier: "dagger", courtly_warhammer: "mace",
+    crownsplitter: "axe", regicide_blade: "sword", throne_maul: "mace",
+    // uniques
+    tidebreaker: "spear", quenchblade: "sword", polite_knock: "mace", kingsfire: "sword", orrery_blade: "sword",
+    eighth_leg: "spear", deep_winter: "dagger", ley_sunderer: "axe",
+    gorehorn_tusk: "spear", kaels_edge: "sword", sol_and_umbra: "sword", kingsbane: "sword",
+    // set weapons
+    warden_vigil_weapon: "spear", emberwright_weapon: "mace", hollow_regalia_weapon: "mace", ashen_mantle_weapon: "dagger",
+    starlit_codex_weapon: "dagger", choir_of_stone_weapon: "mace", rimeveil_oath_weapon: "spear",
+    thornhide_weapon: "spear", pit_sovereign_weapon: "sword", mirror_regalia_weapon: "sword", sundered_regalia_weapon: "sword",
+  };
+  // Boss weapons ("armaments"): one per kind per item level, dropped only by
+  // the armament roll on a boss chest (rollArmamentDrop) — never in a random
+  // pool, a codex page or a journey reward.
+  const ARMAMENT_PREFIX = [null, "Rusty", "Bandit", "Hunter's", "Crypt", "Forgefire", "Voidtouched", "Emberscale",
+    "Starlit", "Geodic", "Rimeveil", "Mirrorglass", "Crownbreaker"];
+  const ARMAMENT_NOUN = { sword: "Longsword", mace: "Maul", spear: "Spear", dagger: "Dirk", axe: "Axe", scythe: "Scythe",
+    gun: "Flintlock", boomerang: "Boomerang", blowdart: "Blowpipe", crossbow: "Crossbow" };
+  const ARMAMENT_SPLIT = { melee: { atk: 0.90, vit: 0.10 }, ranged: { atk: 0.90, def: 0.10 } };
+  const ARMAMENT_BASE = {};   // kind -> [null, lvl-1 id, ... lvl-12 id]
+  for (const kind of MELEE_KINDS.concat(RANGED_KINDS)) {
+    const k = WEAPON_KINDS[kind];
+    ARMAMENT_BASE[kind] = [null];
+    for (let lvl = 1; lvl <= GEAR_MAX_LEVEL; lvl++) {
+      const id = "arm_" + kind + "_" + lvl;
+      GEAR_BASES.push({ id, slot: WEAPON_HANDS[k.hand].slot, lvl, name: ARMAMENT_PREFIX[lvl] + " " + ARMAMENT_NOUN[kind],
+        split: Object.assign({}, ARMAMENT_SPLIT[k.hand]), armament: true });
+      WEAPON_KIND_BY_BASE[id] = kind;
+      ARMAMENT_BASE[kind].push(id);
+    }
+  }
+  // Boss-signature ranged uniques: they drop only from the armament roll of
+  // their boss (armament:true keeps them out of every legacy unique pool).
+  const ARMAMENT_UNIQUES = {
+    gorehorn_tuskrang:  { name: "Gorehorn's Tusk Boomerang", slot: "ranged", kind: "boomerang", lvl: 4, minRarity: "legendary", boss: "gorehorn", split: { atk: 0.88, vit: 0.12 },
+                          fx: { staggerDmg: 0.20, onHitKnock: { chance: 0.12 } } },
+    matrons_thornpipe:  { name: "The Matron's Thornpipe", slot: "ranged", kind: "blowdart", lvl: 4, minRarity: "legendary", boss: "briar_matron", split: { atk: 0.90, vit: 0.10 },
+                          fx: { eliteDmg: 0.12, onHitSlow: { chance: 0.20, pct: 0.35, ms: 1800 } } },
+    varkaals_breath:    { name: "Varkaal's Breath", slot: "ranged", kind: "blowdart", lvl: 7, minRarity: "mythic", boss: "dragon", split: { atk: 0.92, vit: 0.08 },
+                          fx: { bossDmg: 0.10, critIgnite: 0.15 } },
+    kaels_parting_shot: { name: "Kael's Parting Shot", slot: "ranged", kind: "gun", lvl: 7, minRarity: "mythic", boss: "kael", split: { atk: 0.92, def: 0.08 },
+                          fx: { crit: 0.06, afterDashHit: { mult: 1.4, ms: 1200 } } },
+    eclipse_chakram:    { name: "The Eclipse Chakram", slot: "ranged", kind: "boomerang", lvl: 11, minRarity: "mythic", boss: "twin_monarchs", split: { atk: 0.90, vit: 0.10 },
+                          fx: { bossDmg: 0.12, procs: [{ id: "eclipse", chance: 0.10, frac: 0.6, n: 3, shape: "nova" }] } },
+    crownfall_arbalest: { name: "Crownfall Arbalest", slot: "ranged", kind: "crossbow", lvl: 12, minRarity: "mythic", boss: "sundered_king", split: { atk: 0.93, vit: 0.07 },
+                          fx: { staggerDmg: 0.30, critDmg: 0.25 } },
+  };
+  for (const [id, u] of Object.entries(ARMAMENT_UNIQUES)) {
+    u.id = id; u.armament = true;
+    GEAR_UNIQUES[id] = u;
+    WEAPON_KIND_BY_BASE[id] = u.kind;
+    GEAR_BASES.push({ id, slot: u.slot, lvl: u.lvl, name: u.name, split: Object.assign({}, u.split), unique: true, armament: true });
+  }
   const GEAR_BASE_BY_ID = {};
   for (const b of GEAR_BASES) GEAR_BASE_BY_ID[b.id] = b;
 
@@ -1871,6 +2434,8 @@
     crit: 0.50, critDmg: 1.50, bossDmg: 0.60, eliteDmg: 0.60, execute: 0.60, chain: 0.30, lifesteal: 0.12,
     thorns: 0.60, regen: 6, maxHpPct: 0.30, moveSpeed: 0.35, dashCd: 0.50, magicFind: 0.60, matFind: 0.80,
     dashDist: 0.60, defPct: 0.50, atkPct: 0.50, critIgnite: 0.50, vaultExtraRoll: 2, takenMultFloor: 0.60,
+    // THE SUNDERED CROWN (uniques/sets only, never rolled as mods)
+    staggerDmg: 0.80, artCd: 0.40, artPower: 0.60,
   };
   const SOCKETS_BY_RARITY = { worn: 0, fine: 0, rare: 0, epic: 0, legendary: 1, mythic: 1, ancient: 2, arcane: 2 };
   // v2 (Arcane Depths) gear sells at 5% of the legacy table: every player
@@ -1881,7 +2446,9 @@
   function rollMod(slot, lvl, rand, excludeKeys) {
     rand = rand || Math.random;
     const ex = new Set(excludeKeys || []);
-    const pool = Object.keys(GEAR_MODS).filter(k => !GEAR_MODS[k].fixed && GEAR_MODS[k].slots.includes(slot) && !ex.has(k));
+    // A ranged weapon rolls the weapon pool (GEAR_MODS itself is fingerprinted).
+    const ms = slot === "ranged" ? "weapon" : slot;
+    const pool = Object.keys(GEAR_MODS).filter(k => !GEAR_MODS[k].fixed && GEAR_MODS[k].slots.includes(ms) && !ex.has(k));
     if (!pool.length) return null;
     const k = pool[Math.floor(rand() * pool.length) % pool.length];
     const m = GEAR_MODS[k];
@@ -2056,7 +2623,9 @@
     return out;
   }
   const FX_SUM_KEYS = ["crit", "critDmg", "bossDmg", "eliteDmg", "execute", "lifesteal", "thorns", "regen", "maxHpPct",
-    "moveSpeed", "dashCd", "dashDist", "magicFind", "matFind", "defPct", "atkPct", "critIgnite", "vaultExtraRoll"];
+    "moveSpeed", "dashCd", "dashDist", "magicFind", "matFind", "defPct", "atkPct", "critIgnite", "vaultExtraRoll",
+    // THE SUNDERED CROWN: vs a staggered boss (a step with vuln > 1), Crown Art cooldown / power
+    "staggerDmg", "artCd", "artPower"];
   const FX_OBJ_KEYS = ["onHitSlow", "onCritSlow", "onKill", "onDashBurst", "afterDashHit", "onHitKnock", "lowHpTaken"];
   function emptyFx() {
     const fx = { chain: { chance: 0, frac: 0.4, n: 2 }, takenMult: 1, darkSight: 0, procs: [], counters: [], sets: {} };
@@ -2089,6 +2658,10 @@
   // on its own item), gem/rune effects, unique signature effects and set
   // bonuses at 2/4 pieces, then applies GEAR_FX_CAPS.
   const ITEM_HEALING_MULT = 0.25;
+  // Lifesteal has its own, much smaller multiplier (BALANCE.md): at the 12%
+  // cap it is 1.2% of the damage you deal, before the boss efficiency and the
+  // per-second cap in lifestealHeal.
+  const LIFESTEAL_MULT = 0.10;
   function gearFx(items) {
     const fx = emptyFx();
     for (const raw of (items || [])) {
@@ -2115,7 +2688,7 @@
       if (n >= 4) addFx(fx, s.bonus[4]);
     }
     capFx(fx);
-    fx.lifesteal *= ITEM_HEALING_MULT;
+    fx.lifesteal *= LIFESTEAL_MULT;
     fx.regen *= ITEM_HEALING_MULT;
     return fx;
   }
@@ -2128,6 +2701,8 @@
     if (tgt.kind === "boss" || tgt.kind === "part") mult *= 1 + (+fx.bossDmg || 0);
     else if (tgt.kind === "elite") mult *= 1 + (+fx.eliteDmg || 0);
     if (tgt.hpFrac != null && +tgt.hpFrac < 0.30) mult *= 1 + (+fx.execute || 0);
+    // Sundered Crown: a staggered boss (stunned / exhausted / kneeling / sundered). Legacy callers never set it.
+    if (tgt.staggered) mult *= 1 + (+fx.staggerDmg || 0);
     const crit = (+fx.crit || 0) > 0 && rand() < fx.crit;
     if (crit) { mult *= 1.5 + (+fx.critDmg || 0); if (fx.critIgnite) mult *= 1 + fx.critIgnite; }
     const hits = ((counterState && counterState.hits) | 0) + 1;
@@ -2146,6 +2721,208 @@
       if (rand() < (+p.chance || 0)) procs.push({ id: p.id, frac: +p.frac || 0, n: p.n | 0, shape: p.shape || "chain", canCrit: !!p.canCrit });
     }
     return { dmg: Math.max(0, Math.round((+base || 0) * mult)), crit, procs, counterState: { hits }, counterFired };
+  }
+
+  // ---------------------------------------------------------------- BOSS BALANCE
+  // docs/sundered-crown/BALANCE.md; every number here is measured by
+  // tools/boss-balance-sim.js. Nothing below touches a fingerprinted table:
+  // the boss defs keep their raw numbers and the scaling is applied per run.
+  //
+  // LIFESTEAL. The heal of one hit (or one swing's worth of hits), decided by
+  // the SERVER for a guild run and sent back as `heal` (the client never
+  // computes its own there). fx.lifesteal is already LIFESTEAL_MULT'd.
+  //   * vs a boss (head, part, pylon, shard) only BOSS_EFF of it counts;
+  //   * a bucket caps the heal per second at CAP_PCT_PER_SEC of max HP
+  //     (BOSS_CAP_PCT_PER_SEC while striking a boss; BURST_SEC seconds deep),
+  //     so a big crit build cannot out-heal a boss: at the cap lifesteal is
+  //     ~1/4 of what an average player takes from a late boss (BALANCE.md).
+  const LIFESTEAL = { BOSS_EFF: 0.25, CAP_PCT_PER_SEC: 0.006, BOSS_CAP_PCT_PER_SEC: 0.0015, BURST_SEC: 2 };
+  function lifestealBucket() { return { at: 0, avail: -1 }; }
+  // o = {boss:bool, maxHp, bucket ({at, avail}, mutated), now}. Returns the heal (>= 0).
+  function lifestealHeal(lifesteal, dealt, o) {
+    o = o || {};
+    const ls = Math.max(0, +lifesteal || 0), d = Math.max(0, +dealt || 0);
+    if (!(ls > 0) || !(d > 0)) return 0;
+    let heal = ls * d * (o.boss ? LIFESTEAL.BOSS_EFF : 1);
+    const maxHp = Math.max(1, +o.maxHp || GEAR_BASE_HP);
+    const b = o.bucket;
+    if (b) {
+      const rate = maxHp * (o.boss ? LIFESTEAL.BOSS_CAP_PCT_PER_SEC : LIFESTEAL.CAP_PCT_PER_SEC), depth = rate * LIFESTEAL.BURST_SEC;
+      const now = +o.now || 0;
+      if (!(b.avail >= 0)) { b.avail = depth; b.at = now; }
+      // Refill at this hit's rate; never hold more than this context's depth
+      // (a bucket filled in the maze does not carry into a boss swing).
+      b.avail = Math.min(depth, b.avail + Math.max(0, now - (+b.at || 0)) / 1000 * rate);
+      b.at = now;
+      heal = Math.floor(Math.min(heal, b.avail) * 10) / 10;
+      b.avail -= heal;
+    }
+    return Math.max(0, Math.floor(heal * 10) / 10);
+  }
+
+  // A fighter's power, from what they wear: max HP, mitigation, effective HP
+  // and the expected boss damage per second of a sword at full cadence (the
+  // weapon kinds are balanced to within 0.6-1.35x of it).
+  function combatProfile(items, masteryLvl) {
+    items = (items || []).filter(Boolean);
+    const fx = gearFx(items), t = gearTotals(items);
+    const maxHp = gearMaxHp(t.vit, fx.maxHpPct);
+    const mit = gearMitigation(t.def);
+    const taken = Math.max(GEAR_FX_CAPS.takenMultFloor, Math.min(1, +fx.takenMult || 1));
+    const ehp = maxHp / (1 - mit) / taken;
+    const crit = Math.min(1, +fx.crit || 0);
+    const hit = GUILD_BOSS.HIT_DMG.sword * masteryCombatMult(masteryLvl == null ? 1 : masteryLvl) * gearAttackMult(handAtk(items, "melee"))
+      * (1 + crit * (0.5 + (+fx.critDmg || 0))) * (1 + (+fx.bossDmg || 0));
+    const dps = hit * 1000 / GUILD_BOSS.HIT_MIN_MS.sword;
+    return { maxHp, mit, ehp: Math.round(ehp), dps: Math.round(dps), lifesteal: fx.lifesteal || 0 };
+  }
+  // The gear a tier is balanced around ("par"): its item level, a common
+  // rarity for that point of the game, lightly enhanced, no mods, half mastery.
+  const BOSS_PAR = { rarity: [[3, "rare"], [6, "epic"], [12, "legendary"]], plus: [[6, 2], [12, 4]], masteryT: 0.5 };
+  const _parCache = {};
+  function parFor(list, lvl) { for (const [to, v] of list) if (lvl <= to) return v; return list[list.length - 1][1]; }
+  function parProfile(lvl) {
+    lvl = clampGearLvl(lvl);
+    if (_parCache[lvl]) return _parCache[lvl];
+    const rar = parFor(BOSS_PAR.rarity, lvl), plus = parFor(BOSS_PAR.plus, lvl);
+    // One "typical" piece per slot: the mean stats of every random-pool base
+    // of that slot and level at a middle roll.
+    const items = [];
+    for (const slot of ["weapon", "helmet", "chest", "legs", "ring"]) {
+      const bases = GEAR_BASES.filter(x => x.lvl === lvl && x.slot === slot && !x.unique && !x.set && !x.armament);
+      if (!bases.length) continue;
+      const stats = { atk: 0, def: 0, vit: 0 };
+      for (const b of bases) { const s = gearStatBudget(b, lvl, rar, 1); for (const k of GEAR_STATS) stats[k] += (s[k] || 0) / bases.length; }
+      for (const k of GEAR_STATS) stats[k] = Math.round(stats[k]);
+      items.push({ id: "par" + slot, base: bases[0].id, slot, lvl, rarity: rar, roll: 1, stats, v: 2, plus, mods: [], gems: [], sockets: 0 });
+    }
+    const mLvl = Math.max(1, Math.round(1 + BOSS_PAR.masteryT * (MASTERY_MAX_LEVEL - 1)));
+    return (_parCache[lvl] = combatProfile(items, mLvl));
+  }
+  // Per-tier baselines at par gear (tuned with tools/boss-balance-sim.js for
+  // the fight lengths and hit sizes in BALANCE.md). `dmg` multiplies every
+  // boss attack, `hp` the boss pool. Tiers not listed (the endless Depths)
+  // keep their own curves and are never scaled here.
+  const BOSS_TIER_SCALE = {
+    guild_crypt:     { hp: 1.92, mini: 2.46, dmg: 1.27 },
+    guild_thornwild: { hp: 1.28, mini: 1.83, dmg: 1.0 },
+    guild_forge:     { hp: 2.12, mini: 3.0,  dmg: 1.27 },
+    guild_void:      { hp: 1.94, mini: 3.52, dmg: 1.48 },
+    guild_colosseum: { hp: 2.13, mini: 5.27, dmg: 1.05 },
+    guild_dragon:    { hp: 1.38, mini: 6.36, dmg: 2.33 },
+    guild_archive:   { hp: 2.11, mini: 5.89, dmg: 2.98 },
+    guild_geode:     { hp: 2.09, mini: 6.1,  dmg: 4.23 },
+    guild_rime:      { hp: 1.24, mini: 6.48, dmg: 3.82 },
+    guild_mirror:    { hp: 1.69, mini: 5.66, dmg: 2.12 },
+    guild_throne:    { hp: 1.17, mini: 5.02, dmg: 2.58 },
+    raid_nexus:      { hp: 1.29, mini: 7.02, dmg: 1.0 },
+  };
+  // How a party that out-gears the tier's par moves the boss: ratio^EXP,
+  // clamped. EXP < 1 so better gear always still helps.
+  const BOSS_GEAR_ADAPT = { HP_EXP: 0.7, DMG_EXP: 0.9, MIN: 0.6, MAX: 3.5 };
+  // profiles: combatProfile() of each fighter at run start; opts.mini for the
+  // tier's mini-boss (its own HP baseline). Returns {hpMult, dmgMult} for the
+  // encounter (1/1 for an unscaled tier).
+  function bossGearScale(tier, profiles, opts) {
+    const base = BOSS_TIER_SCALE[tier];
+    const cfg = GUILD_DUNGEONS[tier];
+    if (!base || !cfg) return { hpMult: 1, dmgMult: 1, hpAdapt: 1, dmgAdapt: 1 };
+    const par = parProfile(cfg.gearLvl || 1);
+    const ps = (profiles || []).filter(p => p && p.ehp > 0 && p.dps > 0);
+    const A = BOSS_GEAR_ADAPT, cl = (x) => Math.max(A.MIN, Math.min(A.MAX, x));
+    let hpAdapt = 1, dmgAdapt = 1;
+    if (ps.length) {
+      const avg = (k) => ps.reduce((s, p) => s + p[k], 0) / ps.length;
+      hpAdapt = cl(Math.pow(avg("dps") / par.dps, A.HP_EXP));
+      dmgAdapt = cl(Math.pow(avg("ehp") / par.ehp, A.DMG_EXP));
+    }
+    const r3 = (x) => Math.round(x * 1000) / 1000;
+    const hpBase = opts && opts.mini && base.mini != null ? base.mini : base.hp;
+    return { hpMult: r3(hpBase * hpAdapt), dmgMult: r3(base.dmg * dmgAdapt), hpAdapt: r3(hpAdapt), dmgAdapt: r3(dmgAdapt) };
+  }
+
+  // ---------------------------------------------------------------- WEAPON KINDS
+  // The kind of a weapon item. A ranged-slot item is a ranged kind (default
+  // 'gun'); anything else reads as a melee kind (default 'sword').
+  function weaponKindOf(item) {
+    if (typeof item === "string") return WEAPON_KIND_BY_BASE[item] || "sword";   // a base id
+    if (!item || typeof item !== "object") return "sword";
+    const k = WEAPON_KIND_BY_BASE[item.base];
+    if (item.slot === "ranged") return k && WEAPON_KINDS[k].hand === "ranged" ? k : "gun";
+    return k && WEAPON_KINDS[k].hand === "melee" ? k : "sword";
+  }
+  function weaponKind(kind) { return WEAPON_KINDS[kind] || WEAPON_KINDS.sword; }
+  // The wire name ('sword' | 'pistol') -> hand. Anything else is the melee hand.
+  function handOfWire(w) { return w === "pistol" || w === "ranged" ? "ranged" : "melee"; }
+  // The worn melee / ranged pieces out of a list of equipped items.
+  function weaponItems(items) {
+    let melee = null, ranged = null;
+    for (const it of (items || [])) {
+      if (!it || typeof it !== "object") continue;
+      if (it.slot === "weapon" && !melee) melee = it;
+      else if (it.slot === "ranged" && !ranged) ranged = it;
+    }
+    return { melee, ranged };
+  }
+  // {melee:{kind,item}, ranged:{kind,item}}: an empty ranged slot is the
+  // default gun (today's pistol); an empty melee slot is the default sword.
+  function weaponLoadout(items) {
+    const w = weaponItems(items);
+    return {
+      melee: { kind: w.melee ? weaponKindOf(w.melee) : "sword", item: w.melee },
+      ranged: { kind: w.ranged ? weaponKindOf(w.ranged) : "gun", item: w.ranged },
+    };
+  }
+  // Attack power of one hand: the melee hand never counts the ranged
+  // weapon's ATK; the ranged hand never counts the melee weapon's ATK — unless
+  // the ranged slot is empty, when both hands use the full total (as before).
+  function handAtk(items, hand) {
+    const total = gearTotals(items).atk;
+    const w = weaponItems(items);
+    let minus = 0;
+    if (hand === "ranged") { if (w.ranged && w.melee) minus = gearStats(w.melee).atk; }
+    else if (w.ranged) minus = gearStats(w.ranged).atk;
+    return Math.max(0, total - Math.max(0, minus || 0));
+  }
+  function handAttackMult(items, hand) { return gearAttackMult(handAtk(items, hand)); }
+  // ctx: 'dungeon' (maze rows) | 'boss' (guild bosses) | 'kraken'.
+  function hitTable(ctx) { return ctx === "boss" ? GUILD_BOSS : ctx === "kraken" ? KRAKEN : null; }
+  function kindHitDmg(kind, ctx) {
+    const k = weaponKind(kind), wire = WEAPON_HANDS[k.hand].wire, T = hitTable(ctx);
+    return (T ? T.HIT_DMG[wire] : DUNGEON_HIT_DMG[wire]) * k.dmg;
+  }
+  function kindMinMs(kind, ctx) {
+    const k = weaponKind(kind), wire = WEAPON_HANDS[k.hand].wire, T = hitTable(ctx);
+    return Math.round((T ? T.HIT_MIN_MS[wire] : DUNGEON_HIT_MIN_MS[wire]) * k.rate);
+  }
+  // 'boss' -> to the edge of a boss's hit disc; 'kraken'; 'maze' (default).
+  function kindReach(kind, ctx) {
+    const k = weaponKind(kind);
+    if (ctx === "boss") return k.bossReach;
+    if (ctx === "kraken") return k.krakenReach;
+    return k.hand === "ranged" ? (k.range || k.speed * k.life) : k.reach;
+  }
+  function kindTargets(kind) { return Math.max(1, weaponKind(kind).targets | 0); }
+  // The gear fx with this kind's specials on top (the same keys rollHitDamage
+  // reads). A kind without specials returns the very same object.
+  const _kindFxCache = typeof WeakMap === "function" ? new WeakMap() : null;
+  function weaponFx(fx, kind) {
+    const k = WEAPON_KINDS[kind];
+    fx = fx || emptyFx();
+    if (!k || !k.fx || !Object.keys(k.fx).length) return fx;
+    let per = _kindFxCache && _kindFxCache.get(fx);
+    if (per && per[kind]) return per[kind];
+    const out = Object.assign({}, fx);
+    for (const key of Object.keys(k.fx)) out[key] = (+out[key] || 0) + k.fx[key];
+    if (_kindFxCache) { if (!per) { per = {}; _kindFxCache.set(fx, per); } per[kind] = out; }
+    return out;
+  }
+  // One line of stats for UI cards.
+  function kindStatLine(kind) {
+    const k = weaponKind(kind);
+    const hz = 60 / k.cd[0];
+    return { kind: k.id, hand: k.hand, label: k.label, emoji: k.emoji, dmg: k.dmg, speed: Math.round(hz * 10) / 10,
+      reach: Math.round(kindReach(k.id, "maze")), bossReach: k.bossReach, targets: k.targets, special: k.special };
   }
 
 
@@ -2245,6 +3022,11 @@
     guild_rime:    0.30,
     raid_nexus:    0.30,
     arcane_depths: 0.20,   // sanctuary chests only
+    // THE SUNDERED CROWN
+    guild_thornwild: 0.07,
+    guild_colosseum: 0.20,
+    guild_mirror:    0.32,
+    guild_throne:    0.34,
   };
   const TOME_PICK_WEIGHT = { recovery: 32, protection: 30, rage: 30, eruption: 8, storms: 20, haste: 20 };
   // One roll, at most one tome. Returns null far more often than not.
@@ -2278,7 +3060,7 @@
   // (docs/arcane-depths/MASTER-PLAN.md §3.8-3.11, design-loot.md).
   const MIN_MS = 60000;
   const LOOT_W = (a) => ({ worn: a[0], fine: a[1], rare: a[2], epic: a[3], legendary: a[4], mythic: a[5], ancient: a[6], arcane: a[7] });
-  const uniquesOfBosses = (bosses) => Object.keys(GEAR_UNIQUES).filter(id => bosses.includes(GEAR_UNIQUES[id].boss));
+  const uniquesOfBosses = (bosses) => Object.keys(GEAR_UNIQUES).filter(id => !GEAR_UNIQUES[id].armament && bosses.includes(GEAR_UNIQUES[id].boss));
   // mats: per player, Bronze chest, delve 0 (LD §4.2).
   const DUNGEON_LOOT = {
     guild_crypt:   { lvl: 4, boss: "warden", mini: "ogrelord", set: "warden_vigil", chance: 0.72, bonus: 0.20,
@@ -2320,6 +3102,24 @@
                      weights: LOOT_W([0, 0, 10, 32, 36, 10.8, 1.4, 0.06]), uniqueChance: 0.10, setChance: 0, tomeChance: 0.20,
                      mats: { dust: [30, 44], shard: { p: 1, n: [3, 4] }, ember: 0.24, sigil: 0.40, gem: { p: 0.35, grades: [2, 3] } },
                      parMs: 0, gxp: 15, dxp: 20, endless: true, matScale: 0.5 },
+    // ---- THE SUNDERED CROWN (docs/sundered-crown/MASTER-PLAN.md §3.7). Thornwild and the
+    // Colosseum mint from the existing L4 / L7 pools; the Mirror Court and the Throne from L11 / L12.
+    guild_thornwild: { lvl: 4, boss: "gorehorn", mini: "briar_matron", set: "thornhide", chance: 0.76, bonus: 0.24,
+                       weights: LOOT_W([2, 24, 38, 25, 9.5, 0.4, 0.25, 0]), uniqueChance: 0.045, setChance: 0.10, tomeChance: 0.08,
+                       mats: { dust: [10, 16], shard: { p: 0.5, n: [1, 1] }, ember: 0.03, sigil: 0.25, gem: { p: 0.18, grades: [1] } },
+                       parMs: 12 * MIN_MS, gxp: 12, dxp: 180 },
+    guild_colosseum: { lvl: 7, boss: "kael", mini: "pit_champion", set: "pit_sovereign", chance: 1.0, bonus: 0.50,
+                       weights: LOOT_W([0, 0, 20, 34, 33, 7.8, 0.8, 0.035]), uniqueChance: 0.07, setChance: 0.13, tomeChance: 0.20,
+                       mats: { dust: [20, 32], shard: { p: 1, n: [2, 3] }, ember: 0.16, sigil: 0.40, gem: { p: 0.30, grades: [2, 2, 3] } },
+                       parMs: 15 * MIN_MS, gxp: 40, dxp: 420 },
+    guild_mirror:    { lvl: 11, boss: "twin_monarchs", mini: "veiled_assassin", set: "mirror_regalia", chance: 1.0, bonus: 0.75,
+                       weights: LOOT_W([0, 0, 0, 18, 38, 17.4, 4.9, 0.16]), uniqueChance: 0.11, setChance: 0.17, tomeChance: 0.32,
+                       mats: { dust: [54, 76], shard: { p: 1, n: [5, 7] }, ember: 0.42, sigil: 0.40, gem: { p: 0.50, grades: [3, 4] } },
+                       parMs: 19 * MIN_MS, gxp: 150, dxp: 1150 },
+    guild_throne:    { lvl: 12, boss: "sundered_king", mini: "kael_crownbound", set: "sundered_regalia", chance: 1.0, bonus: 0.80,
+                       weights: LOOT_W([0, 0, 0, 14, 36, 19.6, 6.3, 0.22]), uniqueChance: 0.12, setChance: 0.18, tomeChance: 0.34,
+                       mats: { dust: [62, 86], shard: { p: 1, n: [6, 8] }, ember: 0.50, sigil: 0.45, gem: { p: 0.55, grades: [3, 4, 5] } },
+                       parMs: 21 * MIN_MS, gxp: 185, dxp: 1350 },
   };
   for (const [tier, row] of Object.entries(DUNGEON_LOOT)) {
     row.tier = tier;
@@ -2379,7 +3179,7 @@
     return out;
   }
   function randomPoolBases(lvl) {
-    return GEAR_BASES.filter(b => b.lvl === lvl && !b.unique && !b.set);
+    return GEAR_BASES.filter(b => b.lvl === lvl && !b.unique && !b.set && !b.armament);
   }
 
   // The quest-board wrapper (and the thin legacy API): delve 0, chest tier 0,
@@ -2402,6 +3202,40 @@
     return out;
   }
 
+  // ---- WEAPONS: the boss-weapon ("armament") roll. A SEPARATE roll made
+  // after every legacy roll (so none of them moves): a guild boss chest has
+  // `guild` + `perChestTier` x chest tier to hold one boss weapon of the
+  // tier's item level (half melee, half ranged, any kind); a boss with a
+  // signature armament drops it `signature` (+1%/chest tier) of those times.
+  // Quest-board chests roll the `quest` chance.
+  const ARMAMENT_DROP = { guild: 0.22, perChestTier: 0.05, signature: 0.06, rangedShare: 0.5,
+    quest: { easy: 0.05, medium: 0.07, hard: 0.09 } };
+  function rollArmamentDrop(ctx, rand) {
+    rand = rand || Math.random; ctx = ctx || {};
+    if (ctx.spectator) return null;
+    const key = String(ctx.tier || "").replace(/^quest_/, "");
+    const row = DUNGEON_LOOT[key], src = gearSourceFor(key);
+    if (!src) return null;
+    const quest = !row;
+    const chest = Math.max(0, Math.min(3, ctx.chestTier | 0));
+    let chance = quest ? (ARMAMENT_DROP.quest[key] || 0) : ARMAMENT_DROP.guild + ARMAMENT_DROP.perChestTier * chest;
+    if (ctx.chance != null && +ctx.chance >= 0) chance = +ctx.chance;   // test knob (DUNGEON_TEST_ARMAMENT)
+    if (!(chance > 0) || rand() >= chance) return null;
+    const lvl = clampGearLvl(ctx.lvl || src.lvl);
+    const delve = Math.max(0, ctx.delve | 0);
+    const opts = { src: key, dl: delve };
+    if (ctx.now != null) opts.now = +ctx.now;
+    const sig = quest ? [] : Object.keys(ARMAMENT_UNIQUES).filter(id => ARMAMENT_UNIQUES[id].boss === ctx.bossId);
+    if (sig.length && rand() < ARMAMENT_DROP.signature + 0.01 * chest) {
+      const id = sig[Math.floor(rand() * sig.length) % sig.length];
+      return makeUnique(id, ARMAMENT_UNIQUES[id].minRarity, lvl, rand, opts);
+    }
+    const kinds = rand() < ARMAMENT_DROP.rangedShare ? RANGED_KINDS : MELEE_KINDS;
+    const kind = kinds[Math.floor(rand() * kinds.length) % kinds.length];
+    const w = floorWeights(shiftWeights(src.weights, lootQualityMult(delve), { delve, lvl }), "fine");
+    return makeGear(ARMAMENT_BASE[kind][lvl], rollGearRarity(w, rand), rand, undefined, opts);
+  }
+
   // ---- materials, gems, runes ----
   const MATERIALS = {
     dust:       { name: "Arcane Dust", color: "#c4b5fd", kind: "mat" },
@@ -2412,6 +3246,12 @@
   for (const id of [...GUILD_BOSS_ORDER, ...GUILD_MINIS, ...GUILD_SPECIAL_BOSSES]) {
     const b = GUILD_BOSSES[id];
     MATERIALS["sigil_" + id] = { name: "Sigil of " + (b ? b.name.replace(/^THE /, "").split(",")[0] : id).toLowerCase().replace(/\b\w/g, c => c.toUpperCase()), color: b ? b.accent : "#e5e7eb", kind: "sigil", boss: id };
+  }
+  // THE SUNDERED CROWN: the Crown Art forging material, then the new bosses' sigils (appended).
+  MATERIALS.crown_shard = { name: "Crown Shard", color: "#fde047", kind: "mat" };
+  for (const id of [...CROWN_BOSS_ORDER, ...CROWN_MINIS]) {
+    const b = GUILD_BOSSES[id];
+    MATERIALS["sigil_" + id] = { name: "Sigil of " + b.name.replace(/^THE /, "").split(",")[0].toLowerCase().replace(/\b\w/g, c => c.toUpperCase()), color: b.accent, kind: "sigil", boss: id };
   }
   const MATERIAL_IDS = Object.keys(MATERIALS);
   // The raid wardens drop the Concordant's sigil.
@@ -2580,7 +3420,7 @@
     rand = rand || Math.random; ctx = ctx || {};
     const out = { gear: [], mats: {}, gems: {} };
     const row = lootRowFor(tier, ctx) || DUNGEON_LOOT.guild_crypt;
-    const pool = Object.keys(GEAR_UNIQUES).filter(id => GEAR_UNIQUES[id].boss === miniId);
+    const pool = Object.keys(GEAR_UNIQUES).filter(id => !GEAR_UNIQUES[id].armament && GEAR_UNIQUES[id].boss === miniId);
     if (pool.length && rand() < BONUS_LOOT.mini.unique) {
       const have = (ctx.codex && ctx.codex.i) || {};
       const missing = pool.filter(id => !have[id]);
@@ -2770,7 +3610,8 @@
   const DELVER_MAX_RANK = 60;
   const DELVER_XP = {
     floor: 20, elite: 12, champion: 24, treasure: 30, mini: 60, trial: 40, vault: 40, secret: 15,
-    boss: { guild_crypt: 150, guild_forge: 220, guild_void: 320, guild_dragon: 450, guild_archive: 600, guild_geode: 760, guild_rime: 950, raid_nexus: 1100 },
+    boss: { guild_crypt: 150, guild_forge: 220, guild_void: 320, guild_dragon: 450, guild_archive: 600, guild_geode: 760, guild_rime: 950, raid_nexus: 1100,
+            guild_thornwild: 180, guild_colosseum: 420, guild_mirror: 1150, guild_throne: 1350 },
     depths: { floor: 20, guardian: 60, heartPerBand: 600 },
   };
   // Ranks 1-10 keep the original curve (fast, rewarding first sessions); past
@@ -2837,11 +3678,21 @@
     if (tier === "guild_crypt") ids.push(...TOME_ORDER.map(t => "tome:" + t));
     CODEX_PAGES[tier] = ids;
   }
+  // THE SUNDERED CROWN: same construction (the level's random pool + the tier's uniques + its set).
+  for (const tier of CROWN_DUNGEON_ORDER) {
+    const row = DUNGEON_LOOT[tier];
+    const ids = randomPoolBases(row.lvl).map(b => b.id).concat(row.uniques);
+    for (const s of row.sets) ids.push(...SET_SLOTS.map(sl => GEAR_SETS[s].pieces[sl]));
+    CODEX_PAGES[tier] = ids;
+  }
   const CODEX_PAGE_REWARDS = {
     guild_crypt: { hat: "drowned_crown_hat", title: "of the Drowned" }, guild_forge: { hat: "forgemaster_goggles", title: "Forgemaster" },
     guild_void: { hat: "hollow_diadem_hat", title: "of the Hollow" }, guild_dragon: { hat: "ember_crown", title: "Ashborn" },
     guild_archive: { hat: "star_circlet", title: "Stargazer" }, guild_geode: { hat: "geode_tiara", title: "Geodesinger" },
     guild_rime: { hat: "rime_crown", title: "Winterborn" },
+    // THE SUNDERED CROWN
+    guild_thornwild: { hat: "briar_crown_hat", title: "Thornborn" }, guild_colosseum: { hat: "laurel_of_the_pit", title: "Pit Champion" },
+    guild_mirror: { hat: "mirror_masque_hat", title: "of the Mirror Court" }, guild_throne: { hat: "sundered_circlet_hat", title: "Crownbreaker" },
   };
   for (const [tier, r] of Object.entries(CODEX_PAGE_REWARDS)) { r.sigil = { id: sigilOf(DUNGEON_LOOT[tier].boss), n: 5 }; }
   function codexKey(item) {
@@ -2914,6 +3765,24 @@
     add("secret_keeper", "Secret Keeper", "feat", s => (st(s).secrets | 0) >= 50, { dust: 250 });
     add("plus_ten", "Tempered", "forge", s => (st(s).maxPlus | 0) >= 10, { dust: 300, shard: 10 });
     add("plus_twelve", "Perfected", "forge", s => (st(s).maxPlus | 0) >= 12, { dust: 500, shard: 25 });
+  }
+  // ---- THE SUNDERED CROWN (docs/sundered-crown/MASTER-PLAN.md §3.8): appended after the 43 legacy rows.
+  // Stats the settle keeps in u.delve.stats: stuns, arts, artMax; `last` gains noRiposte / twinSync.
+  {
+    const st = (s) => (s && s.delve && s.delve.stats) || {};
+    const kills = (s, b) => (((s && s.codex && s.codex.b) || {})[b] | 0);
+    const lastClear = (s, tier) => !!(s && s.last && s.last.cleared && s.last.tier === tier);
+    const add = (id, label, cat, test, reward) => ACHIEVEMENTS.push({ id, label, cat, test, reward });
+    for (const [boss, nm] of Object.entries({ gorehorn: "Gorehorn", kael: "Kael", twin_monarchs: "Monarch", sundered_king: "King" })) {
+      [[1, 10, { dust: 50 }], [2, 100, { dust: 200, shard: 5 }], [3, 500, { dust: 500, shard: 20, title: nm + "bane" }]].forEach(([k, n, reward]) =>
+        add(`bane_${boss}_${k}`, `${nm}'s Bane ${"I".repeat(k)}`, "bane", s => kills(s, boss) >= n, reward));
+    }
+    add("immovable_object", "Immovable Object", "feat", s => (st(s).stuns | 0) >= 50, { dust: 300, shard: 10 });
+    add("patience_of_steel", "Patience of Steel", "feat", s => lastClear(s, "guild_colosseum") && !!s.last.noRiposte, { dust: 300, shard: 10 });
+    add("total_eclipse", "Total Eclipse", "feat", s => lastClear(s, "guild_mirror") && !!s.last.twinSync, { dust: 400, shard: 15 });
+    add("kingbreaker", "Kingbreaker", "feat", s => lastClear(s, "guild_throne"), { dust: 500, shard: 25, cosmetic: "aura:sundered_halo" });
+    add("crown_collector", "Crown Collector", "arts", s => (st(s).arts | 0) >= 10, { dust: 400, shard: 20, title: "Crown-Collector" });
+    add("crown_master", "Crown Master", "arts", s => (st(s).artMax | 0) >= 5, { dust: 300, shard: 10 });
   }
   const ACHIEVEMENT_BY_ID = {};
   for (const a of ACHIEVEMENTS) ACHIEVEMENT_BY_ID[a.id] = a;
@@ -3020,6 +3889,13 @@
     { id: "paragon_glow", name: "Paragon Glow", price: UNLOCK_PRICE, unlock: "journey:paragon" });
   COSMETICS.pet.push({ id: "ley_moth", name: "Ley Moth", price: UNLOCK_PRICE, unlock: "journey:paragon" });
   COSMETICS.nameColor.push({ id: "returner_gold", name: "Returner's Gold", price: UNLOCK_PRICE, unlock: "journey:returner" });
+  // THE SUNDERED CROWN: codex hats for the four new pages and the Kingbreaker aura.
+  COSMETICS.hat.push(
+    { id: "briar_crown_hat", name: "Briar Crown", price: UNLOCK_PRICE, unlock: "codex:guild_thornwild" },
+    { id: "laurel_of_the_pit", name: "Laurel of the Pit", price: UNLOCK_PRICE, unlock: "codex:guild_colosseum" },
+    { id: "mirror_masque_hat", name: "Mirror Masque", price: UNLOCK_PRICE, unlock: "codex:guild_mirror" },
+    { id: "sundered_circlet_hat", name: "Sundered Circlet", price: UNLOCK_PRICE, unlock: "codex:guild_throne" });
+  COSMETICS.aura.push({ id: "sundered_halo", name: "Sundered Halo", price: UNLOCK_PRICE, unlock: "ach:kingbreaker" });
   // u = {delve, codex} (the user record's fields).
   function cosmeticUnlockOk(def, u) {
     if (!def || !def.unlock) return false;
@@ -3039,6 +3915,42 @@
     }
     return false;
   }
+  // ---------------------------------------------------------------- SUNDERED CROWN REGISTRY
+  // Every id the Sundered Crown adds, by kind — the checklist B3/B4 work
+  // through (docs/sundered-crown/MASTER-PLAN.md S19) and Wave C audits.
+  const CROWN_CONTENT = (() => {
+    const crownBosses = CROWN_BOSS_ORDER.concat(CROWN_MINIS);
+    const decksOf = (id) => {
+      const out = [];
+      for (let p = 1; p <= bossPhaseCount(id); p++) out.push(...bossDeck(id, p));
+      const d = GUILD_BOSSES[id];
+      if (d && d.twins) for (const b of d.twins.bodies) { out.push(...b.attacks); for (const ph of d.phases || []) if (ph.bodyAttacks && ph.bodyAttacks[b.key]) out.push(...ph.bodyAttacks[b.key]); }
+      return out;
+    };
+    const legacyTypes = new Set();
+    for (const id of Object.keys(GUILD_BOSSES)) if (!crownBosses.includes(id)) for (const a of decksOf(id)) legacyTypes.add(a.type);
+    const attackTypes = [];
+    for (const id of crownBosses) for (const a of decksOf(id)) if (!legacyTypes.has(a.type) && !attackTypes.includes(a.type)) attackTypes.push(a.type);
+    attackTypes.push("riposte");
+    const bases = [];
+    for (const lvl of [11, 12]) for (const slot of SET_SLOTS) for (const [id] of DEEP_BASE_NAMES[lvl][slot]) bases.push(id);
+    bases.push(...Object.keys(CROWN_UNIQUES));
+    for (const s of Object.values(CROWN_SETS)) bases.push(...SET_SLOTS.map(sl => s.pieces[sl]));
+    return {
+      tiers: CROWN_DUNGEON_ORDER.slice(), bosses: crownBosses,
+      enemyTypes: ["thornling", "boar", "sporecap", "vinecaller", "hoplite", "retiarius", "ash_lion", "reflection", "courtier", "mirror_knight", "crownguard", "oathbreaker", "crown_wisp"],
+      attackTypes,
+      themes: ["thornwild", "colosseum", "mirror", "throne"],
+      props: ["bramble", "mushroom_ring", "root_arch", "broken_column", "weapon_rack", "sand_drift", "mirror_pane", "candelabra", "checker_tile",
+        "shattered_banner", "crown_shard_pile", "throne_rubble"],
+      motes: ["pollen", "glints", "crown_dust"],
+      bases, uniques: Object.keys(CROWN_UNIQUES), sets: Object.keys(CROWN_SETS),
+      cosmetics: ["hat:briar_crown_hat", "hat:laurel_of_the_pit", "hat:mirror_masque_hat", "hat:sundered_circlet_hat", "aura:sundered_halo"],
+      achievements: ACHIEVEMENTS.slice(43).map(a => a.id),
+      materials: ["crown_shard"].concat(crownBosses.map(id => "sigil_" + id)),
+      arts: ["blade_dash", "thorn_snare", "war_cry", "rampage_charge", "riposte", "frost_lance", "shadow_veil", "mirror_step", "crown_nova", "sundering_strike"],
+    };
+  })();
   return {
     COSMETICS, COSMETIC_DEFAULTS,
     PAINT_PRICE, PAINT_WALLS, PAINT_ROOFS,
@@ -3098,6 +4010,7 @@
     gearRarityIdx, GEAR_ATK_SOFTCAP, GEAR_MODS, GEAR_MOD_COUNT, GEAR_FX_CAPS, GEAR_UNIQUES, GEAR_SETS,
     SOCKETS_BY_RARITY, SELL_V2_MULT, SET_SLOTS,
     normGear, gearStats, setCounts, gearFx, ITEM_HEALING_MULT, emptyFx, rollHitDamage, rollMod,
+    LIFESTEAL_MULT, LIFESTEAL, lifestealBucket, lifestealHeal, combatProfile, parProfile, BOSS_PAR, BOSS_TIER_SCALE, BOSS_GEAR_ADAPT, bossGearScale,
     makeUnique, makeSetPiece, shiftWeights, floorWeights, lootQualityMult,
     DUNGEON_LOOT, lootRowFor, BONUS_LOOT, CHEST_TIERS, MATERIALS, MATERIAL_IDS, sigilOf,
     GEMS, GEM_TYPES, GEM_MAX_GRADE, RUNES, RUNE_IDS, parseGem, gemId, mergeMats,
@@ -3115,5 +4028,11 @@
     GUILD_RESEARCH, GUILD_RESEARCH_BRANCHES, researchCost, researchBonus,
     TROPHY_TIERS, trophyTier, GUILD_BANNERS, GXP,
     cosmeticUnlockOk,
+    // ---- THE SUNDERED CROWN (docs/sundered-crown/MASTER-PLAN.md §5.1) ----
+    CROWN_DUNGEON_ORDER, STORY_LADDER, CROWN_BOSS_ORDER, CROWN_MINIS, BOSS_ARCHETYPES, bossArchetype, CROWN_CONTENT,
+    // ---- WEAPONS (docs/sundered-crown/WEAPONS.md) ----
+    WEAPON_HANDS, WEAPON_KINDS, MELEE_KINDS, RANGED_KINDS, WEAPON_KIND_BY_BASE, ARMAMENT_BASE, ARMAMENT_UNIQUES, ARMAMENT_DROP,
+    weaponKindOf, weaponKind, handOfWire, weaponItems, weaponLoadout, handAtk, handAttackMult,
+    kindHitDmg, kindMinMs, kindReach, kindTargets, weaponFx, kindStatLine, rollArmamentDrop,
   };
 });

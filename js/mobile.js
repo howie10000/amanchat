@@ -85,10 +85,26 @@
   const boost=host.querySelector('[data-touch="boost"]');if(boost)boost.hidden=!sea;
   const block=host.querySelector('[data-touch="block"]');if(block)block.hidden=!sea;
   const dash=host.querySelector('[data-touch="dash"]');if(dash){dash.hidden=typeof state==='undefined'||state.area!=='dungeon';dash.classList.toggle('ready',!!window.gameCombat?.dashReady?.());}
+  paintArts();
   const look=host.querySelector('.touchStick[data-stick="look"]');
   if(look){look.style.opacity=cover?0.35:1;look.style.pointerEvents=cover?'none':'auto';}
  }
 
+ // Crown Art buttons: shown in a dungeon with an art on that slot, a
+ // conic cooldown sweep via --cd (0 = ready, 1 = just used).
+ function paintArts(){
+  const arts=window.gameCrownArts,dungeon=typeof state!=='undefined'&&state.area==='dungeon';
+  for(let i=0;i<2;i++){
+   const b=host.querySelector('[data-touch="art'+i+'"]');if(!b)continue;
+   const o=dungeon&&arts&&arts.slotInfo?arts.slotInfo(i):null;
+   b.hidden=!o||o.empty;
+   if(!o||o.empty)continue;
+   const label=(i?'C ':'F ')+(o.name||'').split(' ')[0];
+   if(b.textContent!==label)b.textContent=label;
+   if(b.style&&b.style.setProperty)b.style.setProperty('--cd',String(Math.round((1-o.k)*100)/100));
+   b.classList.toggle('ready',o.left<=0);
+  }
+ }
  function knob(el,x,y){
   const n=el.querySelector('i');
   n.style.transform=`translate(${x*R}px,${y*R}px)`;
@@ -125,6 +141,8 @@
   if(action==='boost'||action==='block')return;
   // Dungeon dash (Arcane Depths, D21): the touch twin of Shift.
   if(action==='dash'){window.gameCombat?.dash?.();return;}
+  // Crown Arts (the Sundered Crown): the touch twins of F and C.
+  if(action==='art0'||action==='art1'){window.gameCrownArts?.use?.(action==='art0'?0:1);return;}
   if(action==='use'){if(atSea())window.gameSea?.act?.('interact');else if(typeof tryInteract==='function')tryInteract();return;}
   if(action==='phone'){if(typeof togglePhone==='function')togglePhone();return;}
   if(action==='inv'){if(typeof openInventory==='function')openInventory();return;}
@@ -161,7 +179,7 @@
   host=document.createElement('div');
   host.id='touchPad';
   host.hidden=true;
-  host.innerHTML='<div class="touchStick" data-stick="move" aria-label="Move"><i></i></div><div class="touchStick" data-stick="look" aria-label="Look"><i></i></div><div class="touchBtns"><button type="button" data-touch="attack">Attack</button><button type="button" data-touch="dash">Dash</button><button type="button" data-touch="use">Use</button><button type="button" data-touch="boost">Boost</button><button type="button" data-touch="block">Guard</button><button type="button" data-touch="phone">Phone</button><button type="button" data-touch="inv">Items</button><button type="button" data-touch="cars">Cars</button><button type="button" data-touch="chat">Chat</button><button type="button" data-touch="sword">1</button><button type="button" data-touch="gun">2</button></div>';
+  host.innerHTML='<div class="touchStick" data-stick="move" aria-label="Move"><i></i></div><div class="touchStick" data-stick="look" aria-label="Look"><i></i></div><div class="touchBtns"><button type="button" data-touch="attack">Attack</button><button type="button" data-touch="dash">Dash</button><button type="button" data-touch="art0" class="touchArt">F</button><button type="button" data-touch="art1" class="touchArt">C</button><button type="button" data-touch="use">Use</button><button type="button" data-touch="boost">Boost</button><button type="button" data-touch="block">Guard</button><button type="button" data-touch="phone">Phone</button><button type="button" data-touch="inv">Items</button><button type="button" data-touch="cars">Cars</button><button type="button" data-touch="chat">Chat</button><button type="button" data-touch="sword">1</button><button type="button" data-touch="gun">2</button></div>';
   stage.appendChild(host);
   host.querySelectorAll('.touchStick').forEach(el=>bindStick(el,el.dataset.stick));
   host.querySelectorAll('[data-touch]').forEach(b=>{

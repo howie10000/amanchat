@@ -81,7 +81,7 @@ for (const sid of Object.keys(ECON.GEAR_SETS)) for (const sl of ECON.SET_SLOTS) 
   safe(`set ${sid} ${sl}`, () => I.gear(it, 64));
 }
 // families: every base has a real painter family
-const FAM = new Set(["sword", "greatsword", "sabre", "fang", "knives", "axe", "hammer", "mace", "spear", "lance", "trident", "glaive", "scythe", "quill", "staff", "bow",
+const FAM = new Set(["sword", "greatsword", "sabre", "fang", "knives", "axe", "hammer", "mace", "spear", "lance", "trident", "glaive", "scythe", "quill", "staff", "bow", "gun", "boomerang", "blowpipe", "crossbow",
   "helm", "visor", "horned", "cap", "hood", "mask", "crown", "circlet", "bell", "plate", "mail", "robe", "jerkin", "apron", "carapace", "mantle",
   "trousers", "kilt", "greaves", "tassets", "boots", "band", "gemring", "signet", "twist", "amulet", "eyering", "knuckle", "coil", "keyring"]);
 for (const b of ECON.GEAR_BASES) ok(FAM.has(I.family(b.id)), `family for ${b.id} (${I.family(b.id)})`);
@@ -114,6 +114,28 @@ for (const a of ECON.ACHIEVEMENTS) safe(`achievement ${a.id}`, () => I.achieveme
 for (const t of Object.keys(ECON.GUILD_DUNGEONS)) safe(`tier ${t}`, () => I.tier(t));
 for (const r of ECON.GEAR_RARITIES) safe(`frame ${r}`, () => I.rarityFrame(r));
 for (const c of (ECON.COSMETICS.hat || []).filter(h => h.unlock)) safe(`cosmetic ${c.id}`, () => I.cosmetic(c.id));
+
+// ---- THE SUNDERED CROWN (B4): arts, crown shard, new bosses, tiers, L11/L12 themes
+global.CROWN = require("./shared/crown.js");
+for (const id of global.CROWN.ART_ORDER) {
+  safe(`art ${id}`, () => I.art(id));
+  ok(I.html("art", id, 32).includes("ii-r-" + global.CROWN.ARTS[id].rarity), "art rarity class " + id);
+  ok(I.html("art", id, 32).includes('alt="' + global.CROWN.ARTS[id].name + '"'), "art alt text " + id);
+}
+ok(new Set(global.CROWN.ART_ORDER.map(id => I.art(id, 48))).size === global.CROWN.ART_ORDER.length, "every art has its own icon");
+safe("unknown art", () => I.art("no_such_art"));
+for (const id of ECON.CROWN_CONTENT.materials) safe(`crown mat ${id}`, () => I.mat(id));
+ok(I.mat("crown_shard") !== I.mat("shard"), "crown shard has its own painter");
+for (const id of ECON.CROWN_CONTENT.bosses) {
+  safe(`crown boss ${id}`, () => I.boss(id));
+  ok(I.boss(id, 40) !== I.boss("nobody", 40), "bespoke portrait (not the hood fallback) " + id);
+}
+ok(new Set(ECON.CROWN_CONTENT.bosses.map(id => I.boss(id, 40))).size === ECON.CROWN_CONTENT.bosses.length, "all 8 crown portraits differ");
+for (const t of ECON.CROWN_CONTENT.tiers) ok(I.html("tier", t, 22).includes("ii-tier"), "crown tier emblem " + t);
+for (const id of ECON.CROWN_CONTENT.achievements) safe(`crown achievement ${id}`, () => I.achievement(id));
+for (const c of ["briar_crown_hat", "laurel_of_the_pit", "mirror_masque_hat", "sundered_circlet_hat"]) safe(`crown hat ${c}`, () => I.cosmetic(c));
+ok(I.gear({ base: "mirrorplate", rarity: "epic", lvl: 11 }) !== I.gear({ base: "royal_hauberk", rarity: "epic", lvl: 12 }), "L11 and L12 wear their own themes");
+for (const b of ECON.CROWN_CONTENT.bases) ok(Object.prototype.hasOwnProperty.call(I._families, b), "explicit family for crown base " + b);
 
 // ---- determinism + cache -------------------------------------------------------------------
 const s0 = I._stats();

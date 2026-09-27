@@ -295,6 +295,22 @@ module.exports = function createProgress(deps) {
             if (weekly) d.weekly.tiers[ctx.tier] = 1;
             if (dailyFirst) d.daily.day = today;
         }
+        // THE SUNDERED CROWN: Crown Arts and crown shards, rolled AFTER the
+        // legacy loot roll so it is untouched (MASTER-PLAN S15).
+        let crownOut = null;
+        if (ctx.crown && deps.crownRewards && (ctx.bossRoll || ctx.crown.source === 'sanctuary')) {
+            u.mats = mats;
+            crownOut = deps.crownRewards(user, u, { tier: ctx.tier, bossId: ctx.bossRoll ? ctx.bossId : null, source: ctx.crown.source || 'boss',
+                chestTier: res.chestTier || chestTier, delve: ctx.delve | 0, pending: spectator ? [] : (ctx.pending || []), spectator }, now);
+            if (crownOut.crownShards) res.mats = ECON.mergeMats(res.mats || {}, { crown_shard: crownOut.crownShards });
+            if (crownOut.crownShards) mats.crown_shard = Math.max(0, (mats.crown_shard | 0) - crownOut.crownShards);   // merged once below
+        }
+        // WEAPONS: the boss-weapon (armament) roll — its own Math.random draw,
+        // AFTER the legacy loot and the Crown rewards so neither moves.
+        if (ctx.bossRoll && !spectator && ECON.rollArmamentDrop) {
+            const arm = ECON.rollArmamentDrop({ tier: ctx.tier, bossId: ctx.bossId, chestTier: res.chestTier || chestTier, delve: ctx.delve | 0, now, chance: deps.armamentChance || undefined }, Math.random);
+            if (arm) { res.gear.push(arm); res.armament = arm; }
+        }
         // Materials first (they never overflow), then the gear.
         const gainedMats = res.mats || {}, gainedGems = res.gems || {};
         u.mats = ECON.mergeMats(mats, gainedMats);
@@ -317,6 +333,13 @@ module.exports = function createProgress(deps) {
             for (const k of ['goblins', 'vaults', 'trials', 'secrets']) st[k] = int(st[k]) + int(T[k]);
             if (ctx.raidBonus && ctx.bossRoll) st.raids = int(st.raids) + 1;
             if (ctx.floor) st.depthsFloor = Math.max(int(st.depthsFloor), ctx.floor | 0);
+            // Sundered Crown tallies (CROWN.JOURNEY_HOOKS.stats).
+            if (ctx.crown) {
+                const cs = ctx.crown.stats || {};
+                for (const k of ['stuns', 'artHits', 'crownShardsBroken']) if (cs[k]) st[k] = int(st[k]) + int(cs[k]);
+                if (ctx.bossRoll && ctx.crown.noRiposte) st.noRiposte = int(st.noRiposte) + 1;
+                if (ctx.bossRoll && ctx.crown.twinSync) st.twinSync = int(st.twinSync) + 1;
+            }
         }
         const xp = spectator ? 0 : DEPTHS.delverXpForClear({
             tier: ctx.bossRoll && !ctx.endless ? ctx.tier : null, delve: ctx.delve, weekly, swift: ctx.bossRoll && ctx.clearMs > 0 && ctx.clearMs <= ctx.parMs,
@@ -331,6 +354,7 @@ module.exports = function createProgress(deps) {
         for (const p of newPerks) if (p.kind === 'title' && !d.titles.includes(p.value)) d.titles.push(p.value);
         // Achievements (the whole stats object, so counters and the latest run both count).
         const last = { tier: ctx.tier, cleared: !!ctx.bossRoll, flawless: !!ctx.flawless, delve: ctx.delve | 0, clearMs: ctx.clearMs | 0, parMs: ctx.parMs | 0, sets: ECON.setCounts(deps.equippedItems(u)), floor: ctx.floor | 0 };
+        if (ctx.crown) { last.noRiposte = !!ctx.crown.noRiposte; last.twinSync = !!ctx.crown.twinSync; }
         const got = ECON.checkAchievements({ codex: u.codex, delve: d, last, depthsBest: u.depthsBest }, d.ach);
         for (const id of got) {
             d.ach[id] = now;
@@ -344,6 +368,8 @@ module.exports = function createProgress(deps) {
             mats: gainedMats, gems: gainedGems, chestTier: res.chestTier || chestTier,
             delver: { xp: d.xp, gained: xp, rank: rank1.rank, up, perks: newPerks.map(p => p.id), prestige: rank1.prestige },
             codexNew: cx.newIds, achievements: got, weekly, pityHit: res.pityHit || null,
+            arts: crownOut ? crownOut.arts : [], crownShards: crownOut ? crownOut.crownShards : 0, artPity: !!(crownOut && crownOut.artPity),
+            armament: res.armament ? res.armament.id : null,
         };
     }
 
@@ -593,7 +619,7 @@ module.exports = function createProgress(deps) {
                 rank: R.rank, xp: d.xp, into: R.into, need: R.need, prestige: R.prestige,
                 perks: ECON.DELVER_PERKS.map(p => Object.assign({}, p, { have: p.rank <= R.rank })),
                 title: d.title, titles, codex: cx,
-                codexPages: ECON.GUILD_DUNGEON_ORDER.map(tier => {
+                codexPages: ECON.GUILD_DUNGEON_ORDER.concat(ECON.CROWN_DUNGEON_ORDER || []).map(tier => {
                     const page = ECON.CODEX_PAGES[tier] || [];
                     const have = page.filter(id => cx.i[id]).length;
                     return { tier, have, total: page.length, done: have === page.length && page.length > 0 };

@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8"><title>Weapons armory cards</title>
+<link rel="stylesheet" href="../../style.css">
+<style>html,body{overflow:auto!important;height:auto!important;position:static!important}body{background:#0b0a12;color:#e5e7eb;padding:12px;font-family:sans-serif}.wrap{max-width:560px}</style>
+<div class="wrap" id="out"></div>
+<script>
+/* The Armory's weapon cards (docs/sundered-crown/WEAPONS.md) rendered by the real js/gear.js,
+   against a stub view: a worn spear + crossbow, pack pieces of other kinds, the codex WEAPONS tab. */
+const state={data:{},area:'neighborhood',role:'player',appearance:{}};function updateHUD(){}function toast(){}function openMenu(t,h){document.getElementById('out').innerHTML=h;}
+</script>
+<script src="../../js/shared/economy.js"></script>
+<script src="../../js/item-icons.js"></script>
+<script src="../../js/gear.js"></script>
+<script src="../../js/codex.js"></script>
+<script>
+const E=ECON,r=E.mulberry32(5),mk=(b,rar)=>E.makeGear(b,rar,r,undefined,{now:1,src:'guild_rime'});
+const spear=mk('arm_spear_10','legendary'),bow=mk('arm_crossbow_10','epic'),helm=mk('frost_signet','rare');
+const pack=[spear,bow,helm,mk('arm_mace_10','epic'),mk('arm_boomerang_10','mythic'),E.makeUnique('crownfall_arbalest','mythic',12,r,{now:1}),mk('glacier_cleaver','rare')];
+const gear={};for(const it of pack)gear[it.id]=it;
+gameGear.applyView({gear,equipped:{weapon:spear.id,ranged:bow.id,ring:helm.id}});
+const which=location.hash.slice(1)||'armory';
+if(which==='codex'){state.data.codex={i:{[E.ARMAMENT_BASE.spear[10]]:[3,1,1],[E.ARMAMENT_BASE.crossbow[10]]:[3,1,1],crownfall_arbalest:[5,1,1]}};gameCodex.open('weapons');}
+else document.getElementById('out').innerHTML=gameGear.renderArmory('gear');
+</script>

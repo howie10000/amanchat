@@ -16,6 +16,8 @@ console.log('PASS idle presence reuse, movement deltas, car replication, bounded
  const p1=mk('p1','runA',10),p2=mk('p2','runA',20),q1=mk('q1','runB',30),solo=mk('solo',null,40);
  env.guildRunOf.set('p1','runA');env.guildRunOf.set('p2','runA');env.guildRunOf.set('q1','runB');
  for(const c of [p1,p2,q1,solo])clients.add(c);
+ // the worn melee kind rides along for the party's 3D cutscene (dungeon3d.js heroWeapon)
+ env.userRec=u=>({user:u});env.equippedItems=r=>[r.user];env.ECON={weaponLoadout:([u])=>({melee:{kind:u==='p2'?'scythe':'sword'}})};
  tick();
  const to=u=>sent.filter(m=>m.to===u);
  assert.deepEqual(Object.keys(to('p1')[0].users).sort(),['p2'],'a run member sees its own party (never itself)');
@@ -24,6 +26,7 @@ console.log('PASS idle presence reuse, movement deltas, car replication, bounded
  assert(!to('p2').some(m=>m.users.q1)&&!to('q1').some(m=>m.users.p1||m.users.p2),'no cross-run leak either way');
  assert.equal(to('p1')[0].users.p2.area,'dungeon','the view keeps area:"dungeon"');
  assert.equal(to('p1')[0].users.p2.run,'runA','and carries the server-stamped run');
+ assert.equal(to('p1')[0].users.p2.weaponKind,'scythe','and the weapon kind p2 actually wears');
  assert.equal(to('solo')[0].area,'dungeon','a dungeon player with no run stays on the plain dungeon key');assert.deepEqual(Object.keys(to('solo')[0].users),[]);
  // leaving the run moves the player back to the shared key
  env.guildRunOf.delete('q1');tick();
@@ -32,7 +35,7 @@ console.log('PASS idle presence reuse, movement deltas, car replication, bounded
  vm.runInContext('var PRESENCE_RUN_KEY=false',env);env.guildRunOf.set('q1','runB');tick();
  assert(to('p1')[0].users.q1&&to('p1')[0].area==='dungeon','PRESENCE_RUN_KEY off -> one shared dungeon stream');
  clients.clear();tick();
- console.log('PASS per-run dungeon presence keys (D31): parties isolated, members together, flag off restores the shared stream');
+ console.log('PASS per-run dungeon presence keys (D31): parties isolated, members together, flag off restores the shared stream, worn weapon kind stamped');
 }
 // Field-level deltas (docs/BANDWIDTH.md): a changed player carries only the
 // fields that changed, a field that vanished is sent as null, chat travels
