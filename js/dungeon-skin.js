@@ -24,6 +24,24 @@
   const lib = () => G.DungeonModels || null;
   const decoded = {};          // per mesh key -> typed arrays (kept for rebuilding geometry)
   const clipCache = {};        // per character id + clip -> THREE.AnimationClip
+  // The pack is split per dungeon (js/dungeon-models-<part>.js): the core carries the hero, the weapons and
+  // every skeleton, plus `parts` (character id -> part name). ensure(cid) fetches a part on demand, once.
+  const SELF = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
+  const VER = "skin-2";
+  const partLoads = {};
+  function ensure(cid) {
+    const L = lib();
+    if (!L || !L.characters) return Promise.resolve(false);
+    if (L.characters[cid]) return Promise.resolve(true);
+    const part = L.parts && L.parts[cid];
+    if (!part || !SELF || typeof document === "undefined" || !document.head || typeof URL === "undefined") return Promise.resolve(false);
+    if (!partLoads[part]) partLoads[part] = new Promise((ok) => {
+      const el = document.createElement("script"); el.src = new URL("dungeon-models-" + part + ".js?v=" + VER, SELF).href; el.async = true;
+      el.onload = () => ok(true); el.onerror = () => { el.remove(); delete partLoads[part]; console.warn("Dungeon model part unavailable: " + part); ok(false); };
+      document.head.appendChild(el);
+    });
+    return partLoads[part].then(() => !!L.characters[cid]);
+  }
 
   function bytes(s) {
     if (typeof atob === "function") { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
@@ -221,6 +239,8 @@
     weaponKinds: () => (lib() && lib().weapons ? Object.keys(lib().weapons) : []),
     weaponInfo: (k) => (lib() && lib().weapons ? lib().weapons[k] || null : null),
     meta: (id) => (lib() && lib().characters[id]) || null,
+    partOf: (id) => (lib() && lib().parts ? lib().parts[id] || null : null),
+    ensure,
     create,
     clip: clipFor,
   };

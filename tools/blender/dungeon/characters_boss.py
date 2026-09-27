@@ -134,14 +134,34 @@ def kael(cid_='kael', crownbound=False):
         return M['armor']
     regions(ch, rule)
     ch.add(Bd.head(cid_ + '.head', P, M['skin']))
-    face_details(ch, P, M['eye'], M['hair'], M['leather'])
+    # brows, a set mouth (a duellist's face has an expression), and a scar across the left cheek
+    face_details(ch, P, M['eye'], M['hair'], None, M['leather'])
+    R_ = P['head'] * 0.5
+    hc = Vector((0, -0.004 * H, P['headZ'] + R_ * 0.98))
+    scar = core.box(cid_ + '.scar', (0, 0, 0), (R_ * 0.05, R_ * 0.04, R_ * 0.5), M['leather'], R_ * 0.01)
+    scar.rotation_euler = (0, math.radians(18), math.radians(-20))
+    scar.location = hc + Vector((R_ * 0.6, -R_ * 0.8, 0.0))
+    core.apply_transform(scar)
+    ch.add(scar, 'head')
     for h in Bd.hair(cid_ + '.hair', P, M['hair'], 'swept', 0.34 * H * 0.5):
         ch.add(h, 'head')
     for s in 'LR':
         ch.add(Bd.fist(cid_ + '.fist' + s, rig, s, P, M['leather']))
-    # fitted brigandine over the chest: rows of plates (a shell with horizontal grooves)
+    # fitted brigandine over the chest: rows of plates (a shell with horizontal grooves), riveted, with crossed straps
     br = shell(ch, 'brig', M['armor'], lambda b, t, c, n: b in ('chest', 'spine') and c.z > P['hipZ'] + 0.04 * H and c.z < P['shoulderZ'] - 0.01 * H, 0.01, 0.012)
     core.displace(br, lambda p: Vector((0, 0, 0)) if abs(math.sin((p.z) / (0.035 * H) * math.pi)) > 0.25 else Vector((p.x, p.y, 0)).normalized() * -0.003 * H)
+    for row in range(4):
+        z = P['hipZ'] + 0.075 * H + row * 0.035 * H
+        for i in range(5):
+            a = (i - 2) * 0.42
+            r = core.sphere(cid_ + '.rivet', (math.sin(a) * 0.085 * H, -0.075 * H * math.cos(a) - 0.008 * H, z), 0.006 * H, M['metal'], 6, 4)
+            r['bind'] = 'transfer'
+            ch.add(r)
+    for sx in (1, -1):
+        strap = core.tube(cid_ + '.strap', [(sx * 0.085 * H, -0.035 * H, P['shoulderZ'] + 0.005 * H), (-sx * 0.01 * H, -0.085 * H, P['chestZ'] + 0.01 * H), (-sx * 0.07 * H, -0.06 * H, P['hipZ'] + 0.07 * H)],
+                         [(0.012 * H, 0.004 * H)] * 3, M['leather'], 6)
+        strap['bind'] = 'transfer'
+        ch.add(strap)
     belt(ch, P, M['leather'], M['metal'])
     # duelist's long coat skirt, split at the front
     sk = Bd.robe(cid_ + '.coat', P, M['cloth'], flare=1.45, length=P['kneeZ'] - 0.03 * H, top_r=P['hipW'] * 1.78)
@@ -469,6 +489,16 @@ def sundered_king():
     g['bind'] = 'transfer'
     ch.add(g)
     belt(ch, P, M['leather'], M['gold'], r=P['hipW'] * 2.0)
+    # gold studs along the edge of the cuirass and a fur collar over the gorget
+    for i in range(9):
+        a = (i - 4) * 0.3
+        s_ = core.sphere(cid_ + '.stud', (math.sin(a) * 0.1 * H, -0.09 * H * math.cos(a), P['hipZ'] + 0.05 * H), 0.007 * H, M['gold'], 6, 4)
+        s_['bind'] = 'transfer'
+        ch.add(s_)
+    fur = core.torus(cid_ + '.fur', (0, 0.012 * H, P['shoulderZ'] + 0.01 * H), 0.1 * H, 0.03 * H, M['leather'], 24, 8)
+    core.deform(fur, lambda p: Vector((p.x * 1.15, p.y * 0.85 + 0.01 * H, p.z + 0.006 * H * math.sin(p.x * 120 / H) * math.sin(p.y * 90 / H))))
+    fur['bind'] = 'transfer'
+    ch.add(fur)
     # a royal tabard, torn at the hem
     tab = core.plane_grid(cid_ + '.tabard', 0.2 * H, 0.36 * H, 4, 8, M['cloth'],
                           lambda u, v, p: Vector((p.x * (1 + 0.1 * v), -0.09 * H - 0.02 * H * v, P['hipZ'] + 0.1 * H + p.z + (0.03 * H if (v > 0.9 and int(u * 5) % 2) else 0))))
