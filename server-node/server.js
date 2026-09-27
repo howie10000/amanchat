@@ -54,6 +54,10 @@ const createRaids = require('./guild-raids.js');
 const createProgress = require('./guild-progress.js');
 const createCrownEngine = require('./crown-engine.js');
 const createCrownArts = require('./crown-arts.js');
+// THE SUNDERED CROWN II (docs/sundered-crown/NEW-CONTENT.md): appends its tiers/bosses/gear to the shared tables at load.
+const ASCEND = require(path.join(JS_DIR, 'shared', 'ascension.js'));
+const createAscensionEngine = require('./ascension-engine.js');
+const createAscension = require('./ascension.js');
 // Test-only knobs for the Arcane Depths server tests. None of these is ever set
 // in production; each one only shortens a wait or shrinks a pool so a live-
 // server test can finish in minutes.
@@ -945,7 +949,7 @@ const PROTECTED_FIELDS = new Set(['cars', 'equippedCar', 'sea', 'money', 'invent
     'lastInterest', 'fishInventory', 'houseStyle', 'furniture', 'houseIndex', 'createdAt',
     'bankBalance', 'bankLast', 'creditScore', 'creditGainLast', 'loan', 'notes',
     'farm', 'meals', 'luck', 'gear', 'equipped',
-    'mastery', 'mats', 'gems', 'delve', 'codex', 'overflow', 'depthsBest', 'journey', 'guild', 'lastSeen', 'arts']);
+    'mastery', 'mats', 'gems', 'delve', 'codex', 'overflow', 'depthsBest', 'journey', 'guild', 'lastSeen', 'arts', 'ascension']);
 // The only fields of a user record another (non-staff) player is allowed to
 // SEE. Everything else — friends, keys, furniture, inventory, notes, all the
 // bank/loan/credit numbers — is private and never leaves the server for anyone
@@ -1787,7 +1791,7 @@ function handleMessage(c, msg) {
         // ----- server-authoritative economy ops (docs/SERVER-AUTHORITY.md) -----
         case 'car': case 'bank': case 'buy': case 'furniture_set': case 'earn': case 'fish': case 'casino': case 'home': case 'treasury': case 'staff_finance':
         case 'sea': case 'farm': case 'cook': case 'kraken': case 'guild': case 'mastery': case 'guild_dungeon': case 'gear':
-        case 'forge': case 'delver': case 'journey': case 'arts': {
+        case 'forge': case 'delver': case 'journey': case 'arts': case 'ascend': {
             if (!c.user) return replyErr('not authed');
             let out;
             try { out = ECONOMY_OPS[op](c.user, msg); }
@@ -2628,6 +2632,7 @@ function bossHpExtra(run, bossId) {
     if (run.kind === 'raid') x *= DEPTHS.RAID.BOSS_MULT;
     if (run.initiate) x *= run.initiate.hpMult;
     x *= bossGearScaleOf(run, ECON.isMiniBoss(bossId)).hpMult;
+    if (run.ascHpMult) x *= run.ascHpMult;   // the Ascension ladder / weekly challenge (ascension.js)
     if (TEST.bossHp) x *= TEST.bossHp;
     return x;
 }
@@ -2651,7 +2656,9 @@ function lifestealFor(run, user, dealt, boss, now) {
     run.lsBucket = run.lsBucket || {};
     const bucket = run.lsBucket[user] || (run.lsBucket[user] = ECON.lifestealBucket());
     const maxHp = ECON.gearMaxHp(gearStatsOf(userRec(user)).vit, fx.maxHpPct);
-    return ECON.lifestealHeal(fx.lifesteal, dealt, { boss: !!boss, maxHp, bucket, now: now || Date.now() });
+    // The Ascension 'hungering' modifier scales lifesteal before the cap.
+    const hm = typeof ascension !== 'undefined' && ascension.healMult ? ascension.healMult(run) : 1;
+    return ECON.lifestealHeal(fx.lifesteal * hm, dealt, { boss: !!boss, maxHp, bucket, now: now || Date.now() });
 }
 // Raise either the run's final boss or the mini that blocks its middle floor.
 // Both use the same structure so the fight code, the scaling and the hit
@@ -3218,6 +3225,7 @@ function startGuildRun(leader, tier, members, opts) {
         catch (e) { try { run.ilvlAtStart[m] = ilvlSnapshot(m, tier); } catch (e2) { run.ilvlAtStart[m] = Math.max(1, cfg.gearLvl | 0); } }
     }
     run.lastActivity = now;
+    ascension.onStart(run, opts, cfg, g, now);   // Ascension level / weekly challenge (refuses when not allowed)
     features.initRun(run);
     applyDepthFloor(run);
     guildRuns.set(run.id, run);
@@ -3445,7 +3453,7 @@ function rewardPush(run, m, S, res, cash, extra) {
         chestTier: res ? res.chestTier : 0, mats: res ? res.mats : {}, gems: res ? res.gems : {}, overflow: res ? res.overflow : [], packFull: res ? res.packFull : false,
         delver: res ? res.delver : null, codexNew: res ? res.codexNew : [], achievements: res ? res.achievements : [],
         weekly: !!(res && res.weekly),
-        arts: res && res.arts ? res.arts : [], crownShards: res ? res.crownShards | 0 : 0, artPity: !!(res && res.artPity),
+        arts: res && res.arts ? res.arts : [], crownShards: res ? res.crownShards | 0 : 0, artPity: !!(res && res.artPity), ascend: res && res.ascend ? res.ascend : null,
     }, extra || {}));
 }
 
@@ -3508,6 +3516,7 @@ function settleRun(run, user, now) {
             crown: crownCtx(run, m, 'boss'),
         }, now);
         if (S.perUser[m]) grantMastery(m, rec, 'combat', ECON.MASTERY_XP.guild_clear);
+        try { ascension.onSettle(run, m, rec, results[m], now); } catch (e) { console.error('[ascend] settle', e); }
     }
     const party = {};
     for (const m of new Set([...Object.keys(S.perUser), ...Object.keys(results)])) {
@@ -3549,7 +3558,7 @@ function settleRun(run, user, now) {
         chestTier: mine.chestTier, mats: mine.mats, gems: mine.gems, overflow: mine.overflow, packFull: mine.packFull,
         delver: mine.delver, codexNew: mine.codexNew, achievements: mine.achievements,
         delve: delveOut, records: { guildBest: delveOut.record, weekly: !!mine.weekly }, tier: run.tier,
-        arts: mine.arts || [], crownShards: mine.crownShards | 0, artPity: !!mine.artPity,
+        arts: mine.arts || [], crownShards: mine.crownShards | 0, artPity: !!mine.artPity, ascend: mine.ascend || null,
     };
 }
 // Nobody loses a chest by being slow: a final boss that died but whose chest
@@ -3645,7 +3654,7 @@ function settleSegment(run, user, kind, now) {
         delver: mine.delver, codexNew: mine.codexNew, achievements: mine.achievements,
         delve: { level: 0, floor: f }, records: { guildBest: false, weekly: !!run.weekly }, segment: true, floor: f, tier: run.tier,
         reward: { gained: myPu ? myPu.each : 0, gross },
-        arts: mine.arts || [], crownShards: mine.crownShards | 0, artPity: !!mine.artPity,
+        arts: mine.arts || [], crownShards: mine.crownShards | 0, artPity: !!mine.artPity, ascend: mine.ascend || null,
     };
     if (leave) endGuildRun(run, 'left');
     return out;
@@ -3694,7 +3703,7 @@ function depthsInfo(user, now) {
     const gid = guildIdOf(user);
     const g = gid ? guildRec(gid) : null;
     const research = progress.researchOf(g);
-    const order = ECON.GUILD_DUNGEON_ORDER.concat(['raid_nexus', 'arcane_depths'], ECON.CROWN_DUNGEON_ORDER || []);
+    const order = ECON.GUILD_DUNGEON_ORDER.concat(['raid_nexus', 'arcane_depths'], ECON.CROWN_DUNGEON_ORDER || [], ECON.ASCEND_DUNGEON_ORDER || []);
     const tiers = order.filter(k => ECON.GUILD_DUNGEONS[k]).map(key => {
         const cfg = ECON.GUILD_DUNGEONS[key];
         const t = g ? g.depths.tiers[key] : null;
@@ -3712,8 +3721,10 @@ function depthsInfo(user, now) {
     const list = DEPTHS.pickAffixes(week, 99).map(id => { const d = DEPTHS.AFFIX_DEFS[id]; return { id, name: d.name, slot: d.slot, minL: d.minL, desc: d.desc }; });
     const boards = progress.boards();
     const wk = boards.endless.week && boards.endless.week.wk === week ? (boards.endless.week.list || []) : [];
+    let ascendInfo = null;
+    try { ascendInfo = ascension.info(user, now); } catch (e) { console.error('[ascend] info', e); }
     return {
-        tiers, affixes: { week, season: DEPTHS.affixSeason(week), list },
+        tiers, affixes: { week, season: DEPTHS.affixSeason(week), list }, ascension: ascendInfo,
         endless: {
             bestFloor: g ? g.depths.endless.bestFloor : 0,
             weekly: { week, bestFloor: g && g.depths.endless.weekly.week === week ? g.depths.endless.weekly.bestFloor : 0, board: wk.map(e => ({ guild: e.name, tag: e.tag, floor: e.floor, ms: e.ms })) },
@@ -3741,11 +3752,18 @@ const features = createFeatureHandlers({
     testKnobs: { featureAgeMs: TEST.fast ? 0 : null, trialDeadlineMs: TEST.trialDeadlineMs, descendHoldMs: TEST.fast ? 1000 : null },
 });
 // ---- THE SUNDERED CROWN modules (crown-engine.js / crown-arts.js) ----
+// THE SUNDERED CROWN II: the engine extension (linked adds, tethers, arena layouts, gear/ascension scaling).
+const ascendEngine = createAscensionEngine({ ECON, CROWN, ASCEND, userRec, gearStatsOf, bossHpOf });
 const crownEngine = createCrownEngine({
     ECON, CROWN, pushMany, runBroadcast, presenceOf, attackPayload, bossHpOf, pendingThreshold, checkBossPhase,
     userRec, masteryLevelOf, gearStatsOf, gearFxOf: (user) => gearFxOf(user), swingBuffMult, bossProcs, weaponOf, lifestealFor,
-    rescaleGuildBoss, raidSoak: DEPTHS.RAID_OVERLAY.soak,
+    rescaleGuildBoss, raidSoak: DEPTHS.RAID_OVERLAY.soak, ext: ascendEngine,
     testKnobs: { crownForce: TEST.crownForce, twinLinkMs: TEST.twinLinkMs },
+});
+// THE SUNDERED CROWN II: the Ascension ladder, weekly challenge, mastery and essence crafting (`ascend` op).
+const ascension = createAscension({
+    ECON, DEPTHS, ASCEND, store, userRec, guildRec, guildIdOf, saveGuild, moneyOf, setMoney, pushTo,
+    addItems: (user, u, items, now) => progress.addItems(user, u, items, now),
 });
 const crownArts = createCrownArts({
     ECON, CROWN, DUNGEON, store, userRec, runFor, presenceOf, gearFxOf: (user) => gearFxOf(user), gearStatsOf, weaponOf, masteryLevelOf, moneyOf, setMoney,
@@ -4982,6 +5000,8 @@ const ECONOMY_OPS = {
     journey(user, msg) { return JOURNEY_SRV.op(user, msg); },
     // THE SUNDERED CROWN: the Crown Arts collection (crown-arts.js, §6.3).
     arts(user, msg) { return crownArts.op(user, msg); },
+    // THE SUNDERED CROWN II: the Ascension ladder, weekly challenge, mastery, essence crafting (ascension.js).
+    ascend(user, msg) { return ascension.op(user, msg); },
     delver(user, msg) { return progress.delverOp(user, msg); },
 
     guild_dungeon(user, msg) {
@@ -5129,7 +5149,8 @@ const ECONOMY_OPS = {
             const members = [...party.members].filter(u => byUser.has(u) && !guildRunOf.has(u));
             if (!members.includes(user)) throw new Error('You are not able to start right now.');
             const delve = msg.delve != null ? Math.max(0, msg.delve | 0) : (party.delve | 0);
-            const out = startGuildRun(user, party.tier, members, { continuous: msg.layout === 'continuous', delve, kind: 'party', weekly: msg.weekly != null ? !!msg.weekly : !!party.weekly });
+            const out = startGuildRun(user, party.tier, members, { continuous: msg.layout === 'continuous', delve, kind: 'party', weekly: msg.weekly != null ? !!msg.weekly : !!party.weekly,
+                ascension: msg.ascension | 0, challenge: !!msg.challenge });
             disbandParty(party, 'started');
             return out;
         }
@@ -5292,7 +5313,8 @@ const ECONOMY_OPS = {
         // instead, so nobody is pulled into a run without accepting it.
         if (action === 'start') {
             raids.leaveRaid(user);
-            return startGuildRun(user, String(msg.tier || ''), [], { continuous: msg.layout === 'continuous', delve: msg.delve | 0, kind: 'solo', weekly: !!msg.weekly });
+            return startGuildRun(user, String(msg.tier || ''), [], { continuous: msg.layout === 'continuous', delve: msg.delve | 0, kind: 'solo', weekly: !!msg.weekly,
+                ascension: msg.ascension | 0, challenge: !!msg.challenge });
         }
 
         // Run features (guild-features.js): keys, chests, shrines, secrets,

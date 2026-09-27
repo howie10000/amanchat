@@ -261,6 +261,8 @@
       return true;
     }
     if (k === 'pillar') {
+      // A whole new layout (an arena reshaper, Sundered Crown II): replace the set.
+      if (Array.isArray(m.pillars)) { setPillars(m.pillars); if (g) g.banner('THE STONES RISE', 'Step off the glowing marks', '#67e8f9', 1800); shake(10); return true; }
       const p = R.pillars.find(q => q.i === m.i);
       if (p && m.hits != null) p.hits = m.hits | 0;
       if (p) p.crackAt = Date.now();

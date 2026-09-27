@@ -147,11 +147,15 @@
     crossbow:  { rot: 0, orb: 0.12, ext: 4, lift: 3 },
   };
   const P = { rot: 0, orb: 0, ext: 0, lift: 0, str: 1, flash: 0, hide: 0, len: 1, trail: 0, puff: 0, slide: 0 };
+  // Extra kinds registered by content waves (js/ascension-weapons.js): pose(P, R, k, dir, EASE) writes the channels.
+  const POSES = {};
+  const EASE = { lerp, seg, snap, inOut, inCubic, outCubic, kick };
   // The keyed curve of one attack at progress k (0..1). dir = ±1 alternates
   // the sword / dagger strokes so chained swings flow back and forth.
   function poseAttack(kind, k, dir) {
     const R = REST[kind] || REST.sword;
     P.rot = R.rot; P.orb = R.orb; P.ext = R.ext; P.lift = R.lift; P.str = 1; P.flash = 0; P.hide = 0; P.len = 1; P.trail = 0; P.puff = 0; P.slide = 0;
+    if (POSES[kind]) { POSES[kind](P, R, k, dir, EASE); return P; }
     if (kind === "sword") {
       // wind to one side (anticipation) -> snap across -> overshoot and settle
       const w = inOut(seg(k, 0, 0.2)), s = snap(seg(k, 0.2, 0.46)), f = seg(k, 0.46, 1);
@@ -693,6 +697,13 @@
     bossReach: (wire) => { const K = def(wire === "pistol" || wire === "ranged" ? "ranged" : "melee"); return K ? K.bossReach : null; },
     // test / review hooks
     _pose: (kind, k, dir) => Object.assign({}, poseAttack(kind, k, dir || 1)), _display: () => D, _anim: () => A, REST, TIP,
+    // Content waves add a kind: {rest:{rot,orb,ext,lift}, model(ctx,p,tint), tip, ms, trail, pose(P,R,k,dir,EASE)}.
+    registerKind: (kind, o) => {
+      if (!kind || !o) return false;
+      if (o.rest) REST[kind] = o.rest; if (typeof o.model === "function") MODEL[kind] = o.model; if (o.tip > 0) TIP[kind] = o.tip;
+      if (o.ms > 0) ANIM_MS[kind] = o.ms; if (o.trail) TRAIL_RGB[kind] = o.trail; if (typeof o.pose === "function") POSES[kind] = o.pose;
+      return true;
+    },
   };
   if (typeof window !== "undefined") window.gameWeapons = API;
   if (typeof module !== "undefined" && module.exports) module.exports = API;
