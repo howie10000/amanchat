@@ -1,7 +1,7 @@
 // THE SUNDERED CROWN II — the new bosses and the late-game systems through the
 // real server (docs/sundered-crown/NEW-CONTENT.md).
 //
-//   node ascension.test.js     (port 18481)
+//   node ascension.test.js     (port 18491)
 //
 // The Drowned Bastion (Mordaunt raises a wall layout -> the mortar sets;
 // Vaughn is thrown from the horse on a barricade, then fights UNHORSED), the
@@ -19,7 +19,7 @@ const { ECON, sleep } = H;
 const { CROWN } = C;
 const ASCEND = require('../js/shared/ascension.js');
 const DEPTHS = require('../js/shared/depths.js');
-const PORT = +(process.argv[2] || 18481);
+const PORT = +(process.argv[2] || 18491);
 const T = H.makeAsserts();
 const assert = T.assert;
 const LINK_MS = 6000;
@@ -43,7 +43,9 @@ async function killAdds(c, runId, enc, type, ms) {
         const b = st.boss;
         if (!b || b.status !== 'alive') { await sleep(150); continue; }
         const live = (b.adds || []).filter(a => a.hp > 0 && (!type || a.type === type));
-        if (!live.length) return killed;
+        // Wicks still coming through a portal are hidden from the view but
+        // counted in x.l; keep going until none is left anywhere.
+        if (!live.length) { if (type === 'wick' && b.x && b.x.l > 0) { await sleep(150); continue; } return killed; }
         const a = live[0];
         await C.roomPresence(c, runId, enc, { x: a.x, y: a.y + 30 });
         const r = await c.tgd({ action: 'enemy_hit', weapon: 'sword', enemies: [a.id] });
