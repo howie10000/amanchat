@@ -703,6 +703,7 @@ function setUser(c, user) {
         try { prev.ws.close(); } catch (e) {}
     }
     c.user = user;
+    c.presenceRaw = null;   // a presence delta never carries over to another account
     c.staffPanelUntil = 0;
     c.staffUnlockFails = 0;
     c.staffUnlockBlockUntil = 0;
@@ -757,7 +758,7 @@ function stampLastSeen(user, t) {
 //     changed their look (Client.av).
 // A client that has just moved to a different area gets a full snapshot of it
 // with `reset: true` instead of a delta, so it can drop the old area's players.
-const areaState = new Map();   // areaKey -> Map<user, { sig, av }>
+const areaState = new Map();   // areaKey -> Map<user, { sig, av, fields }>
 
 function presenceAreaKey(p, user) {
     const a = p && p.area;
@@ -791,10 +792,35 @@ function presenceView(c) {
         hp: p.hp,
         emote: p.emote,
         msgs: p.msgs,
-        msg: p.msg,
+        // Every client reads `msgs` first; the one-line `msg` is only for a
+        // sender too old to send the list (docs/BANDWIDTH.md).
+        msg: Array.isArray(p.msgs) ? undefined : p.msg,
         // Role is stamped server-side so a client can't fake a staff badge.
         role: roleOf(c.user),
     };
+}
+
+// Each field's JSON, so a moving player's delta carries only what changed
+// (usually just x/y). A field that disappeared is sent as null; the client
+// merge (js/core.js) drops it.
+function presenceFields(view) {
+    const f = {};
+    for (const k in view) if (view[k] !== undefined) f[k] = JSON.stringify(view[k]);
+    return f;
+}
+function presenceFieldDelta(was, now) {
+    const parts = [];
+    for (const k in now) if (was[k] !== now[k]) parts.push(JSON.stringify(k) + ':' + now[k]);
+    for (const k in was) if (!(k in now)) parts.push(JSON.stringify(k) + ':null');
+    return '{' + parts.join(',') + '}';
+}
+// `"user":{...}` fragments joined into one message. A viewer never receives
+// its own entry (the client ignores it), so a viewer that is itself in the
+// batch gets its own copy without it; everyone else shares one string.
+function presenceUsersJson(frags, skip) {
+    const out = [];
+    for (const [u, f] of frags) if (u !== skip) out.push(f);
+    return out;
 }
 
 function broadcastPresence() {
@@ -823,43 +849,53 @@ function broadcastPresence() {
         const here = members.get(key) || [];
         const prev = areaState.get(key) || new Map();
         const next = new Map();
-        const delta = {};
-        const full = {};
+        const delta = new Map();   // user -> '"user":{...}'
+        const full = new Map();
         const needsFull=vs.some(c=>c.sentArea!==key && !(c.ws.bufferedAmount>256*1024));
         for (const c of here) {
             const role=roleOf(c.user),run=guildRunOf.get(c.user);
             if(c._viewInput!==c.presence || c._viewRole!==role || c._viewRun!==run){
                 c._viewInput=c.presence;c._viewRole=role;c._viewRun=run;
-                c._view=presenceView(c);c._viewSig=JSON.stringify(c._view);
+                c._view=presenceView(c);c._viewSig=JSON.stringify(c._view);c._viewFields=null;
             }
-            const view=c._view, sig=c._viewSig;
+            const sig=c._viewSig;
             const was = prev.get(c.user);
-            next.set(c.user, was && was.sig===sig && was.av===c.av ? was : { sig, av: c.av });
-            if(needsFull || !was || was.av!==c.av) full[c.user] = c.appearanceStr
-                ? Object.assign({ appearance: c.presence.appearance }, view)
-                : view;
-            // New to this area, or a new look -> send the whole thing (with
-            // appearance). Otherwise send the light view, and only if it moved.
-            if (!was || was.av !== c.av) delta[c.user] = full[c.user];
-            else if (was.sig !== sig) delta[c.user] = view;
+            const same = was && was.sig===sig && was.av===c.av;
+            if (!same && !c._viewFields) c._viewFields = presenceFields(c._view);
+            next.set(c.user, same ? was : { sig, av: c.av, fields: c._viewFields });
+            const name = JSON.stringify(c.user);
+            // New to this area, or a new look -> the whole view with appearance.
+            let whole = null;
+            if (needsFull || !was || was.av !== c.av) {
+                const look = c.appearanceStr && c.presence.appearance !== undefined ? JSON.stringify(c.presence.appearance) : null;
+                whole = name + ':' + (look ? '{"appearance":' + look + ',' + sig.slice(1) : sig);
+            }
+            if (needsFull) full.set(c.user, whole);
+            if (!was || was.av !== c.av) delta.set(c.user, whole);
+            else if (was.sig !== sig) delta.set(c.user, name + ':' + presenceFieldDelta(was.fields || presenceFields(JSON.parse(was.sig)), c._viewFields));
         }
         const gone = [];
         for (const u of prev.keys()) if (!next.has(u)) gone.push(u);
         areaState.set(key, next);
 
-        let fullMsg = null, deltaMsg = null;
-        const hasDelta = gone.length > 0 || Object.keys(delta).length > 0;
+        const areaJson = JSON.stringify(key);
+        const goneJson = gone.length ? ',"gone":' + JSON.stringify(gone) : '';
+        let fullShared = null, deltaShared = null;
         for (const c of vs) {
             // Do not accumulate obsolete movement behind a slow connection.
             // Once it drains, send a complete reset so no skipped delta is lost.
             if(c.ws.bufferedAmount>256*1024){c.sentArea=null;continue;}
             if (c.sentArea !== key) {
                 c.sentArea = key;
-                if (fullMsg === null) fullMsg = JSON.stringify({ event: 'presence', area: key, reset: true, users: full, gone: [] });
-                sendRaw(c, fullMsg);
-            } else if (hasDelta) {
-                if (deltaMsg === null) deltaMsg = JSON.stringify({ event: 'presence', area: key, users: delta, gone });
-                sendRaw(c, deltaMsg);
+                const body = full.has(c.user) ? presenceUsersJson(full, c.user).join(',') : (fullShared === null ? (fullShared = presenceUsersJson(full).join(',')) : fullShared);
+                sendRaw(c, '{"event":"presence","area":' + areaJson + ',"reset":true,"users":{' + body + '},"gone":[]}');
+            } else {
+                const mine = delta.has(c.user);
+                if (!gone.length && delta.size <= (mine ? 1 : 0)) continue;
+                if (!mine && deltaShared !== null) { sendRaw(c, deltaShared); continue; }
+                const msg = '{"event":"presence","users":{' + presenceUsersJson(delta, mine ? c.user : null).join(',') + '}' + goneJson + '}';
+                if (!mine) deltaShared = msg;
+                sendRaw(c, msg);
             }
         }
     }
@@ -1349,7 +1385,20 @@ function afterWrite(pathStr, val) {
 
 // ---------------------------------------------------------------- WS HANDLER
 
-const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
+// permessage-deflate (docs/BANDWIDTH.md). Every browser offers it. The stream
+// is small JSON with the same keys 15x a second, so keeping the compression
+// context between messages (context takeover) is where the win is; a 13-bit
+// window and memLevel 7 hold that at ~100 KB of zlib state per socket, and
+// level 1 keeps the CPU cost negligible at 15 Hz. Messages under `threshold`
+// bytes go out as-is. WS_DEFLATE=0 turns it off.
+const WS_DEFLATE = process.env.WS_DEFLATE === '0' ? false : {
+    zlibDeflateOptions: { level: +process.env.WS_DEFLATE_LEVEL || 1, memLevel: 7 },
+    serverMaxWindowBits: 13,
+    clientMaxWindowBits: 13,
+    threshold: process.env.WS_DEFLATE_THRESHOLD != null ? +process.env.WS_DEFLATE_THRESHOLD : 32,
+    concurrencyLimit: 16,
+};
+const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024, perMessageDeflate: WS_DEFLATE });
 
 // One heartbeat timer for all sockets instead of a closure/timer per connection.
 // A socket that missed a whole heartbeat (no pong, no message) is half-open:
@@ -1371,6 +1420,9 @@ wss.on('connection', (ws, req) => {
     const c = new Client(ws, ip);
     c.localOwnerSetup = ['127.0.0.1','::1','::ffff:127.0.0.1'].includes(req.socket?.remoteAddress) && !req.headers['cf-connecting-ip'] && !req.headers['x-forwarded-for'] && !req.headers['x-real-ip'];
     clients.add(c);
+    // Wire features a current client may use (js/shared/presence-wire.js).
+    // An older client ignores unknown events.
+    try { ws.send('{"event":"caps","presenceDelta":1}'); } catch (e) {}
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
 
@@ -1602,7 +1654,15 @@ function handleMessage(c, msg) {
 
         case 'presence': {
             if (!c.user) return replyErr('not authed');
-            const p = (msg.data && typeof msg.data === 'object') ? msg.data : null;
+            let p = (msg.data && typeof msg.data === 'object' && !Array.isArray(msg.data)) ? msg.data : null;
+            // A field delta (presence-wire caps) is merged onto the last complete
+            // picture this socket sent, then handled exactly like a full frame.
+            if (p && msg.delta) {
+                if (!c.presenceRaw) { sendRaw(c, '{"event":"needAppearance"}'); return; }
+                p = Object.assign({}, c.presenceRaw, p);
+                if (Array.isArray(msg.unset)) for (const k of msg.unset) if (typeof k === 'string') delete p[k];
+            }
+            if (p) { c.presenceRaw = Object.assign({}, p); delete c.presenceRaw.appearance; }
             if (p && activeMute(c.user)) { p.msgs = []; p.msg = ''; }
             if (p) p.invisible = !!p.invisible && isStaff(c.user);   // only staff may hide
             // Your personal farm is yours alone — you can't stand in someone else's.
@@ -1632,8 +1692,11 @@ function handleMessage(c, msg) {
             c.presence = p;
             c.presenceAt = Date.now();
             // If we've never been told this socket's look (a reconnect that
-            // thought it had already sent one), ask for it back.
-            reply(p && !c.appearanceStr ? { needAppearance: true } : null);
+            // thought it had already sent one), ask for it back. A current
+            // client sends presence fire-and-forget (no id: js/shared/
+            // presence-wire.js) and gets no reply unless one is needed.
+            if (id != null) reply(p && !c.appearanceStr ? { needAppearance: true } : null);
+            else if (p && !c.appearanceStr) sendRaw(c, '{"event":"needAppearance"}');
             break;
         }
 

@@ -57,7 +57,8 @@ function player(port, user, opts) {
         if (m.id != null && pending.has(m.id)) { const q = pending.get(m.id); pending.delete(m.id); m.ok === false ? q.reject(new Error(m.err)) : q.resolve(m.data); }
         else if (m.event) p.events++;
         else if (m.data && m.data.needAppearance) p.sentLook = null;
-        if (m.event === 'needAppearance') p.sentLook = null;
+        if (m.event === 'needAppearance') { p.sentLook = null; if (p.sender) p.sender.reset(); }
+        if (m.event === 'caps') p.caps = m;
     });
     p.rpc = (op, args) => new Promise((res, rej) => {
         const i = id++;
@@ -79,6 +80,7 @@ function player(port, user, opts) {
         const look = JSON.stringify(DEFAULT_APPEARANCE);
         if (look !== p.sentLook) { data.appearance = DEFAULT_APPEARANCE; p.sentLook = look; }
         if (p.sender) {
+            p.sender.enableDelta(!!(p.caps && p.caps.presenceDelta));
             const frame = p.sender.frame(data, now);
             if (frame) ws.send(frame);
             return;
@@ -105,8 +107,9 @@ async function login(port, user, opts) {
     return p;
 }
 
+let loopTicks = 0;
 function startLoops(players, extra) {
-    const timer = setInterval(() => { for (const p of players) { p.step(); p.push(); } }, 66);
+    const timer = setInterval(() => { loopTicks++; for (const p of players) { p.step(); p.push(); } }, 66);
     const timers = [timer];
     if (extra) timers.push(extra);
     return () => timers.forEach(t => clearInterval(t));
@@ -115,7 +118,9 @@ function startLoops(players, extra) {
 async function measure(players, ms) {
     const a = players.map(p => p.bytes()), e0 = players.map(p => p.events);
     for (const p of players) p.kinds = {};
+    const t0 = loopTicks, w0 = Date.now();
     await sleep(ms);
+    const clientHz = +((loopTicks - t0) / ((Date.now() - w0) / 1000)).toFixed(1);
     const b = players.map(p => p.bytes());
     const sec = ms / 1000;
     const down = b.reduce((s, x, i) => s + (x.down - a[i].down), 0) / players.length / sec;
@@ -124,7 +129,7 @@ async function measure(players, ms) {
     const kinds = {};
     for (const p of players) for (const [k, v] of Object.entries(p.kinds)) kinds[k] = (kinds[k] || 0) + v;
     for (const k of Object.keys(kinds)) kinds[k] = Math.round(kinds[k] / players.length / sec);
-    return { downBps: Math.round(down), upBps: Math.round(up), eventsPerSec: +events.toFixed(1), payloadByKind: kinds };
+    return { downBps: Math.round(down), upBps: Math.round(up), eventsPerSec: +events.toFixed(1), clientHz, payloadByKind: kinds };
 }
 
 // Run every scenario for one player count. Returns {town, combat, boss}.
