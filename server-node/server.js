@@ -74,6 +74,9 @@ const TEST = {
 if (!TEST.crownForce.length) TEST.crownForce = null;
 // Ops kill switch: CROWN_TIERS=0 closes the four Sundered Crown tiers.
 const CROWN_TIERS_OPEN = process.env.CROWN_TIERS !== '0';
+// Boss balance (docs/sundered-crown/BALANCE.md): BOSS_GEAR_SCALE=0 turns off
+// the per-run boss HP/damage scaling to the party's gear (lifesteal rules stay).
+const BOSS_GEAR_SCALE = process.env.BOSS_GEAR_SCALE !== '0';
 // D31: stream dungeon presence per run ('dungeon:<runId>'); PRESENCE_RUN_KEY=0 turns it off.
 const PRESENCE_RUN_KEY = process.env.PRESENCE_RUN_KEY !== '0';
 const { FURNITURE_CATALOG, FURNITURE_LIST } = require(path.join(JS_DIR, 'furniture.js'));
@@ -2624,8 +2627,31 @@ function bossHpExtra(run, bossId) {
     if ((run.affixes || []).includes('tyrannical')) x *= 1.3;
     if (run.kind === 'raid') x *= DEPTHS.RAID.BOSS_MULT;
     if (run.initiate) x *= run.initiate.hpMult;
+    x *= bossGearScaleOf(run, ECON.isMiniBoss(bossId)).hpMult;
     if (TEST.bossHp) x *= TEST.bossHp;
     return x;
+}
+// Boss HP/damage scaled to what the party wore at run start (BALANCE.md).
+// The endless Depths keep their own floor curve.
+function bossGearScaleOf(run, mini) {
+    if (!BOSS_GEAR_SCALE || !run || run.tier === 'arcane_depths' || !run.gearProfiles) return { hpMult: 1, dmgMult: 1 };
+    return ECON.bossGearScale(run.tier, run.gearProfiles, { mini: !!mini });
+}
+function gearProfileOf(user) {
+    const u = userRec(user);
+    return ECON.combatProfile(equippedItems(u), masteryLevelOf(u, 'combat'));
+}
+// Lifesteal is the server's call: the heal one landed swing (or boss hit) is
+// worth, after the boss efficiency and the per-second cap (ECON.lifestealHeal),
+// on a bucket per fighter per run. The client applies `heal` as sent.
+function lifestealFor(run, user, dealt, boss, now) {
+    if (!run || !(dealt > 0) || (run.downed && run.downed[user])) return 0;
+    const fx = gearFxOf(user);
+    if (!(fx.lifesteal > 0)) return 0;
+    run.lsBucket = run.lsBucket || {};
+    const bucket = run.lsBucket[user] || (run.lsBucket[user] = ECON.lifestealBucket());
+    const maxHp = ECON.gearMaxHp(gearStatsOf(userRec(user)).vit, fx.maxHpPct);
+    return ECON.lifestealHeal(fx.lifesteal, dealt, { boss: !!boss, maxHp, bucket, now: now || Date.now() });
 }
 // Raise either the run's final boss or the mini that blocks its middle floor.
 // Both use the same structure so the fight code, the scaling and the hit
@@ -3176,6 +3202,15 @@ function startGuildRun(leader, tier, members, opts) {
             if (ini && ini.active) { run.initiate = ini; run.partyHpMult *= ini.hpMult; run.bossDmgMult *= ini.dmgMult; }
         } catch (e) { console.error('[journey] initiate', e); }
     }
+    // Boss balance: every boss of this run is scaled to the party's gear as
+    // worn now (HP in bossHpExtra, damage here through bossDmgMult).
+    if (BOSS_GEAR_SCALE && !endless) {
+        run.gearProfiles = [];
+        for (const m of set) { try { run.gearProfiles.push(gearProfileOf(m)); } catch (e) { console.error('[boss-scale] profile', m, e); } }
+        const gs = bossGearScaleOf(run, false);
+        run.bossScale = { hp: gs.hpMult, dmg: gs.dmgMult };
+        run.bossDmgMult *= gs.dmgMult;
+    }
     run.ilvlAtStart = {};
     // One definition of "effective item level" (the journey's, when present).
     for (const m of set) {
@@ -3193,7 +3228,7 @@ function startGuildRun(leader, tier, members, opts) {
     const info = {
         event: 'guild_dungeon', kind: 'start', runId: run.id, tier, seed: run.seed,
         members: [...set], by: leader, guild: guildInfo,
-        state, delve, affixes: run.affixes, runKind: run.kind, theme: run.theme, guilds, weekly, initiate: run.initiate || null,
+        state, delve, affixes: run.affixes, runKind: run.kind, theme: run.theme, guilds, weekly, initiate: run.initiate || null, bossScale: run.bossScale || null,
     };
     pushMany(set, info);
     if (raid) for (const gid of Object.keys(guilds)) { const rg = guildRec(gid); if (rg) guildBroadcast(rg, { kind: 'raid_start', tier, runId: run.id, members: guilds[gid].members }); }
@@ -3708,13 +3743,13 @@ const features = createFeatureHandlers({
 // ---- THE SUNDERED CROWN modules (crown-engine.js / crown-arts.js) ----
 const crownEngine = createCrownEngine({
     ECON, CROWN, pushMany, runBroadcast, presenceOf, attackPayload, bossHpOf, pendingThreshold, checkBossPhase,
-    userRec, masteryLevelOf, gearStatsOf, gearFxOf: (user) => gearFxOf(user), swingBuffMult, bossProcs, weaponOf,
+    userRec, masteryLevelOf, gearStatsOf, gearFxOf: (user) => gearFxOf(user), swingBuffMult, bossProcs, weaponOf, lifestealFor,
     rescaleGuildBoss, raidSoak: DEPTHS.RAID_OVERLAY.soak,
     testKnobs: { crownForce: TEST.crownForce, twinLinkMs: TEST.twinLinkMs },
 });
 const crownArts = createCrownArts({
     ECON, CROWN, DUNGEON, store, userRec, runFor, presenceOf, gearFxOf: (user) => gearFxOf(user), gearStatsOf, weaponOf, masteryLevelOf, moneyOf, setMoney,
-    pushMany, pushTo, features, floorPlan, floorCleared, leashRefusal, engine: crownEngine, swingBuffMult, hurtBoss,
+    pushMany, pushTo, features, floorPlan, floorCleared, leashRefusal, engine: crownEngine, swingBuffMult, hurtBoss, lifestealFor,
     afterBossDamage: (run, now) => { if (!checkBossPhase(run, now)) runBroadcast(run, 'hp'); },
 });
 const raids = createRaids({
@@ -5146,7 +5181,7 @@ const ECONOMY_OPS = {
             const extra = swingBuffMult(run, user, now, fx, !!msg.afterDash);
             const pres = runPresence(run, user);
             const changed = [], refused = [], procOut = [], seen = new Set();
-            let firstDmg = null, anyCrit = false, firstRoll = null;
+            let firstDmg = null, anyCrit = false, firstRoll = null, landed = 0;
             const escapeMs = (DUNGEON.ENEMY_TYPES.goblin || {}).escapeMs || 22000;
             const hitOne = (id, scale) => {
                 if (seen.has(id) || !(hp[id] > 0)) return null;
@@ -5177,6 +5212,7 @@ const ECONOMY_OPS = {
                     const ab = Math.min(m.shield | 0, dmg); m.shield -= ab; dmg -= ab;
                 }
                 m.lastHitAt = now;
+                landed += Math.min(hp[id], dmg);
                 hp[id] = Math.max(0, hp[id] - dmg);
                 const c = { id, hp: hp[id], dead: hp[id] <= 0 };
                 if (m.shieldMax) c.shield = m.shield;
@@ -5210,7 +5246,9 @@ const ECONOMY_OPS = {
             if (changed.length || res.spawned.length) {
                 pushMany([...run.members].filter(m => m !== user), { event: 'guild_dungeon', kind: 'enemies', runId: run.id, floor, changed, by: user, cleared, spawned: res.spawned, drops: res.drops, trial: res.trial, procs: procOut });
             }
-            return { changed, dmg: firstDmg != null ? firstDmg : legacyDmg, crit: anyCrit, procs: procOut, cleared, spawned: res.spawned, drops: res.drops, trial: res.trial || undefined, refused };
+            // Lifesteal off what actually landed (never thorns), the server's call.
+            const heal = weapon === 'thorns' ? 0 : lifestealFor(run, user, landed, false, now);
+            return { changed, dmg: firstDmg != null ? firstDmg : legacyDmg, crit: anyCrit, procs: procOut, cleared, spawned: res.spawned, drops: res.drops, trial: res.trial || undefined, refused, heal };
         }
 
         // A bomber's self-detonation (and whatever it catches in the blast) is
@@ -5426,7 +5464,7 @@ const ECONOMY_OPS = {
                 b.lastBroadcast = now;
                 runBroadcast(run, 'hp');
             }
-            const out = { part: msg.part, hp: target.hp, maxHp: target.maxHp, dmg, downed, dead: b.status === 'dead', mini: !!b.mini, crit: r.crit, procs, reflected };
+            const out = { part: msg.part, hp: target.hp, maxHp: target.maxHp, dmg, downed, dead: b.status === 'dead', mini: !!b.mini, crit: r.crit, procs, reflected, heal: lifestealFor(run, user, dmg, true, now) };
             if (pylon) out.pylon = pylon;
             return out;
         }

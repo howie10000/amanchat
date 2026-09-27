@@ -2658,6 +2658,10 @@
   // on its own item), gem/rune effects, unique signature effects and set
   // bonuses at 2/4 pieces, then applies GEAR_FX_CAPS.
   const ITEM_HEALING_MULT = 0.25;
+  // Lifesteal has its own, much smaller multiplier (BALANCE.md): at the 12%
+  // cap it is 1.2% of the damage you deal, before the boss efficiency and the
+  // per-second cap in lifestealHeal.
+  const LIFESTEAL_MULT = 0.10;
   function gearFx(items) {
     const fx = emptyFx();
     for (const raw of (items || [])) {
@@ -2684,7 +2688,7 @@
       if (n >= 4) addFx(fx, s.bonus[4]);
     }
     capFx(fx);
-    fx.lifesteal *= ITEM_HEALING_MULT;
+    fx.lifesteal *= LIFESTEAL_MULT;
     fx.regen *= ITEM_HEALING_MULT;
     return fx;
   }
@@ -2717,6 +2721,124 @@
       if (rand() < (+p.chance || 0)) procs.push({ id: p.id, frac: +p.frac || 0, n: p.n | 0, shape: p.shape || "chain", canCrit: !!p.canCrit });
     }
     return { dmg: Math.max(0, Math.round((+base || 0) * mult)), crit, procs, counterState: { hits }, counterFired };
+  }
+
+  // ---------------------------------------------------------------- BOSS BALANCE
+  // docs/sundered-crown/BALANCE.md; every number here is measured by
+  // tools/boss-balance-sim.js. Nothing below touches a fingerprinted table:
+  // the boss defs keep their raw numbers and the scaling is applied per run.
+  //
+  // LIFESTEAL. The heal of one hit (or one swing's worth of hits), decided by
+  // the SERVER for a guild run and sent back as `heal` (the client never
+  // computes its own there). fx.lifesteal is already LIFESTEAL_MULT'd.
+  //   * vs a boss (head, part, pylon, shard) only BOSS_EFF of it counts;
+  //   * a bucket caps the heal per second at CAP_PCT_PER_SEC of max HP
+  //     (BOSS_CAP_PCT_PER_SEC while striking a boss; BURST_SEC seconds deep),
+  //     so a big crit build cannot out-heal a boss: at the cap lifesteal is
+  //     ~1/4 of what an average player takes from a late boss (BALANCE.md).
+  const LIFESTEAL = { BOSS_EFF: 0.25, CAP_PCT_PER_SEC: 0.006, BOSS_CAP_PCT_PER_SEC: 0.0015, BURST_SEC: 2 };
+  function lifestealBucket() { return { at: 0, avail: -1 }; }
+  // o = {boss:bool, maxHp, bucket ({at, avail}, mutated), now}. Returns the heal (>= 0).
+  function lifestealHeal(lifesteal, dealt, o) {
+    o = o || {};
+    const ls = Math.max(0, +lifesteal || 0), d = Math.max(0, +dealt || 0);
+    if (!(ls > 0) || !(d > 0)) return 0;
+    let heal = ls * d * (o.boss ? LIFESTEAL.BOSS_EFF : 1);
+    const maxHp = Math.max(1, +o.maxHp || GEAR_BASE_HP);
+    const b = o.bucket;
+    if (b) {
+      const rate = maxHp * (o.boss ? LIFESTEAL.BOSS_CAP_PCT_PER_SEC : LIFESTEAL.CAP_PCT_PER_SEC), depth = rate * LIFESTEAL.BURST_SEC;
+      const now = +o.now || 0;
+      if (!(b.avail >= 0)) { b.avail = depth; b.at = now; }
+      // Refill at this hit's rate; never hold more than this context's depth
+      // (a bucket filled in the maze does not carry into a boss swing).
+      b.avail = Math.min(depth, b.avail + Math.max(0, now - (+b.at || 0)) / 1000 * rate);
+      b.at = now;
+      heal = Math.min(heal, b.avail);
+      b.avail -= heal;
+    }
+    return Math.max(0, Math.round(heal * 10) / 10);
+  }
+
+  // A fighter's power, from what they wear: max HP, mitigation, effective HP
+  // and the expected boss damage per second of a sword at full cadence (the
+  // weapon kinds are balanced to within 0.6-1.35x of it).
+  function combatProfile(items, masteryLvl) {
+    items = (items || []).filter(Boolean);
+    const fx = gearFx(items), t = gearTotals(items);
+    const maxHp = gearMaxHp(t.vit, fx.maxHpPct);
+    const mit = gearMitigation(t.def);
+    const taken = Math.max(GEAR_FX_CAPS.takenMultFloor, Math.min(1, +fx.takenMult || 1));
+    const ehp = maxHp / (1 - mit) / taken;
+    const crit = Math.min(1, +fx.crit || 0);
+    const hit = GUILD_BOSS.HIT_DMG.sword * masteryCombatMult(masteryLvl == null ? 1 : masteryLvl) * gearAttackMult(handAtk(items, "melee"))
+      * (1 + crit * (0.5 + (+fx.critDmg || 0))) * (1 + (+fx.bossDmg || 0));
+    const dps = hit * 1000 / GUILD_BOSS.HIT_MIN_MS.sword;
+    return { maxHp, mit, ehp: Math.round(ehp), dps: Math.round(dps), lifesteal: fx.lifesteal || 0 };
+  }
+  // The gear a tier is balanced around ("par"): its item level, a common
+  // rarity for that point of the game, lightly enhanced, no mods, half mastery.
+  const BOSS_PAR = { rarity: [[3, "rare"], [6, "epic"], [12, "legendary"]], plus: [[6, 2], [12, 4]], masteryT: 0.5 };
+  const _parCache = {};
+  function parFor(list, lvl) { for (const [to, v] of list) if (lvl <= to) return v; return list[list.length - 1][1]; }
+  function parProfile(lvl) {
+    lvl = clampGearLvl(lvl);
+    if (_parCache[lvl]) return _parCache[lvl];
+    const rar = parFor(BOSS_PAR.rarity, lvl), plus = parFor(BOSS_PAR.plus, lvl);
+    // One "typical" piece per slot: the mean stats of every random-pool base
+    // of that slot and level at a middle roll.
+    const items = [];
+    for (const slot of ["weapon", "helmet", "chest", "legs", "ring"]) {
+      const bases = GEAR_BASES.filter(x => x.lvl === lvl && x.slot === slot && !x.unique && !x.set && !x.armament);
+      if (!bases.length) continue;
+      const stats = { atk: 0, def: 0, vit: 0 };
+      for (const b of bases) { const s = gearStatBudget(b, lvl, rar, 1); for (const k of GEAR_STATS) stats[k] += (s[k] || 0) / bases.length; }
+      for (const k of GEAR_STATS) stats[k] = Math.round(stats[k]);
+      items.push({ id: "par" + slot, base: bases[0].id, slot, lvl, rarity: rar, roll: 1, stats, v: 2, plus, mods: [], gems: [], sockets: 0 });
+    }
+    const mLvl = Math.max(1, Math.round(1 + BOSS_PAR.masteryT * (MASTERY_MAX_LEVEL - 1)));
+    return (_parCache[lvl] = combatProfile(items, mLvl));
+  }
+  // Per-tier baselines at par gear (tuned with tools/boss-balance-sim.js for
+  // the fight lengths and hit sizes in BALANCE.md). `dmg` multiplies every
+  // boss attack, `hp` the boss pool. Tiers not listed (the endless Depths)
+  // keep their own curves and are never scaled here.
+  const BOSS_TIER_SCALE = {
+    guild_crypt:     { hp: 1.92, mini: 2.46, dmg: 1.27 },
+    guild_thornwild: { hp: 1.28, mini: 1.83, dmg: 1.0 },
+    guild_forge:     { hp: 2.12, mini: 3.0,  dmg: 1.27 },
+    guild_void:      { hp: 1.94, mini: 3.52, dmg: 1.48 },
+    guild_colosseum: { hp: 2.13, mini: 5.27, dmg: 1.05 },
+    guild_dragon:    { hp: 1.38, mini: 6.36, dmg: 2.33 },
+    guild_archive:   { hp: 2.11, mini: 5.89, dmg: 2.98 },
+    guild_geode:     { hp: 2.09, mini: 6.1,  dmg: 4.23 },
+    guild_rime:      { hp: 1.24, mini: 6.48, dmg: 3.82 },
+    guild_mirror:    { hp: 1.69, mini: 5.66, dmg: 2.12 },
+    guild_throne:    { hp: 1.17, mini: 5.02, dmg: 2.58 },
+    raid_nexus:      { hp: 1.29, mini: 7.02, dmg: 1.0 },
+  };
+  // How a party that out-gears the tier's par moves the boss: ratio^EXP,
+  // clamped. EXP < 1 so better gear always still helps.
+  const BOSS_GEAR_ADAPT = { HP_EXP: 0.7, DMG_EXP: 0.9, MIN: 0.6, MAX: 3.5 };
+  // profiles: combatProfile() of each fighter at run start; opts.mini for the
+  // tier's mini-boss (its own HP baseline). Returns {hpMult, dmgMult} for the
+  // encounter (1/1 for an unscaled tier).
+  function bossGearScale(tier, profiles, opts) {
+    const base = BOSS_TIER_SCALE[tier];
+    const cfg = GUILD_DUNGEONS[tier];
+    if (!base || !cfg) return { hpMult: 1, dmgMult: 1, hpAdapt: 1, dmgAdapt: 1 };
+    const par = parProfile(cfg.gearLvl || 1);
+    const ps = (profiles || []).filter(p => p && p.ehp > 0 && p.dps > 0);
+    const A = BOSS_GEAR_ADAPT, cl = (x) => Math.max(A.MIN, Math.min(A.MAX, x));
+    let hpAdapt = 1, dmgAdapt = 1;
+    if (ps.length) {
+      const avg = (k) => ps.reduce((s, p) => s + p[k], 0) / ps.length;
+      hpAdapt = cl(Math.pow(avg("dps") / par.dps, A.HP_EXP));
+      dmgAdapt = cl(Math.pow(avg("ehp") / par.ehp, A.DMG_EXP));
+    }
+    const r3 = (x) => Math.round(x * 1000) / 1000;
+    const hpBase = opts && opts.mini && base.mini != null ? base.mini : base.hp;
+    return { hpMult: r3(hpBase * hpAdapt), dmgMult: r3(base.dmg * dmgAdapt), hpAdapt: r3(hpAdapt), dmgAdapt: r3(dmgAdapt) };
   }
 
   // ---------------------------------------------------------------- WEAPON KINDS
@@ -3888,6 +4010,7 @@
     gearRarityIdx, GEAR_ATK_SOFTCAP, GEAR_MODS, GEAR_MOD_COUNT, GEAR_FX_CAPS, GEAR_UNIQUES, GEAR_SETS,
     SOCKETS_BY_RARITY, SELL_V2_MULT, SET_SLOTS,
     normGear, gearStats, setCounts, gearFx, ITEM_HEALING_MULT, emptyFx, rollHitDamage, rollMod,
+    LIFESTEAL_MULT, LIFESTEAL, lifestealBucket, lifestealHeal, combatProfile, parProfile, BOSS_PAR, BOSS_TIER_SCALE, BOSS_GEAR_ADAPT, bossGearScale,
     makeUnique, makeSetPiece, shiftWeights, floorWeights, lootQualityMult,
     DUNGEON_LOOT, lootRowFor, BONUS_LOOT, CHEST_TIERS, MATERIALS, MATERIAL_IDS, sigilOf,
     GEMS, GEM_TYPES, GEM_MAX_GRADE, RUNES, RUNE_IDS, parseGem, gemId, mergeMats,

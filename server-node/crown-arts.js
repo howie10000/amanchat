@@ -144,12 +144,13 @@ module.exports = function createCrownArts(deps) {
             if (b && inRoom && msg.body != null && engine.isMobile(b) && b.status === 'alive' && !(now < (b.invulnUntil || 0))) {
                 const r = engine.strike(run, user, now, { body: msg.body, pres, geo, base, fx, vsStaggered: a.vsStaggered || 0, procs: false });
                 out.boss = { body: r.body, hp: r.hp, dmg: r.dmg, parried: r.parried || undefined, blocked: r.blocked || undefined, vuln: r.vuln, clone: r.clone, shard: r.shard, dead: r.dead };
+                if (deps.lifestealFor && r.dmg > 0) out.boss.heal = deps.lifestealFor(run, user, r.dmg, true, now);
                 if (r.dmg > 0 || r.clone) hits++;
                 out.dmg = r.dmg; out.crit = r.crit;
             } else if (b && inRoom && msg.body != null && !engine.isMobile(b) && b.status === 'alive') {
                 // A legacy parts boss: an art strikes the pool through hurtBoss.
                 const pp = deps.hurtBoss(run, user, Math.round(base * swingBuffMult(run, user, now, fx, false)), {}, now);
-                if (pp > 0) { hits++; out.boss = { body: 'main', dmg: pp }; out.dmg = pp; deps.afterBossDamage(run, now); }
+                if (pp > 0) { hits++; out.boss = { body: 'main', dmg: pp }; out.dmg = pp; deps.afterBossDamage(run, now); if (deps.lifestealFor) out.boss.heal = deps.lifestealFor(run, user, pp, true, now); }
             }
             // Maze / arena rows: at most maxTargets, each once, the enemy_hit rules.
             const ids = (Array.isArray(msg.targets) ? msg.targets : []).map(String).filter((t, i, l) => l.indexOf(t) === i).slice(0, v.maxTargets);
