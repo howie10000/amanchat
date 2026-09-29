@@ -690,7 +690,8 @@ module.exports = function createCrownEngine(deps) {
         const pres = roomPresence(run, user, now, CROWN.HIT.maxAgeMs);
         if (!pres) throw new Error('Move closer.');
         const fx = ECON.weaponFx(gearFxOf(user), wpn.kind);
-        const mult = ECON.masteryCombatMult(masteryLevelOf(u, 'combat')) * ECON.gearAttackMult(wpn.atk);
+        let mult = ECON.masteryCombatMult(masteryLevelOf(u, 'combat')) * ECON.gearAttackMult(wpn.atk);
+        if (deps.hasAdminGear && deps.hasAdminGear(u, user)) mult *= 10;
         const out = strike(run, user, now, {
             body: msg.body, pres, geo: { x: pres.x, y: pres.y, reach: CROWN.reachFor(weapon, wpn.kind) },
             base: ECON.kindHitDmg(wpn.kind, 'boss') * mult, fx, afterDash: !!msg.afterDash,

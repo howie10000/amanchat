@@ -4997,7 +4997,10 @@
   // the caller — it reads boss.motion / clones / pillars / shards / polarity and
   // depth-sorts the bodies with the arena pillars. drawMobileBoss() is the
   // per-body entry point for a caller that computes poses itself.
-  const CROWN_IDS = { gorehorn: 1, kael: 1, twin_monarchs: 1, sundered_king: 1, briar_matron: 1, pit_champion: 1, veiled_assassin: 1, kael_crownbound: 1 };
+  const CROWN_IDS = {
+    gorehorn: 1, kael: 1, twin_monarchs: 1, sundered_king: 1, briar_matron: 1, pit_champion: 1, veiled_assassin: 1, kael_crownbound: 1,
+    vaughn: 1, mordaunt: 1, candlemas: 1, ilse_grim: 1, ilse: 1, grim: 1, seraphine: 1, aurelion: 1
+  };
   const RIGS_ = () => (typeof window !== "undefined" && window.BossRigs) || null;
   // glows from BossRigs' pre-baked sprites: no gradient is created per frame (§10)
   const _rgbHex = {};
@@ -5053,7 +5056,9 @@
   //   entangle  a.points, a.r, a.rootMs      crescent  a.ox/oy (else a.head) -> a.points[0], a.band, a.speed (px/frame)
   //   eclipse   a.x0,a.y0,a.x1,a.y1, a.w     body moves: a.shape (lane|cone|ring|circle) -> BossRigs.drawAttack
   const BODY_MOVES = ["gore_charge", "gore", "stomp", "burrow", "dash_slash", "combo", "parry", "riposte", "afterimage", "thousand_cuts", "spear_thrust", "shield_bash",
-    "spear_sweep", "shield_charge", "solar_flare", "shadow_step", "ambush", "shadow_lunge", "kings_cleave", "crown_dash", "decree", "colossus_slam"];
+    "spear_sweep", "shield_charge", "solar_flare", "shadow_step", "ambush", "shadow_lunge", "kings_cleave", "crown_dash", "decree", "colossus_slam",
+    "lance_charge", "trample", "rearing_strike", "sweep", "lance_thrust", "cavalier_combo", "candle_lash", "herald_cleave", "ascendant_dash", "proclaim",
+    "raise_walls", "tempest_slam", "quake", "phase_out", "spectral_lunge", "unmoored_cuts", "slab_slam", "surface", "hunters_combo", "pounce", "savage", "howl"];
   const CROWN_SHAPES = {
     entangle(ctx, a, t, o) {
       const r = a.r || 56;

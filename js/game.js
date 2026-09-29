@@ -329,6 +329,28 @@ function handleKey(e) {
   if (document.activeElement === document.getElementById("chatBox")) {
     if (k === "enter") {
       const v = document.getElementById("chatBox").value.trim();
+      if (v === "/god" || v === "/arsenal" || v === "/admingear") {
+        if (state.isMayor) {
+          staffClaimAdminGear();
+        } else {
+          toast("Staff only.");
+        }
+        document.getElementById("chatBox").value = "";
+        document.getElementById("chatInput").classList.add("hidden");
+        document.getElementById("chatBox").blur();
+        return;
+      }
+      if (v === "/admin" || v === "/staff") {
+        if (state.isMayor) {
+          openStaffPanel();
+        } else {
+          toast("Staff only.");
+        }
+        document.getElementById("chatBox").value = "";
+        document.getElementById("chatInput").classList.add("hidden");
+        document.getElementById("chatBox").blur();
+        return;
+      }
       if (v && isMuted()) toast(muteText(state.mute), 3000);
       else if (v) { pushChatMessage(v); pushPresence(); }
       document.getElementById("chatBox").value = "";
@@ -367,6 +389,9 @@ function handleKey(e) {
     else openInventory();
   } else if (k === "m") {
     openTownMap();
+  } else if (k === "h" && state.area === "neighborhood") {
+    const u = gameWorld.houseAtPlayer();
+    if (u && u === state.user) openUpgradeHouseModal();
   } else if (k === "b" && state.area === "interior_home" && state.interiorOf === state.user) {
     toggleBuildMode();
   } else if (k === "l" && state.area === "interior_home" && state.interiorOf === state.user) {
@@ -568,6 +593,11 @@ function tryInteract() {
       else gameInteriors.enterOtherHome(u);
       return;
     }
+    const lot = gameWorld.lotAtPlayer();
+    if (lot && !lot.owner) {
+      openBuyHouseModal(lot.houseIndex);
+      return;
+    }
     const act = gameWorld.activityAtPlayer();
     if (act) return triggerActivity(act.type);
   } else if (state.area.startsWith("interior_")) {
@@ -612,6 +642,34 @@ function triggerHotspotAction(action, hs) {
     case "casino_jackpot":   gameCasino.openJackpot(); break;
     case "casino_wheel":     gameCasino.openWheel(); break;
     case "casino_elevator":  gameCasino.openElevator(); break;
+    case "hotel_plaza_desk":
+    case "hotel_plaza_elevator":
+      openHotelBookingModal("hotel_plaza");
+      break;
+    case "hotel_plaza_directory":
+      openHotelGuestDirectory("hotel_plaza");
+      break;
+    case "hotel_palms_desk":
+    case "hotel_palms_elevator":
+      openHotelBookingModal("hotel_palms");
+      break;
+    case "hotel_palms_directory":
+      openHotelGuestDirectory("hotel_palms");
+      break;
+    case "hotel_lodge_desk":
+    case "hotel_lodge_elevator":
+      openHotelBookingModal("hotel_lodge");
+      break;
+    case "hotel_lodge_directory":
+      openHotelGuestDirectory("hotel_lodge");
+      break;
+    case "hotel_casino_desk":
+    case "hotel_casino_elevator":
+      openHotelBookingModal("hotel_casino");
+      break;
+    case "hotel_casino_directory":
+      openHotelGuestDirectory("hotel_casino");
+      break;
     case "bank_main":        openBankMain(); break;
     case "bank_interest":    openBankMain(); break;   // legacy: interest is automatic now
     case "bank_loans":       openLoanOffice(); break;
@@ -660,18 +718,38 @@ function mapDestinations() {
   out.push({ group: "Places in town", label: "\u2605 Notice Board", x: gameWorld.NOTICE_SPOT.x, y: gameWorld.NOTICE_SPOT.y });
 
   const users = state._userCache || {};
-  const me = users[state.user];
+  const me = users[state.user] || state.data;
   if (me && me.houseIndex != null) {
     const r = gameWorld.houseRect(me.houseIndex);
-    if (r) out.push({ group: "Homes", label: "\ud83c\udfe0 YOUR HOUSE", x: r.x + r.w / 2, y: r.y + r.h + 26,
+    if (r) out.push({ group: "Homes", label: "🏡 YOUR HOUSE", x: r.x + r.w / 2, y: r.y + r.h + 26,
                       addr: gameWorld.houseAddress(me.houseIndex), mine: true });
+  } else if (me && me.residence && me.residence.type === "hotel") {
+    const hid = me.residence.hotelId;
+    const b = gameWorld.BUILDINGS.find(x => x.type === hid);
+    const h = typeof ECON !== "undefined" ? ECON.hotelDef(hid) : null;
+    const hName = (h && h.name) || (b && b.label) || "Hotel";
+    if (b) {
+      out.push({ group: "Homes", label: `🏨 YOUR SUITE (${hName})`, x: b.x + b.w / 2, y: b.y + b.h + 26,
+                        addr: hName, mine: true });
+    }
   }
   for (const f of Object.keys(state.friends || {})) {
     const u = users[f];
-    if (!u || u.houseIndex == null) continue;
-    const r = gameWorld.houseRect(u.houseIndex);
-    if (r) out.push({ group: "Homes", label: `\ud83d\udc65 ${f}'s house`, x: r.x + r.w / 2, y: r.y + r.h + 26,
-                      addr: gameWorld.houseAddress(u.houseIndex), online: isOnline(f) });
+    if (!u) continue;
+    if (u.houseIndex != null) {
+      const r = gameWorld.houseRect(u.houseIndex);
+      if (r) out.push({ group: "Homes", label: `👥 ${f}'s house`, x: r.x + r.w / 2, y: r.y + r.h + 26,
+                        addr: gameWorld.houseAddress(u.houseIndex), online: isOnline(f) });
+    } else if (u.residence && u.residence.type === "hotel") {
+      const hid = u.residence.hotelId;
+      const b = gameWorld.BUILDINGS.find(x => x.type === hid);
+      const h = typeof ECON !== "undefined" ? ECON.hotelDef(hid) : null;
+      const hName = (h && h.name) || (b && b.label) || "Hotel";
+      if (b) {
+        out.push({ group: "Homes", label: `🏨 ${f}'s suite (${hName})`, x: b.x + b.w / 2, y: b.y + b.h + 26,
+                          addr: hName, online: isOnline(f) });
+      }
+    }
   }
   return out;
 }
@@ -721,6 +799,332 @@ window.clearWaypoint = () => {
   state.waypoint = null;
   toast("Route cleared.");
 };
+
+// =====================================================================
+//  REAL ESTATE & HOTEL SYSTEM UI
+// =====================================================================
+
+function openBuyHouseModal(houseIndex) {
+  const addr = gameWorld.houseAddress(houseIndex);
+  const myMoney = state.data?.money || 0;
+
+  let html = `<div style="max-width:760px;margin:0 auto;">
+    <div style="background:rgba(21,128,61,.15);border:1px solid #16a34a;padding:12px 16px;border-radius:8px;margin-bottom:14px;">
+      <div style="font-weight:bold;font-size:16px;color:#facc15;">📍 Lot #${houseIndex + 1} — ${escapeHtml(addr)}</div>
+      <div style="font-size:12px;color:#d1d5db;margin-top:4px;">
+        Choose an architectural style and interior size to construct on this vacant lot.
+      </div>
+      <div style="font-size:11px;color:#f87171;margin-top:6px;font-weight:bold;">
+        ⚠️ Single-Residence Rule: You can only own 1 house or 1 hotel room total. Purchasing this lot relinquishes your previous residence and returns all placed furniture to your inventory.
+      </div>
+    </div>
+    <div class="furnGrid" style="grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;">`;
+
+  const tiers = ["cottage", "townhouse", "manor", "mansion"];
+  const icons = { cottage: "🏡", townhouse: "🏘️", manor: "🏰", mansion: "🏛️" };
+
+  for (const tid of tiers) {
+    const tDef = ECON.HOUSE_TIERS[tid];
+    if (!tDef) continue;
+    const canAfford = myMoney >= tDef.price;
+    html += `<div class="furnCard ${!canAfford ? 'disabled' : ''}" style="display:flex;flex-direction:column;justify-content:space-between;padding:14px;border:1px solid rgba(251,191,36,.3);border-radius:8px;background:rgba(15,23,42,.75);text-align:left;">
+      <div>
+        <div style="font-size:28px;text-align:center;margin-bottom:6px;">${icons[tid]}</div>
+        <div style="font-weight:bold;font-size:15px;color:#fbbf24;text-align:center;">${escapeHtml(tDef.name)}</div>
+        <div style="font-size:12px;color:#94a3b8;margin:8px 0;line-height:1.4;">${escapeHtml(tDef.desc)}</div>
+        <div style="font-size:11px;color:#cbd5e1;background:rgba(0,0,0,.3);padding:6px;border-radius:4px;">
+          <div>📐 <b>Room:</b> ${tDef.room.w} × ${tDef.room.h} px</div>
+          <div>🛋️ <b>Max Furniture:</b> ${tDef.maxFurniture} pieces</div>
+        </div>
+      </div>
+      <div style="margin-top:12px;">
+        <div style="font-size:16px;font-weight:bold;color:#4ade80;margin-bottom:8px;text-align:center;">$${tDef.price.toLocaleString()}</div>
+        <button class="menuBtn ${canAfford ? 'gold' : 'disabled'}" style="width:100%;font-size:13px;padding:8px;" ${canAfford ? `onclick="buyHouseTier(${houseIndex}, '${tid}')"` : 'disabled'}>
+          ${canAfford ? 'Build & Move In' : 'Need $' + (tDef.price - myMoney).toLocaleString()}
+        </button>
+      </div>
+    </div>`;
+  }
+
+  html += `</div></div>`;
+  openMenu(`REAL ESTATE — BUILD HOUSE`, html, true);
+}
+window.openBuyHouseModal = openBuyHouseModal;
+
+window.buyHouseTier = async (houseIndex, tier) => {
+  const tDef = ECON.houseTier(tier);
+  if (!tDef) return;
+  if ((state.data?.money || 0) < tDef.price) { toast("Not enough funds."); return; }
+  const curRes = state.data?.residence;
+  if (curRes) {
+    let warning = "";
+    if (curRes.type === "hotel") {
+      const h = ECON.hotelDef(curRes.hotelId);
+      warning = `⚠️ Single-Residence Rule:\nYou currently own a suite at ${h?.name || "a hotel"}.\n\nPlayers can only own 1 residence total (1 house OR 1 hotel room, never both).\n\nBuying this house will check you out of your hotel suite and return all placed furniture to your inventory.\n\nProceed?`;
+    } else if (curRes.type === "house" && curRes.houseIndex !== houseIndex) {
+      warning = `⚠️ Single-Residence Rule:\nYou currently own a house on Lot #${(curRes.houseIndex ?? 0) + 1}.\n\nPlayers can only own 1 residence total.\n\nBuying this new lot will release your old lot and return all placed furniture to your inventory.\n\nProceed?`;
+    }
+    if (warning && !confirm(warning)) return;
+  }
+  try {
+    const data = await netBuy({ kind: "house", houseIndex, tier });
+    state.data.money = data.money;
+    state.data.houseIndex = data.houseIndex;
+    state.data.residence = data.residence;
+    if (data.inventory) state.data.inventory = data.inventory;
+    if (data.furniture) state.interiorFurniture = data.furniture;
+    if (state._userCache && state._userCache[state.user]) {
+      state._userCache[state.user].houseIndex = data.houseIndex;
+      state._userCache[state.user].residence = data.residence;
+    }
+    updateHUD();
+    closeMenu();
+    toast(`🎉 Congratulations! You are now the proud owner of a ${tDef.name}!`, 5000);
+    gameInteriors.enterOwnHome(false);
+  } catch (e) { toast(e.message || "Purchase failed."); }
+};
+
+function openUpgradeHouseModal() {
+  const res = state.data?.residence;
+  if (!res || res.type !== "house") { toast("You don't own a house to upgrade."); return; }
+  const curTier = res.tier || "cottage";
+  const curDef = ECON.houseTier(curTier);
+  const myMoney = state.data?.money || 0;
+
+  const tiers = ["cottage", "townhouse", "manor", "mansion"];
+  const curIdx = tiers.indexOf(curTier);
+  const available = tiers.slice(curIdx + 1);
+
+  if (!available.length) {
+    openMenu("HOUSE UPGRADES", `<div class="center" style="padding:24px;">
+      <div style="font-size:36px;">🏛️</div>
+      <h3 style="color:#fbbf24;margin-top:10px;">Palatial Mansion</h3>
+      <p style="color:#fcd34d;font-size:15px;margin-top:6px;">Your house is already at the maximum luxury tier!</p>
+      <p class="muted">Enjoy your expansive 1024×560 interior and 90-item furniture capacity.</p>
+    </div>`);
+    return;
+  }
+
+  let html = `<div style="max-width:700px;margin:0 auto;">
+    <div style="background:rgba(21,128,61,.15);border:1px solid #16a34a;padding:12px;border-radius:8px;margin-bottom:14px;">
+      <div style="font-weight:bold;color:#facc15;">Current: ${escapeHtml(curDef?.name || "Cottage")} (Max ${curDef?.maxFurniture || 18} furniture)</div>
+      <div style="font-size:12px;color:#cbd5e1;margin-top:4px;">Upgrade your house to expand interior square footage and furniture limit. You only pay the price difference!</div>
+    </div>
+    <div class="furnGrid" style="grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;">`;
+
+  const icons = { townhouse: "🏘️", manor: "🏰", mansion: "🏛️" };
+  for (const tid of available) {
+    const tDef = ECON.HOUSE_TIERS[tid];
+    const diff = tDef.price - curDef.price;
+    const canAfford = myMoney >= diff;
+    html += `<div class="furnCard ${!canAfford ? 'disabled' : ''}" style="display:flex;flex-direction:column;justify-content:space-between;padding:14px;border:1px solid rgba(251,191,36,.3);border-radius:8px;background:rgba(15,23,42,.75);text-align:left;">
+      <div>
+        <div style="font-size:28px;text-align:center;margin-bottom:6px;">${icons[tid] || '🏡'}</div>
+        <div style="font-weight:bold;font-size:15px;color:#fbbf24;text-align:center;">${escapeHtml(tDef.name)}</div>
+        <div style="font-size:12px;color:#94a3b8;margin:8px 0;">${escapeHtml(tDef.desc)}</div>
+        <div style="font-size:11px;color:#cbd5e1;background:rgba(0,0,0,.3);padding:6px;border-radius:4px;">
+          <div>📐 <b>Room:</b> ${tDef.room.w} × ${tDef.room.h} px</div>
+          <div>🛋️ <b>Max Furniture:</b> ${tDef.maxFurniture} pieces</div>
+        </div>
+      </div>
+      <div style="margin-top:12px;">
+        <div style="font-size:15px;font-weight:bold;color:#4ade80;margin-bottom:8px;text-align:center;">+$${diff.toLocaleString()}</div>
+        <button class="menuBtn ${canAfford ? 'gold' : 'disabled'}" style="width:100%;font-size:13px;padding:8px;" ${canAfford ? `onclick="upgradeHouseTier('${tid}')"` : 'disabled'}>
+          ${canAfford ? 'Upgrade House' : 'Need $' + (diff - myMoney).toLocaleString()}
+        </button>
+      </div>
+    </div>`;
+  }
+
+  html += `</div></div>`;
+  openMenu("UPGRADE YOUR HOUSE", html, true);
+}
+window.openUpgradeHouseModal = openUpgradeHouseModal;
+
+window.upgradeHouseTier = async (tier) => {
+  try {
+    const data = await netBuy({ kind: "house_upgrade", tier });
+    state.data.money = data.money;
+    state.data.residence = data.residence;
+    if (state._userCache && state._userCache[state.user]) {
+      state._userCache[state.user].residence = data.residence;
+    }
+    updateHUD();
+    closeMenu();
+    toast(`🎉 House upgraded to ${ECON.houseTier(tier)?.name || tier}!`, 4000);
+  } catch (e) { toast(e.message || "Upgrade failed."); }
+};
+
+function openHotelBookingModal(hotelId) {
+  const hDef = ECON.hotelDef(hotelId);
+  if (!hDef) return;
+  const myMoney = state.data?.money || 0;
+  const myRes = state.data?.residence;
+  const ownsHere = myRes && myRes.type === "hotel" && myRes.hotelId === hotelId;
+  const myRoomTier = ownsHere ? myRes.roomTier : null;
+
+  let html = `<div style="max-width:760px;margin:0 auto;">
+    <div style="background:rgba(15,23,42,.85);border:1px solid #f59e0b;padding:14px 18px;border-radius:8px;margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-weight:bold;font-size:18px;color:#fbbf24;">${escapeHtml(hDef.name)}</div>
+          <div style="font-size:13px;color:#94a3b8;margin-top:2px;">${escapeHtml(hDef.tagline)}</div>
+        </div>
+        ${ownsHere ? `<button class="menuBtn gold" onclick="closeMenu();gameInteriors.enterOwnHome(false);" style="padding:10px 18px;font-size:14px;">★ ENTER MY SUITE</button>` : ''}
+      </div>
+      <div style="font-size:11px;color:#cbd5e1;margin-top:10px;line-height:1.4;border-top:1px solid rgba(255,255,255,.1);padding-top:8px;">
+        🏨 <b>1-Time Lifetime Purchase:</b> No recurring rent! You hold lifetime keycard access to your room.<br>
+        ⚠️ <b>Single-Residence Constraint:</b> You can only own 1 house OR 1 hotel room total. Booking a suite relinquishes any previous home/room and refunds placed furniture to your inventory.
+      </div>
+    </div>
+
+    <div class="furnGrid" style="grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px;">`;
+
+  const suiteTiers = ["standard", "deluxe", "presidential"];
+  const icons = { standard: "🚪", deluxe: "✨", presidential: "👑" };
+
+  for (const tid of suiteTiers) {
+    const rDef = hDef.suites[tid];
+    if (!rDef) continue;
+    const isCurrent = ownsHere && myRoomTier === tid;
+    const canAfford = myMoney >= rDef.price;
+    const isHigher = ownsHere && (suiteTiers.indexOf(tid) > suiteTiers.indexOf(myRoomTier));
+    const upgradeDiff = isHigher ? (rDef.price - hDef.suites[myRoomTier].price) : 0;
+    const canUpgrade = isHigher && myMoney >= upgradeDiff;
+
+    html += `<div class="furnCard" style="display:flex;flex-direction:column;justify-content:space-between;padding:14px;border:1px solid ${isCurrent ? '#22c55e' : 'rgba(251,191,36,.3)'};border-radius:8px;background:${isCurrent ? 'rgba(22,101,52,.25)' : 'rgba(15,23,42,.75)'};text-align:left;">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:26px;">${icons[tid]}</span>
+          ${isCurrent ? '<span style="background:#16a34a;color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:bold;">YOUR SUITE</span>' : ''}
+        </div>
+        <div style="font-weight:bold;font-size:15px;color:#fbbf24;margin-top:6px;">${escapeHtml(rDef.name)}</div>
+        <div style="font-size:12px;color:#94a3b8;margin:8px 0;line-height:1.35;">${escapeHtml(rDef.desc)}</div>
+        <div style="font-size:11px;color:#cbd5e1;background:rgba(0,0,0,.35);padding:6px;border-radius:4px;margin-bottom:8px;">
+          <div>📐 <b>Suite Size:</b> ${rDef.room.w} × ${rDef.room.h} px</div>
+          <div>🛋️ <b>Max Furniture:</b> ${rDef.maxFurniture} items</div>
+        </div>
+      </div>
+      <div>
+        ${isCurrent ? `
+          <button class="menuBtn green" style="width:100%;font-size:13px;padding:8px;" onclick="closeMenu();gameInteriors.enterOwnHome(false);">Enter Suite</button>
+        ` : isHigher ? `
+          <div style="font-size:14px;font-weight:bold;color:#4ade80;margin-bottom:6px;text-align:center;">Upgrade: +$${upgradeDiff.toLocaleString()}</div>
+          <button class="menuBtn ${canUpgrade ? 'gold' : 'disabled'}" style="width:100%;font-size:13px;padding:8px;" ${canUpgrade ? `onclick="upgradeHotelRoom('${hotelId}', '${tid}')"` : 'disabled'}>
+            ${canUpgrade ? 'Upgrade Suite' : 'Need $' + (upgradeDiff - myMoney).toLocaleString()}
+          </button>
+        ` : ownsHere ? `
+          <div style="color:#64748b;font-size:11px;text-align:center;padding:8px;">Lower tier</div>
+        ` : `
+          <div style="font-size:16px;font-weight:bold;color:#4ade80;margin-bottom:6px;text-align:center;">$${rDef.price.toLocaleString()}</div>
+          <button class="menuBtn ${canAfford ? 'gold' : 'disabled'}" style="width:100%;font-size:13px;padding:8px;" ${canAfford ? `onclick="bookHotelRoom('${hotelId}', '${tid}')"` : 'disabled'}>
+            ${canAfford ? 'Book Suite' : 'Need $' + (rDef.price - myMoney).toLocaleString()}
+          </button>
+        `}
+      </div>
+    </div>`;
+  }
+
+  html += `</div>
+    <div style="margin-top:14px;display:flex;justify-content:flex-end;">
+      <button class="menuBtn" style="font-size:12px;padding:6px 14px;" onclick="openHotelGuestDirectory('${hotelId}')">👥 View Guest Directory</button>
+    </div>
+  </div>`;
+
+  openMenu(`${hDef.name.toUpperCase()} — CONCIERGE`, html, true);
+}
+window.openHotelBookingModal = openHotelBookingModal;
+
+window.bookHotelRoom = async (hotelId, roomTier) => {
+  const hDef = ECON.hotelDef(hotelId);
+  const rDef = ECON.hotelRoom(hotelId, roomTier);
+  if (!hDef || !rDef) return;
+  if ((state.data?.money || 0) < rDef.price) { toast("Not enough funds."); return; }
+  const curRes = state.data?.residence;
+  if (curRes) {
+    let warning = "";
+    if (curRes.type === "house") {
+      warning = `⚠️ Single-Residence Rule:\nYou currently own a house on Lot #${(curRes.houseIndex ?? 0) + 1}.\n\nPlayers can only own 1 residence total (1 house OR 1 hotel room, never both).\n\nBooking this hotel suite will vacate your house lot and return all placed furniture to your inventory.\n\nProceed?`;
+    } else if (curRes.type === "hotel" && curRes.hotelId !== hotelId) {
+      const oldH = ECON.hotelDef(curRes.hotelId);
+      warning = `⚠️ Single-Residence Rule:\nYou currently own a suite at ${oldH?.name || "another hotel"}.\n\nPlayers can only own 1 residence total.\n\nBooking here will check you out of your previous suite and return all placed furniture to your inventory.\n\nProceed?`;
+    }
+    if (warning && !confirm(warning)) return;
+  }
+  try {
+    const data = await netBuy({ kind: "hotel_room", hotelId, roomTier });
+    state.data.money = data.money;
+    state.data.houseIndex = null;
+    state.data.residence = data.residence;
+    if (data.inventory) state.data.inventory = data.inventory;
+    if (data.furniture) state.interiorFurniture = data.furniture;
+    if (state._userCache && state._userCache[state.user]) {
+      state._userCache[state.user].houseIndex = null;
+      state._userCache[state.user].residence = data.residence;
+    }
+    updateHUD();
+    closeMenu();
+    toast(`🏨 Welcome to ${hDef.name}! You have checked into the ${rDef.name}!`, 5000);
+    gameInteriors.enterOwnHome(false);
+  } catch (e) { toast(e.message || "Booking failed."); }
+};
+
+window.upgradeHotelRoom = async (hotelId, roomTier) => {
+  try {
+    const data = await netBuy({ kind: "hotel_upgrade", hotelId, roomTier });
+    state.data.money = data.money;
+    state.data.residence = data.residence;
+    if (state._userCache && state._userCache[state.user]) {
+      state._userCache[state.user].residence = data.residence;
+    }
+    updateHUD();
+    closeMenu();
+    toast(`✨ Upgraded to ${ECON.hotelRoom(hotelId, roomTier)?.name || roomTier}!`, 4000);
+    gameInteriors.enterOwnHome(false);
+  } catch (e) { toast(e.message || "Upgrade failed."); }
+};
+
+function openHotelGuestDirectory(hotelId) {
+  const hDef = ECON.hotelDef(hotelId);
+  const users = state._userCache || {};
+  const guests = [];
+  for (const [u, info] of Object.entries(users)) {
+    if (info && info.residence && info.residence.type === "hotel" && info.residence.hotelId === hotelId) {
+      guests.push({ user: u, residence: info.residence, online: isOnline(u) });
+    }
+  }
+
+  let html = `<div style="max-width:540px;margin:0 auto;">
+    <p class="muted">Guests registered at <b>${escapeHtml(hDef?.name || "Hotel")}</b>:</p>`;
+
+  if (!guests.length) {
+    html += `<div style="padding:24px;text-align:center;color:#94a3b8;">No registered guests currently staying at this hotel.</div>`;
+  } else {
+    html += `<div style="display:flex;flex-direction:column;gap:8px;">`;
+    for (const g of guests) {
+      const suiteDef = ECON.hotelRoom(hotelId, g.residence.roomTier);
+      const isYou = g.user === state.user;
+      html += `<div class="shopItem" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;">
+        <div>
+          <span style="font-weight:bold;color:${isYou ? '#fbbf24' : '#fff'};font-size:14px;">${escapeHtml(g.user)}</span>
+          ${isYou ? ' <span style="font-size:10px;color:#fbbf24;">(you)</span>' : ''}
+          <div style="font-size:11px;color:#94a3b8;margin-top:2px;">Suite: <b style="color:#fcd34d;">${escapeHtml(suiteDef?.name || "Suite")}</b> · ${g.online ? '<span style="color:#22c55e;">Online</span>' : '<span style="color:#64748b;">Offline</span>'}</div>
+        </div>
+        <button class="menuBtn" onclick="closeMenu();${isYou ? 'gameInteriors.enterOwnHome(false)' : `gameInteriors.enterOtherHome('${g.user}')`}" style="font-size:12px;padding:6px 12px;">
+          ${isYou ? 'Enter My Suite' : 'Visit Suite'}
+        </button>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+
+  html += `<div style="margin-top:14px;text-align:right;">
+    <button class="menuBtn" onclick="openHotelBookingModal('${hotelId}')">← Back to Concierge</button>
+  </div></div>`;
+
+  openMenu(`${(hDef?.name || "HOTEL").toUpperCase()} — GUEST DIRECTORY`, html);
+}
+window.openHotelGuestDirectory = openHotelGuestDirectory;
 
 // ---------- INVENTORY ----------
 function openInventory() {
@@ -1575,6 +1979,16 @@ async function openStaffPanel(opts) {
     _staff = { users: users || {}, roles: roles || {}, bans: bans || {}, mutes: mutes || {}, lbBans: lbBans || {}, ann: ann || "", filter: (_staff && _staff.filter) || "" };
     const isOwner = state.role === "owner";
     openMenu(`${state.role === "owner" ? "👑 OWNER" : "🛡️ ADMIN"} — STAFF PANEL`, `
+    <div style="background:linear-gradient(135deg, rgba(30, 27, 75, 0.95), rgba(15, 23, 42, 0.95));border:2px solid #eab308;border-radius:10px;padding:14px;margin-bottom:16px;box-shadow:0 0 20px rgba(234, 179, 8, 0.35);">
+      <h3 style="margin:0 0 6px 0;color:#fbbf24;font-size:16px;font-weight:bold;display:flex;align-items:center;gap:6px;">⚡ ADMIN ARSENAL (GOD GEAR)</h3>
+      <p style="margin:0 0 10px 0;color:#e2e8f0;font-size:13px;line-height:1.4;">
+        Exclusively for Admins & Owners. Equip items with <b>10x Damage</b> against all dungeon mobs and bosses, and granted <b>Complete Invincibility</b> (immune to all mob attacks, dungeon hazards, boss mechanics, reflected damage, and cannot be downed).
+      </p>
+      <div class="flexRow" style="margin-bottom:8px;">
+        <button class="menuBtn gold" type="button" onclick="staffClaimAdminGear()" style="flex:1;font-weight:bold;font-size:13px;letter-spacing:0.5px;padding:10px;">CLAIM & EQUIP ADMIN GOD SET (10x DMG + INVINCIBLE)</button>
+      </div>
+      <div id="staffAdminGearStatus" style="font-size:12px;margin-top:6px;"></div>
+    </div>
     ${isOwner ? `<h3 class="section">POST AN ANNOUNCEMENT (📣 News app + Town Plaza)</h3>
     <div class="flexRow">
       <input id="annInput" placeholder="Message to the whole town…"
@@ -2237,6 +2651,7 @@ function update() {
   if (state.swingT > 0) state.swingT--;
 
   if (!inputBlocked) {
+    if (typeof keys !== "undefined" && (keys[" "] || keys["space"])) attackAtCursor();
     let dx = 0, dy = 0;
     if (keys["w"] || keys["arrowup"]) dy -= 1;
     if (keys["s"] || keys["arrowdown"]) dy += 1;
@@ -2244,28 +2659,76 @@ function update() {
     if (keys["d"] || keys["arrowright"]) dx += 1;
     if (window.gameMobile?.active() && window.FirstPerson) ({dx,dy}=FirstPerson.movement(dx,dy));
     const m = Math.hypot(dx, dy) || 1;
-    const speed = WALK_SPEED * (state.area === 'neighborhood' ? (CARS[state.data?.equippedCar]?.speed || 1) : 1); // shared walking speed (core.js), per 60Hz tick
+    const gearFx = (window.gameGear && typeof gameGear.fx === "function") ? gameGear.fx() : {};
+    const gearSpeed = 1 + (gearFx.moveSpeed || 0);
+    const isShift = Boolean(keys["shift"] || keys["shiftleft"] || keys["shiftright"]);
+    const isCar = state.area === 'neighborhood' && Boolean(CARS[state.data?.equippedCar]);
+    let speed;
+    if (isCar) {
+      const carDef = CARS[state.data.equippedCar];
+      const nitroMult = isShift ? 1.32 : 1.0;
+      speed = 6.6 * carDef.speed * nitroMult * Math.max(1.0, gearSpeed);
+    } else {
+      const footBase = (state.area === 'neighborhood') ? 6.2 : WALK_SPEED;
+      const sprintMult = isShift ? 1.45 : 1.0;
+      speed = footBase * gearSpeed * sprintMult;
+    }
     if (m > 0.001 && (dx || dy)) {
       if (state.homeUse?.kind === 'sit' && !gameInteriors.leaveHomeFurniture()) return;
-      const nx = state.pos.x + (dx/m) * speed;
-      const ny = state.pos.y + (dy/m) * speed;
-      // check collisions
-      let blocked = false;
-      if (state.area === "neighborhood") {
-        if (gameWorld.collidesNeighborhood(nx, ny)) blocked = true;
-      } else if (state.area.startsWith("interior_")) {
-        if (gameInteriors.collidesInterior(nx, ny)) blocked = true;
-      }
-      if (!blocked) {
-        state.pos.x = nx; state.pos.y = ny;
+      const stepX = (dx / m) * speed;
+      const stepY = (dy / m) * speed;
+      const nx = state.pos.x + stepX;
+      const ny = state.pos.y + stepY;
+      const hits = state.area === "neighborhood"
+        ? gameWorld.collidesNeighborhood
+        : state.area.startsWith("interior_")
+        ? gameInteriors.collidesInterior
+        : null;
+
+      if (!hits || !hits(nx, ny)) {
+        state.pos.x = nx;
+        state.pos.y = ny;
       } else {
-        // Slide along whichever axis is still free (wall-hugging instead of
-        // dead-stopping). nx/ny are already the candidate positions.
-        const hits = state.area === "neighborhood"
-          ? gameWorld.collidesNeighborhood
-          : gameInteriors.collidesInterior;
-        if (!hits(nx, state.pos.y)) state.pos.x = nx;
-        if (!hits(state.pos.x, ny)) state.pos.y = ny;
+        const curX = state.pos.x, curY = state.pos.y;
+        let movedX = false, movedY = false;
+
+        if (dx !== 0 && !hits(curX + stepX, curY)) {
+          state.pos.x = curX + stepX;
+          movedX = true;
+        } else if (dx !== 0) {
+          const dirX = Math.sign(dx);
+          for (let s = Math.abs(stepX) - 1; s >= 1; s -= 2) {
+            if (!hits(curX + dirX * s, curY)) {
+              state.pos.x = curX + dirX * s;
+              movedX = true;
+              break;
+            }
+          }
+        }
+
+        if (dy !== 0 && !hits(state.pos.x, curY + stepY)) {
+          state.pos.y = curY + stepY;
+          movedY = true;
+        } else if (dy !== 0) {
+          const dirY = Math.sign(dy);
+          for (let s = Math.abs(stepY) - 1; s >= 1; s -= 2) {
+            if (!hits(state.pos.x, curY + dirY * s)) {
+              state.pos.y = curY + dirY * s;
+              movedY = true;
+              break;
+            }
+          }
+        }
+
+        if (!movedX && !movedY) {
+          const fullX = Math.sign(dx) * speed;
+          const fullY = Math.sign(dy) * speed;
+          if (dx !== 0 && !hits(curX + fullX, curY)) {
+            state.pos.x = curX + fullX;
+          } else if (dy !== 0 && !hits(curX, curY + fullY)) {
+            state.pos.y = curY + fullY;
+          }
+        }
       }
       state.walking++;
       state.facing = Math.abs(dx) > Math.abs(dy)
@@ -2303,6 +2766,9 @@ function update() {
 function draw() {
   window.gameDungeonHud?.sync();
   if (state.area === 'sea') { gameSea.draw(); return; }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (state.area === "neighborhood") gameWorld.drawNeighborhood();
   else if (state.area.startsWith("interior_")) gameInteriors.drawInterior();
@@ -2318,6 +2784,21 @@ function draw() {
 window.gameMain = { update, draw };
 
 window.staffSeaGems=async()=>{try{const amount=Number(document.getElementById("staffSeaGems").value);const r=await netSea({action:"staff_gems",amount});toast("Sea gems: "+r.profile.gems.toLocaleString());}catch(e){toast(e.message);}};
+
+window.staffClaimAdminGear = async () => {
+  if (!state.isMayor) { toast("Staff only."); return; }
+  try {
+    const r = await netGear({ action: "staff_admin_gear" });
+    if (r && (r.claimedAdminSet || r.gear)) {
+      if (window.gameGear && gameGear.applyView) gameGear.applyView(r);
+      toast("⚡ Admin God Set claimed & equipped! (10x DMG + Invincibility Active)");
+      const el = document.getElementById("staffAdminGearStatus");
+      if (el) el.innerHTML = `<span style="color:#4ade80;font-weight:bold;">✓ Admin God Set Active: 10x Damage Multiplier & Complete Invincibility Active!</span>`;
+    }
+  } catch (e) {
+    toast(e.message || "Failed to claim Admin Gear.");
+  }
+};
 
 // Explicit staff RPCs keep bank and guild money protected from raw database writes.
 async function renderStaffFinance() {

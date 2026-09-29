@@ -6,6 +6,41 @@ const INTERIORS = {
   interior_dealership: {w:1024,h:640,floor:'#27384b',wall:'#d5eaf0',trim:'#22d3ee',hotspots:[{x:512,y:240,label:'TALK TO THE DEALER',action:'car_dealer',icon:'people'}]},
   interior_racetrack: {w:1024,h:640,floor:'#27384b',wall:'#c7d2fe',trim:'#a3e635',hotspots:[{x:512,y:240,label:'RACE A NEW 3D TRACK',action:'car_race',icon:'flag'},{x:720,y:240,label:'THE APEX LEAGUE OPEN QUALIFIERS',action:'car_race_qualifier',icon:'trophy'}]},
   interior_home: { w: 1024, h: 640, floor: "#a16207", wall: "#fef3c7", trim: "#7c2d12" },
+
+  // HOTEL LOBBIES
+  interior_hotel_plaza: {
+    w: 1024, h: 640, floor: "#f8fafc", wall: "#1e293b", trim: "#f59e0b",
+    hotspots: [
+      { x: 512, y: 220, label: "CONCIERGE & SUITES", action: "hotel_plaza_desk", icon: "people" },
+      { x: 260, y: 220, label: "ELEVATOR TO SUITES", action: "hotel_plaza_elevator", icon: "door" },
+      { x: 760, y: 220, label: "GUEST DIRECTORY", action: "hotel_plaza_directory", icon: "board" },
+    ],
+  },
+  interior_hotel_palms: {
+    w: 1024, h: 640, floor: "#fef08a", wall: "#0369a1", trim: "#0284c7",
+    hotspots: [
+      { x: 512, y: 220, label: "RESORT FRONT DESK", action: "hotel_palms_desk", icon: "people" },
+      { x: 260, y: 220, label: "OCEANVIEW SUITES", action: "hotel_palms_elevator", icon: "door" },
+      { x: 760, y: 220, label: "GUEST DIRECTORY", action: "hotel_palms_directory", icon: "board" },
+    ],
+  },
+  interior_hotel_lodge: {
+    w: 1024, h: 640, floor: "#78350f", wall: "#451a03", trim: "#fef08a",
+    hotspots: [
+      { x: 512, y: 220, label: "LODGE FRONT DESK", action: "hotel_lodge_desk", icon: "people" },
+      { x: 260, y: 220, label: "TIMBER SUITES", action: "hotel_lodge_elevator", icon: "door" },
+      { x: 760, y: 220, label: "GUEST DIRECTORY", action: "hotel_lodge_directory", icon: "board" },
+    ],
+  },
+  interior_hotel_casino: {
+    w: 1024, h: 640, floor: "#4c0519", wall: "#1f2937", trim: "#fbbf24",
+    hotspots: [
+      { x: 512, y: 220, label: "VIP CONCIERGE & SUITES", action: "hotel_casino_desk", icon: "key" },
+      { x: 260, y: 220, label: "PENTHOUSE ELEVATOR", action: "hotel_casino_elevator", icon: "door" },
+      { x: 760, y: 220, label: "GUEST DIRECTORY", action: "hotel_casino_directory", icon: "board" },
+    ],
+  },
+
   // VEGAS — the tower. One area, five floors; the stations you can use come
   // from the floor you're standing on (see currentHotspots). The elevator is
   // against the east wall of every floor.
@@ -19,43 +54,44 @@ const INTERIORS = {
         price: 0, level: "Lobby",
         floor: "#3a0c0c", wall: "#120607", trim: "#fcd34d", neon: "#fcd34d", accent: "#b91c1c",
         hotspots: [
-          { x: 210, y: 210, label: "LUCKY 7s SLOTS", action: "casino_slots" },
-          { x: 470, y: 210, label: "COIN FLIP", action: "casino_coinflip" },
-          { x: 730, y: 210, label: "SCRATCH CARDS", action: "casino_scratch" },
+          { x: 200, y: 200, label: "LUCKY 7s SLOTS", action: "casino_slots" },
+          { x: 410, y: 200, label: "COIN FLIP", action: "casino_coinflip" },
+          { x: 620, y: 200, label: "SCRATCH CARDS", action: "casino_scratch" },
+          { x: 830, y: 200, label: "VIP HOTEL & SUITES", action: "hotel_casino_desk", icon: "key" },
         ] },
       { name: "THE EMERALD ROOM", short: "EMERALD", tagline: "Table games under crystal chandeliers",
         price: 2500, level: "Floor 2",
         floor: "#0a2a18", wall: "#031009", trim: "#fcd34d", neon: "#4ade80", accent: "#166534",
         hotspots: [
-          { x: 210, y: 210, label: "BLACKJACK", action: "casino_blackjack" },
-          { x: 470, y: 210, label: "ROULETTE", action: "casino_roulette" },
-          { x: 730, y: 210, label: "DICE TABLE", action: "casino_dice" },
+          { x: 250, y: 210, label: "BLACKJACK", action: "casino_blackjack" },
+          { x: 512, y: 210, label: "ROULETTE", action: "casino_roulette" },
+          { x: 774, y: 210, label: "DICE TABLE", action: "casino_dice" },
         ] },
       { name: "THE VELVET LOUNGE", short: "VELVET", tagline: "High-roller games, low lights, deep sofas",
         price: 10000, level: "Floor 3",
         floor: "#1f0538", wall: "#0d0415", trim: "#e9d5ff", neon: "#c084fc", accent: "#6d28d9",
         hotspots: [
-          { x: 180, y: 200, label: "CRASH", action: "casino_crash" },
-          { x: 390, y: 200, label: "PLINKO", action: "casino_plinko" },
-          { x: 600, y: 200, label: "HIGHER OR LOWER", action: "casino_highlow" },
-          { x: 810, y: 200, label: "VIDEO POKER", action: "casino_videopoker" },
+          { x: 200, y: 200, label: "CRASH", action: "casino_crash" },
+          { x: 410, y: 200, label: "PLINKO", action: "casino_plinko" },
+          { x: 620, y: 200, label: "HIGHER OR LOWER", action: "casino_highlow" },
+          { x: 830, y: 200, label: "VIDEO POKER", action: "casino_videopoker" },
         ] },
       { name: "THE DIAMOND MEZZANINE", short: "DIAMOND", tagline: "Members only — keno, baccarat and mines",
         price: 30000, level: "Floor 4",
         floor: "#4a0c2c", wall: "#15040c", trim: "#fbcfe8", neon: "#f472b6", accent: "#be185d",
         hotspots: [
-          { x: 260, y: 210, label: "KENO", action: "casino_keno" },
-          { x: 510, y: 210, label: "BACCARAT", action: "casino_baccarat" },
-          { x: 760, y: 210, label: "MINES", action: "casino_mines" },
+          { x: 250, y: 200, label: "KENO", action: "casino_keno" },
+          { x: 512, y: 200, label: "BACCARAT", action: "casino_baccarat" },
+          { x: 774, y: 200, label: "MINES", action: "casino_mines" },
         ] },
       { name: "THE PENTHOUSE", short: "PENTHOUSE", tagline: "Sky deck. The big money. The whole town at your feet",
         price: 75000, level: "Floor 40",
         floor: "#072a40", wall: "#03111d", trim: "#bae6fd", neon: "#38bdf8", accent: "#0369a1",
         glass: true,
         hotspots: [
-          { x: 220, y: 300, label: "HORSE RACING", action: "casino_horses" },
-          { x: 500, y: 300, label: "MEGA JACKPOT SLOTS", action: "casino_jackpot" },
-          { x: 780, y: 300, label: "WHEEL OF FORTUNE", action: "casino_wheel" },
+          { x: 250, y: 300, label: "HORSE RACING", action: "casino_horses" },
+          { x: 512, y: 300, label: "MEGA JACKPOT SLOTS", action: "casino_jackpot" },
+          { x: 774, y: 300, label: "WHEEL OF FORTUNE", action: "casino_wheel" },
         ] },
     ],
   },
@@ -141,13 +177,36 @@ const INTERIORS = {
 };
 
 async function enterOwnHome(initial) {
+  const me = state.data;
+  const res = me?.residence || (me?.houseIndex != null ? { type: "house", houseIndex: me.houseIndex, tier: "cottage" } : null);
+  if (!res) {
+    state.area = "neighborhood";
+    state.pos.x = 2100; state.pos.y = 550;
+    state.facing = "down";
+    state.interiorOf = null;
+    state.interiorResidence = null;
+    if (initial) toast("🏡 Welcome to town! Visit a vacant lot or hotel to get your own residence.", 5000);
+    updateHUD();
+    return;
+  }
   state.area = "interior_home";
   state.interiorOf = state.user;
+  state.interiorResidence = res;
   const fr = await fbGet(`users/${state.user}/furniture`);
   state.interiorFurniture = arrayify(fr);
-  state.pos.x = 512; state.pos.y = 540;
+  const room = interiorRoom();
+  state.pos.x = room.x + room.w / 2;
+  state.pos.y = room.y + room.h - 40;
   state.facing = "up";
-  if (initial) toast("Welcome home. Press <b>I</b> for inventory or <b>Build Mode</b> to redecorate.");
+  if (initial) {
+    if (res.type === "hotel") {
+      const hDef = typeof ECON !== "undefined" ? ECON.hotelDef(res.hotelId) : null;
+      const rDef = typeof ECON !== "undefined" ? ECON.hotelRoom(res.hotelId, res.roomTier) : null;
+      toast(`Welcome to your suite at <b>${hDef?.name || "Hotel"}</b> (${rDef?.name || "Suite"}). ESC to visit lobby.`);
+    } else {
+      toast("Welcome home. Press <b>I</b> for inventory or <b>Build Mode</b> to redecorate.");
+    }
+  }
   updateHUD();
 }
 
@@ -158,13 +217,17 @@ async function enterOtherHome(user) {
   // into by tampering with the client.
   let res;
   try { res = await netHome({ action: "enter", owner: user }); }
-  catch (e) { toast(e.message || `Can't enter ${user}'s house.`); return; }
+  catch (e) { toast(e.message || `Can't enter ${user}'s residence.`); return; }
   state.area = "interior_home";
   state.interiorOf = user;
+  state.interiorResidence = res.residence || null;
   state.interiorFurniture = arrayify(res.furniture);
-  state.pos.x = 512; state.pos.y = 540;
+  const room = interiorRoom();
+  state.pos.x = room.x + room.w / 2;
+  state.pos.y = room.y + room.h - 40;
   state.facing = "up";
-  toast(`Visiting ${user}'s house. ESC to leave.`);
+  const isHotel = res.residence && res.residence.type === "hotel";
+  toast(isHotel ? `Visiting ${user}'s hotel suite. ESC to leave.` : `Visiting ${user}'s house. ESC to leave.`);
   updateHUD();
 }
 
@@ -187,10 +250,38 @@ function leaveInterior() {
   const wasArea = state.area;
   // spawn outside whichever building/house we just left
   if (wasArea === "interior_home" && state.interiorOf) {
-    const them = state._userCache?.[state.interiorOf];
+    const them = state._userCache?.[state.interiorOf] || (state.interiorOf === state.user ? state.data : null);
+    const res = state.interiorResidence || them?.residence;
+    if (res && res.type === "hotel") {
+      if (res.hotelId === "hotel_casino") {
+        state.area = "interior_casino";
+        state.casinoFloor = 0;
+        state.pos.x = 830; state.pos.y = 260;
+        state.facing = "down";
+        state.interiorOf = null;
+        state.interiorResidence = null;
+        state.buildMode = false; toggleBuildBanner(false);
+        state.placeMode = null; state.selectedFurn = -1;
+        updateHUD();
+        return;
+      }
+      const hotelArea = "interior_" + res.hotelId;
+      if (INTERIORS[hotelArea]) {
+        state.area = hotelArea;
+        state.pos.x = 512; state.pos.y = 520;
+        state.facing = "down";
+        state.interiorOf = null;
+        state.interiorResidence = null;
+        state.buildMode = false; toggleBuildBanner(false);
+        state.placeMode = null; state.selectedFurn = -1;
+        updateHUD();
+        return;
+      }
+    }
     const r = them ? gameWorld.houseRect(them.houseIndex) : null;
     if (r) { state.pos.x = r.x + r.w/2; state.pos.y = r.y + r.h + 36; }
     state.interiorOf = null;
+    state.interiorResidence = null;
     state.buildMode = false; toggleBuildBanner(false);
     state.placeMode = null; state.selectedFurn = -1;
   } else if (wasArea === "interior_guild") {
@@ -295,6 +386,16 @@ function drawHomeCharacter(x,y,appearance,opts) {
 }
 
 function interiorRoom() {
+  const res = state.interiorResidence || (state.area === "interior_home" && state.interiorOf === state.user ? state.data?.residence : null);
+  if (res && typeof ECON !== "undefined") {
+    if (res.type === "house") {
+      const tier = ECON.houseTier ? ECON.houseTier(res.tier) : null;
+      if (tier && tier.room) return tier.room;
+    } else if (res.type === "hotel") {
+      const rDef = ECON.hotelRoom ? ECON.hotelRoom(res.hotelId, res.roomTier) : null;
+      if (rDef && rDef.room) return rDef.room;
+    }
+  }
   return { x: 80, y: 80, w: 864, h: 480 };
 }
 
@@ -636,41 +737,41 @@ function drawVegasFloor(floor, room) {
   for (const px of [room.x + 4, room.x + room.w - 18]) drawPilaster(px, room.y + 20, room.h - 40, neon);
 
   if (floor === 0) {
-    drawSlotBank(210, 200);
-    drawCoinFlipStand(470, 200);
-    drawScratchKiosk(730, 200);
-    drawVelvetRope(room.x + 60, room.y + 330, room.w - 250);
+    drawSlotBank(200, 200);
+    drawCoinFlipStand(410, 200);
+    drawScratchKiosk(620, 200);
+    drawCasinoHotelDesk(830, 200);
+    drawPottedPalm(room.x + 40, room.y + 200);
+    drawPottedPalm(room.x + room.w - 40, room.y + 200);
     drawPottedPalm(room.x + 60, room.y + 420);
     drawPottedPalm(room.x + room.w - 200, room.y + 420);
   } else if (floor === 1) {
     // Props stay off the centre runner: that's the walk-in path from the door.
-    drawChandelier(room.x + 200, room.y + 40, neon, 30);
-    drawChandelier(room.x + room.w - 200, room.y + 40, neon, 30);
-    drawBlackjackTable(210, 210);
-    drawRouletteTable(470, 205);
-    drawCrapsTable(730, 210);
-    drawVelvetRope(room.x + 60, room.y + 330, room.w - 250);
+    drawChandelier(room.x + 190, room.y + 40, neon, 30);
+    drawChandelier(room.x + room.w - 190, room.y + 40, neon, 30);
+    drawBlackjackTable(250, 210);
+    drawRouletteTable(512, 210);
+    drawCrapsTable(774, 210);
     drawDealerStand(room.x + 190, room.y + 425, neon);
   } else if (floor === 2) {
     drawDrapes(room, "#3b0764", "#c084fc");
-    drawCrashScreen(180, 195);
-    drawPlinkoBoard(390, 190);
-    drawHighLowStand(600, 195);
-    drawPokerCab(810, 195);
+    drawCrashScreen(200, 200);
+    drawPlinkoBoard(410, 200);
+    drawHighLowStand(620, 200);
+    drawPokerCab(830, 200);
     drawLoungeSeats(room, "#c084fc");
     drawCocktailTable(room.x + room.w - 200, room.y + 425, neon);
   } else if (floor === 3) {
-    drawChandelier(room.x + 200, room.y + 40, neon, 24);
-    drawChandelier(room.x + room.w - 200, room.y + 40, neon, 24);
-    drawKenoBoard(260, 195, neon);
-    drawBaccaratTable(510, 210);
-    drawMinesCabinet(760, 195, neon);
-    drawVelvetRope(room.x + 60, room.y + 330, room.w - 250);
+    drawChandelier(room.x + 190, room.y + 40, neon, 24);
+    drawChandelier(room.x + room.w - 190, room.y + 40, neon, 24);
+    drawKenoBoard(250, 200, neon);
+    drawBaccaratTable(512, 200);
+    drawMinesCabinet(774, 200, neon);
     drawDiamondDisplay(room.x + 190, room.y + 430, neon);
   } else {
-    drawHorseTrack(220, 300);
-    drawJackpotSlots(500, 296);
-    drawFortuneStand(780, 300);
+    drawHorseTrack(250, 300);
+    drawJackpotSlots(512, 300);
+    drawFortuneStand(774, 300);
     drawLoungeSeats(room, "#38bdf8");
   }
 
@@ -1135,6 +1236,70 @@ function drawScratchKiosk(x, y) {
   }
   ctx.fillStyle = "#fcd34d"; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center";
   ctx.fillText("SCRATCH & WIN", x, y + 48);
+}
+function drawCasinoHotelDesk(x, y) {
+  // Shadow beneath desk
+  ctx.fillStyle = "rgba(0,0,0,.35)";
+  ctx.beginPath(); ctx.ellipse(x, y + 26, 68, 12, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Mahogany & velvet desk body
+  ctx.fillStyle = "#3b0712";
+  GFX.roundFill(ctx, x - 58, y - 16, 116, 44, 8, "#3b0712");
+  ctx.fillStyle = "#831843";
+  ctx.fillRect(x - 52, y - 10, 104, 30);
+
+  // Polished marble/gold counter top
+  ctx.fillStyle = "#fef08a";
+  GFX.roundFill(ctx, x - 62, y - 22, 124, 10, 3, "#fef08a");
+  ctx.fillStyle = "#d97706";
+  ctx.fillRect(x - 62, y - 14, 124, 2);
+
+  // Gilded front panel trim
+  ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 1.5;
+  ctx.strokeRect(x - 48, y - 6, 96, 22);
+
+  // Backboard with brass key cubbies / room keys
+  ctx.fillStyle = "#180509";
+  GFX.roundFill(ctx, x - 50, y - 66, 100, 42, 4, "#180509");
+  ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 1.5;
+  GFX.roundStroke(ctx, x - 50, y - 66, 100, 42, 4);
+
+  // Golden arch marquee on the backboard
+  ctx.fillStyle = "#fbbf24"; ctx.font = "bold 9px Georgia, serif"; ctx.textAlign = "center";
+  ctx.fillText("✦ VIP SUITES ✦", x, y - 50);
+
+  // Key hooks with dangling brass keys
+  for (let c = 0; c < 5; c++) {
+    const kx = x - 36 + c * 18, ky = y - 38;
+    ctx.fillStyle = "#450a0a";
+    ctx.fillRect(kx - 6, ky - 4, 12, 10);
+    ctx.strokeStyle = "#fde047"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(kx, ky, 2.5, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(kx, ky + 2.5); ctx.lineTo(kx, ky + 7); ctx.lineTo(kx + 2, ky + 5); ctx.stroke();
+  }
+
+  // Desk accessories: brass bell and banker's green/gold lamp
+  // Bell on right
+  ctx.fillStyle = "#fbbf24";
+  ctx.beginPath(); ctx.arc(x + 36, y - 25, 4, Math.PI, 0); ctx.fill();
+  ctx.fillRect(x + 32, y - 23, 8, 2);
+  ctx.fillStyle = "#fef08a";
+  ctx.fillRect(x + 35.5, y - 27, 1, 2);
+
+  // Banker's lamp on left
+  ctx.fillStyle = "#92400e";
+  ctx.fillRect(x - 38, y - 29, 2, 7);
+  ctx.fillStyle = "#15803d";
+  GFX.roundFill(ctx, x - 46, y - 36, 18, 7, 3, "#15803d");
+  const lampGlow = ctx.createRadialGradient(x - 37, y - 26, 2, x - 37, y - 26, 18);
+  lampGlow.addColorStop(0, "rgba(254,240,138,0.5)");
+  lampGlow.addColorStop(1, "rgba(254,240,138,0)");
+  ctx.fillStyle = lampGlow;
+  ctx.beginPath(); ctx.arc(x - 37, y - 26, 18, 0, Math.PI * 2); ctx.fill();
+
+  // Front marquee sign
+  ctx.fillStyle = "#fef08a"; ctx.font = "bold 9px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("VIP CONCIERGE", x, y + 8);
 }
 function drawVelvetRope(x, y, w) {
   for (const px of [x, x + w]) {
@@ -1784,25 +1949,190 @@ function drawWoodFloor(room, y0, base, dark) {
 const homeRoom = {
   accent: "#fbbf24",
   base(room, t) {
+    const res = state.interiorResidence || (state.area === "interior_home" && state.interiorOf === state.user ? state.data?.residence : null);
+
+    // ==========================================
+    // HOTEL ROOM / SUITE THEMES
+    // ==========================================
+    if (res && res.type === "hotel") {
+      const hid = res.hotelId;
+      const tier = res.roomTier || "standard";
+      const isPres = tier === "presidential";
+      const isDeluxe = tier === "deluxe";
+
+      if (hid === "hotel_plaza") {
+        drawSurround(room, "#0f172a");
+        drawMarbleFloor(room, room.y + WALL_H, isPres ? "#f8fafc" : "#e2e8f0", "#94a3b8");
+        drawBackWall(room, {
+          top: isPres ? "#0f172a" : "#1e293b",
+          bottom: isPres ? "#1e293b" : "#334155",
+          skirting: "#d97706",
+          stripe: "#f59e0b"
+        });
+        drawSideWalls(room, isPres ? "#1e293b" : "#334155");
+
+        drawWindow(room.x + 100, room.y + 26, 120, 76, { curtain: "#d97706", shaftLen: 160 });
+        drawWindow(room.x + room.w - 220, room.y + 26, 120, 76, { curtain: "#d97706", shaftLen: 160 });
+
+        drawRug(room.x + room.w / 2, room.y + room.h / 2 + 50, isPres ? 340 : 260, isPres ? 170 : 130, "#991b1b", "#7f1d1d", { medallion: true });
+
+        if (isPres) {
+          for (const colX of [room.x + 40, room.x + room.w - 40]) {
+            ctx.fillStyle = "#f8fafc"; ctx.fillRect(colX - 10, room.y + WALL_H, 20, room.y + room.h - (room.y + WALL_H));
+            ctx.fillStyle = "#fbbf24"; ctx.fillRect(colX - 14, room.y + WALL_H - 8, 28, 8); ctx.fillRect(colX - 14, room.y + room.h - 10, 28, 8);
+          }
+          drawTownSeal(room.x + room.w / 2, room.y + 60, 36);
+          wallSign(room.x + room.w / 2, room.y + 112, "THE PRESIDENTIAL SUITE", { size: 10, bg: "#0f172a", border: "#f59e0b", color: "#fbbf24", serif: true });
+        } else {
+          wallSign(room.x + room.w / 2, room.y + 55, isDeluxe ? "GRAND PLAZA · DELUXE SUITE" : "GRAND PLAZA · GUEST ROOM", { size: 10, bg: "#0f172a", border: "#f59e0b", color: "#fef08a" });
+        }
+
+        drawPendantLamp(room.x + room.w / 2, room.y + 20, "#fbbf24");
+        if (isPres) {
+          drawPendantLamp(room.x + room.w / 2 - 160, room.y + 20, "#fbbf24");
+          drawPendantLamp(room.x + room.w / 2 + 160, room.y + 20, "#fbbf24");
+        }
+
+        GFX.roundFill(ctx, room.x + room.w / 2 - 50, room.y + room.h - 34, 100, 26, 3, "#1e293b");
+        ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 1; GFX.roundStroke(ctx, room.x + room.w / 2 - 46, room.y + room.h - 30, 92, 18, 2);
+        ctx.fillStyle = "#fbbf24"; ctx.font = "bold 8px Georgia, serif"; ctx.textAlign = "center";
+        ctx.fillText("GRAND PLAZA", room.x + room.w / 2, room.y + room.h - 18);
+        return;
+      }
+
+      if (hid === "hotel_palms") {
+        drawSurround(room, "#083344");
+        drawWoodFloor(room, room.y + WALL_H, "#ca8a04", "#854d0e");
+        drawBackWall(room, {
+          top: "#ecfeff",
+          bottom: isPres ? "#0f766e" : "#0284c7",
+          skirting: "#164e63",
+          stripe: "#38bdf8"
+        });
+        drawSideWalls(room, isPres ? "#0f766e" : "#0284c7");
+
+        drawWindow(room.x + room.w / 2 - 90, room.y + 24, 180, 80, { curtain: "#06b6d4", shaftLen: 180 });
+        drawRug(room.x + room.w / 2, room.y + room.h / 2 + 60, isPres ? 300 : 220, 130, "#0891b2", "#164e63", { medallion: true });
+
+        wallSign(room.x + room.w / 2, room.y + 118, isPres ? "PALMS RESORT · PRESIDENTIAL OCEAN SUITE" : isDeluxe ? "PALMS RESORT · DELUXE SUITE" : "PALMS RESORT · RESORT ROOM", { size: 9, bg: "#083344", border: "#38bdf8", color: "#fef08a" });
+
+        drawPendantLamp(room.x + room.w / 2, room.y + 20, "#67e8f9");
+
+        GFX.roundFill(ctx, room.x + room.w / 2 - 50, room.y + room.h - 34, 100, 26, 3, "#0369a1");
+        ctx.strokeStyle = "#fef08a"; ctx.lineWidth = 1; GFX.roundStroke(ctx, room.x + room.w / 2 - 46, room.y + room.h - 30, 92, 18, 2);
+        ctx.fillStyle = "#fef08a"; ctx.font = "bold 8px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("PALMS RESORT", room.x + room.w / 2, room.y + room.h - 18);
+        return;
+      }
+
+      if (hid === "hotel_lodge") {
+        drawSurround(room, "#291508");
+        drawWoodFloor(room, room.y + WALL_H, "#78350f", "#451a03");
+        drawBackWall(room, {
+          top: "#fef3c7",
+          bottom: "#451a03",
+          skirting: "#291508",
+          stripe: "#92400e"
+        });
+        drawSideWalls(room, "#451a03");
+
+        drawWindow(room.x + 90, room.y + 26, 120, 76, { curtain: "#991b1b", shaftLen: 160 });
+        drawWindow(room.x + room.w - 210, room.y + 26, 120, 76, { curtain: "#991b1b", shaftLen: 160 });
+
+        const fx = room.x + room.w / 2, fy = room.y + WALL_H;
+        ctx.fillStyle = "#57534e"; ctx.fillRect(fx - 44, fy - 68, 88, 68);
+        ctx.fillStyle = "#1c1917"; ctx.fillRect(fx - 24, fy - 48, 48, 48);
+        TB.flame(ctx, fx, fy - 10, 14, t, 1);
+        TB.flame(ctx, fx - 8, fy - 8, 10, t, 2);
+        TB.flame(ctx, fx + 8, fy - 8, 10, t, 3);
+        ctx.fillStyle = "#78350f"; ctx.fillRect(fx - 50, fy - 72, 100, 8);
+
+        drawRug(fx, fy + 70, isPres ? 280 : 200, 120, "#7f1d1d", "#451a03", { medallion: false });
+
+        wallSign(room.x + room.w / 2, room.y + 30, isPres ? "PINECREST · PRESIDENTIAL CHALET SUITE" : isDeluxe ? "PINECREST · DELUXE LODGE SUITE" : "PINECREST · TIMBER ROOM", { size: 9, bg: "#291508", border: "#fef08a", color: "#fef08a" });
+
+        drawPendantLamp(room.x + room.w / 2, room.y + 15, "#fbbf24");
+
+        GFX.roundFill(ctx, room.x + room.w / 2 - 50, room.y + room.h - 34, 100, 26, 3, "#451a03");
+        ctx.strokeStyle = "#fef08a"; ctx.lineWidth = 1; GFX.roundStroke(ctx, room.x + room.w / 2 - 46, room.y + room.h - 30, 92, 18, 2);
+        ctx.fillStyle = "#fef08a"; ctx.font = "bold 8px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("PINECREST LODGE", room.x + room.w / 2, room.y + room.h - 18);
+        return;
+      }
+
+      if (hid === "hotel_casino") {
+        drawSurround(room, "#030712");
+        ctx.fillStyle = isPres ? "#3b0764" : "#450a0a";
+        ctx.fillRect(room.x, room.y + WALL_H, room.w, room.y + room.h - (room.y + WALL_H));
+        drawBackWall(room, {
+          top: "#0f172a",
+          bottom: isPres ? "#1e1b4b" : "#1f2937",
+          skirting: "#fbbf24",
+          stripe: isPres ? "#a855f7" : "#f43f5e"
+        });
+        drawSideWalls(room, isPres ? "#1e1b4b" : "#1f2937");
+
+        drawWindow(room.x + 100, room.y + 24, 130, 80, { curtain: "#fbbf24", shaftLen: 160 });
+        drawWindow(room.x + room.w - 230, room.y + 24, 130, 80, { curtain: "#fbbf24", shaftLen: 160 });
+
+        drawRug(room.x + room.w / 2, room.y + room.h / 2 + 50, isPres ? 320 : 240, 140, isPres ? "#7e22ce" : "#991b1b", "#fbbf24", { medallion: true });
+
+        wallSign(room.x + room.w / 2, room.y + 55, isPres ? "DIAMOND CASINO · PRESIDENTIAL PENTHOUSE" : isDeluxe ? "DIAMOND CASINO · HIGH ROLLER SUITE" : "DIAMOND CASINO · VIP ROOM", { size: 10, bg: "#0f172a", border: "#fcd34d", color: "#fcd34d" });
+
+        drawPendantLamp(room.x + room.w / 2, room.y + 20, isPres ? "#c084fc" : "#fcd34d");
+
+        GFX.roundFill(ctx, room.x + room.w / 2 - 50, room.y + room.h - 34, 100, 26, 3, "#18181b");
+        ctx.strokeStyle = "#fcd34d"; ctx.lineWidth = 1; GFX.roundStroke(ctx, room.x + room.w / 2 - 46, room.y + room.h - 30, 92, 18, 2);
+        ctx.fillStyle = "#fcd34d"; ctx.font = "bold 8px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("DIAMOND VIP", room.x + room.w / 2, room.y + room.h - 18);
+        return;
+      }
+    }
+
+    // ==========================================
+    // HOUSE RESIDENCES (COTTAGE, TOWNHOUSE, MANOR, MANSION)
+    // ==========================================
+    const tier = (res && res.tier) || "cottage";
     drawSurround(room, "#3b2a1a");
-    drawWoodFloor(room, room.y + WALL_H, "#b45309", "#78350f");
-    drawBackWall(room, { top: "#fff7e6", bottom: "#fde9c4", skirting: "#7c2d12", stripe: "#fbcfa5" });
-    drawSideWalls(room, "#fde9c4");
-    // window with curtains, letting daylight fall across the floor
-    drawWindow(room.x + 150, room.y + 26, 130, 76, { curtain: "#c2410c", shaftLen: 170 });
-    drawWindow(room.x + room.w - 280, room.y + 26, 130, 76, { curtain: "#c2410c", shaftLen: 170 });
-    drawRug(room.x + room.w / 2, room.y + 340, 260, 150, "#b91c1c", "#7f1d1d", { medallion: true });
-    // door mat
-    GFX.roundFill(ctx, room.x + room.w / 2 - 40, room.y + room.h - 34, 80, 26, 3, "#57534e");
-    ctx.strokeStyle = "#a8a29e"; ctx.lineWidth = 1; GFX.roundStroke(ctx, room.x + room.w / 2 - 36, room.y + room.h - 30, 72, 18, 2);
+    if (tier === "mansion") {
+      drawMarbleFloor(room, room.y + WALL_H, "#f8fafc", "#cbd5e1");
+      drawBackWall(room, { top: "#fefce8", bottom: "#fef08a", skirting: "#854d0e", stripe: "#eab308" });
+      drawSideWalls(room, "#fef08a");
+    } else if (tier === "manor") {
+      drawWoodFloor(room, room.y + WALL_H, "#78350f", "#451a03");
+      drawBackWall(room, { top: "#fff7ed", bottom: "#ffedd5", skirting: "#7c2d12", stripe: "#ea580c" });
+      drawSideWalls(room, "#ffedd5");
+    } else if (tier === "townhouse") {
+      drawWoodFloor(room, room.y + WALL_H, "#9a3412", "#7c2d12");
+      drawBackWall(room, { top: "#fafaf9", bottom: "#f5f5f4", skirting: "#44403c", stripe: "#b91c1c" });
+      drawSideWalls(room, "#f5f5f4");
+    } else {
+      drawWoodFloor(room, room.y + WALL_H, "#b45309", "#78350f");
+      drawBackWall(room, { top: "#fff7e6", bottom: "#fde9c4", skirting: "#7c2d12", stripe: "#fbcfa5" });
+      drawSideWalls(room, "#fde9c4");
+    }
+
+    const winW = tier === "mansion" ? 150 : 130;
+    drawWindow(room.x + 120, room.y + 26, winW, 76, { curtain: tier === "mansion" ? "#eab308" : "#c2410c", shaftLen: 170 });
+    drawWindow(room.x + room.w - 120 - winW, room.y + 26, winW, 76, { curtain: tier === "mansion" ? "#eab308" : "#c2410c", shaftLen: 170 });
+
+    const rugW = tier === "mansion" ? 340 : tier === "manor" ? 300 : 260;
+    drawRug(room.x + room.w / 2, room.y + room.h / 2 + 50, rugW, 140, tier === "mansion" ? "#854d0e" : "#b91c1c", "#7f1d1d", { medallion: true });
+
+    const tierTitle = { cottage: "COTTAGE", townhouse: "TOWNHOUSE", manor: "MANOR", mansion: "PALATIAL MANSION" }[tier] || "WELCOME";
+    GFX.roundFill(ctx, room.x + room.w / 2 - 50, room.y + room.h - 34, 100, 26, 3, "#57534e");
+    ctx.strokeStyle = "#a8a29e"; ctx.lineWidth = 1; GFX.roundStroke(ctx, room.x + room.w / 2 - 46, room.y + room.h - 30, 92, 18, 2);
     ctx.fillStyle = "#d6d3d1"; ctx.font = "bold 8px sans-serif"; ctx.textAlign = "center";
-    ctx.fillText("WELCOME", room.x + room.w / 2, room.y + room.h - 18);
+    ctx.fillText(tierTitle, room.x + room.w / 2, room.y + room.h - 18);
     drawLightPool(room.x + room.w / 2, room.y + 300, 260, "#fde68a", 0.14);
-    // wall bits
+
     drawPendantLamp(room.x + room.w / 2, room.y + 20, "#fde68a");
+    if (tier === "mansion" || tier === "manor") {
+      drawPendantLamp(room.x + room.w / 2 - 170, room.y + 20, "#fde68a");
+      drawPendantLamp(room.x + room.w / 2 + 170, room.y + 20, "#fde68a");
+    }
     drawClock(room.x + room.w / 2 + 190, room.y + 60, 15, t);
     drawPainting(room.x + room.w / 2 - 190, room.y + 62, 54, 42, "landscape", "#78350f");
-    // light switch
     ctx.fillStyle = "#e7e5e4"; ctx.fillRect(room.x + room.w - 70, room.y + 78, 8, 12);
   },
   decor() {},
@@ -2980,11 +3310,164 @@ function motorRoom(racing){return {
  }
 };}
 const dealershipRoom=motorRoom(false),racetrackRoom=motorRoom(true);
+const hotelPlazaRoom = {
+  accent: "#f59e0b",
+  base(room, t) {
+    drawSurround(room, "#0f172a");
+    drawMarbleFloor(room, room.y + WALL_H, "#f8fafc", "#94a3b8");
+    drawBackWall(room, { top: "#0f172a", bottom: "#1e293b", skirting: "#f59e0b", stripe: "#d97706" });
+    drawSideWalls(room, "#1e293b");
+
+    wallSign(room.x + room.w / 2, room.y + 60, "THE GRAND PLAZA HOTEL & SUITES", { size: 14, bg: "#0f172a", border: "#f59e0b", color: "#fbbf24", serif: true });
+    wallSign(room.x + room.w / 2, room.y + 92, "CONCIERGE & SUITES CHECK-IN", { size: 9, bg: "#1e293b", border: "#d97706", color: "#fde68a" });
+
+    const dx = 512, dy = 220;
+    GFX.roundFill(ctx, dx - 80, dy - 20, 160, 36, 6, "#334155");
+    ctx.fillStyle = "#f59e0b"; ctx.fillRect(dx - 82, dy - 24, 164, 6);
+    ctx.fillStyle = "#fbbf24"; ctx.beginPath(); ctx.arc(dx + 30, dy - 6, 5, 0, Math.PI * 2); ctx.fill();
+    GFX.drawCharacter(ctx, dx, dy - 18, { skin: "#d9a77c", shirt: "#0f172a", pants: "#1e293b", hair: "short" }, { facing: "down" });
+
+    const ex = 260, ey = 220;
+    ctx.fillStyle = "#0f172a"; ctx.fillRect(ex - 36, ey - 70, 72, 70);
+    ctx.fillStyle = "#f59e0b"; ctx.fillRect(ex - 32, ey - 66, 64, 66);
+    ctx.strokeStyle = "#78350f"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ex, ey - 66); ctx.lineTo(ex, ey); ctx.stroke();
+    wallSign(ex, ey - 84, "ELEVATOR TO SUITES", { size: 9, bg: "#0f172a", border: "#f59e0b", color: "#fbbf24" });
+
+    const gx = 760, gy = 220;
+    wallSign(gx, gy - 30, "GUEST DIRECTORY", { size: 10, bg: "#0f172a", border: "#f59e0b", color: "#fbbf24" });
+    GFX.roundFill(ctx, gx - 40, gy - 16, 80, 52, 4, "#1e293b");
+    ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 1.5; GFX.roundStroke(ctx, gx - 40, gy - 16, 80, 52, 4);
+    ctx.fillStyle = "#94a3b8"; ctx.font = "8px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("Suite Guests", gx, gy + 4);
+    ctx.fillText("Press E to View", gx, gy + 20);
+
+    drawPendantLamp(room.x + room.w / 2, room.y + 20, "#fbbf24");
+    drawRug(room.x + room.w / 2, room.y + 380, 280, 140, "#991b1b", "#7f1d1d", { medallion: true });
+  },
+  decor() {},
+};
+
+const hotelPalmsRoom = {
+  accent: "#0284c7",
+  base(room, t) {
+    drawSurround(room, "#083344");
+    drawWoodFloor(room, room.y + WALL_H, "#ca8a04", "#854d0e");
+    drawBackWall(room, { top: "#ecfeff", bottom: "#0284c7", skirting: "#164e63", stripe: "#38bdf8" });
+    drawSideWalls(room, "#0284c7");
+
+    wallSign(room.x + room.w / 2, room.y + 60, "PALMS SEASIDE RESORT", { size: 14, bg: "#083344", border: "#38bdf8", color: "#fef08a", serif: true });
+    wallSign(room.x + room.w / 2, room.y + 92, "RESORT FRONT DESK & SUITES", { size: 9, bg: "#0284c7", border: "#fef08a", color: "#ffffff" });
+
+    const dx = 512, dy = 220;
+    GFX.roundFill(ctx, dx - 80, dy - 20, 160, 36, 6, "#0369a1");
+    ctx.fillStyle = "#ca8a04"; ctx.fillRect(dx - 82, dy - 24, 164, 6);
+    GFX.drawCharacter(ctx, dx, dy - 18, { skin: "#fcd34d", shirt: "#0284c7", pants: "#083344", hair: "curly" }, { facing: "down" });
+
+    const ex = 260, ey = 220;
+    ctx.fillStyle = "#083344"; ctx.fillRect(ex - 36, ey - 70, 72, 70);
+    ctx.fillStyle = "#0284c7"; ctx.fillRect(ex - 32, ey - 66, 64, 66);
+    wallSign(ex, ey - 84, "OCEANVIEW SUITES", { size: 9, bg: "#083344", border: "#38bdf8", color: "#fef08a" });
+
+    const gx = 760, gy = 220;
+    wallSign(gx, gy - 30, "GUEST DIRECTORY", { size: 10, bg: "#083344", border: "#38bdf8", color: "#fef08a" });
+    GFX.roundFill(ctx, gx - 40, gy - 16, 80, 52, 4, "#0369a1");
+    ctx.strokeStyle = "#38bdf8"; ctx.lineWidth = 1.5; GFX.roundStroke(ctx, gx - 40, gy - 16, 80, 52, 4);
+    ctx.fillStyle = "#fef08a"; ctx.font = "8px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("Resort Guests", gx, gy + 4);
+    ctx.fillText("Press E to View", gx, gy + 20);
+
+    drawPendantLamp(room.x + room.w / 2, room.y + 20, "#67e8f9");
+    drawRug(room.x + room.w / 2, room.y + 380, 260, 130, "#0891b2", "#164e63", { medallion: true });
+  },
+  decor() {},
+};
+
+const hotelLodgeRoom = {
+  accent: "#fef08a",
+  base(room, t) {
+    drawSurround(room, "#291508");
+    drawWoodFloor(room, room.y + WALL_H, "#78350f", "#451a03");
+    drawBackWall(room, { top: "#fef3c7", bottom: "#451a03", skirting: "#291508", stripe: "#92400e" });
+    drawSideWalls(room, "#451a03");
+
+    wallSign(room.x + room.w / 2, room.y + 60, "PINECREST MOUNTAIN LODGE", { size: 14, bg: "#291508", border: "#fef08a", color: "#fef08a", serif: true });
+    wallSign(room.x + room.w / 2, room.y + 92, "LODGE FRONT DESK & SUITES", { size: 9, bg: "#451a03", border: "#d97706", color: "#fde68a" });
+
+    const fx = 160, fy = room.y + WALL_H;
+    ctx.fillStyle = "#57534e"; ctx.fillRect(fx - 40, fy - 60, 80, 60);
+    ctx.fillStyle = "#1c1917"; ctx.fillRect(fx - 20, fy - 40, 40, 40);
+    TB.flame(ctx, fx, fy - 8, 12, t, 1);
+    ctx.fillStyle = "#78350f"; ctx.fillRect(fx - 44, fy - 64, 88, 6);
+
+    const dx = 512, dy = 220;
+    GFX.roundFill(ctx, dx - 80, dy - 20, 160, 36, 6, "#451a03");
+    ctx.fillStyle = "#78350f"; ctx.fillRect(dx - 82, dy - 24, 164, 6);
+    GFX.drawCharacter(ctx, dx, dy - 18, { skin: "#d9a77c", shirt: "#78350f", pants: "#291508", hair: "brown" }, { facing: "down" });
+
+    const ex = 260, ey = 220;
+    ctx.fillStyle = "#291508"; ctx.fillRect(ex - 36, ey - 70, 72, 70);
+    ctx.fillStyle = "#78350f"; ctx.fillRect(ex - 32, ey - 66, 64, 66);
+    wallSign(ex, ey - 84, "TIMBER SUITES", { size: 9, bg: "#291508", border: "#fef08a", color: "#fef08a" });
+
+    const gx = 760, gy = 220;
+    wallSign(gx, gy - 30, "GUEST DIRECTORY", { size: 10, bg: "#291508", border: "#fef08a", color: "#fef08a" });
+    GFX.roundFill(ctx, gx - 40, gy - 16, 80, 52, 4, "#451a03");
+    ctx.strokeStyle = "#fef08a"; ctx.lineWidth = 1.5; GFX.roundStroke(ctx, gx - 40, gy - 16, 80, 52, 4);
+    ctx.fillStyle = "#fde68a"; ctx.font = "8px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("Lodge Guests", gx, gy + 4);
+    ctx.fillText("Press E to View", gx, gy + 20);
+
+    drawPendantLamp(room.x + room.w / 2, room.y + 20, "#fbbf24");
+    drawRug(room.x + room.w / 2, room.y + 380, 260, 130, "#7f1d1d", "#451a03", { medallion: false });
+  },
+  decor() {},
+};
+
+const hotelCasinoRoom = {
+  accent: "#fbbf24",
+  base(room, t) {
+    drawSurround(room, "#0a0a0a");
+    drawMarbleFloor(room, room.y + WALL_H, "#1e1b4b", "#4c0519");
+    drawBackWall(room, { top: "#4c0519", bottom: "#1f2937", skirting: "#fbbf24", stripe: "#ec4899" });
+    drawSideWalls(room, "#1f2937");
+
+    wallSign(room.x + room.w / 2, room.y + 60, "DIAMOND CASINO & VIP SUITES", { size: 14, bg: "#0a0a0a", border: "#fbbf24", color: "#fcd34d", serif: true });
+    wallSign(room.x + room.w / 2, room.y + 92, "VIP CONCIERGE & PENTHOUSES", { size: 9, bg: "#4c0519", border: "#fcd34d", color: "#fef08a" });
+
+    const dx = 512, dy = 220;
+    GFX.roundFill(ctx, dx - 80, dy - 20, 160, 36, 6, "#4c0519");
+    ctx.fillStyle = "#fbbf24"; ctx.fillRect(dx - 82, dy - 24, 164, 6);
+    ctx.fillStyle = "#fcd34d"; ctx.beginPath(); ctx.arc(dx + 30, dy - 6, 5, 0, Math.PI * 2); ctx.fill();
+    GFX.drawCharacter(ctx, dx, dy - 18, { skin: "#fcd34d", shirt: "#0a0a0a", pants: "#4c0519", hair: "slick" }, { facing: "down" });
+
+    const ex = 260, ey = 220;
+    ctx.fillStyle = "#0a0a0a"; ctx.fillRect(ex - 36, ey - 70, 72, 70);
+    ctx.fillStyle = "#fbbf24"; ctx.fillRect(ex - 32, ey - 66, 64, 66);
+    ctx.strokeStyle = "#831843"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ex, ey - 66); ctx.lineTo(ex, ey); ctx.stroke();
+    wallSign(ex, ey - 84, "PENTHOUSE ELEVATOR", { size: 9, bg: "#0a0a0a", border: "#fbbf24", color: "#fcd34d" });
+
+    const gx = 760, gy = 220;
+    wallSign(gx, gy - 30, "VIP DIRECTORY", { size: 10, bg: "#0a0a0a", border: "#fbbf24", color: "#fcd34d" });
+    GFX.roundFill(ctx, gx - 40, gy - 16, 80, 52, 4, "#1f2937");
+    ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 1.5; GFX.roundStroke(ctx, gx - 40, gy - 16, 80, 52, 4);
+    ctx.fillStyle = "#fcd34d"; ctx.font = "8px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("High-Roller Guests", gx, gy + 4);
+    ctx.fillText("Press E to View", gx, gy + 20);
+
+    drawPendantLamp(room.x + room.w / 2, room.y + 20, "#ec4899");
+    drawRug(room.x + room.w / 2, room.y + 380, 280, 140, "#831843", "#4c0519", { medallion: true });
+  },
+  decor() {},
+};
 
 const ROOM_RENDERERS = {
   interior_dealership:dealershipRoom,
   interior_racetrack:racetrackRoom,
   interior_home: homeRoom,
+  interior_hotel_plaza: hotelPlazaRoom,
+  interior_hotel_palms: hotelPalmsRoom,
+  interior_hotel_lodge: hotelLodgeRoom,
+  interior_hotel_casino: hotelCasinoRoom,
   interior_mayor: townHallRoom,
   interior_bank: bankRoom,
   interior_furniture: furnitureRoom,

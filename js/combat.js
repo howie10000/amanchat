@@ -450,6 +450,12 @@ function hasLineOfSight(x0, y0, x1, y1) {
 function takePlayerDamage(amount, sourceId) {
   amount = Math.max(0, +amount || 0);
   const G = window.gameDepths;
+  // Invincibility for Admin God Gear (Admins/Owners only)
+  if (window.gameGear && typeof gameGear.hasAdminGear === "function" && gameGear.hasAdminGear()) {
+    if (state.maxHp && state.hp < state.maxHp) state.hp = state.maxHp;
+    if (G && amount > 0 && Math.random() < 0.3) G.floatText(state.pos.x, state.pos.y - 26, "IMMUNE", "#fbbf24", { size: 13, dur: 600 });
+    return;
+  }
   // A ghost cannot be hurt, and neither can a dash in its i-frames.
   if (G && G.isDowned()) return;
   if (state.iframesUntil && Date.now() < state.iframesUntil && state.area === "dungeon") {
@@ -513,6 +519,10 @@ function playerMaxHp() {
 // Everything that can take the last of your HP ends up here. In a guild run
 // with a living ally you go DOWN instead of out; a ghost keeps watching.
 function playerDead() {
+  if (window.gameGear && typeof gameGear.hasAdminGear === "function" && gameGear.hasAdminGear()) {
+    if (state.maxHp) state.hp = state.maxHp;
+    return false;
+  }
   if (state.hp > 0) return false;
   const G = window.gameDepths;
   if (G && G.isDowned()) return false;
@@ -611,6 +621,11 @@ function updateDungeon() {
 
   if (state.attackCooldown > 0) state.attackCooldown--;
   if (state.swingT > 0) state.swingT--;
+  {
+    const ae = typeof document !== "undefined" && document.activeElement;
+    const typing = ae && (ae.id === "chatBox" || /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
+    if (typeof keys !== "undefined" && (keys[" "] || keys["space"]) && !typing) doAttack();
+  }
 
   // One BFS per player cell change feeds every enemy's route this frame.
   refreshFlow();
@@ -1766,7 +1781,11 @@ function combatDamageMult(hand) {
   // counts the ranged weapon's ATK and vice versa — see ECON.handAtk).
   const W = window.gameWeapons;
   const gear = W && W.attackMult ? W.attackMult(hand === "ranged" ? "ranged" : "melee") : (window.gameGear ? gameGear.attackMult() : 1);
-  return ECON.masteryCombatMult(m ? m.level : 1) * gear * buffDamageMult();
+  let mult = ECON.masteryCombatMult(m ? m.level : 1) * gear * buffDamageMult();
+  if (window.gameGear && typeof gameGear.hasAdminGear === "function" && gameGear.hasAdminGear()) {
+    mult *= 10;
+  }
+  return mult;
 }
 
 function bossRoomWalls() {
@@ -2174,6 +2193,14 @@ function onBossPhase(m) {
   const d = state.dungeon, b = d.boss;
   if (!b) return;
   if (b.id === "dragon") return;                 // `phase2` above plays Varkaal's
+  if (m.phase != null) b.phase = m.phase;
+  if (m.boss && m.boss.form) b.form = m.boss.form;
+  else if (b.id === "aurelion") b.form = b.phase === 1 ? "herald" : b.phase === 2 ? "tempest" : b.phase === 3 ? "legion" : "apotheosis";
+  else if (b.id === "vaughn") b.form = b.phase >= 2 ? "unhorsed" : "mounted";
+  if (window.gameCrownBoss) {
+    if (typeof gameCrownBoss.adopt === "function" && m.boss) gameCrownBoss.adopt(m.boss);
+    if (typeof gameCrownBoss.onPush === "function") gameCrownBoss.onPush(m);
+  }
   const look = m.look || (ECON.bossLook ? ECON.bossLook(b.id, m.phase || b.phase || 2) : {});
   const G = window.gameDepths;
   d.bossAttacks = [];
@@ -3377,7 +3404,7 @@ function drawWardShell(ctx, t) {
   ctx.fillStyle = "rgba(233,213,255,.9)"; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
   ctx.fillText("WARDED — STOP ATTACKING", h.x, h.y - 138);
 }
-// The leyline pylons (Concordant, raid khyra/iskarra) and the shields the
+// The leyline pylons (Concordant, raid iskarra) and the shields the
 // boss is hiding behind.
 function drawArenaGuards(ctx, t, b) {
   if (!b) return;
@@ -3469,12 +3496,15 @@ function drawBossStatusHud(ctx, b, t, x0, w, accent, y0) {
   const notes = [];
   if (b._enrageAt && !b.hardEnraged) {
     const left = b._enrageAt - t;
-    if (left > 0 && left < 90000) notes.push({ txt: "ENRAGE IN " + DepthsCore.fmtClock(left), col: left < 30000 ? "#f87171" : "#fca5a5" });
+    if (left > 0 && left < 90000) {
+      const clockStr = (window.DepthsCore && DepthsCore.fmtClock) ? DepthsCore.fmtClock(left) : Math.ceil(left / 1000) + "s";
+      notes.push({ txt: "ENRAGE IN " + clockStr, col: left < 30000 ? "#f87171" : "#fca5a5" });
+    }
   }
   if (b.hardEnraged || (state.dungeon && state.dungeon.hardEnraged)) notes.push({ txt: "HARD ENRAGED", col: "#ef4444" });
   const d = state.dungeon;
   if (b.addsShield && (d.arenaEnemies || []).some(e => e.hp > 0)) notes.push({ txt: "SHIELDED BY ITS THRALLS — kill the adds", col: "#67e8f9" });
-  if (b.pylonShield && !b.pylonsBroken) notes.push({ txt: b.parts.filter(p => p.pylon).length === 1 ? "BREAK THE PYLON" : "BREAK ALL " + b.parts.filter(p => p.pylon).length + " PYLONS TOGETHER", col: "#c4b5fd" });
+  if (b.pylonShield && !b.pylonsBroken && Array.isArray(b.parts)) notes.push({ txt: b.parts.filter(p => p.pylon).length === 1 ? "BREAK THE PYLON" : "BREAK ALL " + b.parts.filter(p => p.pylon).length + " PYLONS TOGETHER", col: "#c4b5fd" });
   if (d.wardUntil > t) notes.push({ txt: "WARDED — hits reflect", col: "#e9d5ff" });
   if (b.stages > 1) notes.push({ txt: "WARDEN " + (b.stage || 1) + " / " + b.stages, col: "#fde68a" });
   notes.forEach((n, i) => {
@@ -3631,18 +3661,14 @@ function drawBossRoom() {
   const def = def0 ? Object.assign({}, def0, look || {}) : null;
   const t = Date.now();
   const accent = def ? def.accent : "#c084fc";
+  const CB = crownMobile(b) ? window.gameCrownBoss : null;
 
   ctx.fillStyle = "#09060a"; ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.save();
+  try {
   const sh = (_dungeonShake || 0) + (d.cine ? d.cine.shake || 0 : 0);
   ctx.translate(VIEW_OX + (Math.random() - 0.5) * sh, VIEW_OY + (Math.random() - 0.5) * sh);
 
-  if (d.cine || d.phaseCine || d.victoryCine) {
-    if (d.victoryCine) gameBosses.drawCinematic(ctx, d.victoryCine, b, t);
-    else if (d.phaseCine) gameBosses.drawPhaseCinematic(ctx, d.phaseCine, b, t);
-    else gameBosses.drawCinematic(ctx, d.cine, b, t);
-    ctx.restore(); return;
-  }
   // ---- the room, or the field it became ----
   if (d.openField) { drawOpenField(t, accent); }
   else {
@@ -3722,7 +3748,6 @@ function drawBossRoom() {
   // ---- the boss, its attacks, and the player ----
   // A moving boss is drawn from its interpolated pose: telegraphs on the
   // floor, then every body behind you; the ones in front come after you.
-  const CB = crownMobile(b) ? window.gameCrownBoss : null;
   if (CB) { CB.drawGround(ctx, t); CB.drawBodies(ctx, t, "back", state.pos.y); }
   else if (b) gameBosses.drawBoss(ctx, b, t);
   drawArenaAdds(ctx, t);
@@ -3775,82 +3800,99 @@ function drawBossRoom() {
   }
 
   // ---- the cinematics sit over the room, inside the same transform ----
-  if (d.cine) gameBosses.drawCinematic(ctx, d.cine, b, t);
-  if (d.phaseCine) gameBosses.drawPhaseCinematic(ctx, d.phaseCine, b, t);
+  if (d.victoryCine) gameBosses.drawCinematic(ctx, d.victoryCine, b, t);
+  else if (d.phaseCine) gameBosses.drawPhaseCinematic(ctx, d.phaseCine, b, t);
+  else if (d.cine) gameBosses.drawCinematic(ctx, d.cine, b, t);
   if (state.tomeCine) gameBosses.drawTomeCinematic(ctx, state.tomeCine, t);
 
-  ctx.restore();
+  } finally {
+    ctx.restore();
+  }
 
   // ---- HUD (screen space) ----
-  // The bar is deliberately visible DURING the entrance cutscene while the
-  // thing is still rising: it arrives empty and fills as the boss puts itself
-  // together, which is the whole point of the assembly beat. Everything else
-  // in the HUD still waits for the cutscene to finish.
-  if (b && (!d.cine || b.status === "rising") && !d.phaseCine && !state.tomeCine) {
-    const rising = b.status === "rising";
-    const w = 560, x0 = canvas.width / 2 - w / 2;
-    GFX.roundFill(ctx, x0, 16, w, rising ? 46 : 66, 8, "rgba(0,0,0,.72)");
-    ctx.textAlign = "center";
-    ctx.fillStyle = b.enraged ? "#ef4444" : accent;
-    ctx.font = "bold " + (b.mini ? 15 : 17) + "px sans-serif";
-    ctx.fillText(def ? def.name : "BOSS", canvas.width / 2, 38);
-    if (rising) {
-      // The bar arrives EMPTY and fills as the thing puts itself together, so
-      // the entrance reads as something assembling rather than as a loading
-      // spinner. The number climbs with it, up to the real pool.
-      const k = Math.max(0, Math.min(1, (t - (b._t0 || t)) / (b.riseMs || ECON.GUILD_BOSS.RISE_MS)));
-      const fill = k * k * (3 - 2 * k);        // smoothstep: slow, then a surge
-      ctx.fillStyle = "#000"; ctx.fillRect(x0 + 20, 44, w - 40, 13);
-      ctx.fillStyle = accent;
-      ctx.fillRect(x0 + 20, 44, (w - 40) * fill, 13);
-      // the leading edge, welding itself on
-      if (fill > 0.01 && fill < 0.999) {
-        const ex = x0 + 20 + (w - 40) * fill;
-        ctx.fillStyle = "rgba(255,255,255," + (0.5 + 0.5 * Math.sin(t / 60)) + ")";
-        ctx.fillRect(ex - 3, 42, 6, 17);
-      }
-      ctx.fillStyle = "#fff"; ctx.font = "bold 11px sans-serif";
-      ctx.fillText(Math.round(b.maxHp * fill).toLocaleString() + " / " + b.maxHp.toLocaleString(),
-        canvas.width / 2, 72);
-    } else if (CB) {
-      // Moving bosses: one bar (the Monarchs: two), then what it is doing.
-      if (!CB.drawTwinBars(ctx, x0 + 20, 46, w - 40)) {
-        ctx.fillStyle = "#000"; ctx.fillRect(x0 + 20, 46, w - 40, 13);
-        ctx.fillStyle = b.enraged ? "#ef4444" : "#22c55e";
-        ctx.fillRect(x0 + 20, 46, (w - 40) * Math.max(0, b.hp / b.maxHp), 13);
-      }
-      const dead = b.status === "dead" || b.hp <= 0;
-      if (dead) { ctx.fillStyle = "#fff"; ctx.font = "bold 11px sans-serif"; ctx.fillText(b.mini ? "DEFEATED · THE SEAL IS BROKEN" : "DEFEATED", canvas.width / 2, 74); }
-      const yNext = dead ? 96 : CB.drawHud(ctx, b, t, canvas.width / 2, 74);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  try {
+    if (b && (b.status !== "dead" || b.hp > 0 || b.status === "rising")) {
+      const rising = b.status === "rising";
+      const w = 560, x0 = canvas.width / 2 - w / 2;
+      GFX.roundFill(ctx, x0, 16, w, rising ? 46 : 66, 8, "rgba(0,0,0,.72)");
       ctx.textAlign = "center";
-      drawBossStatusHud(ctx, b, t, x0, w, accent, Math.max(96, yNext + 4));
-    } else {
-      ctx.fillStyle = "#000"; ctx.fillRect(x0 + 20, 46, w - 40, 13);
-      ctx.fillStyle = b.enraged ? "#ef4444" : "#22c55e";
-      ctx.fillRect(x0 + 20, 46, (w - 40) * Math.max(0, b.hp / b.maxHp), 13);
-      const guard = b.parts.filter((p, i) => i < bossPartCount(b) && p.hp > 0).length;
-      ctx.fillStyle = "#fff"; ctx.font = "bold 11px sans-serif";
-      const dead = b.status === "dead" || b.hp <= 0;
-      ctx.fillText(dead ? (b.mini ? "DEFEATED · THE SEAL IS BROKEN" : "DEFEATED")
-        : guard ? guard + " " + def.partName + (guard === 1 ? "" : "s") + " still guarding the head" : "THE HEAD IS OPEN",
-        canvas.width / 2, 74);
-      if (b.hpMult > 1) {
-        ctx.fillStyle = "#94a3b8"; ctx.font = "10px sans-serif";
-        ctx.fillText("scaled x" + b.hpMult.toFixed(2) + " for " + b.participants + " fighters", canvas.width / 2, 90);
+      ctx.fillStyle = b.enraged ? "#ef4444" : accent;
+      ctx.font = "bold " + (b.mini ? 15 : 17) + "px sans-serif";
+      ctx.fillText(def ? def.name : "BOSS", canvas.width / 2, 38);
+      if (rising) {
+        const k = Math.max(0, Math.min(1, (t - (b._t0 || t)) / (b.riseMs || ECON.GUILD_BOSS.RISE_MS)));
+        const fill = k * k * (3 - 2 * k);        // smoothstep: slow, then a surge
+        ctx.fillStyle = "#000"; ctx.fillRect(x0 + 20, 44, w - 40, 14);
+        ctx.fillStyle = accent;
+        ctx.fillRect(x0 + 20, 44, (w - 40) * fill, 14);
+        if (fill > 0.01 && fill < 0.999) {
+          const ex = x0 + 20 + (w - 40) * fill;
+          ctx.fillStyle = "rgba(255,255,255," + (0.5 + 0.5 * Math.sin(t / 60)) + ")";
+          ctx.fillRect(ex - 3, 42, 6, 18);
+        }
+        ctx.fillStyle = "#fff"; ctx.font = "bold 11px sans-serif";
+        const riseMax = (b.maxHp > 0 ? b.maxHp : (def && def.baseHp) || 100);
+        ctx.fillText(Math.round(riseMax * fill).toLocaleString() + " / " + Math.round(riseMax).toLocaleString(),
+          canvas.width / 2, 72);
+      } else {
+        const twinDrawn = !!(CB && typeof CB.drawTwinBars === "function" && CB.drawTwinBars(ctx, x0 + 20, 46, w - 40));
+        const maxHp = Math.max(1, (b.maxHp > 0 ? b.maxHp : (b.head && b.head.maxHp > 0 ? b.head.maxHp : (def && def.baseHp) || 100)));
+        const curHp = Math.max(0, (b.hp != null && Number.isFinite(b.hp)) ? b.hp : (b.head && b.head.hp != null && Number.isFinite(b.head.hp)) ? b.head.hp : maxHp);
+        const hpFrac = Math.max(0, Math.min(1, curHp / maxHp));
+
+        if (!twinDrawn) {
+          ctx.fillStyle = "#000"; ctx.fillRect(x0 + 20, 46, w - 40, 14);
+          ctx.fillStyle = b.enraged ? "#ef4444" : "#22c55e";
+          ctx.fillRect(x0 + 20, 46, (w - 40) * hpFrac, 14);
+          ctx.strokeStyle = "rgba(255,255,255,.22)"; ctx.lineWidth = 1; ctx.strokeRect(x0 + 20, 46, w - 40, 14);
+          ctx.fillStyle = "#fff"; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center";
+          ctx.fillText(Math.round(curHp).toLocaleString() + " / " + Math.round(maxHp).toLocaleString() + " (" + Math.round(hpFrac * 100) + "%)", canvas.width / 2, 57);
+        }
+
+        const dead = b.status === "dead" || curHp <= 0;
+        let yNext = 96;
+        if (dead) {
+          ctx.fillStyle = "#fff"; ctx.font = "bold 11px sans-serif";
+          ctx.fillText(b.mini ? "DEFEATED · THE SEAL IS BROKEN" : "DEFEATED", canvas.width / 2, 74);
+        } else if (CB && typeof CB.drawHud === "function") {
+          try { yNext = CB.drawHud(ctx, b, t, canvas.width / 2, 74); } catch (e) { yNext = 96; }
+        } else if (Array.isArray(b.parts) && b.parts.length > 0) {
+          const guard = b.parts.filter((p, i) => i < bossPartCount(b) && p.hp > 0).length;
+          ctx.fillStyle = "#fff"; ctx.font = "bold 11px sans-serif";
+          ctx.fillText(guard ? guard + " " + (def ? def.partName : "guard") + (guard === 1 ? "" : "s") + " still guarding the head" : "THE HEAD IS OPEN",
+            canvas.width / 2, 74);
+          if (b.hpMult > 1) {
+            ctx.fillStyle = "#94a3b8"; ctx.font = "10px sans-serif";
+            ctx.fillText("scaled x" + b.hpMult.toFixed(2) + " for " + (b.participants || 1) + " fighters", canvas.width / 2, 90);
+          }
+        }
+        ctx.textAlign = "center";
+        try { drawBossStatusHud(ctx, b, t, x0, w, accent, Math.max(96, (yNext || 96) + 4)); } catch (e) {}
+      }
+      if (b.mini) {
+        ctx.fillStyle = "#94a3b8"; ctx.font = "9px sans-serif"; ctx.textAlign = "right";
+        ctx.fillText("MINI BOSS", x0 + w - 14, 34);
       }
     }
-    if (b.mini) {
-      ctx.fillStyle = "#94a3b8"; ctx.font = "9px sans-serif"; ctx.textAlign = "right";
-      ctx.fillText("MINI BOSS", x0 + w - 14, 34);
-    }
-    if (!rising && !CB) drawBossStatusHud(ctx, b, t, x0, w, accent);
+  } catch (e) {
+    console.error("Error drawing boss HUD:", e);
   }
-  drawPhaseShiftCard(ctx, t);
-  if (window.gameDepths) gameDepths.drawScreen(ctx, t);
+
+  try { drawPhaseShiftCard(ctx, t); } catch (e) {}
+  try { if (window.gameDepths) gameDepths.drawScreen(ctx, t); } catch (e) {}
+
+  // ---- PLAYER HP BAR (guaranteed screen-space, top-right) ----
+  const playerMaxHp = Number.isFinite(state.maxHp) && state.maxHp > 0 ? state.maxHp : (window.gameGear && gameGear.maxHp ? gameGear.maxHp() : 100);
+  const playerHp = Number.isFinite(state.hp) ? Math.max(0, state.hp) : playerMaxHp;
+  const playerFrac = Math.max(0, Math.min(1, playerHp / playerMaxHp));
   ctx.fillStyle = "#000"; ctx.fillRect(canvas.width - 232, 12, 220, 22);
-  ctx.fillStyle = "#10b981"; ctx.fillRect(canvas.width - 232, 12, 220 * Math.max(0, state.hp / (state.maxHp || 100)), 22);
+  ctx.fillStyle = "#10b981"; ctx.fillRect(canvas.width - 232, 12, 220 * playerFrac, 22);
+  ctx.strokeStyle = "rgba(255,255,255,.25)"; ctx.lineWidth = 1; ctx.strokeRect(canvas.width - 232, 12, 220, 22);
   ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "bold 13px sans-serif";
-  ctx.fillText("HP " + Math.max(0, Math.floor(state.hp)) + " / " + (state.maxHp || 100), canvas.width - 122, 28);
+  ctx.fillText("HP " + Math.max(0, Math.floor(playerHp)).toLocaleString() + " / " + Math.floor(playerMaxHp).toLocaleString(), canvas.width - 122, 28);
+  ctx.restore();
   if (!d.cine && !d.phaseCine && !state.tomeCine) {
     GFX.roundFill(ctx, 12, canvas.height - 64, 380, 48, 8, "rgba(0,0,0,.72)");
     ctx.fillStyle = "#fcd34d"; ctx.textAlign = "left"; ctx.font = "bold 12px sans-serif";
@@ -3918,6 +3960,7 @@ function drawDungeon() {
   // Maze/gameplay content is laid out in the original 1024x640 frame; center
   // it in the (possibly bigger) canvas. HUD overlay below stays unshifted.
   ctx.save();
+  try {
   const shk = _dungeonShake || 0;
   ctx.translate(VIEW_OX + (Math.random() - 0.5) * shk, VIEW_OY + (Math.random() - 0.5) * shk);
 
@@ -3934,7 +3977,7 @@ function drawDungeon() {
   if (state.dungeon && state.dungeon.walls) gameMobs.drawWalls(ctx, state.dungeon.walls, th);
 
   // Door
-  if (state.dungeon) {
+  if (state.dungeon && state.dungeon.doorCell) {
     const dc = cellCenter(state.dungeon.doorCell.r, state.dungeon.doorCell.c);
     const open = state.dungeon.keyPickedUp;
     if (open) {
@@ -4050,15 +4093,17 @@ function drawDungeon() {
   if (state.tomeCine) gameBosses.drawTomeCinematic(ctx, state.tomeCine, t);
 
   DungeonSight.draw(ctx, state.pos.x, state.pos.y, state.dungeon.walls, DUNGEON_W, DUNGEON_H);
-  ctx.restore(); // end VIEW_OX/VIEW_OY translate — maze content is done
+  } finally {
+    ctx.restore(); // end VIEW_OX/VIEW_OY translate — maze content is done
+  }
 
   // HUD overlay (screen-anchored: left side bottom-anchored via canvas.height,
   // right side already used canvas.width so it was fine unshifted)
   ctx.fillStyle = "rgba(0,0,0,.7)";
   GFX.roundFill(ctx, 12, canvas.height - 100, 280, 90, 8, "rgba(0,0,0,.7)");
   ctx.fillStyle = "#fff"; ctx.font = "bold 13px sans-serif"; ctx.textAlign = "left";
-  ctx.fillText(`${state.dungeon ? state.dungeon.cfg.name : "Dungeon"}`, 22, canvas.height - 78);
-  ctx.fillText(`Floor ${state.dungeon ? state.dungeon.floor + 1 : 1} / ${state.dungeon ? state.dungeon.cfg.floors : 1}`, 22, canvas.height - 60);
+  ctx.fillText(`${state.dungeon && state.dungeon.cfg ? state.dungeon.cfg.name : "Dungeon"}`, 22, canvas.height - 78);
+  ctx.fillText(`Floor ${(state.dungeon && Number.isFinite(state.dungeon.floor)) ? state.dungeon.floor + 1 : 1} / ${(state.dungeon && state.dungeon.cfg && state.dungeon.cfg.floors) || 1}`, 22, canvas.height - 60);
   ctx.fillText(`Reward: $${state.questReward}`, 22, canvas.height - 42);
   ctx.fillStyle = "#fcd34d";
   const PWh = window.gameWeapons;
@@ -4066,11 +4111,18 @@ function drawDungeon() {
     ctx.fillText("Weapons: " + PWh.hint(), 22, canvas.height - 22);
     if (PWh.drawHud) PWh.drawHud(ctx, 12, canvas.height - 144, t);
   } else ctx.fillText(`Weapon: ${state.weapon.toUpperCase()} (1=sword, 2=pistol)`, 22, canvas.height - 22);
-  // HP bar
+  // HP bar (screen-space, top-right)
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  const dPlayerMaxHp = Number.isFinite(state.maxHp) && state.maxHp > 0 ? state.maxHp : (window.gameGear && gameGear.maxHp ? gameGear.maxHp() : 100);
+  const dPlayerHp = Number.isFinite(state.hp) ? Math.max(0, state.hp) : dPlayerMaxHp;
+  const dPlayerFrac = Math.max(0, Math.min(1, dPlayerHp / dPlayerMaxHp));
   ctx.fillStyle = "#000"; ctx.fillRect(canvas.width - 232, 12, 220, 22);
-  ctx.fillStyle = "#10b981"; ctx.fillRect(canvas.width - 232, 12, 220 * Math.max(0, state.hp / (state.maxHp || 100)), 22);
+  ctx.fillStyle = "#10b981"; ctx.fillRect(canvas.width - 232, 12, 220 * dPlayerFrac, 22);
+  ctx.strokeStyle = "rgba(255,255,255,.25)"; ctx.lineWidth = 1; ctx.strokeRect(canvas.width - 232, 12, 220, 22);
   ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.font = "bold 13px sans-serif";
-  ctx.fillText("HP " + Math.max(0, Math.floor(state.hp)) + " / " + (state.maxHp || 100), canvas.width - 122, 28);
+  ctx.fillText("HP " + Math.max(0, Math.floor(dPlayerHp)).toLocaleString() + " / " + Math.floor(dPlayerMaxHp).toLocaleString(), canvas.width - 122, 28);
+  ctx.restore();
   // ESC hint
   ctx.fillStyle = "rgba(0,0,0,.7)";
   GFX.roundFill(ctx, canvas.width - 200, canvas.height - 100, 188, 24, 6, "rgba(0,0,0,.7)");
@@ -4145,6 +4197,11 @@ function updateDuel() {
 
   if (state.attackCooldown > 0) state.attackCooldown--;
   if (state.swingT > 0) state.swingT--;
+  {
+    const ae = typeof document !== "undefined" && document.activeElement;
+    const typing = ae && (ae.id === "chatBox" || /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
+    if (typeof keys !== "undefined" && (keys[" "] || keys["space"]) && !typing) doAttack();
+  }
 
   const id = duelId(state.user, state.duel.opponent);
   const cache = (state._duelCache && state._duelCache[id]) || {};

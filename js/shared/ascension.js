@@ -62,11 +62,16 @@
       name: "The Unmoored Spire", tier: "guild_spire", boss: "aurelion", mini: "seraphine",
       floors: 7, enemyMin: 15, enemyMax: 20, hpMult: 13.2, speedMult: 1.96, reward: 48000,
       blurb: "A tower that forgot which way was down. Something at the top is still climbing.",
-      theme: "spire", dmgMult: 1.62, gearLvl: 12, unlockAfter: "guild_throne", raidable: true, mode: "story", continuousOnly: true, crown: true, ascend: true,
+      theme: "spire", dmgMult: 2.10, gearLvl: 12, unlockAfter: "guild_throne", raidable: true, mode: "story", continuousOnly: true, crown: true, ascend: true,
       roster: rosterOf([["unmoored", 3], ["spire_warden", 2], ["echo", 3], ["crownguard", 1], ["courtier", 1], ["crown_wisp", 1], ["golem", 1]]),
     },
   };
   const EARN_CAPS = { guild_bastion: { cap: 14000, cooldown: 0 }, guild_wickwood: { cap: 66000, cooldown: 0 }, guild_spire: { cap: 130000, cooldown: 0 } };
+  const BOSS_TIER_SCALE = {
+    guild_bastion:  { hp: 1.85, mini: 3.40, dmg: 1.30 },
+    guild_wickwood: { hp: 1.75, mini: 5.80, dmg: 2.30 },
+    guild_spire:    { hp: 1.25, mini: 5.40, dmg: 3.10 },
+  };
   // Where each tier sits in STORY_LADDER (inserted after this key).
   const LADDER_AFTER = { guild_bastion: "guild_forge", guild_wickwood: "guild_geode", guild_spire: "guild_throne" };
 
@@ -87,9 +92,9 @@
     waxling:      { color: "#fef3c7", size: 13, speed: 0.55,hp: 120, dmg: 6,  ai: "spore",   name: "Waxling",         sight: 300, sporeCd: 190, sporeR: 84, slow: 0.45, sporeFrames: 160 },
     lamp_acolyte: { color: "#a16207", size: 12, speed: 1.3, hp: 90,  dmg: 15, ai: "phaser",  name: "Lamp Acolyte",    sight: 360, phaseCd: 190, phaseFrames: 80 },
     // ---- the Unmoored Spire ----
-    unmoored:     { color: "#c4b5fd", size: 13, speed: 1.6, hp: 110, dmg: 17, ai: "mirror",  name: "Unmoored Shade",  sight: 380 },
-    spire_warden: { color: "#818cf8", size: 18, speed: 0.8, hp: 260, dmg: 24, ai: "guard",   name: "Spire Warden",    sight: 300, blockArc: 2.4, turn: 0.055 },
-    echo:         { color: "#f5d0fe", size: 11, speed: 1.9, hp: 76,  dmg: 18, ai: "pounce",  name: "Echo",            sight: 400, pounceCd: 130, pounceWarn: 26, pounceSpeed: 9, pounceFrames: 15 },
+    unmoored:     { color: "#c4b5fd", size: 13, speed: 1.6, hp: 210, dmg: 30, ai: "mirror",  name: "Unmoored Shade",  sight: 380 },
+    spire_warden: { color: "#818cf8", size: 18, speed: 0.8, hp: 360, dmg: 36, ai: "guard",   name: "Spire Warden",    sight: 300, blockArc: 2.4, turn: 0.055 },
+    echo:         { color: "#f5d0fe", size: 11, speed: 1.9, hp: 130, dmg: 30, ai: "pounce",  name: "Echo",            sight: 400, pounceCd: 130, pounceWarn: 26, pounceSpeed: 9, pounceFrames: 15 },
   };
 
   // ---------------------------------------------------------------- BOSSES
@@ -265,23 +270,23 @@
                 strike: { warnMs: 420, r: 140, arc: 2.4, dmg: 34, recoverMs: 600, vuln: 1.2 } },
       attacks: [
         { type: "phase_out", kind: "phase_out", weight: 14, warnMs: 380, range: [0, 2000], cdMs: 11000, dmg: 34, tell: "SHE PHASES OUT", dodge: "stand in the glowing tether where she will emerge — bind her" },
-        { type: "spectral_lunge", kind: "lunge", weight: 26, warnMs: 440, activeMs: 160, recoverMs: 540, range: [150, 520], len: 460, w: 60, overshoot: 70, speed: 1700, dmg: 30, vuln: 1.25, cdMs: 2200, tell: "SPECTRAL LUNGE", dodge: "step off the line" },
+        { type: "spectral_lunge", kind: "lunge", weight: 26, warnMs: 440, activeMs: 160, recoverMs: 540, range: [150, 520], len: 460, w: 60, overshoot: 70, speed: 1700, dmg: 38, vuln: 1.25, cdMs: 2200, tell: "SPECTRAL LUNGE", dodge: "step off the line" },
         { type: "unmoored_cuts", kind: "combo", weight: 24, warnMs: 280, activeMs: 110, recoverMs: 700, range: [0, 180], vuln: 1.2, cdMs: 1700,
-          hits: [{ warnMs: 280, arc: 2.3, r: 125, dmg: 17, lunge: 44 }, { warnMs: 400, arc: 3.4, r: 155, dmg: 28, lunge: 72 }], dmg: 17, tell: "TWO-CUT", dodge: "back off after the first" },
-        { type: "bolt", weight: 16, warnMs: 1100, r: 44, dmg: 24, targets: 3, tell: "ECHOES", dodge: "step out of the circles" },
-        { type: "lance", weight: 14, warnMs: 1300, len: 900, w: 50, dmg: 14, durMs: 3200, turn: 1.1, tell: "SEVERANCE", dodge: "keep circling" },
+          hits: [{ warnMs: 280, arc: 2.3, r: 125, dmg: 22, lunge: 44 }, { warnMs: 400, arc: 3.4, r: 155, dmg: 34, lunge: 72 }], dmg: 22, tell: "TWO-CUT", dodge: "back off after the first" },
+        { type: "bolt", weight: 16, warnMs: 1100, r: 44, dmg: 32, targets: 3, tell: "ECHOES", dodge: "step out of the circles" },
+        { type: "lance", weight: 14, warnMs: 1300, len: 900, w: 50, dmg: 18, durMs: 3200, turn: 1.1, tell: "SEVERANCE", dodge: "keep circling" },
       ],
       phases: [
         { at: 0.50, shiftMs: 2800, attackEveryMs: 2000, windupMult: 0.9, name: "SERAPHINE, HALF-GONE", color: "#2e1065", accent: "#f5d0fe",
           cry: "LESS OF ME EVERY TIME. MORE OF YOU.", title: "BETWEEN THE PLANES",
           phaser: { everyMs: 8500, hideMs: 2200, tetherR: 100, boundMs: 2600 },
           attacks: [
-            { type: "phase_out", kind: "phase_out", weight: 18, warnMs: 340, range: [0, 2000], cdMs: 8500, dmg: 38, tell: "SHE PHASES OUT", dodge: "stand in the tether — bind her" },
-            { type: "spectral_lunge", kind: "lunge", weight: 26, warnMs: 420, activeMs: 160, recoverMs: 520, range: [150, 540], len: 480, w: 64, overshoot: 70, speed: 1800, dmg: 34, vuln: 1.25, cdMs: 2000, tell: "SPECTRAL LUNGE", dodge: "step off the line" },
+            { type: "phase_out", kind: "phase_out", weight: 18, warnMs: 340, range: [0, 2000], cdMs: 8500, dmg: 46, tell: "SHE PHASES OUT", dodge: "stand in the tether — bind her" },
+            { type: "spectral_lunge", kind: "lunge", weight: 26, warnMs: 420, activeMs: 160, recoverMs: 520, range: [150, 540], len: 480, w: 64, overshoot: 70, speed: 1800, dmg: 42, vuln: 1.25, cdMs: 2000, tell: "SPECTRAL LUNGE", dodge: "step off the line" },
             { type: "unmoored_cuts", kind: "combo", weight: 24, warnMs: 260, activeMs: 110, recoverMs: 680, range: [0, 185], vuln: 1.2, cdMs: 1600,
-              hits: [{ warnMs: 260, arc: 2.4, r: 130, dmg: 19, lunge: 46 }, { warnMs: 380, arc: 3.6, r: 160, dmg: 30, lunge: 74 }], dmg: 19, tell: "TWO-CUT", dodge: "back off after the first" },
-            { type: "bolt", weight: 16, warnMs: 1000, r: 46, dmg: 26, targets: 4, tell: "ECHOES", dodge: "step out of the circles" },
-            { type: "cross", weight: 12, warnMs: 1500, arms: 4, len: 600, w: 54, dmg: 30, durMs: 1100, tell: "SEVERANCE", dodge: "stand between the beams" },
+              hits: [{ warnMs: 260, arc: 2.4, r: 130, dmg: 24, lunge: 46 }, { warnMs: 380, arc: 3.6, r: 160, dmg: 38, lunge: 74 }], dmg: 24, tell: "TWO-CUT", dodge: "back off after the first" },
+            { type: "bolt", weight: 16, warnMs: 1000, r: 46, dmg: 34, targets: 4, tell: "ECHOES", dodge: "step out of the circles" },
+            { type: "cross", weight: 12, warnMs: 1500, arms: 4, len: 600, w: 54, dmg: 36, durMs: 1100, tell: "SEVERANCE", dodge: "stand between the beams" },
           ] },
       ],
     },
@@ -308,47 +313,47 @@
           [{ x: 380, y: 230, r: 34 }, { x: 644, y: 230, r: 34 }, { x: 380, y: 390, r: 34 }, { x: 644, y: 390, r: 34 }, { x: 512, y: 310, r: 30 }],
         ], everyMs: 12000, warnMs: 1500, setMs: 2600, setVuln: 1.5, knock: 26, wallHits: 2 },
       phaser: { everyMs: 10000, hideMs: 2400, tetherR: 110, boundMs: 3200, boundVuln: 1.8, anchors: [{ x: 250, y: 190 }, { x: 774, y: 190 }, { x: 250, y: 430 }, { x: 774, y: 430 }, { x: 512, y: 310 }],
-                strike: { warnMs: 400, r: 150, arc: 2.6, dmg: 44, recoverMs: 600, vuln: 1.2 } },
+                strike: { warnMs: 400, r: 150, arc: 2.6, dmg: 52, recoverMs: 600, vuln: 1.2 } },
       arena: { pillars: [] },
       attacks: [
         { type: "herald_cleave", kind: "combo", weight: 28, warnMs: 420, activeMs: 150, recoverMs: 900, range: [0, 200], vuln: 1.25, cdMs: 2200,
-          hits: [{ warnMs: 420, arc: 2.8, r: 150, dmg: 32, lunge: 50 }, { warnMs: 520, arc: 3.6, r: 175, dmg: 42, lunge: 70 }], dmg: 32, tell: "HERALD'S CLEAVE", dodge: "two swings — the second is wider" },
-        { type: "ascendant_dash", kind: "lunge", weight: 22, warnMs: 620, activeMs: 220, recoverMs: 650, range: [200, 700], len: 620, w: 96, overshoot: 90, speed: 1350, dmg: 40, vuln: 1.3, cdMs: 2800, tell: "ASCENDANT DASH", dodge: "step out of the lane" },
+          hits: [{ warnMs: 420, arc: 2.8, r: 150, dmg: 38, lunge: 50 }, { warnMs: 520, arc: 3.6, r: 175, dmg: 50, lunge: 70 }], dmg: 38, tell: "HERALD'S CLEAVE", dodge: "two swings — the second is wider" },
+        { type: "ascendant_dash", kind: "lunge", weight: 22, warnMs: 620, activeMs: 220, recoverMs: 650, range: [200, 700], len: 620, w: 96, overshoot: 90, speed: 1350, dmg: 50, vuln: 1.3, cdMs: 2800, tell: "ASCENDANT DASH", dodge: "step out of the lane" },
         { type: "parry", kind: "guard", weight: 14, warnMs: 280, guardMs: 1600, recoverMs: 520, range: [0, 460], cdMs: 7500,
-          riposte: { warnMs: 220, activeMs: 170, len: 260, w: 100, dmg: 50, recoverMs: 460 }, dmg: 50, tell: "THE HERALD'S GUARD", dodge: "do not strike the glowing guard" },
-        { type: "proclaim", kind: "nova", weight: 14, warnMs: 900, activeMs: 250, recoverMs: 700, range: [0, 260], r: 240, dmg: 32, tell: "PROCLAMATION", dodge: "back away" },
-        { type: "cross", weight: 12, warnMs: 1600, arms: 4, len: 620, w: 58, dmg: 34, durMs: 1100, tell: "FOUR WINDS", dodge: "stand between the beams" },
+          riposte: { warnMs: 220, activeMs: 170, len: 260, w: 100, dmg: 64, recoverMs: 460 }, dmg: 64, tell: "THE HERALD'S GUARD", dodge: "do not strike the glowing guard" },
+        { type: "proclaim", kind: "nova", weight: 14, warnMs: 900, activeMs: 250, recoverMs: 700, range: [0, 260], r: 240, dmg: 42, tell: "PROCLAMATION", dodge: "back away" },
+        { type: "cross", weight: 12, warnMs: 1600, arms: 4, len: 620, w: 58, dmg: 38, durMs: 1100, tell: "FOUR WINDS", dodge: "stand between the beams" },
       ],
       phases: [
         { at: 0.70, shiftMs: 4600, attackEveryMs: 2000, form: "tempest", cinematic: true, name: "AURELION, THE TEMPEST", color: "#1e1b4b", accent: "#a5b4fc",
           cry: "THE SPIRE ANSWERS TO ME. WATCH IT MOVE.", title: "THE STONES RISE",
           attacks: [
-            { type: "raise_walls", kind: "reshape", weight: 14, warnMs: 1500, range: [0, 2000], cdMs: 12000, dmg: 30, tell: "THE SPIRE SHIFTS", dodge: "step off the glowing marks — punish him while the stone sets" },
-            { type: "tempest_slam", kind: "cone", weight: 22, warnMs: 800, activeMs: 220, recoverMs: 700, range: [0, 200], r: 185, arc: 1.9, dmg: 30, vuln: 1.2, tell: "TEMPEST SLAM", dodge: "get beside him" },
-            { type: "quake", kind: "nova", weight: 16, warnMs: 950, activeMs: 250, recoverMs: 700, range: [0, 270], r: 240, dmg: 28, tell: "QUAKE", dodge: "back out of the ring" },
-            { type: "hazard", weight: 18, warnMs: 1200, targets: 5, r: 80, dmg: 16, lingerMs: 9000, slow: 0.5, tell: "STARFLOOD", dodge: "keep out of the light pools" },
-            { type: "sweep", weight: 14, warnMs: 1300, w: 120, dmg: 30, durMs: 1400, tell: "STORMFRONT", dodge: "cross the band" },
-            { type: "meteor", weight: 14, warnMs: 1500, r: 56, dmg: 30, targets: 14, durMs: 1800, tell: "STARFALL", dodge: "never stop moving" },
+            { type: "raise_walls", kind: "reshape", weight: 14, warnMs: 1500, range: [0, 2000], cdMs: 12000, dmg: 36, tell: "THE SPIRE SHIFTS", dodge: "step off the glowing marks — punish him while the stone sets" },
+            { type: "tempest_slam", kind: "cone", weight: 22, warnMs: 800, activeMs: 220, recoverMs: 700, range: [0, 200], r: 185, arc: 1.9, dmg: 40, vuln: 1.2, tell: "TEMPEST SLAM", dodge: "get beside him" },
+            { type: "quake", kind: "nova", weight: 16, warnMs: 950, activeMs: 250, recoverMs: 700, range: [0, 270], r: 240, dmg: 38, tell: "QUAKE", dodge: "back out of the ring" },
+            { type: "hazard", weight: 18, warnMs: 1200, targets: 5, r: 80, dmg: 20, lingerMs: 9000, slow: 0.5, tell: "STARFLOOD", dodge: "keep out of the light pools" },
+            { type: "sweep", weight: 14, warnMs: 1300, w: 120, dmg: 38, durMs: 1400, tell: "STORMFRONT", dodge: "cross the band" },
+            { type: "meteor", weight: 14, warnMs: 1500, r: 56, dmg: 42, targets: 14, durMs: 1800, tell: "STARFALL", dodge: "never stop moving" },
           ] },
-        { at: 0.45, shiftMs: 4000, attackEveryMs: 1900, form: "legion", onEnterAdds: { type: "echo", n: 3 }, name: "AURELION, THE LEGION", color: "#0f172a", accent: "#f5d0fe",
+        { at: 0.45, shiftMs: 4600, attackEveryMs: 1900, form: "legion", cinematic: true, onEnterAdds: { type: "echo", n: 3 }, name: "AURELION, THE LEGION", color: "#0f172a", accent: "#f5d0fe",
           cry: "EVERY VERSION OF ME THAT EVER LOST. THEY ARE ALL HERE.", title: "THE ECHOES",
           attacks: [
             { type: "summon", weight: 28, warnMs: 1400, n: 3, addType: "echo", tell: "THE ECHOES WAKE", dodge: "cut every echo down — they shield him" },
             { type: "herald_cleave", kind: "combo", weight: 24, warnMs: 400, activeMs: 150, recoverMs: 860, range: [0, 200], vuln: 1.25, cdMs: 2100,
-              hits: [{ warnMs: 400, arc: 2.8, r: 150, dmg: 34, lunge: 50 }, { warnMs: 500, arc: 3.6, r: 175, dmg: 44, lunge: 70 }], dmg: 34, tell: "HERALD'S CLEAVE", dodge: "two swings" },
-            { type: "ascendant_dash", kind: "lunge", weight: 20, warnMs: 600, activeMs: 220, recoverMs: 620, range: [200, 700], len: 640, w: 96, overshoot: 90, speed: 1400, dmg: 42, vuln: 1.3, cdMs: 2600, tell: "ASCENDANT DASH", dodge: "step out of the lane" },
-            { type: "spiral", weight: 16, warnMs: 1400, arms: 4, points: 32, r: 44, dmg: 34, durMs: 2200, turns: 1.8, tell: "LEGION WHEEL", dodge: "cross the arms" },
-            { type: "safezone", weight: 12, warnMs: 2000, r: 110, dmg: 50, durMs: 1800, tell: "KNEEL", dodge: "get inside the marked circle" },
+              hits: [{ warnMs: 400, arc: 2.8, r: 150, dmg: 40, lunge: 50 }, { warnMs: 500, arc: 3.6, r: 175, dmg: 54, lunge: 70 }], dmg: 40, tell: "HERALD'S CLEAVE", dodge: "two swings" },
+            { type: "ascendant_dash", kind: "lunge", weight: 20, warnMs: 600, activeMs: 220, recoverMs: 620, range: [200, 700], len: 640, w: 96, overshoot: 90, speed: 1400, dmg: 52, vuln: 1.3, cdMs: 2600, tell: "ASCENDANT DASH", dodge: "step out of the lane" },
+            { type: "spiral", weight: 16, warnMs: 1400, arms: 4, points: 32, r: 44, dmg: 42, durMs: 2200, turns: 1.8, tell: "LEGION WHEEL", dodge: "cross the arms" },
+            { type: "safezone", weight: 12, warnMs: 2000, r: 110, dmg: 56, durMs: 1800, tell: "KNEEL", dodge: "get inside the marked circle" },
           ] },
-        { at: 0.20, shiftMs: 4200, attackEveryMs: 1800, form: "apotheosis", windupMult: 0.9, name: "AURELION, APOTHEOSIS", color: "#0c0a09", accent: "#fef08a",
+        { at: 0.20, shiftMs: 5000, attackEveryMs: 1800, form: "apotheosis", cinematic: true, windupMult: 0.9, name: "AURELION, APOTHEOSIS", color: "#0c0a09", accent: "#fef08a",
           cry: "I AM ALMOST NOT HERE. BIND ME IF YOU CAN.", title: "BETWEEN THE PLANES",
           attacks: [
-            { type: "phase_out", kind: "phase_out", weight: 18, warnMs: 360, range: [0, 2000], cdMs: 10000, dmg: 44, tell: "HE PHASES OUT", dodge: "stand in the tether where he will emerge — bind him" },
-            { type: "spectral_lunge", kind: "lunge", weight: 24, warnMs: 420, activeMs: 160, recoverMs: 520, range: [150, 560], len: 500, w: 70, overshoot: 70, speed: 1800, dmg: 40, vuln: 1.25, cdMs: 2000, tell: "SPECTRAL LUNGE", dodge: "step off the line" },
+            { type: "phase_out", kind: "phase_out", weight: 18, warnMs: 360, range: [0, 2000], cdMs: 10000, dmg: 56, tell: "HE PHASES OUT", dodge: "stand in the tether where he will emerge — bind him" },
+            { type: "spectral_lunge", kind: "lunge", weight: 24, warnMs: 420, activeMs: 160, recoverMs: 520, range: [150, 560], len: 500, w: 70, overshoot: 70, speed: 1800, dmg: 52, vuln: 1.25, cdMs: 2000, tell: "SPECTRAL LUNGE", dodge: "step off the line" },
             { type: "unmoored_cuts", kind: "combo", weight: 22, warnMs: 260, activeMs: 110, recoverMs: 680, range: [0, 185], vuln: 1.2, cdMs: 1600,
-              hits: [{ warnMs: 260, arc: 2.4, r: 130, dmg: 22, lunge: 46 }, { warnMs: 380, arc: 3.6, r: 160, dmg: 36, lunge: 74 }], dmg: 22, tell: "TWO-CUT", dodge: "back off after the first" },
-            { type: "collapse", weight: 16, warnMs: 1700, rStart: 520, rEnd: 150, dmg: 22, durMs: 3800, tell: "THE SKY FALLS IN", dodge: "stay in the light" },
-            { type: "lance", weight: 14, warnMs: 1300, len: 900, w: 54, dmg: 18, durMs: 3600, turn: 1.2, beams: 2, tell: "SEVERANCE", dodge: "stay between the beams" },
+              hits: [{ warnMs: 260, arc: 2.4, r: 130, dmg: 28, lunge: 46 }, { warnMs: 380, arc: 3.6, r: 160, dmg: 46, lunge: 74 }], dmg: 28, tell: "TWO-CUT", dodge: "back off after the first" },
+            { type: "collapse", weight: 16, warnMs: 1700, rStart: 520, rEnd: 150, dmg: 28, durMs: 3800, tell: "THE SKY FALLS IN", dodge: "stay in the light" },
+            { type: "lance", weight: 14, warnMs: 1300, len: 900, w: 54, dmg: 24, durMs: 3600, turn: 1.2, beams: 2, tell: "SEVERANCE", dodge: "stay between the beams" },
           ] },
       ],
     },
@@ -758,6 +763,9 @@
     // tiers
     for (const [k, cfg] of Object.entries(DUNGEONS)) if (!ECON.GUILD_DUNGEONS[k]) ECON.GUILD_DUNGEONS[k] = cfg;
     for (const [k, v] of Object.entries(EARN_CAPS)) if (!ECON.EARN_CAPS[k]) ECON.EARN_CAPS[k] = v;
+    if (ECON.BOSS_TIER_SCALE) {
+      for (const [k, v] of Object.entries(BOSS_TIER_SCALE)) if (!ECON.BOSS_TIER_SCALE[k]) ECON.BOSS_TIER_SCALE[k] = v;
+    }
     if (Array.isArray(ECON.STORY_LADDER)) for (const t of TIERS) if (!ECON.STORY_LADDER.includes(t)) {
       const i = ECON.STORY_LADDER.indexOf(LADDER_AFTER[t]);
       if (i >= 0) ECON.STORY_LADDER.splice(i + 1, 0, t); else ECON.STORY_LADDER.push(t);
@@ -898,7 +906,7 @@
 
   return {
     VERSION, TIERS, BOSSES, MINIS, ENEMIES, THEMES, KINDS, CONTENT, LADDER_AFTER,
-    DUNGEONS, BOSS_DEFS, ENEMY_DEFS, THEME_DEFS, UNIQUES, SETS, WEAPON_KINDS, ARMAMENT_UNIQUES, LOOT, CODEX_REWARDS, COSMETICS, ART_DROPS, CROWN_SHARDS, BASTION_LAYOUTS,
+    DUNGEONS, BOSS_DEFS, ENEMY_DEFS, THEME_DEFS, BOSS_TIER_SCALE, UNIQUES, SETS, WEAPON_KINDS, ARMAMENT_UNIQUES, LOOT, CODEX_REWARDS, COSMETICS, ART_DROPS, CROWN_SHARDS, BASTION_LAYOUTS,
     ASCENSION_MAX, MODIFIERS, MODIFIER_ORDER, ascensionMods, ascensionScale, modEffects, ascensionAllowed, normAscension, recordAscension,
     CHALLENGE_POOL, weeklyChallenge,
     MASTERY_RANKS, PRESTIGE, bossMastery, masteryTitle, masteryPoints, prestigeOf,

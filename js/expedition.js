@@ -145,7 +145,9 @@
     return next>=0&&n!==key ? {x:(next%p.cols+.5)*t,y:(Math.floor(next/p.cols)+.5)*t} : null;
   }
   function minimap() {
-    const d=state.dungeon,p=d.world;discover();
+    const d=state.dungeon;
+    if(d&&d.bossRoom)return; // Disable minimap HUD in dungeon boss rooms
+    const p=d.world;discover();
     const scale=Math.min(260/p.width,130/p.height),w=p.width*scale,h=p.height*scale;
     const x=canvas.width-w-18,y=72; // clear of the HP bar drawn above it in boss rooms (QA B7)
     const th=themeOf(p);
@@ -297,8 +299,17 @@
     ctx.fillStyle=th?th.torch:'#e3d1a6';ctx.font='17px Georgia';ctx.textAlign='center';ctx.fillText(p.depth?'The Arcane Depths — Floor '+p.depth:d.cfg.name,canvas.width/2,33);
     ctx.font='12px sans-serif';ctx.fillStyle='#d8dadd';
     ctx.fillText(p.depth?(p.heart?'The Heart beats somewhere below':p.guardian&&!d.miniDone?'A guardian bars the way':'Find the rift stair · slay enough to descend'):(p.mini&&!d.miniDone?'Find the guardian · break the far seal':'Explore the passages · find the final chamber'),canvas.width/2,54);ctx.textAlign='left';}
-    ctx.fillStyle='#181b21';ctx.fillRect(18,canvas.height-42,220,16);ctx.fillStyle='#72bb91';ctx.fillRect(18,canvas.height-42,220*Math.max(0,state.hp/state.maxHp),16);
-    ctx.fillStyle='#eee';ctx.font='12px sans-serif';ctx.fillText('HP '+Math.max(0,Math.ceil(state.hp))+' / '+state.maxHp+' · '+(window.gameWeapons&&gameWeapons.hint?gameWeapons.hint():'1 sword / 2 pistol')+' · SHIFT dash',20,canvas.height-10);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const exMaxHp = Number.isFinite(state.maxHp) && state.maxHp > 0 ? state.maxHp : (window.gameGear && gameGear.maxHp ? gameGear.maxHp() : 100);
+    const exHp = Number.isFinite(state.hp) ? Math.max(0, state.hp) : exMaxHp;
+    const exFrac = Math.max(0, Math.min(1, exHp / exMaxHp));
+    ctx.fillStyle='#181b21';ctx.fillRect(18,canvas.height-42,220,16);
+    ctx.fillStyle='#72bb91';ctx.fillRect(18,canvas.height-42,220*exFrac,16);
+    ctx.strokeStyle="rgba(255,255,255,.25)";ctx.lineWidth=1;ctx.strokeRect(18,canvas.height-42,220,16);
+    ctx.fillStyle='#eee';ctx.font='12px sans-serif';
+    ctx.fillText('HP '+Math.max(0,Math.ceil(exHp)).toLocaleString()+' / '+Math.round(exMaxHp).toLocaleString()+' · '+(window.gameWeapons&&gameWeapons.hint?gameWeapons.hint():'1 sword / 2 pistol')+' · SHIFT dash',20,canvas.height-10);
+    ctx.restore();
     if(window.gameWeapons&&gameWeapons.drawHud)gameWeapons.drawHud(ctx,18,canvas.height-84,t);
     if(state.tomeCine){ctx.save();ctx.translate(VIEW_OX,VIEW_OY);gameBosses.drawTomeCinematic(ctx,state.tomeCine,t);ctx.restore();}
     if(G())G().drawScreen(ctx,t);

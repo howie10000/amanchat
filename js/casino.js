@@ -2686,7 +2686,21 @@ function openElevator() {
       ${btn}
     </div>`;
   }).join("");
-  openMenu("🛗 VEGAS — ELEVATOR", `<p class="muted">Five rooms, each grander than the last. Every floor is a one-time membership: pay once and it's yours for good — but you have to earn your way up one floor at a time.</p>${rows}`, false, "casino");
+
+  const ownsCasinoSuite = state.data?.residence?.type === "hotel" && state.data.residence.hotelId === "hotel_casino";
+  const suiteDef = ownsCasinoSuite ? ECON.hotelRoom("hotel_casino", state.data.residence.roomTier) : null;
+  const suitesRow = `
+    <div class="elevRow open" style="--neon:#fbbf24;margin-top:14px;border:1px solid #fbbf24;background:rgba(76,5,25,.45);">
+      <div class="elevLevel" style="font-size:16px;">👑</div>
+      <div class="info">
+        <b style="color:#fbbf24;">DIAMOND CASINO & VIP SUITES</b>
+        <div class="elevTag">${ownsCasinoSuite ? `Keycard Active: ${suiteDef?.name || "VIP Suite"}` : "High-roller suites & presidential sky penthouse"}</div>
+        <small>Standard High-Rise · Diamond High-Roller · Grand Presidential Penthouse</small>
+      </div>
+      <button class="menuBtn gold" onclick="openHotelBookingModal('hotel_casino')">${ownsCasinoSuite ? "MY SUITE" : "VIP SUITES"}</button>
+    </div>`;
+
+  openMenu("🛗 VEGAS — ELEVATOR", `<p class="muted">Five rooms, each grander than the last. Every floor is a one-time membership: pay once and it's yours for good — but you have to earn your way up one floor at a time.</p>${rows}${suitesRow}`, false, "casino");
 }
 window.unlockFloor = async (i) => {
   const floors = gameInteriors.INTERIORS.interior_casino.floors;

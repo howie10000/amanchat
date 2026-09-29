@@ -8,9 +8,9 @@ vm.runInNewContext(fs.readFileSync(__dirname+'/dungeon-hud.js','utf8'),env);
 env.window.gameDungeonHud.sync();assert(classes.has('dungeon-clean-hud'));assert.equal(button.hidden,false);assert.equal(attrs['aria-expanded'],'true');
 handlers.click({stopPropagation(){}});assert.equal(button.textContent,'+');assert.equal(env.window.dungeonQuestCollapsed,true);assert.equal(attrs['aria-expanded'],'false');
 handlers.click({stopPropagation(){}});assert.equal(env.window.dungeonQuestCollapsed,false);
-env.state.dungeon.bossRoom=true;env.window.gameDungeonHud.sync();assert(button.hidden);
+env.state.dungeon.bossRoom=true;env.window.gameDungeonHud.sync();assert(!button.hidden,'HUD controls remain visible in boss rooms');
 env.state.area='neighborhood';env.window.gameDungeonHud.sync();assert(!classes.has('dungeon-clean-hud'));assert(button.hidden);
-console.log('PASS dungeon HUD hiding/restoration, objective collapse/expand and boss-room control hiding');
+console.log('PASS dungeon HUD visibility in boss room, objective collapse/expand and exit cleanup');
 
 env.state.area='dungeon';env.state.dungeon={continuous:true,bossRoom:true,cfg:{guild:true}};
 env.window.gameDungeonHud.sync();assert.equal(button.id,'dungeonRunToggle');assert.equal(button.hidden,false,'timer remains available during bosses');

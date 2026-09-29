@@ -218,7 +218,7 @@
     LOBBY_TTL_MS: 30 * 60000, VEST_MS: 24 * 3600000, CREDIT_SHARE: 0.5 };
   const RAID_OVERLAY = {
     soak: { type: "soak", weight: 14, warnMs: 2200, r: 110, dmg: 22, backlash: 40, tell: "SHARE THE BURDEN", dodge: "enough of you must stand in the circle" },
-    pylonBosses: ["khyra", "iskarra"], pylons: 4, pylonHpFrac: 0.05, pylonWindowMs: 4000,
+    pylonBosses: ["iskarra"], pylons: 4, pylonHpFrac: 0.05, pylonWindowMs: 4000,
   };
   // In raid mode every phase deck of the tier boss gets the soak (decks that
   // already carry one — the Concordant, the wardens — are left alone).
@@ -227,8 +227,8 @@
     if (!isRaid || deck.some(a => a.type === "soak")) return deck;
     return deck.concat([Object.assign({}, RAID_OVERLAY.soak)]);
   }
-  // Pylon data for a phase: the Concordant carries its own; khyra/iskarra get
-  // pylons on their LAST phase in raid mode. Null when there are none.
+  // Pylon data for a phase: the Concordant carries its own; iskarra gets
+  // pylons on its LAST phase in raid mode. Null when there are none.
   function raidPylons(bossId, phase, isRaid, players = 1) {
     const def = ECON.GUILD_BOSSES[bossId];
     if (!def) return null;

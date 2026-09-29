@@ -5,9 +5,11 @@ from mathutils import Vector, Matrix
 from . import core, rig as R, weapons as W, export as X, review, characters as CH, clips_hero as CHero
 from . import characters_boss as CB, clips_boss as KB, beast, characters_legacy as CL, clips_legacy as KL
 from . import clips_mini as MC   # mini-boss animation overhaul (idles + taunts); major bosses untouched
+from . import characters_ascension as CA, clips_ascension as KA
 
 REGISTRY = ['hero', 'kael', 'kael_crownbound', 'pit_champion', 'veiled_assassin', 'sol', 'umbra', 'sundered_king', 'colossus', 'briar_matron', 'gorehorn',
-            'warden', 'smith', 'tyrant']
+            'warden', 'smith', 'tyrant',
+            'vaughn', 'mordaunt', 'candlemas', 'ilse', 'seraphine', 'aurelion']
 # Packaging: export_pack writes ONE monolithic pack; tools/split-dungeon-models.cjs turns it into packed per-character
 # files (js/dungeon-models/<id>.js + index.js) so a cutscene downloads exactly its cast. See docs/sundered-crown/CUTSCENE-PERF.md.
 
@@ -38,6 +40,18 @@ def build_boss(cid):
         ch = CB.briar_matron(); KB.matron(ch); MC.matron(ch)
     elif cid == 'gorehorn':
         ch = beast.gorehorn(); beast.clips(ch)
+    elif cid == 'vaughn':
+        ch = CA.vaughn(); PA(ch); KA.vaughn(ch)
+    elif cid == 'mordaunt':
+        ch = CA.mordaunt(); PA(ch); KA.mordaunt(ch, ch.supports.get('hammer'))
+    elif cid == 'candlemas':
+        ch = CA.candlemas(); PA(ch); KA.candlemas(ch)
+    elif cid == 'ilse':
+        ch = CA.ilse(); PA(ch); KA.ilse(ch, ch.supports.get('spear'))
+    elif cid == 'seraphine':
+        ch = CA.seraphine(); PA(ch); KA.seraphine(ch)
+    elif cid == 'aurelion':
+        ch = CA.aurelion(); PA(ch); KA.aurelion(ch, ch.supports.get('greatsword'))
     else:
         raise KeyError(cid)
     check_ik(ch)
@@ -60,6 +74,12 @@ SHEET_POSES = {
     'warden': [('sunk', 'entrance', 0, 30), ('lantern', 'entrance', 40, 30), ('heft', 'entrance', 92, 40), ('windup', 'swing', 16, 60), ('cleave', 'swing', 26, 60), ('death', 'death', 70, 60)],
     'smith': [('cold', 'entrance', 0, 30), ('wakes', 'entrance', 58, 30), ('overhead', 'entrance', 76, 40), ('slam', 'entrance', 90, 50), ('windup', 'smash', 16, 60), ('smash', 'smash', 24, 60), ('death', 'death', 70, 60)],
     'tyrant': [('folded', 'entrance', 0, 30), ('unfolds', 'entrance', 60, 30), ('gather', 'cast', 14, 30), ('cast', 'cast', 24, 40), ('death', 'death', 70, 60)],
+    'vaughn': [('guard', 'idle', 0, 30), ('planted', 'entrance', 0, 30), ('salute', 'entrance', 64, 25), ('charge coil', 'charge', 12, 70), ('charge drive', 'charge', 20, 70), ('death', 'death', 52, 60)],
+    'mordaunt': [('cold', 'entrance', 0, 30), ('overhead', 'entrance', 72, 40), ('slam', 'entrance', 82, 50), ('windup', 'smash', 15, 60), ('smash', 'smash', 21, 60), ('death', 'death', 64, 60)],
+    'candlemas': [('float', 'idle', 0, 30), ('folded', 'entrance', 0, 30), ('risen', 'entrance', 58, 20), ('cast gather', 'cast', 14, 30), ('cast release', 'cast', 22, 40), ('death', 'death', 54, 60)],
+    'ilse': [('ready', 'idle', 0, 30), ('drop', 'entrance', 0, 20), ('level', 'entrance', 48, 30), ('thrust coil', 'thrust', 9, 70), ('thrust drive', 'thrust', 14, 70), ('death', 'death', 40, 60)],
+    'seraphine': [('crouch', 'idle', 0, 30), ('void', 'entrance', 0, 30), ('unfurl', 'entrance', 36, 20), ('ambush leap', 'ambush', 10, 70), ('ambush slash', 'ambush', 20, 50), ('death', 'death', 44, 60)],
+    'aurelion': [('guard', 'idle', 0, 30), ('kneel', 'entrance', 0, 30), ('salute', 'entrance', 84, 25), ('windup', 'swing', 14, 60), ('cleave', 'swing', 20, 60), ('death', 'death', 60, 60)],
 }
 
 

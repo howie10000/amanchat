@@ -18,8 +18,9 @@ canvas{width:min(100%,1024px);display:block;margin:0 10px}
 <script src="../../js/shared/depths.js"></script>
 <script src="../../js/shared/dungeon.js"></script>
 <script src="../../js/shared/crown.js"></script>
+<script src="../../js/shared/ascension.js"></script>
 <script>// the files under review are always fetched fresh
-for(const f of ['graphics','mobs','dungeon3d','boss-rigs','bosses'])document.write('<script src="../../js/'+f+'.js?v='+Date.now()+'"><\/script>');</script>
+for(const f of ['graphics','mobs','dungeon3d','cutscenes/director','cutscenes/ascension-cutscenes','boss-rigs','bosses','bosses/ascension-bosses','ascension-client'])document.write('<script src="../../js/'+f+'.js?v='+Date.now()+'"><\/script>');</script>
 <script>
 /* Live review of every Sundered Crown boss (B3). The page runs the REAL server
    planner (CROWN.planBoss, the same pure function B1 ticks) against three
@@ -29,7 +30,7 @@ for(const f of ['graphics','mobs','dungeon3d','boss-rigs','bosses'])document.wri
    URL hash: #id=kael&phase=3&q=auto&stress=1&speed=1&freeze=<ms>&menu=  (menu=entrance|victory|phase2 for 3D cutscenes)
      stress=1  the §10 worst cases: Kael with clones + thousand cuts + 4 players, the King's crown phase with 8 shards. */
 const cv=document.getElementById('c'),ctx=cv.getContext('2d');
-const IDS=ECON.CROWN_BOSS_ORDER.concat(ECON.CROWN_MINIS);
+const IDS=ECON.CROWN_BOSS_ORDER.concat(ECON.CROWN_MINIS).concat(ECON.ASCEND_BOSS_ORDER||['vaughn','candlemas','aurelion']).concat(ECON.ASCEND_MINIS||['mordaunt','ilse_grim','seraphine']);
 const P=Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
 let zoom=+(P.zoom||1);const cam={x:512,y:260};
 if(P.shot)document.head.insertAdjacentHTML('beforeend','<style>nav,#perf{display:none}canvas{width:1024px;margin:0}body{overflow:hidden}</style>');
@@ -138,6 +139,12 @@ const SHEETS={
   twin_monarchs:[['idle',0,0,'',1.57,'sol'],['cast',.6,0,'',1.57,'sol'],['active',.5,0,'solar_flare',1.57,'sol'],['idle',0,0,'',1.57,'umbra'],['cast',.6,0,'',1.57,'umbra'],['active',.5,0,'shadow_step',1.57,'umbra'],['fallen',0,0,'',1.57,'umbra']],
   sundered_king:[['idle',0,0,'',1.57],['run',0,0,'',0],['windup',.8,0,'kings_cleave',1.2],['active',.5,1,'kings_cleave',1.2],['windup',.9,0,'decree',1.57],['active',.5,0,'decree',1.57],['guard',.5,0,'parry',1.57],['sundered',.5,0,'',1.57]],
   gorehorn:[['idle',0,0,'',0],['idle',0,0,'',1.57],['run',0,0,'',0],['windup',.8,0,'gore_charge',0],['windup',.6,0,'stomp',0.4],['active',.5,0,'gore',0],['stunned',.5,0,'',0.3],['dead',0,0,'',0]],
+  vaughn:[['idle',0,0,'',1.57],['run',0,0,'',0.2],['windup',.8,0,'lance_charge',0],['active',.5,0,'lance_charge',0],['recover',.3,0,'lance_charge',0],['guard',.5,0,'riposte',1.57],['windup',.8,0,'trample',1.57],['active',.5,0,'trample',1.57],['exhausted',.5,0,'',1.57],['dead',0,0,'',1.57]],
+  mordaunt:[['idle',0,0,'',1.57],['move',0,0,'',0.2],['windup',.8,0,'slab_slam',1.2],['active',.5,0,'slab_slam',1.2],['cast',.6,0,'raise_walls',1.57],['windup',.8,0,'quake',1.57],['active',.5,0,'quake',1.57],['stunned',.5,0,'',1.57],['dead',0,0,'',1.57]],
+  candlemas:[['idle',0,0,'',1.57],['move',0,0,'',0.2],['cast',.6,0,'ignite_wicks',1.57],['windup',.8,0,'tallow_sweep',1.2],['active',.5,0,'tallow_sweep',1.2],['windup',.8,0,'flashover',1.57],['active',.5,0,'flashover',1.57],['stunned',.5,0,'',1.57],['dead',0,0,'',1.57]],
+  ilse_grim:[['idle',0,0,'',1.57,'ilse'],['run',0,0,'',0.2,'ilse'],['windup',.8,0,'spear_thrust',0.3,'ilse'],['active',.5,0,'spear_thrust',0.3,'ilse'],['idle',0,0,'',0,'grim'],['run',0,0,'',0,'grim'],['windup',.8,0,'pounce',0,'grim'],['active',.5,0,'pounce',0,'grim'],['guard',.5,0,'parry',1.57,'ilse'],['dead',0,0,'',1.57,'ilse']],
+  seraphine:[['idle',0,0,'',1.57],['move',0,0,'',0.2],['windup',.8,0,'phase_strike',1.2],['active',.5,0,'phase_strike',1.2],['vanish',.6,0,'phase_out',1.57],['emerge',.5,0,'phase_out',1.57],['stunned',.5,0,'',1.57],['dead',0,0,'',1.57]],
+  aurelion:[['idle',0,0,'',1.57],['run',0,0,'',0.2],['windup',.8,0,'solar_cleave',1.2],['active',.5,1,'solar_cleave',1.2],['cast',.6,0,'tempest_call',1.57],['windup',.9,0,'starlight_severance',1.57],['active',.5,0,'starlight_severance',1.57],['guard',.5,0,'parry',1.57],['exhausted',.5,0,'',1.57],['dead',0,0,'',1.57]],
 };
 const T0S=performance.now();
 function stills(real){

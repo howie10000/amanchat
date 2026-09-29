@@ -390,6 +390,8 @@ module.exports = function createFeatureHandlers(deps) {
         },
 
         down(run, user, msg, now) {
+            const u = deps.userRec ? deps.userRec(user) : null;
+            if (deps.hasAdminGear && deps.hasAdminGear(u, user)) throw new Error('Invincible.');
             if (run.spectators.has(user)) throw new Error('You are only watching now.');
             if (run.downed[user]) throw new Error('You are already down.');
             if (run.members.size <= 1) throw new Error('There is nobody here to pick you up.');

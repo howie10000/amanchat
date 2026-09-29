@@ -11,7 +11,7 @@
  function sync(){
   const dungeon=state.area==='dungeon',d=state.dungeon;
   if(dungeon!==lastDungeon){document.body.classList.toggle('dungeon-clean-hud',dungeon);lastDungeon=dungeon;}
-  const quest=!!(dungeon&&d?.continuous&&!d.bossRoom);
+  const quest=!!(dungeon&&d?.continuous);
   if(quest&&!button){
    button=document.createElement('button');button.id='dungeonQuestToggle';button.type='button';
    button.addEventListener('pointerdown',e=>e.stopPropagation());
@@ -46,11 +46,11 @@
    document.getElementById('stage').appendChild(helpButton);
   }
   if(helpButton&&run!==lastRun)helpButton.hidden=!run;
-  if(run&&!lastRun&&guide&&window.gameGuide.autoTour)setTimeout(()=>{try{if(state.area==='dungeon'&&!state.dungeon?.bossRoom)window.gameGuide.autoTour('run');}catch(err){}},2500);
+  if(run&&!lastRun&&guide&&window.gameGuide.autoTour)setTimeout(()=>{try{if(state.area==='dungeon')window.gameGuide.autoTour('run');}catch(err){}},2500);
   lastRun=run;
-  // The Sundered Crown: open the Crown Arts panel (B4) from a run, outside fights.
+  // The Sundered Crown: open the Crown Arts panel (B4) from a run.
   const artsUI=window.gameArtsUI&&typeof window.gameArtsUI.open==='function';
-  const arts=!!(artsUI&&run&&!d.bossRoom);
+  const arts=!!(artsUI&&run);
   if(arts&&!artsButton){
    artsButton=document.createElement('button');artsButton.id='dungeonArtsBtn';artsButton.type='button';
    artsButton.innerHTML='✦ Arts<small>F · C</small>';artsButton.setAttribute('aria-label','Crown Arts: equip the abilities you use with F and C');artsButton.title='Crown Arts: equip the abilities you use with F and C';
@@ -60,9 +60,9 @@
   }
   if(artsButton&&arts!==lastArts)artsButton.hidden=!arts;
   lastArts=arts;
-  // The Sundered Crown II: the Ascension panel (ladder / weekly challenge / mastery / crafting), outside fights.
+  // The Sundered Crown II: the Ascension panel (ladder / weekly challenge / mastery / crafting).
   const ascUI=window.gameAscensionUI&&typeof window.gameAscensionUI.open==='function';
-  const asc=!!(ascUI&&run&&!d.bossRoom);
+  const asc=!!(ascUI&&run);
   if(asc&&!ascButton){
    ascButton=document.createElement('button');ascButton.id='dungeonAscendBtn';ascButton.type='button';
    ascButton.textContent='▲ Ascend';ascButton.setAttribute('aria-label','Ascension ladder, weekly challenge, mastery');

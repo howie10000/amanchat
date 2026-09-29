@@ -48,9 +48,17 @@
     if (s === "exhausted" || s === "stunned") return -1.6;
     return -0.9;
   }
+  function formOf(view) {
+    if (view && view.form) return view.form;
+    const ph = view && view.phase ? view.phase : 1;
+    if (view && view.id === "aurelion") return ph === 1 ? "herald" : ph === 2 ? "tempest" : ph === 3 ? "legion" : "apotheosis";
+    if (view && view.id === "vaughn") return ph >= 2 ? "unhorsed" : "mounted";
+    return "";
+  }
   // VAUGHN: horse + rider while mounted; a lanced knight on foot.
   function drawVaughn(ctx, view, P, r, c, t) {
-    if (view.form === "mounted" || !view.form) {
+    const form = formOf(view);
+    if (form === "mounted" || !form) {
       const gallop = P.s === "active" || P.s === "run" ? Math.sin(t / 45) : Math.sin(t / 180) * 0.3;
       ctx.fillStyle = "#e2e8f0"; ctx.beginPath(); ctx.ellipse(0, 0, r * 1.05, r * 0.6, 0, 0, TAU); ctx.fill();          // the pale horse
       ctx.fillStyle = "#94a3b8"; for (const [lx, ly, ph] of [[0.55, -0.55, 1], [0.55, 0.55, -1], [-0.6, -0.5, -1], [-0.6, 0.5, 1]]) ctx.fillRect(lx * r + gallop * ph * r * 0.18 - 4, ly * r - 4, 10, 8);
@@ -134,25 +142,261 @@
     // ghost echoes trail the body while phased
     if (P.s === "hidden") { ctx.globalAlpha *= 0.5; ctx.strokeStyle = c.accent; ctx.lineWidth = 1.5; for (let i = 1; i <= 3; i++) { ctx.beginPath(); ctx.ellipse(-i * r * 0.5, 0, r * 0.4, r * 0.75, 0, 0, TAU); ctx.stroke(); } }
   }
-  // AURELION: herald / tempest / legion forms are the crowned knight; the tempest is broader and stone-plated.
+  // AURELION: herald / tempest / legion / apotheosis forms.
+  // Phase 3 (The Legion) is a dual-winged astral commander with legion echoes;
+  // Phase 4 (Apotheosis) is the full solar deity with 4 seraph wings, sunburst crown, triple halos, and blazing greatsword.
   function drawAurelion(ctx, view, P, r, c, t) {
-    if (view.form === "apotheosis") return drawPhaser(ctx, view, P, r, c, t, true);
-    const tempest = view.form === "tempest";
-    ctx.fillStyle = c.color; const flap = Math.sin(t / 120) * 0.12 + (P.s === "active" || P.s === "run" ? 0.35 : 0);
-    ctx.beginPath(); ctx.moveTo(-r * 0.1, -r * 0.7); ctx.quadraticCurveTo(-r * (1.3 + flap), -r * 0.2, -r * (1.45 + flap), 0); ctx.quadraticCurveTo(-r * (1.3 + flap), r * 0.2, -r * 0.1, r * 0.7); ctx.fill();
-    ctx.fillStyle = tempest ? "#475569" : "#1e1b4b"; ctx.beginPath(); ctx.ellipse(0, 0, r * (tempest ? 0.6 : 0.45), r * 0.85, 0, 0, TAU); ctx.fill();
-    if (tempest) { ctx.fillStyle = "#64748b"; for (let i = 0; i < 4; i++) { const a = -1 + i * 0.66; ctx.fillRect(Math.cos(a) * r * 0.5 - 5, Math.sin(a) * r * 0.6 - 4, 10, 8); } }
-    ctx.fillStyle = c.accent; ctx.beginPath(); ctx.arc(r * 0.08, 0, r * 0.36, 0, TAU); ctx.fill();
-    ctx.fillStyle = "#fef08a"; for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(r * 0.05 + i * 5, -r * 0.3); ctx.lineTo(r * 0.1 + i * 5, -r * 0.58); ctx.lineTo(r * 0.16 + i * 5, -r * 0.3); ctx.fill(); }
-    if (view.form === "legion") { ctx.globalAlpha *= 0.5; ctx.strokeStyle = "#f5d0fe"; ctx.lineWidth = 2; for (let i = 1; i <= 2; i++) { ctx.beginPath(); ctx.ellipse(-i * r * 0.35, i * r * 0.1, r * 0.4, r * 0.75, 0, 0, TAU); ctx.stroke(); } ctx.globalAlpha *= 2; }
-    if (tempest) { const ha = P.s === "cast" ? -1.2 + 0.6 * Math.sin(t / 90) : swordAngle(P) + 0.3; blade(ctx, r * 0.2, r * 0.6, r * 1.5, ha, "#94a3b8", 6); }
-    else blade(ctx, r * 0.25, r * 0.6, r * 2.3, swordAngle(P) + 0.3, P.s === "guard" ? "#fef9c3" : "#fef08a", P.s === "guard" ? 5 : 4);
-    if (view.x && view.x.l && view.form === "legion") { ctx.globalAlpha *= 0.4; ctx.strokeStyle = "#f5d0fe"; ctx.lineWidth = 3; ctx.setLineDash([6, 8]); ctx.beginPath(); ctx.arc(0, 0, r * 1.35, 0, TAU); ctx.stroke(); ctx.setLineDash([]); }
+    const form = formOf(view);
+    const tempest = form === "tempest";
+    const legion = form === "legion";
+    const apotheosis = form === "apotheosis";
+
+    // 1. Seraph Wings (drawn behind the body)
+    if (apotheosis) {
+      ctx.save();
+      const wingFlap = Math.sin(t / 220) * 0.12;
+      const wingGlow = 0.8 + 0.2 * Math.sin(t / 180);
+      const wings = [
+        // upper grand wings
+        { a: -0.9 + wingFlap, span: r * 2.3, width: r * 0.7, col: "#fef08a", rim: "#fde047", alpha: 0.9 * wingGlow },
+        { a: 0.9 - wingFlap, span: r * 2.3, width: r * 0.7, col: "#fef08a", rim: "#fde047", alpha: 0.9 * wingGlow },
+        // lower sweeping wings
+        { a: -1.4 + wingFlap * 0.6, span: r * 1.7, width: r * 0.5, col: "#fbbf24", rim: "#f59e0b", alpha: 0.75 * wingGlow },
+        { a: 1.4 - wingFlap * 0.6, span: r * 1.7, width: r * 0.5, col: "#fbbf24", rim: "#f59e0b", alpha: 0.75 * wingGlow }
+      ];
+      for (const w of wings) {
+        ctx.globalAlpha = w.alpha;
+        ctx.fillStyle = "rgba(254, 240, 138, 0.3)";
+        ctx.strokeStyle = w.rim;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.1, 0);
+        const tx = -r * 0.1 + Math.cos(w.a) * w.span;
+        const ty = Math.sin(w.a) * w.span;
+        ctx.quadraticCurveTo(-r * 0.4, ty * 0.6 + Math.cos(w.a) * w.width * 0.4, tx, ty);
+        ctx.quadraticCurveTo(-r * 0.7, ty * 0.3 - Math.cos(w.a) * w.width * 0.3, -r * 0.1, 0);
+        ctx.fill();
+        ctx.stroke();
+        // Feather rays radiating along wing
+        ctx.strokeStyle = w.col;
+        ctx.lineWidth = 1.5;
+        for (let f = 1; f <= 5; f++) {
+          const u = f / 6;
+          const fx = -r * 0.1 + (tx + r * 0.1) * u;
+          const fy = ty * u;
+          ctx.beginPath();
+          ctx.moveTo(fx * 0.5, fy * 0.5);
+          ctx.lineTo(fx, fy);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+    } else if (legion) {
+      ctx.save();
+      const flap = Math.sin(t / 200) * 0.1;
+      for (const sgn of [-1, 1]) {
+        ctx.globalAlpha = 0.85;
+        ctx.strokeStyle = "#f0abfc";
+        ctx.fillStyle = "rgba(240, 171, 252, 0.25)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.1, sgn * r * 0.2);
+        ctx.quadraticCurveTo(-r * 0.8, sgn * r * (1.7 + flap), -r * 2.0, sgn * r * (1.1 + flap));
+        ctx.quadraticCurveTo(-r * 1.3, sgn * r * 0.3, -r * 0.1, sgn * r * 0.2);
+        ctx.fill();
+        ctx.stroke();
+        // Feather ribs
+        ctx.strokeStyle = "#fbcfe8";
+        ctx.lineWidth = 1.5;
+        for (let f = 1; f <= 4; f++) {
+          const u = f / 5;
+          ctx.beginPath();
+          ctx.moveTo(-r * (0.1 + 0.7 * u), sgn * r * (0.2 + 0.5 * u));
+          ctx.lineTo(-r * (0.4 + 1.5 * u), sgn * r * (0.4 + 0.6 * u));
+          ctx.stroke();
+        }
+      }
+      // Astral legion spectral echoes trailing behind
+      ctx.globalAlpha = 0.3 + 0.12 * Math.sin(t / 150);
+      ctx.strokeStyle = "#c084fc";
+      ctx.lineWidth = 2;
+      for (const sgn of [-1, 1]) {
+        ctx.beginPath();
+        ctx.ellipse(-r * 0.85, sgn * r * 0.75, r * 0.28, r * 0.52, sgn * 0.25, 0, TAU);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // 2. Cloak / Cape
+    ctx.fillStyle = apotheosis ? "#7e22ce" : c.color;
+    const flap = Math.sin(t / 120) * 0.12 + (P.s === "active" || P.s === "run" ? 0.35 : 0);
+    const capeLen = apotheosis ? 1.65 : legion ? 1.5 : 1.45;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.1, -r * 0.75);
+    ctx.quadraticCurveTo(-r * (1.3 + flap), -r * 0.2, -r * (capeLen + flap), 0);
+    ctx.quadraticCurveTo(-r * (1.3 + flap), r * 0.2, -r * 0.1, r * 0.75);
+    ctx.fill();
+    if (apotheosis || legion) {
+      ctx.strokeStyle = "#fbbf24";
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    }
+
+    // 3. Torso / Armor
+    ctx.fillStyle = tempest ? "#475569" : apotheosis ? "#3b0764" : "#1e1b4b";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r * (tempest ? 0.6 : apotheosis ? 0.52 : 0.45), r * 0.85, 0, 0, TAU);
+    ctx.fill();
+    if (tempest) {
+      ctx.fillStyle = "#64748b";
+      for (let i = 0; i < 4; i++) {
+        const a = -1 + i * 0.66;
+        ctx.fillRect(Math.cos(a) * r * 0.5 - 5, Math.sin(a) * r * 0.6 - 4, 10, 8);
+      }
+    } else if (apotheosis || legion) {
+      ctx.strokeStyle = "#fef08a";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // Solar chest medallion
+      ctx.fillStyle = "#fbbf24";
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.18, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.09, 0, TAU);
+      ctx.fill();
+    }
+
+    // 4. Head / Helmet
+    ctx.fillStyle = c.accent;
+    ctx.beginPath();
+    ctx.arc(r * 0.08, 0, r * 0.36, 0, TAU);
+    ctx.fill();
+
+    // 5. Crown of the Dawn
+    if (apotheosis) {
+      ctx.fillStyle = "#fef08a";
+      for (let i = -3; i <= 3; i++) {
+        const h = Math.abs(i) === 0 ? 0.75 : Math.abs(i) === 1 ? 0.68 : Math.abs(i) === 2 ? 0.58 : 0.46;
+        ctx.beginPath();
+        ctx.moveTo(r * 0.05 + i * 4.5, -r * 0.28);
+        ctx.lineTo(r * 0.1 + i * 4.5, -r * h);
+        ctx.lineTo(r * 0.16 + i * 4.5, -r * 0.28);
+        ctx.fill();
+      }
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      const cy = -r * 0.95 + Math.sin(t / 200) * 2;
+      ctx.moveTo(r * 0.1, cy - 6);
+      ctx.lineTo(r * 0.1 + 4, cy);
+      ctx.lineTo(r * 0.1, cy + 6);
+      ctx.lineTo(r * 0.1 - 4, cy);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = "#fef08a";
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath();
+        ctx.moveTo(r * 0.05 + i * 5, -r * 0.3);
+        ctx.lineTo(r * 0.1 + i * 5, -r * 0.58);
+        ctx.lineTo(r * 0.16 + i * 5, -r * 0.3);
+        ctx.fill();
+      }
+    }
+
+    // 6. Concentric Cosmic Halos
+    if (apotheosis) {
+      ctx.save();
+      const rot = (t / 1500) % TAU;
+      ctx.strokeStyle = "#fbbf24";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(r * 0.08, 0, r * 0.72 + Math.sin(t / 200) * 2, 0, TAU);
+      ctx.stroke();
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 8; i++) {
+        const ba = rot + (i * TAU) / 8;
+        const b0 = r * 0.72;
+        const b1 = r * 1.05 + (i % 2 === 0 ? 5 : 0);
+        ctx.beginPath();
+        ctx.moveTo(r * 0.08 + Math.cos(ba) * b0, Math.sin(ba) * b0);
+        ctx.lineTo(r * 0.08 + Math.cos(ba) * b1, Math.sin(ba) * b1);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.arc(r * 0.08, 0, r * 0.52, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
+    } else if (legion) {
+      ctx.save();
+      ctx.strokeStyle = "#f5d0fe";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(r * 0.08, 0, r * 0.6 + Math.sin(t / 250) * 2, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 7. Greatsword
+    const sa = swordAngle(P) + 0.3;
+    if (tempest) {
+      const ha = P.s === "cast" ? -1.2 + 0.6 * Math.sin(t / 90) : sa;
+      blade(ctx, r * 0.2, r * 0.6, r * 1.5, ha, "#94a3b8", 6);
+    } else if (apotheosis) {
+      ctx.save();
+      ctx.globalAlpha *= 0.5;
+      blade(ctx, r * 0.25, r * 0.6, r * 2.7, sa, "#f59e0b", 9);
+      ctx.globalAlpha = 1.0;
+      blade(ctx, r * 0.25, r * 0.6, r * 2.6, sa, "#fef08a", 6);
+      blade(ctx, r * 0.35, r * 0.6, r * 2.3, sa, "#ffffff", 2.5);
+      const tipX = r * 0.25 + Math.cos(sa) * r * 2.6;
+      const tipY = r * 0.6 + Math.sin(sa) * r * 2.6;
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(tipX, tipY, 4, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    } else if (legion) {
+      blade(ctx, r * 0.25, r * 0.6, r * 2.4, sa, P.s === "guard" ? "#fef9c3" : "#fef08a", P.s === "guard" ? 6 : 5);
+      blade(ctx, r * 0.35, r * 0.6, r * 2.1, sa, "#f0abfc", 2);
+    } else {
+      blade(ctx, r * 0.25, r * 0.6, r * 2.3, sa, P.s === "guard" ? "#fef9c3" : "#fef08a", P.s === "guard" ? 5 : 4);
+    }
+
+    // 8. Aura ring
+    if (view.x && view.x.l && legion) {
+      ctx.globalAlpha *= 0.4;
+      ctx.strokeStyle = "#f5d0fe";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([6, 8]);
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.35, 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (apotheosis) {
+      ctx.save();
+      ctx.globalAlpha *= 0.35 + 0.15 * Math.sin(t / 140);
+      ctx.strokeStyle = "#fbbf24";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.5, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
   const BODIES = { vaughn: drawVaughn, mordaunt: drawMordaunt, candlemas: drawCandlemas, ilse_grim: drawDuo, seraphine: (ctx, v, P, r, c, t) => drawPhaser(ctx, v, P, r, c, t, false), aurelion: drawAurelion };
 
   function drawBody(ctx, view, P, t) {
     const id = view && view.id;
+    if (W.BossRigs && typeof W.BossRigs.drawMobile === "function") {
+      try {
+        if (W.BossRigs.drawMobile(ctx, view, P, t == null ? Date.now() : t)) return true;
+      } catch (e) {}
+    }
     const fn = BODIES[id];
     if (!fn || !P || !P.ok) return false;
     const c = lookOf(view, P);

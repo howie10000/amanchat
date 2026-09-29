@@ -19,6 +19,7 @@ body.shot nav,body.shot #perf,body.shot #bar{display:none}body.shot canvas{margi
 <script src="../../js/shared/depths.js"></script>
 <script src="../../js/shared/dungeon.js"></script>
 <script src="../../js/shared/crown.js"></script>
+<script src="../../js/shared/ascension.js"></script>
 <script>for(const f of ['dungeon3d','cutscenes/director'])document.write('<script src="../../js/'+f+'.js?v='+Date.now()+'"><\/script>');</script>
 <script>
 /* Every 3D boss cutscene through the real renderer (js/dungeon3d.js) and the real film direction
@@ -33,7 +34,7 @@ body.shot nav,body.shot #perf,body.shot #bar{display:none}body.shot canvas{margi
 const P=Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
 if(P.shot)document.body.className='shot';
 const cv=document.getElementById('c'),ctx=cv.getContext('2d');
-const IDS=['gorehorn','kael','twin_monarchs','sundered_king','warden','smith','tyrant','dragon','astraea','khyra','iskarra','heart','concordant','briar_matron','pit_champion','veiled_assassin','kael_crownbound'];
+const IDS=['gorehorn','kael','twin_monarchs','sundered_king','warden','smith','tyrant','dragon','astraea','khyra','iskarra','heart','concordant','briar_matron','pit_champion','veiled_assassin','kael_crownbound','vaughn','mordaunt','candlemas','ilse_grim','seraphine','aurelion'];
 let id=P.id||'kael',mode=P.mode||'entrance',speed=+(P.speed||1),freeze=P.k!=null?+P.k:null,t0=performance.now(),sceneSeq=0;
 const DUR={entrance:(m)=>m?ECON.GUILD_BOSS.MINI_RISE_MS:ECON.GUILD_BOSS.RISE_MS,victory:()=>6000,phase2:(m,bid)=>{if(bid==='dragon')return ECON.DRAGON_PHASE2.CINE_MS;const ph=(ECON.bossPhases(ECON.GUILD_BOSSES[bid])||[])[0]||{};return ph.shiftMs||3600;}};
 function btn(parent,text,on,fn){const b=document.createElement('button');b.textContent=text;if(on)b.className='on';b.onclick=fn;parent.append(b);}

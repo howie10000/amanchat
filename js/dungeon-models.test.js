@@ -9,6 +9,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), vm = require('node:vm');
 const THREE = require('./vendor/three.min.js');
 const ECON = require('./shared/economy.js');
+require('./shared/ascension.js');
 
 // one self-contained file per character (see the LOADER API in dungeon-skin.js)
 const path = require('node:path');
@@ -24,7 +25,7 @@ for (const f of PARTS.concat(['index.js'])) {
 }
 assert(!fs.readdirSync(__dirname).some((f) => /^dungeon-models-[a-z_]+\.js$/.test(f)), 'no per-dungeon pack parts: one packaging system');
 for (const f of PARTS) { const k = f.replace(/\.js$/, ''); bytes += sizes[k].raw; assert(sizes[k].gzip < 110e3, f + ' stays under 110 KB gzipped (' + sizes[k].gzip + ')'); }
-assert(bytes < 3.0e6, 'library stays under 3 MB before compression (' + bytes + ')');
+assert(bytes < 4.0e6, 'library stays under 4 MB before compression (' + bytes + ')');
 assert(!fs.existsSync(path.join(__dirname, 'dungeon-models.js')), 'the monolithic pack is gone: the runtime loads js/dungeon-models/<id>.js');
 
 const noop = () => {};
@@ -42,7 +43,8 @@ function world(withLib) {
 const W = world(true);
 const L = W.DungeonModels, SK = W.DungeonSkin;
 assert(SK.ready(), 'runtime sees the library');
-const CHARS = ['hero', 'kael', 'kael_crownbound', 'pit_champion', 'veiled_assassin', 'sol', 'umbra', 'sundered_king', 'colossus', 'briar_matron', 'gorehorn', 'warden', 'smith', 'tyrant'];
+const CHARS = ['hero', 'kael', 'kael_crownbound', 'pit_champion', 'veiled_assassin', 'sol', 'umbra', 'sundered_king', 'colossus', 'briar_matron', 'gorehorn', 'warden', 'smith', 'tyrant',
+  'vaughn', 'mordaunt', 'candlemas', 'ilse', 'seraphine', 'aurelion'];
 for (const c of CHARS) assert(SK.has(c), c + ' is in the library');
 for (const c of CHARS) assert(fs.existsSync(path.join(PART_DIR, c + '.js')) && W.DungeonModelIndex[c], c + ' has its own file, listed in the index');
 for (const c of CHARS) assert.equal(SK.partOf(c), c, c + ' partOf');
@@ -62,6 +64,12 @@ const NEED = {
   warden: ['idle', 'walk', 'entrance', 'swing', 'hit', 'stagger', 'death'],
   smith: ['idle', 'walk', 'entrance', 'smash', 'hit', 'death'],
   tyrant: ['idle', 'walk', 'entrance', 'cast', 'hit', 'death'],
+  vaughn: ['idle', 'walk', 'entrance', 'charge', 'hit', 'stagger', 'death'],
+  mordaunt: ['idle', 'walk', 'entrance', 'smash', 'hit', 'death'],
+  candlemas: ['idle', 'walk', 'entrance', 'cast', 'hit', 'death'],
+  ilse: ['idle', 'walk', 'entrance', 'thrust', 'hit', 'death'],
+  seraphine: ['idle', 'walk', 'entrance', 'ambush', 'hit', 'death'],
+  aurelion: ['idle', 'walk', 'entrance', 'swing', 'hit', 'death'],
 };
 let tris = 0, clipsChecked = 0;
 for (const cid of CHARS) {
@@ -83,7 +91,7 @@ for (const cid of CHARS) {
   const j = Buffer.from(ch.mesh.j, 'base64');
   for (const b of j) assert(b < sk.bones.length, cid + ' skin index in range');
 }
-assert(tris < 130000, 'whole roster under 130k triangles (' + tris + ')');
+assert(tris < 200000, 'whole roster under 200k triangles (' + tris + ')');
 for (const cid of CHARS) { const ch = L.characters[cid]; for (const a of ch.attach || []) assert(L.skeletons[ch.skel].bones.includes(a.bone), cid + ' attachment ' + a.name + ' rides a real bone'); }
 
 // ------------------------------------------------------------------ runtime: every clip poses to finite transforms
@@ -195,13 +203,14 @@ assert(!G.rig().skinned, 'astraea stays procedural');
 // ------------------------------------------------------------------ fallback: no library -> procedural rigs everywhere
 // ------------------------------------------------------------------ the film direction (js/cutscenes): every frame poses, the lens stays out of the geometry
 const W5 = world(true);
-for (const f of ['./cutscenes/director.js', './dungeon3d.js', './cutscenes/kael.js', './cutscenes/gorehorn.js', './cutscenes/twin_monarchs.js', './cutscenes/sundered_king.js', './cutscenes/legacy.js'])
+for (const f of ['./cutscenes/director.js', './dungeon3d.js', './cutscenes/kael.js', './cutscenes/gorehorn.js', './cutscenes/twin_monarchs.js', './cutscenes/sundered_king.js', './cutscenes/legacy.js', './cutscenes/ascension-cutscenes.js'])
   vm.runInContext(fs.readFileSync(require.resolve(f), 'utf8'), W5, { filename: f });
 const DC = W5.DungeonCutscenes, G5 = W5.DungeonGL._headless();
 assert.equal(DC.warp(0, [[0.3, 0.5, 0.25]]), 0); assert(Math.abs(DC.warp(1, [[0.3, 0.5, 0.25]]) - 1) < 1e-9, 'warp keeps the ends');
 { let last = -1; for (let i = 0; i <= 100; i++) { const v = DC.warp(i / 100, [[0.3, 0.5, 0.25], [0.7, 0.8, 0]]); assert(v >= last - 1e-12, 'warp is monotone'); last = v; } }
 { const p = [0, 3, -30]; DC.clear(p, [0, 5, -30], [{ min: [-2, 0, -32], max: [2, 10, -28] }], { halfW: 17, backZ: -44, doorZ: 8, wallH: 24 }, 1.5); assert(!DC.inside(p, [{ min: [-2, 0, -32], max: [2, 10, -28] }], 1.4), 'clear pushes the lens out of a box'); }
-const DIRECTED = ['kael', 'gorehorn', 'twin_monarchs', 'sundered_king', 'warden', 'smith', 'tyrant', 'dragon'];
+const DIRECTED = ['kael', 'gorehorn', 'twin_monarchs', 'sundered_king', 'warden', 'smith', 'tyrant', 'dragon',
+  'vaughn', 'mordaunt', 'candlemas', 'ilse_grim', 'seraphine', 'aurelion'];
 let directedFrames = 0;
 for (const id of DIRECTED) {
   assert(DC.get(id), id + ' has film direction');
@@ -237,7 +246,8 @@ for (const id of Object.keys(ECON.GUILD_BOSSES)) {
   perBoss[id] = t;
   assert(t.gzip < 240e3, id + ' cutscene downloads under 240 KB gzipped (' + t.gzip + ')');
 }
-for (const id of ['kael', 'kael_crownbound', 'pit_champion', 'veiled_assassin', 'twin_monarchs', 'sundered_king', 'briar_matron', 'gorehorn', 'warden', 'smith', 'tyrant']) assert(perBoss[id], id + ' download measured');
+for (const id of ['kael', 'kael_crownbound', 'pit_champion', 'veiled_assassin', 'twin_monarchs', 'sundered_king', 'briar_matron', 'gorehorn', 'warden', 'smith', 'tyrant',
+  'vaughn', 'mordaunt', 'candlemas', 'ilse_grim', 'seraphine', 'aurelion']) assert(perBoss[id], id + ' download measured');
 for (const [id, t] of Object.entries(perBoss)) console.log(`  download ${id.padEnd(18)} raw ${String(t.raw).padStart(8)}  gzip ${String(t.gzip).padStart(7)}  brotli ${String(t.brotli).padStart(7)}`);
 for (const [f, s] of Object.entries(sizes)) console.log(`  ${f.padEnd(32)} raw ${String(s.raw).padStart(8)}  gzip ${String(s.gzip).padStart(7)}  brotli ${String(s.brotli).padStart(7)}`);
 console.log(`PASS dungeon models: ${CHARS.length} characters, ${KINDS.length} weapons, ${Object.keys(L.clips).length} clips (${clipsChecked} poses), ${tris} triangles, ${(bytes / 1e6).toFixed(2)} MB raw in ${PARTS.length + 1} files, ${directedFrames} directed frames audited`);

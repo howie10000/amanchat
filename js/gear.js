@@ -36,6 +36,10 @@ function equippedItem(slot) {
 }
 // Every worn piece (tome included), in slot order.
 function gearEquippedItems() { return ECON.GEAR_SLOTS.map(equippedItem).filter(Boolean); }
+function hasAdminGear() {
+  if (!state.isMayor) return false;
+  return gearEquippedItems().some(it => it && (it.admin || (it.base && String(it.base).startsWith('admin_')) || (it.uq && String(it.uq).startsWith('admin_'))));
+}
 // The effects of what you have on (§6.7). The server's view wins when it sent
 // one; otherwise it is recomputed from the worn pieces.
 function gearFxNow() {
@@ -651,7 +655,15 @@ function staffGrantPanel() {
   const bases = ECON.GEAR_BASES
     .slice()
     .sort((a, b) => (a.slot === b.slot ? a.lvl - b.lvl : ECON.GEAR_SLOTS.indexOf(a.slot) - ECON.GEAR_SLOTS.indexOf(b.slot)));
-  return `<h3 class="section">STAFF BENCH <span class="muted" style="font-size:11px">${gEsc(state.role.toUpperCase())}</span></h3>
+  return `
+    <div style="background:linear-gradient(135deg, rgba(30, 27, 75, 0.95), rgba(15, 23, 42, 0.95));border:2px solid #eab308;border-radius:10px;padding:12px;margin:10px 0 16px 0;box-shadow:0 0 15px rgba(234, 179, 8, 0.3);">
+      <h3 style="margin:0 0 6px 0;color:#fbbf24;font-size:15px;font-weight:bold;display:flex;align-items:center;gap:6px;">⚡ ADMIN ARSENAL (GOD GEAR)</h3>
+      <p class="muted" style="margin:0 0 10px 0;font-size:12px;color:#cbd5e1;line-height:1.4;">
+        Exclusively for Admins & Owners. Equip the full Arcane God Set: deals <b>10x Damage</b> against all dungeon mobs and bosses, and grants <b>Complete Invincibility</b> (immune to all damage, traps, hazards, reflect, and cannot be downed).
+      </p>
+      <button class="menuBtn gold" type="button" onclick="window.staffClaimAdminGear ? staffClaimAdminGear() : gameGear.staffClaimAdminGear()" style="width:100%;font-weight:bold;letter-spacing:0.5px;padding:9px 12px;font-size:13px;">CLAIM & EQUIP ADMIN GOD SET (10x DMG + INVINCIBLE)</button>
+    </div>
+    <h3 class="section">STAFF BENCH <span class="muted" style="font-size:11px">${gEsc(state.role.toUpperCase())}</span></h3>
     <p class="muted">Put a specific piece straight into a pack. Every grant is logged server-side.</p>
     <div class="shopItem"><div class="info">
       <b>Equipment</b><br/>
@@ -781,7 +793,7 @@ window.gameGear = {
   // The armory was spelled the British way everywhere until now; anything
   // still holding the old name keeps working.
   openArmory: openArmory,
-  totals, attackMult, mitigation, maxHp, equippedItem,
+  totals, attackMult, mitigation, maxHp, equippedItem, hasAdminGear,
   // §6.7 contract
   fx: gearFxNow, equippedItems: gearEquippedItems,
   view: () => gearView,

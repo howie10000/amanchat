@@ -102,8 +102,8 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     const regA = await alice.rpc('auth', { user: 'alice', pass: 'pass123', register: true });
 
     console.log('registration');
-    assert(reg.data && reg.data.money === 300 && Number.isInteger(reg.data.houseIndex) && reg.data.createdAt > 0, 'server creates the record: money 300, houseIndex, createdAt');
-    assert(regA.data.houseIndex !== reg.data.houseIndex, 'two players get different lots');
+    assert(reg.data && reg.data.money === 300 && reg.data.createdAt > 0, 'server creates the record: money 300, createdAt');
+    assert(reg.data.houseIndex == null, 'players start without a house (must buy one)');
     assert(reg.data.appearance && reg.data.appearance.hat === 'none', 'default appearance set');
 
     console.log('protected fields');
@@ -162,7 +162,7 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     const feed = (await bob.rpc('get', { path: 'announcements' })) || {};
     assert(Object.values(feed).some(a => a && a.text === 'Town meeting at noon'), 'everyone can read the announcements feed');
     // another player's private fields are invisible
-    await owner.rpc('patch', { path: 'users/alice', value: { money: 4242 } });
+    await owner.rpc('patch', { path: 'users/alice', value: { money: 4242, houseIndex: 4, residence: { type: 'house', houseIndex: 4, tier: 'townhouse' } } });
     const aliceView = await bob.rpc('get', { path: 'users/alice' });
     assert(aliceView && aliceView.money === 4242 && aliceView.houseIndex != null, 'a player can see another\'s public fields (money, house)');
     assert(aliceView.friends === undefined && aliceView.keys === undefined && aliceView.bankBalance === undefined && aliceView.notes === undefined,
@@ -193,6 +193,31 @@ setTimeout(() => { console.error('TIMEOUT - test hung. Server log:\n' + serverLo
     assert((await alice.rpc('get', { path: 'users/alice/friends' }) || {}).bob === undefined, 'and removes bob from alice\'s friends');
     assert(!(await tryRpc(bob, 'home', { action: 'enter', owner: 'alice' })).ok, 'and bob can no longer get into the locked house');
     await owner.rpc('patch', { path: 'users/alice', value: { locked: false } });
+
+    console.log('housing & hotel purchase');
+    // Bob buys a cottage on lot 2
+    await owner.rpc('patch', { path: 'users/bob', value: { money: 10000 } });
+    let hb = await tryRpc(bob, 'buy', { kind: 'house', houseIndex: 2, tier: 'cottage' });
+    assert(hb.ok && hb.data.houseIndex === 2 && hb.data.residence.tier === 'cottage', 'bob bought cottage on lot 2');
+    // Cannot buy already taken lot
+    let takenBuy = await tryRpc(alice, 'buy', { kind: 'house', houseIndex: 2, tier: 'townhouse' });
+    assert(!takenBuy.ok, 'cannot buy an already taken lot');
+    // Bob upgrades his house to a manor
+    await owner.rpc('patch', { path: 'users/bob', value: { money: 30000 } });
+    let hUp = await tryRpc(bob, 'buy', { kind: 'house_upgrade', tier: 'manor' });
+    assert(hUp.ok && hUp.data.residence.tier === 'manor', 'bob upgraded house to luxury manor');
+    // Bob buys a hotel room (Presidential suite at Grand Plaza)
+    await owner.rpc('patch', { path: 'users/bob', value: { money: 50000 } });
+    let htb = await tryRpc(bob, 'buy', { kind: 'hotel_room', hotelId: 'hotel_plaza', roomTier: 'presidential' });
+    assert(htb.ok && htb.data.residence.hotelId === 'hotel_plaza' && htb.data.residence.roomTier === 'presidential' && htb.data.houseIndex === null,
+        'bob bought presidential suite; lot 2 is freed because player can only have 1 house/room');
+    // Lot 2 is now free for Alice to buy!
+    await owner.rpc('patch', { path: 'users/alice', value: { money: 15000 } });
+    let aliceBuy = await tryRpc(alice, 'buy', { kind: 'house', houseIndex: 2, tier: 'townhouse' });
+    assert(aliceBuy.ok && aliceBuy.data.houseIndex === 2, 'lot 2 was freed and alice successfully bought it');
+    // Restore balances for subsequent floor and cosmetic tests
+    await owner.rpc('patch', { path: 'users/bob', value: { money: 50000 } });
+    await owner.rpc('patch', { path: 'users/alice', value: { money: 5000 } });
 
     console.log('buy: furniture');
     const stock = ECON.marketStock(FURNITURE_LIST, Date.now());

@@ -2367,6 +2367,379 @@ function drawMotorVenue(ctx,b){
   for(const xx of [x+7,x+w-16]){ctx.fillStyle='#806e55';ctx.fillRect(xx,base-13,12,16);ctx.fillStyle='#557754';ctx.beginPath();ctx.arc(xx+6,base-16,10,0,Math.PI*2);ctx.fill();}
 }
 
+// =====================================================================
+//  HOTEL FACADES & VACANT LOT RENDERERS
+// =====================================================================
+
+function drawGrandPlazaHotel(ctx, b) {
+  const x = b.x, y = b.y, w = b.w, h = b.h, base = y + h, cx = x + w / 2;
+  const t = Date.now();
+  TB.ground(ctx, b, b.doorHalf || 36, { steps: 3, stepA: "#94a3b8", stepB: "#cbd5e1" });
+
+  // Limestone facade with ashlar masonry lines
+  ctx.fillStyle = "#f8fafc";
+  ctx.fillRect(x, y + 30, w, h - 30);
+  ctx.strokeStyle = "rgba(148,163,184,.35)";
+  ctx.lineWidth = 1;
+  for (let yy = y + 42; yy < base; yy += 14) {
+    ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + w, yy); ctx.stroke();
+  }
+
+  // Dark slate mansard roof with copper trim
+  ctx.fillStyle = "#1e293b";
+  ctx.beginPath();
+  ctx.moveTo(x - 12, y + 32);
+  ctx.lineTo(x + 22, y - 14);
+  ctx.lineTo(x + w - 22, y - 14);
+  ctx.lineTo(x + w + 12, y + 32);
+  ctx.closePath();
+  ctx.fill();
+
+  // Roof cresting & finials (gold wrought iron)
+  ctx.strokeStyle = "#f59e0b";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let xx = x + 24; xx <= x + w - 24; xx += 18) {
+    ctx.moveTo(xx, y - 14); ctx.lineTo(xx, y - 22);
+    ctx.arc(xx, y - 24, 2, 0, Math.PI * 2);
+  }
+  ctx.stroke();
+
+  // Roof dormers
+  for (let i = 0; i < 3; i++) {
+    const dx = x + 44 + i * ((w - 88) / 2);
+    ctx.fillStyle = "#334155";
+    ctx.fillRect(dx - 12, y - 8, 24, 26);
+    ctx.fillStyle = "#f59e0b";
+    ctx.beginPath(); ctx.moveTo(dx - 14, y - 8); ctx.lineTo(dx, y - 20); ctx.lineTo(dx + 14, y - 8); ctx.closePath(); ctx.fill();
+    TB.litWindow(ctx, dx - 8, y - 4, 16, 18, t, i * 7, "#0f172a", true);
+  }
+
+  // Classical fluted pilasters / columns (4 columns across facade)
+  for (let i = 0; i < 4; i++) {
+    const colX = x + 16 + i * ((w - 32) / 3);
+    ctx.fillStyle = "#e2e8f0";
+    ctx.fillRect(colX - 8, y + 32, 16, h - 34);
+    ctx.fillStyle = "rgba(0,0,0,.08)";
+    ctx.fillRect(colX - 4, y + 32, 4, h - 34);
+    ctx.fillStyle = "#cbd5e1";
+    ctx.fillRect(colX - 11, y + 30, 22, 6);
+    ctx.fillRect(colX - 11, base - 6, 22, 6);
+  }
+
+  // Upper arched hotel suite windows
+  for (let row = 0; row < 2; row++) {
+    const wy = y + 46 + row * 40;
+    for (let c = 0; c < 4; c++) {
+      const wx = x + 38 + c * 52;
+      ctx.fillStyle = "#334155";
+      ctx.fillRect(wx - 2, wy - 2, 28, 30);
+      TB.litWindow(ctx, wx, wy, 24, 26, t, c + row * 4, "#1e293b", true);
+    }
+  }
+
+  // Grand Marquee Sign
+  TB.plate(ctx, cx - 110, y + 36, 220, 28, "THE GRAND PLAZA HOTEL", "#0f172a", "#fbbf24", "#d97706", "bold 13px Georgia, serif");
+  ctx.fillStyle = "#fbbf24";
+  ctx.font = "10px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("★★★★★ LUXURY SUITES ★★★★★", cx, y + 78);
+
+  // Grand Golden Entrance
+  const half = b.doorHalf || 36;
+  ctx.fillStyle = "#d97706";
+  ctx.fillRect(cx - half - 4, base - 70, half * 2 + 8, 70);
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(cx - half, base - 66, half * 2, 66);
+  ctx.fillStyle = "rgba(251,191,36,.25)";
+  ctx.fillRect(cx - half + 4, base - 62, half * 2 - 8, 58);
+  ctx.strokeStyle = "#fbbf24";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(cx - half + 4, base - 62, half * 2 - 8, 58);
+  ctx.beginPath(); ctx.moveTo(cx, base - 62); ctx.lineTo(cx, base - 4); ctx.stroke();
+  TB.spill(ctx, cx, base, half * 2, "251,191,36", 0.35);
+
+  // Brass luggage cart by the door
+  ctx.strokeStyle = "#f59e0b";
+  ctx.lineWidth = 2;
+  const lx = cx + half + 20, ly = base - 16;
+  ctx.strokeRect(lx - 12, ly - 26, 24, 26);
+  ctx.beginPath(); ctx.arc(lx, ly - 26, 12, Math.PI, 0); ctx.stroke();
+  ctx.fillStyle = "#7f1d1d"; ctx.fillRect(lx - 10, ly - 14, 20, 10);
+  ctx.fillStyle = "#1e293b"; ctx.fillRect(lx - 7, ly - 22, 14, 8);
+  ctx.fillStyle = "#0f172a";
+  ctx.beginPath(); ctx.arc(lx - 8, ly, 3, 0, Math.PI * 2); ctx.arc(lx + 8, ly, 3, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawPalmsResort(ctx, b) {
+  const x = b.x, y = b.y, w = b.w, h = b.h, base = y + h, cx = x + w / 2;
+  const t = Date.now();
+  TB.ground(ctx, b, b.doorHalf || 32, { apronW: 84, apron: "#e2e8f0", mat: "#0284c7" });
+
+  ctx.fillStyle = "#fef9c3";
+  ctx.fillRect(x, y + 26, w, h - 26);
+  ctx.fillStyle = "rgba(2,132,199,.06)";
+  ctx.fillRect(x, y + 26, w, h - 26);
+
+  ctx.fillStyle = "#0284c7";
+  ctx.beginPath();
+  ctx.moveTo(x - 12, y + 28);
+  ctx.lineTo(cx, y - 18);
+  ctx.lineTo(x + w + 12, y + 28);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#38bdf8";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  for (let c = 0; c < 3; c++) {
+    const wx = x + 28 + c * ((w - 56) / 2);
+    ctx.fillStyle = "#78350f";
+    ctx.fillRect(wx - 24, y + 44, 48, 36);
+    TB.litWindow(ctx, wx - 18, y + 46, 36, 32, t, c * 3, "#0369a1", false);
+  }
+
+  TB.awning(ctx, cx - 50, base - 76, 100, 16, "#0284c7", "#f8fafc", 10);
+  TB.plate(ctx, cx - 96, y + 32, 192, 24, "PALMS SEASIDE RESORT", "#0369a1", "#fef08a", "#38bdf8", "bold 11px Georgia, serif");
+  ctx.fillStyle = "#0284c7";
+  ctx.font = "bold 9px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("🌴 OCEANFRONT SUITES & RESORT 🌴", cx, y + 96);
+
+  const half = b.doorHalf || 32;
+  ctx.fillStyle = "#78350f";
+  ctx.fillRect(cx - half, base - 58, half * 2, 58);
+  ctx.fillStyle = "#38bdf8";
+  ctx.fillRect(cx - half + 4, base - 54, half * 2 - 8, 50);
+  TB.spill(ctx, cx, base, half * 2, "56,189,248", 0.28);
+
+  for (const px of [cx - half - 18, cx + half + 18]) {
+    ctx.fillStyle = "#ea580c";
+    ctx.beginPath();
+    ctx.moveTo(px - 10, base - 22); ctx.lineTo(px + 10, base - 22);
+    ctx.lineTo(px + 7, base); ctx.lineTo(px - 7, base);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#16a34a";
+    ctx.beginPath();
+    ctx.arc(px, base - 28, 14, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#22c55e";
+    ctx.beginPath();
+    ctx.arc(px - 4, base - 34, 10, 0, Math.PI * 2);
+    ctx.arc(px + 5, base - 33, 9, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawPinecrestLodge(ctx, b) {
+  const x = b.x, y = b.y, w = b.w, h = b.h, base = y + h, cx = x + w / 2;
+  const t = Date.now();
+  TB.ground(ctx, b, b.doorHalf || 32, { apronW: 80, apron: "#78716c", mat: "#451a03" });
+
+  ctx.fillStyle = "#78350f";
+  ctx.fillRect(x, y + 26, w, h - 26);
+  ctx.fillStyle = "#451a03";
+  for (let yy = y + 36; yy < base; yy += 12) {
+    ctx.fillRect(x, yy, w, 2.5);
+  }
+  ctx.fillStyle = "#57534e";
+  ctx.fillRect(x, base - 22, w, 22);
+  ctx.strokeStyle = "#44403c";
+  ctx.lineWidth = 1;
+  for (let sx = x; sx < x + w; sx += 20) {
+    ctx.strokeRect(sx, base - 22, 20, 11);
+    ctx.strokeRect(sx + 10, base - 11, 20, 11);
+  }
+
+  const chx = x + w - 30;
+  ctx.fillStyle = "#44403c";
+  ctx.fillRect(chx - 8, y - 28, 26, h + 6);
+  ctx.strokeStyle = "#292524";
+  ctx.lineWidth = 1;
+  for (let cy = y - 26; cy < y + 26; cy += 8) ctx.strokeRect(chx - 8, cy, 26, 8);
+  for (let i = 0; i < 4; i++) {
+    const p = ((t / 2200) + i * 0.25) % 1;
+    ctx.fillStyle = `rgba(226,232,240,${0.35 * (1 - p)})`;
+    ctx.beginPath();
+    ctx.arc(chx + 5 + Math.sin(p * 4 + i) * 8 + p * 8, y - 32 - p * 36, 4 + p * 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = "#1e293b";
+  ctx.beginPath();
+  ctx.moveTo(x - 14, y + 28);
+  ctx.lineTo(cx, y - 22);
+  ctx.lineTo(x + w + 8, y + 28);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#78350f";
+  ctx.lineWidth = 5;
+  ctx.stroke();
+
+  TB.plate(ctx, cx - 100, y + 32, 200, 26, "PINECREST MOUNTAIN LODGE", "#451a03", "#fef08a", "#d97706", "bold 11px Georgia, serif");
+  ctx.fillStyle = "#fde68a";
+  ctx.font = "bold 9px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("🏔️ TIMBER & STONE SUITES 🏔️", cx, y + 74);
+
+  for (const wx of [x + 36, x + w - 74]) {
+    ctx.fillStyle = "#451a03";
+    ctx.fillRect(wx - 4, y + 80, 40, 36);
+    TB.litWindow(ctx, wx, y + 84, 32, 28, t, wx, "#78350f", true);
+  }
+
+  const half = b.doorHalf || 32;
+  ctx.fillStyle = "#451a03";
+  ctx.fillRect(cx - half, base - 62, half * 2, 62);
+  ctx.fillStyle = "#78350f";
+  ctx.fillRect(cx - half + 3, base - 59, half * 2 - 6, 59);
+  ctx.fillStyle = "#1c1917";
+  ctx.fillRect(cx - half + 4, base - 48, half * 2 - 8, 4);
+  ctx.fillRect(cx - half + 4, base - 22, half * 2 - 8, 4);
+  TB.spill(ctx, cx, base, half * 2, "253,186,116", 0.25);
+}
+
+function drawVacantLot(ctx, r, address, lotIndex, playerPos) {
+  const cx = r.x + r.w / 2, base = r.y + r.h;
+  const isNear = playerPos && Math.hypot(playerPos.x - cx, playerPos.y - base) < 95;
+
+  ctx.fillStyle = "rgba(101,163,13,.12)";
+  ctx.fillRect(r.x, r.y, r.w, r.h);
+
+  const x0 = r.x + 8, y0 = r.y + 8, x1 = r.x + r.w - 8, y1 = base - 8;
+  ctx.strokeStyle = "rgba(250,204,21,.35)";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+
+  ctx.fillStyle = "#78350f";
+  ctx.fillRect(x0 - 3, y0 - 12, 6, 14);
+  ctx.fillRect(x1 - 3, y0 - 12, 6, 14);
+  ctx.fillRect(x1 - 3, y1 - 12, 6, 14);
+  ctx.fillRect(x0 - 3, y1 - 12, 6, 14);
+
+  ctx.fillStyle = "#facc15";
+  ctx.fillRect(x0 - 4, y0 - 14, 8, 4);
+  ctx.fillRect(x1 - 4, y0 - 14, 8, 4);
+  ctx.fillRect(x1 - 4, y1 - 14, 8, 4);
+  ctx.fillRect(x0 - 4, y1 - 14, 8, 4);
+
+  // Stepping stones
+  ctx.fillStyle = "#cbd5e1";
+  for (let i = 0; i < 4; i++) {
+    const py = base + 30 - i * 13;
+    ctx.beginPath();
+    ctx.ellipse(cx + (i % 2 ? 4 : -4), py, 9, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Signpost
+  const sx = cx, sy = base - 30;
+  ctx.fillStyle = "#5c3317";
+  ctx.fillRect(sx - 3, sy - 24, 6, 54);
+
+  const bx = sx - 55, by = sy - 48, bw = 110, bh = 50;
+  ctx.fillStyle = "#15803d";
+  roundRect(ctx, bx, by, bw, bh, 5, true, false);
+  ctx.strokeStyle = "#facc15";
+  ctx.lineWidth = 1.5;
+  roundRect(ctx, bx, by, bw, bh, 5, false, true);
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#fef08a";
+  ctx.font = "bold 10px sans-serif";
+  ctx.fillText("★ FOR SALE ★", sx, by + 14);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(address, sx, by + 27);
+
+  ctx.fillStyle = "#bbf7d0";
+  ctx.font = "8px sans-serif";
+  ctx.fillText("Build from $2,500", sx, by + 40);
+
+  if (isNear) {
+    ctx.strokeStyle = "#fbbf24";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(sx, base - 10, 32, 0, Math.PI * 2);
+    ctx.stroke();
+    roundFill(ctx, sx - 42, by - 16, 84, 14, 3, "rgba(0,0,0,.85)");
+    ctx.fillStyle = "#facc15";
+    ctx.font = "bold 9px sans-serif";
+    ctx.fillText("Press E to Buy", sx, by - 6);
+  }
+}
+
+function drawDiamondCasinoHotel(ctx, b) {
+  const x = b.x, y = b.y, w = b.w, h = b.h, base = y + h, cx = x + w / 2;
+  const t = Date.now();
+  TB.ground(ctx, b, b.doorHalf || 42, { apronW: 96, apron: "#1f2937", mat: "#831843" });
+
+  // Tower body (luxurious velvet burgundy & obsidian art deco)
+  const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+  grad.addColorStop(0, "#4c0519");
+  grad.addColorStop(0.5, "#831843");
+  grad.addColorStop(1, "#4c0519");
+  ctx.fillStyle = grad;
+  ctx.fillRect(x, y + 26, w, h - 26);
+
+  // Neon gold vertical pilasters & accents
+  for (let i = 0; i < 5; i++) {
+    const px = x + 16 + i * ((w - 32) / 4);
+    ctx.fillStyle = "#1e1b4b";
+    ctx.fillRect(px - 5, y + 28, 10, h - 30);
+    ctx.fillStyle = "#f59e0b";
+    ctx.fillRect(px - 2, y + 28, 4, h - 30);
+  }
+
+  // Penthouse crown / stepped roof
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(x + 20, y - 18, w - 40, 44);
+  ctx.strokeStyle = "#fbbf24";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 20, y - 18, w - 40, 44);
+
+  // Glowing neon antenna / finial
+  ctx.strokeStyle = "#ec4899";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx, y - 18); ctx.lineTo(cx, y - 48);
+  ctx.stroke();
+  const pulse = 0.5 + 0.5 * Math.sin(t / 250);
+  ctx.fillStyle = `rgba(236,72,153,${0.4 + 0.6 * pulse})`;
+  ctx.beginPath(); ctx.arc(cx, y - 50, 6, 0, Math.PI * 2); ctx.fill();
+
+  // Illuminated luxury penthouse suite windows (2 rows of 4)
+  for (let row = 0; row < 2; row++) {
+    const wy = y + 42 + row * 40;
+    for (let c = 0; c < 4; c++) {
+      const wx = x + 34 + c * 60;
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(wx - 2, wy - 2, 34, 30);
+      TB.litWindow(ctx, wx, wy, 30, 26, t, c + row * 5, "#4c0519", true);
+    }
+  }
+
+  // Glowing VIP Marquee
+  TB.plate(ctx, cx - 120, y + 32, 240, 28, "DIAMOND VIP SUITES", "#0f172a", "#fcd34d", "#f59e0b", "bold 13px Georgia, serif");
+  ctx.fillStyle = "#fbbf24";
+  ctx.font = "bold 9px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("💎 HIGH ROLLER PENTHOUSES & SUITES 💎", cx, y + 76);
+
+  // Velvet canopy awning
+  TB.awning(ctx, cx - 60, base - 76, 120, 16, "#831843", "#fbbf24", 12);
+
+  // VIP Gold Revolving Door
+  const half = b.doorHalf || 42;
+  ctx.fillStyle = "#1e1b4b";
+  ctx.fillRect(cx - half, base - 60, half * 2, 60);
+  ctx.strokeStyle = "#fbbf24";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(cx - half + 2, base - 58, half * 2 - 4, 58);
+  ctx.fillStyle = "rgba(251,191,36,.22)";
+  ctx.fillRect(cx - half + 4, base - 56, half * 2 - 8, 54);
+  TB.spill(ctx, cx, base, half * 2, "251,191,36", 0.4);
+}
+
 const BUILDING_RENDERERS = {
   dealership:drawMotorVenue,
   racetrack:drawMotorVenue,
@@ -2379,6 +2752,10 @@ const BUILDING_RENDERERS = {
   job: drawJobsCenter,
   barber: drawBarber,
   plaza: drawPlaza,
+  hotel_plaza: drawGrandPlazaHotel,
+  hotel_palms: drawPalmsResort,
+  hotel_lodge: drawPinecrestLodge,
+  hotel_casino: drawDiamondCasinoHotel,
 };
 
 
@@ -2413,7 +2790,8 @@ function houseNight() {
   return 0;
 }
 
-function drawHouse(ctx, r, name, isYou, style) {
+function drawHouse(ctx, r, name, isYou, style, tier) {
+  tier = tier || "cottage";
   const t = Date.now();
   const h = houseHash(name);
   const wall = (style && style.wall) || (isYou ? "#fef9c3" : HOUSE_WALLS[h % HOUSE_WALLS.length]);
@@ -2723,14 +3101,42 @@ function drawHouse(ctx, r, name, isYou, style) {
     }
   }
 
+  // ---- luxury tier accents ----
+  if (tier === "mansion") {
+    // Grand gold roof crest & pinnacle
+    ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let xx = r.x + 20; xx <= r.x + r.w - 20; xx += 20) {
+      ctx.moveTo(xx, r.y + 4); ctx.lineTo(xx, r.y - 8);
+      ctx.arc(xx, r.y - 10, 2, 0, Math.PI * 2);
+    }
+    ctx.stroke();
+    // Regal white columns on facade corners
+    ctx.fillStyle = "#f8fafc";
+    ctx.fillRect(r.x - 2, eave, 8, base - eave);
+    ctx.fillRect(r.x + r.w - 6, eave, 8, base - eave);
+  } else if (tier === "manor") {
+    // Stone quoin blocks on corners
+    ctx.fillStyle = "#94a3b8";
+    for (let qy = eave; qy < base - 10; qy += 16) {
+      ctx.fillRect(r.x, qy, 8, 7);
+      ctx.fillRect(r.x + r.w - 8, qy, 8, 7);
+    }
+  } else if (tier === "townhouse") {
+    // Brick foundation trim
+    ctx.fillStyle = "#991b1b";
+    ctx.fillRect(r.x, base - 10, r.w, 4);
+  }
+
   // ---- owner name plate (below the address plate world.js draws at r.y-42..-26) ----
-  ctx.fillStyle = "rgba(0,0,0,.72)";
-  roundRect(ctx, cx - 52, r.y - 24, 104, 18, 5, true, false);
+  const tierIcon = { cottage: "🏡", townhouse: "🏘️", manor: "🏰", mansion: "🏛️" }[tier] || "🏡";
+  ctx.fillStyle = "rgba(0,0,0,.75)";
+  roundRect(ctx, cx - 60, r.y - 24, 120, 18, 5, true, false);
   ctx.strokeStyle = isYou ? "#fbbf24" : "rgba(255,255,255,.25)"; ctx.lineWidth = 1.5;
-  roundRect(ctx, cx - 52, r.y - 24, 104, 18, 5, false, true);
+  roundRect(ctx, cx - 60, r.y - 24, 120, 18, 5, false, true);
   ctx.fillStyle = isYou ? "#fbbf24" : "#fff";
-  ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText(name, cx, r.y - 15);
+  ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(`${tierIcon} ${name}`, cx, r.y - 15);
   ctx.textBaseline = "alphabetic";
 }
 
@@ -3581,7 +3987,7 @@ function drawPixelSymbol(c, name, cx, cy, size) {
 }
 
 window.GFX = {
-  drawCharacter, drawNameAndBubble, drawChatStack, drawBuildingBox, drawTower, drawHouse,
+  drawCharacter, drawNameAndBubble, drawChatStack, drawBuildingBox, drawTower, drawHouse, drawVacantLot,
   CHAT_STACK_MAX, CHAT_TTL,
   drawFurniture, roundRect, roundFill, roundStroke, shadeColor,
   DEFAULT_APPEARANCE, EMOTES, EMOTE_TTL, drawAura, drawPet,

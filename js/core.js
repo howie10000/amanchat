@@ -118,10 +118,20 @@ const keys = {};
 document.addEventListener("keydown", e => {
   if (e.key === "F11") return; // Preserve the browser fullscreen shortcut.
   keys[e.key.toLowerCase()] = true;
+  if (e.key === " " || e.code === "Space") { keys[" "] = true; keys["space"] = true; }
+  if (e.key === "Shift" || e.code === "ShiftLeft" || e.code === "ShiftRight") {
+    keys["shift"] = true; keys["shiftleft"] = true; keys["shiftright"] = true;
+  }
   // game.js defines handleKey; keys typed on the login screen can land first.
   if (typeof handleKey === "function") handleKey(e);
 });
-document.addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+document.addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+  if (e.key === " " || e.code === "Space") { keys[" "] = false; keys["space"] = false; }
+  if (e.key === "Shift" || e.code === "ShiftLeft" || e.code === "ShiftRight") {
+    keys["shift"] = false; keys["shiftleft"] = false; keys["shiftright"] = false;
+  }
+});
 canvas.addEventListener("mousemove", e => {
   const r = canvas.getBoundingClientRect();
   let mx = (e.clientX - r.left) * (canvas.width / r.width);
@@ -416,15 +426,16 @@ function isMuted() {
 
 // TUTORIAL
 const TUT = [
-  "Welcome to NEIGHBORHOOD! This is your house. Use WASD; hold right mouse or use arrows to look to walk around.",
-  "Press <b>I</b> for inventory — buy furniture from the store, then place it here.",
+  "Welcome to NEIGHBORHOOD! Use WASD to walk around; hold right mouse or use arrows to look.",
+  "Earn money through jobs, adventures, or the casino. Then buy a vacant lot to build your dream home or book a luxury hotel suite!",
+  "Press <b>I</b> for inventory — buy furniture from FURNITURELAND, then place it inside your residence.",
   "Press <b>Build Mode</b> (top-right) to drag furniture around. Right-click to pick up.",
-  "Press <b>ESC</b> to leave your house. Walk around town and press <b>E</b> at any building, doorway or glowing pad to enter or use it.",
-  "Lost? Press <b>M</b> for the town map. Pick your house, a friend's house or any shop and hit <b>Guide me</b> — a gold arrow and a dotted trail lead you there. The minimap sits bottom-right.",
-  "Buildings: <b>VEGAS</b> — the big neon tower, five floors and sixteen games — plus the Bank (interest + daily bonus), Furniture Store (with a paint shop for your house), Mystery Boxes, Adventurers Guild (combat quests), Jobs Center (mini-games), Trim &amp; Style (hats, auras, pets, name colours), Town Plaza and Town Hall.",
-  "Press <b>G</b> to emote — a wave, a laugh or a dance pops up over your head for everyone to see.",
-  "Press <b>T</b> to chat. Up to three of your lines stack above your head — keep talking and the old ones slide up. Open <b>Messenger</b> for instant DMs, and add friends to quest or duel with them.",
-  "Have fun. Build the dopest house in town."
+  "Press <b>ESC</b> to leave your residence. Walk around town and press <b>E</b> at any building, lot, doorway or glowing pad to enter or use it.",
+  "Lost? Press <b>M</b> for the town map. Pick your residence, a friend's house, a hotel, or any shop and hit <b>Guide me</b> — a gold arrow and dotted trail lead you there.",
+  "Hotels & Suites: Check in at <b>The Grand Plaza Hotel</b>, <b>Palms Seaside Resort</b>, <b>Pinecrest Mountain Lodge</b>, or the <b>Diamond Casino VIP Suites</b> for 1-time purchase luxury suites (including Presidential Suites)!",
+  "Buildings: <b>VEGAS</b> — the neon tower with five floors and casino games — plus First Bank, Furnitureland, Adventurers Guild, Jobs Center, Trim &amp; Style, Dealership & Racetrack, Town Plaza and Town Hall.",
+  "Press <b>G</b> to emote and <b>T</b> to chat. Open <b>Messenger</b> for instant DMs, and add friends to quest or duel with them.",
+  "Have fun. Own the most magnificent house or presidential suite in town!"
 ];
 let tutI = 0;
 function startTutorial() {
@@ -467,6 +478,8 @@ function updateHUD() {
     interior_furniture: "Furniture Store", interior_lootbox: "Mystery Boxes",
     interior_quest: "Adventurers Guild", interior_job: "Jobs Center",
     interior_barber: "Trim & Style", interior_plaza: "Town Plaza",
+    interior_hotel_plaza: "The Grand Plaza Hotel", interior_hotel_palms: "Palms Seaside Resort",
+    interior_hotel_lodge: "Pinecrest Mountain Lodge", interior_hotel_casino: "Diamond Casino & VIP Suites",
     interior_mayor: "Town Hall",
     dungeon: state.dungeon && state.dungeon.continuous ? "Dungeon expedition" : "Dungeon - Floor " + (state.dungeon ? state.dungeon.floor + 1 : 1),
     duel: "Duel Arena",
@@ -894,10 +907,11 @@ function loop(now) {
   // One thrown error in a draw or update used to end the animation loop for
   // good (the game "froze" until a reload). Log it and keep the loop alive.
   try {
-    while (_loopAcc >= TICK_MS && ticks < MAX_TICKS_PER_FRAME) {
+    while (_loopAcc >= TICK_MS - 1.5 && ticks < MAX_TICKS_PER_FRAME) {
       update();
       interpolateOthers();
       _loopAcc -= TICK_MS;
+      if (_loopAcc < 0) _loopAcc = 0;
       ticks++;
     }
     if (ticks === MAX_TICKS_PER_FRAME) _loopAcc = 0;

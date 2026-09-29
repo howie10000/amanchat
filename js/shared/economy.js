@@ -52,6 +52,226 @@
   const PAINT_ROOFS = ["#b45309", "#7f1d1d", "#1e3a8a", "#3f2210", "#166534", "#4c1d95", "#7c2d12", "#0f172a", "#831843",
                        "#dc2626", "#2563eb", "#059669", "#fbbf24", "#a855f7", "#f472b6", "#0a0a0a", "#e5e7eb"];
 
+  // ---------- HOUSING & REAL ESTATE TIERS ----------
+  const HOUSE_TIERS = {
+    cottage: {
+      id: "cottage",
+      name: "Cozy Cottage",
+      tagline: "A quaint, snug starter home with garden frontage",
+      price: 2500,
+      resale: 1500,
+      maxFurniture: 18,
+      room: { x: 160, y: 120, w: 704, h: 420 },
+      exterior: { w: 200, h: 170, kind: "cottage" }
+    },
+    townhouse: {
+      id: "townhouse",
+      name: "Suburban Townhouse",
+      tagline: "Two storeys, driveway, and generous living space",
+      price: 8000,
+      resale: 5000,
+      maxFurniture: 36,
+      room: { x: 80, y: 80, w: 864, h: 480 },
+      exterior: { w: 240, h: 200, kind: "colonial" }
+    },
+    manor: {
+      id: "manor",
+      name: "Luxury Manor",
+      tagline: "Stately residence with brick gables, balcony and grand hall",
+      price: 25000,
+      resale: 16000,
+      maxFurniture: 60,
+      room: { x: 30, y: 55, w: 964, h: 530 },
+      exterior: { w: 260, h: 215, kind: "manor" }
+    },
+    mansion: {
+      id: "mansion",
+      name: "Grand Estate",
+      tagline: "Palatial estate with pillars, panoramic glass, and elite luxury",
+      price: 75000,
+      resale: 50000,
+      maxFurniture: 90,
+      room: { x: 0, y: 40, w: 1024, h: 560 },
+      exterior: { w: 280, h: 230, kind: "mansion" }
+    }
+  };
+
+  // ---------- HOTELS & ROOM SUITES ----------
+  // 1-time purchase for 1 room (you can only have 1 house OR 1 hotel room total).
+  const HOTELS = {
+    hotel_plaza: {
+      id: "hotel_plaza",
+      name: "The Grand Plaza Hotel",
+      tagline: "Premier luxury hotel overlooking the central park gardens",
+      x: 2560, y: 1380, w: 280, h: 220,
+      accent: "#fbbf24",
+      rooms: {
+        standard: {
+          id: "standard",
+          name: "Plaza Cozy Room",
+          tierName: "Standard Room",
+          price: 1200,
+          maxFurniture: 16,
+          room: { x: 170, y: 120, w: 684, h: 420 },
+          desc: "Warm room with king bed, desk, and city window view."
+        },
+        deluxe: {
+          id: "deluxe",
+          name: "Plaza Executive Suite",
+          tierName: "Deluxe Suite",
+          price: 4500,
+          maxFurniture: 32,
+          room: { x: 90, y: 80, w: 844, h: 480 },
+          desc: "Spacious suite with sitting lounge, minibar, and downtown balcony view."
+        },
+        presidential: {
+          id: "presidential",
+          name: "The Plaza Presidential Suite",
+          tierName: "Presidential Suite",
+          price: 45000,
+          maxFurniture: 80,
+          room: { x: 0, y: 40, w: 1024, h: 560 },
+          desc: "World-class presidential suite with private spa, panoramic skyline, and gold trim."
+        }
+      }
+    },
+    hotel_palms: {
+      id: "hotel_palms",
+      name: "Palms Seaside Resort",
+      tagline: "Tropical beachfront resort with ocean breezes and sunset views",
+      x: 3740, y: 620, w: 260, h: 195,
+      accent: "#38bdf8",
+      rooms: {
+        standard: {
+          id: "standard",
+          name: "Cabana Beach Room",
+          tierName: "Standard Room",
+          price: 1500,
+          maxFurniture: 16,
+          room: { x: 170, y: 120, w: 684, h: 420 },
+          desc: "Coastal vibe room with teak wood, ocean breeze, and patio view."
+        },
+        deluxe: {
+          id: "deluxe",
+          name: "Oceanfront Balcony Suite",
+          tierName: "Deluxe Suite",
+          price: 5500,
+          maxFurniture: 32,
+          room: { x: 90, y: 80, w: 844, h: 480 },
+          desc: "Panoramic seaside terrace suite with private bar and maritime styling."
+        },
+        presidential: {
+          id: "presidential",
+          name: "The Royal Palms Presidential Villa",
+          tierName: "Presidential Suite",
+          price: 55000,
+          maxFurniture: 80,
+          room: { x: 0, y: 40, w: 1024, h: 560 },
+          desc: "The ultimate tropical paradise suite with infinity jacuzzi, sun terrace, and luxury furnishings."
+        }
+      }
+    },
+    hotel_lodge: {
+      id: "hotel_lodge",
+      name: "Pinecrest Mountain Lodge",
+      tagline: "Rustic alpine comfort tucked beside the pine forests and park",
+      x: 180, y: 1040, w: 280, h: 210,
+      accent: "#a3e635",
+      rooms: {
+        standard: {
+          id: "standard",
+          name: "Pine Timber Cabin Room",
+          tierName: "Standard Room",
+          price: 900,
+          maxFurniture: 16,
+          room: { x: 170, y: 120, w: 684, h: 420 },
+          desc: "Cozy cedar-scented room with stone hearth warmth and forest views."
+        },
+        deluxe: {
+          id: "deluxe",
+          name: "Highland Forest Suite",
+          tierName: "Deluxe Suite",
+          price: 3800,
+          maxFurniture: 32,
+          room: { x: 90, y: 80, w: 844, h: 480 },
+          desc: "Spacious lodge suite with wood-burning fireplace, timber rafters, and park views."
+        },
+        presidential: {
+          id: "presidential",
+          name: "The Mountainview Presidential Chalet",
+          tierName: "Presidential Suite",
+          price: 40000,
+          maxFurniture: 80,
+          room: { x: 0, y: 40, w: 1024, h: 560 },
+          desc: "Grand multi-peak alpine presidential chalet with stone fireplace, heated hot tub, and private lookout."
+        }
+      }
+    },
+    hotel_casino: {
+      id: "hotel_casino",
+      name: "Diamond Casino & VIP Suites",
+      tagline: "The high-roller retreat above the casino floor",
+      x: null, y: null,
+      insideCasino: true,
+      accent: "#f43f5e",
+      rooms: {
+        standard: {
+          id: "standard",
+          name: "Vegas High-Rise Room",
+          tierName: "Standard Room",
+          price: 2500,
+          maxFurniture: 20,
+          room: { x: 170, y: 120, w: 684, h: 420 },
+          desc: "Sleek velvet room with mini casino bar and skyline view."
+        },
+        deluxe: {
+          id: "deluxe",
+          name: "Diamond High-Roller Suite",
+          tierName: "Deluxe Suite",
+          price: 12000,
+          maxFurniture: 40,
+          room: { x: 90, y: 80, w: 844, h: 480 },
+          desc: "Opulent velvet & gold VIP suite with private poker table, bar, and mood lighting."
+        },
+        presidential: {
+          id: "presidential",
+          name: "The Casino Grand Presidential Penthouse",
+          tierName: "Presidential Suite",
+          price: 100000,
+          maxFurniture: 100,
+          room: { x: 0, y: 40, w: 1024, h: 560 },
+          desc: "The pinnacle of Las Vegas luxury: sky-deck glass floors, diamond chandeliers, private butler bar, and golden spa."
+        }
+      }
+    }
+  };
+
+  // Alias h.suites to h.rooms for convenience
+  for (const h of Object.values(HOTELS)) {
+    h.suites = h.rooms;
+  }
+
+  function houseTier(id) {
+    return (id && HOUSE_TIERS[id]) || HOUSE_TIERS.townhouse;
+  }
+  function hotelDef(id) {
+    return (id && HOTELS[id]) || null;
+  }
+  function hotelRoom(hotelId, roomTier) {
+    const h = HOTELS[hotelId];
+    if (!h || !h.rooms) return null;
+    return h.rooms[roomTier] || h.rooms.standard;
+  }
+  function maxFurnitureForResidence(res) {
+    if (!res) return 36;
+    if (res.type === "hotel") {
+      const rm = hotelRoom(res.hotelId, res.roomTier);
+      return rm ? rm.maxFurniture : 32;
+    }
+    const ht = houseTier(res.tier);
+    return ht ? ht.maxFurniture : 36;
+  }
+
   // ---------- VEGAS elevator ----------
   // One-off unlock price per floor index (0 = lobby, always open).
   const VEGAS_FLOOR_PRICES = [0, 2500, 10000, 30000, 75000];
@@ -2398,6 +2618,31 @@
     WEAPON_KIND_BY_BASE[id] = u.kind;
     GEAR_BASES.push({ id, slot: u.slot, lvl: u.lvl, name: u.name, split: Object.assign({}, u.split), unique: true, armament: true });
   }
+  // Staff / Admin exclusive god-tier uniques (10x damage + invincibility).
+  // Exclusively obtainable via the Admin Panel by staff/owners.
+  const ADMIN_UNIQUES = {
+    admin_blade:   { name: "Overseer's Sovereign Blade", slot: "weapon", kind: "sword", lvl: 12, minRarity: "arcane", split: { atk: 1.0 },
+                     fx: { crit: 1.0, critDmg: 5.0, adminDmg: 10, invincible: true } },
+    admin_ranged:  { name: "Overseer's Judgement Arbalest", slot: "ranged", kind: "crossbow", lvl: 12, minRarity: "arcane", split: { atk: 1.0 },
+                     fx: { crit: 1.0, critDmg: 5.0, adminDmg: 10, invincible: true } },
+    admin_aegis:   { name: "Aegis of the Immortal Sovereign", slot: "chest", lvl: 12, minRarity: "arcane", split: { def: 0.5, vit: 0.5 },
+                     fx: { thorns: 5.0, takenMult: 0, regen: 100, invincible: true, adminDmg: 10 } },
+    admin_crown:   { name: "Crown of the Overseer", slot: "helmet", lvl: 12, minRarity: "arcane", split: { def: 0.5, vit: 0.5 },
+                     fx: { moveSpeed: 0.35, dashCd: 0.8, invincible: true, adminDmg: 10 } },
+    admin_greaves: { name: "Greaves of the World-Strider", slot: "legs", lvl: 12, minRarity: "arcane", split: { def: 0.5, vit: 0.5 },
+                     fx: { moveSpeed: 0.45, dashDist: 0.5, invincible: true, adminDmg: 10 } },
+    admin_ring:    { name: "Seal of Absolute Authority", slot: "ring", lvl: 12, minRarity: "arcane", split: { atk: 0.5, vit: 0.5 },
+                     fx: { magicFind: 2.0, lifesteal: 0.5, bossDmg: 2.0, invincible: true, adminDmg: 10 } },
+  };
+  for (const [id, u] of Object.entries(ADMIN_UNIQUES)) {
+    u.id = id; u.admin = true;
+    GEAR_UNIQUES[id] = u;
+    if (u.kind) {
+      WEAPON_KIND_BY_BASE[id] = u.kind;
+      u.armament = true;
+    }
+    GEAR_BASES.push({ id, slot: u.slot, lvl: u.lvl, name: u.name, split: Object.assign({}, u.split), unique: true, admin: true, armament: !!u.kind });
+  }
   const GEAR_BASE_BY_ID = {};
   for (const b of GEAR_BASES) GEAR_BASE_BY_ID[b.id] = b;
 
@@ -3179,7 +3424,7 @@
     return out;
   }
   function randomPoolBases(lvl) {
-    return GEAR_BASES.filter(b => b.lvl === lvl && !b.unique && !b.set && !b.armament);
+    return GEAR_BASES.filter(b => b.lvl === lvl && !b.unique && !b.set && !b.armament && !b.admin);
   }
 
   // The quest-board wrapper (and the thin legacy API): delve 0, chest tier 0,
@@ -4007,7 +4252,7 @@
     // ---- THE ARCANE DEPTHS (docs/arcane-depths/MASTER-PLAN.md §5.1) ----
     GUILD_RAID_MINIS, GUILD_SPECIAL_BOSSES, isSpecialBoss, bossArt,
     bossPhases, bossPhaseCount, guildBossHpMult, guildBossPylonPos,
-    gearRarityIdx, GEAR_ATK_SOFTCAP, GEAR_MODS, GEAR_MOD_COUNT, GEAR_FX_CAPS, GEAR_UNIQUES, GEAR_SETS,
+    gearRarityIdx, GEAR_ATK_SOFTCAP, GEAR_MODS, GEAR_MOD_COUNT, GEAR_FX_CAPS, GEAR_UNIQUES, ADMIN_UNIQUES, GEAR_SETS,
     SOCKETS_BY_RARITY, SELL_V2_MULT, SET_SLOTS,
     normGear, gearStats, setCounts, gearFx, ITEM_HEALING_MULT, emptyFx, rollHitDamage, rollMod,
     LIFESTEAL_MULT, LIFESTEAL, lifestealBucket, lifestealHeal, combatProfile, parProfile, BOSS_PAR, BOSS_TIER_SCALE, BOSS_GEAR_ADAPT, bossGearScale,
@@ -4034,5 +4279,7 @@
     WEAPON_HANDS, WEAPON_KINDS, MELEE_KINDS, RANGED_KINDS, WEAPON_KIND_BY_BASE, ARMAMENT_BASE, ARMAMENT_UNIQUES, ARMAMENT_DROP,
     weaponKindOf, weaponKind, handOfWire, weaponItems, weaponLoadout, handAtk, handAttackMult,
     kindHitDmg, kindMinMs, kindReach, kindTargets, weaponFx, kindStatLine, rollArmamentDrop,
+    // ---- HOUSING & HOTELS ----
+    HOUSE_TIERS, HOTELS, houseTier, hotelDef, hotelRoom, maxFurnitureForResidence,
   };
 });

@@ -1562,7 +1562,7 @@
   function resetStage(){
     const R=room.userData;
     R.ceil.position.y=ROOM.wallH;
-    if(rig){rig.body.emissive.copy(rig.color);if(rig.dragon&&rig.dragon.crown){rig.dragon.crown.visible=false;rig.dragon.crown.rotation.set(0,0,0);rig.dragon.crown.position.set(0,2.1,-.6);}}
+    if(rig){if(rig.body&&rig.body.emissive)rig.body.emissive.copy(rig.color);if(rig.dragon&&rig.dragon.crown){rig.dragon.crown.visible=false;rig.dragon.crown.rotation.set(0,0,0);rig.dragon.crown.position.set(0,2.1,-.6);}}
     if(R.backWall)R.backWall.position.y=ROOM.wallH/2;
     for(const w of R.sideWalls){w.position.y=ROOM.wallH/2;w.rotation.z=0;}
     for(const p of R.pillars){p.g.position.set(p.sx*(ROOM.halfW-1.8),0,p.z);p.g.rotation.set(0,0,0);}
@@ -3474,8 +3474,21 @@
   // at the top of dungeon-skin.js and docs/sundered-crown/CUTSCENE-PERF.md.
   // DungeonGL.prefetch(bossId) pulls a boss's cast in during the floor before
   // it. Until a character arrives — or if it fails — the procedural builders
-  // above are used unchanged.
-  const SCRIPT_URL = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
+  function resolveDungeon3dUrl() {
+    if (typeof document === "undefined") return "";
+    if (document.currentScript && document.currentScript.src) return document.currentScript.src;
+    const scripts = (typeof document.getElementsByTagName === "function" && document.getElementsByTagName("script")) || document.scripts || [];
+    for (let i = scripts.length - 1; i >= 0; i--) {
+      const src = scripts[i] && scripts[i].src;
+      if (src && src.includes("dungeon3d.js")) return src;
+    }
+    try {
+      return new URL("js/dungeon3d.js", (document.baseURI || (typeof window !== "undefined" && window.location && window.location.href) || "http://localhost/")).href;
+    } catch (e) {
+      return "";
+    }
+  }
+  const SCRIPT_URL = resolveDungeon3dUrl();
   const SKIN = { state: "idle", promise: null, arrived: new Set(), broken: {} };
   function skinReady() {
     if (SKIN.state === "failed") return false;
@@ -3486,16 +3499,18 @@
     return false;
   }
   function hookSkin() {
-    if (SCRIPT_URL && typeof URL !== "undefined" && DungeonSkin.setBase && !DungeonSkin.base()) DungeonSkin.setBase(new URL("dungeon-models/", SCRIPT_URL).href);
+    const base = SCRIPT_URL || resolveDungeon3dUrl();
+    if (base && typeof URL !== "undefined" && DungeonSkin.setBase && !DungeonSkin.base()) DungeonSkin.setBase(new URL("dungeon-models/", base).href);
     if (DungeonSkin.onArrive) DungeonSkin.onArrive((ids) => { for (const id of ids) SKIN.arrived.add(id); });
   }
   // the runtime (dungeon-skin.js) and the file index: ~25 KB, no characters
   function skinRuntime() {
     if (skinReady()) return Promise.resolve(true);
     if (SKIN.promise) return SKIN.promise;
-    if (!SCRIPT_URL || typeof document === "undefined" || !document.head || typeof URL === "undefined") return Promise.resolve(false);
+    const base = SCRIPT_URL || resolveDungeon3dUrl();
+    if (!base || typeof document === "undefined" || !document.head || typeof URL === "undefined") return Promise.resolve(false);
     const one = (name) => new Promise((ok, no) => {
-      const el = document.createElement("script"); el.src = new URL(name, SCRIPT_URL).href; el.async = true;
+      const el = document.createElement("script"); el.src = new URL(name, base).href; el.async = true;
       el.onload = ok; el.onerror = () => { el.remove(); no(new Error("could not load " + name)); }; document.head.appendChild(el);
     });
     SKIN.state = "loading";
@@ -3546,6 +3561,13 @@
     warden: { actors: [{ cid: "warden", h: 16, eye: 0x67e8f9 }], special: "swing", legacy: true },
     smith: { actors: [{ cid: "smith", h: 17, eye: 0xffb347 }], special: "smash", legacy: true },
     tyrant: { actors: [{ cid: "tyrant", h: 15, hover: 1, eye: 0xd8b4fe }], special: "cast", legacy: true },
+    vaughn: { actors: [{ cid: "vaughn", h: 15.5, eye: 0x38bdf8 }], special: "charge" },
+    mordaunt: { actors: [{ cid: "mordaunt", h: 16.5, eye: 0x67e8f9 }], mini: "entrance", special: "smash" },
+    candlemas: { actors: [{ cid: "candlemas", h: 15.0, hover: 1, eye: 0xfde047 }], special: "cast" },
+    ilse_grim: { actors: [{ cid: "ilse", h: 14.5, x: -4.5, eye: 0xa16207 }], special: "thrust" },
+    ilse: { actors: [{ cid: "ilse", h: 14.5, x: -4.5, eye: 0xa16207 }], special: "thrust" },
+    seraphine: { actors: [{ cid: "seraphine", h: 14.0, eye: 0xc4b5fd }], special: "ambush" },
+    aurelion: { actors: [{ cid: "aurelion", h: 17.0, eye: 0xfde047 }], special: "swing" },
   };
   function skinKey(id) {
     if (!skinReady()) return null;
@@ -3594,6 +3616,7 @@
       mist = glowSprite(0xfacc15, 40, 0.28); mist.position.set(0, 12, -1); col.add(mist);
     }
     // Sol's sun and Umbra's dark moon hang above the pair
+    // Sol's sun and Umbra's dark moon hang above the pair
     let deco = null;
     if (id === "twin_monarchs") {
       const Y = 20;
@@ -3602,6 +3625,197 @@
       const moon = mesh(shell, new THREE.SphereGeometry(1.5, 24, 16), new THREE.MeshStandardMaterial({ color: 0x0c0620, roughness: 1 }), 5.5, Y, -2);
       const moonRim = mesh(shell, new THREE.TorusGeometry(1.6, 0.08, 6, 40), glowMat(0xc4b5fd, 0.8), 5.5, Y, -1.95);
       deco = { sun, sunGlow, moon, moonRim, Y };
+    }
+    // Grim (the Hound beast) for Ilse & Grim
+    let grim = null;
+    if (id === "ilse_grim" || id === "ilse") {
+      const g = new THREE.Group(); g.position.set(4.5, 0, 0); g.scale.setScalar(1.45); shell.add(g);
+      const furM = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.88, metalness: 0.1 });
+      const darkM = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.9 });
+      const eyeM = glowMat(0xf87171);
+      const bodyH = mesh(g, new THREE.SphereGeometry(1.8, 14, 10), furM, 0, 4.2, 0); bodyH.scale.set(1.7, 0.9, 1);
+      const headH = mesh(g, new THREE.BoxGeometry(2.3, 1.25, 1.25), furM, 3.3, 5.1, 0);
+      mesh(headH, new THREE.ConeGeometry(0.32, 0.85, 5), darkM, -0.5, 0.95, 0.42);
+      mesh(headH, new THREE.ConeGeometry(0.32, 0.85, 5), darkM, -0.5, 0.95, -0.42);
+      for (let i = 0; i < 4; i++) mesh(headH, new THREE.ConeGeometry(0.09, 0.38, 4), new THREE.MeshStandardMaterial({ color: 0xf5f5f4 }), 0.6 + (i % 2) * 0.3, -0.7, -0.4 + i * 0.27).rotation.x = Math.PI;
+      const legsD = [];
+      for (const [lx, lz] of [[2.0, 0.72], [2.0, -0.72], [-2.0, 0.72], [-2.0, -0.72]]) {
+        const top = new THREE.Group(); top.position.set(lx, 3.6, lz); g.add(top);
+        mesh(top, new THREE.CylinderGeometry(0.34, 0.23, 3.6, 8), darkM, 0, -1.8, 0);
+        legsD.push({ top, sx: lx > 0 ? 1 : -1 });
+      }
+      const tail = mesh(g, new THREE.CylinderGeometry(0.1, 0.24, 2.5, 6), furM, -3.1, 4.6, 0); tail.rotation.z = 1.0;
+      for (const ez of [0.46, -0.46]) {
+        const eyeMesh = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), eyeM);
+        eyeMesh.add(new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), glowMat(0xf87171, 0.3)));
+        eyeMesh.position.set(4.4, 5.2, ez); g.add(eyeMesh); eyes.push(eyeMesh);
+      }
+      grim = {
+        g, legsD, tail, headH, bodyH,
+        idle(t) {
+          for (const l of legsD) l.top.rotation.x = Math.sin(t / 700 + l.sx) * 0.08;
+          tail.rotation.x = Math.sin(t / 250) * 0.5;
+          headH.rotation.y = Math.sin(t / 1100) * 0.2;
+          bodyH.position.y = 4.2 + Math.sin(t / 400) * 0.08;
+        },
+        rise(k, t) {
+          this.idle(t);
+          const crouch = 1 - easeOut(clamp01(k / 0.6));
+          g.position.y = -1.6 * crouch;
+          for (const l of legsD) l.top.rotation.x = -0.9 * crouch * l.sx;
+        },
+        miniPose(s) {
+          this.idle(s.t);
+          const crouch = s.land > 0 && s.up < 1 ? (1 - easeOut(s.up)) : 0;
+          g.position.y = -1.4 * crouch;
+        },
+        deathPose(c, t) {
+          g.rotation.z = 0.8 * c; g.position.y = -1.8 * c;
+        }
+      };
+    }
+    // Pale Warhorse mount for Vaughn
+    let horse = null;
+    if (id === "vaughn") {
+      const g = new THREE.Group(); g.scale.setScalar(1.55); shell.add(g);
+      const horseM = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.65, metalness: 0.08 });
+      const darkM = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.75 });
+      const bardingM = new THREE.MeshStandardMaterial({ color: 0x1e3a5f, roughness: 0.45, metalness: 0.55 });
+      const barrel = mesh(g, new THREE.SphereGeometry(2.5, 14, 10), horseM, 0, 6.4, 0); barrel.scale.set(1.65, 1, 1);
+      const bard = mesh(barrel, new THREE.SphereGeometry(2.52, 14, 10), bardingM, 0, 0, 0); bard.scale.set(1.4, 0.95, 1.02);
+      const neck = mesh(g, new THREE.CylinderGeometry(0.95, 1.35, 3.8, 10), horseM, 3.5, 8.3, 0); neck.rotation.z = -0.9;
+      const hHead = mesh(g, new THREE.BoxGeometry(2.5, 1.35, 1.15), horseM, 5.8, 9.7, 0); hHead.rotation.z = -0.3;
+      mesh(hHead, new THREE.BoxGeometry(1.6, 0.4, 1.18), bardingM, 0.2, 0.6, 0);
+      mesh(hHead, new THREE.ConeGeometry(0.26, 0.85, 5), darkM, -0.6, 0.95, 0.36);
+      mesh(hHead, new THREE.ConeGeometry(0.26, 0.85, 5), darkM, -0.6, 0.95, -0.36);
+      for (const ez of [0.62, -0.62]) {
+        const eyeMesh = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), glowMat(0x38bdf8));
+        eyeMesh.add(new THREE.Mesh(new THREE.SphereGeometry(0.35, 10, 8), glowMat(0x38bdf8, 0.25)));
+        eyeMesh.position.set(6.4, 10.0, ez); g.add(eyeMesh); eyes.push(eyeMesh);
+      }
+      const legsH = [];
+      for (const [lx, lz] of [[2.6, 0.95], [2.6, -0.95], [-2.6, 0.95], [-2.6, -0.95]]) {
+        const top = new THREE.Group(); top.position.set(lx, 5.4, lz); g.add(top);
+        mesh(top, new THREE.CylinderGeometry(0.44, 0.32, 5.4, 8), darkM, 0, -2.7, 0);
+        mesh(top, new THREE.CylinderGeometry(0.42, 0.36, 0.55, 8), new THREE.MeshStandardMaterial({ color: 0x0f172a }), 0, -5.5, 0);
+        legsH.push({ top, sx: lx > 0 ? 1 : -1 });
+      }
+      const tail = mesh(g, new THREE.CylinderGeometry(0.12, 0.32, 3.6, 6), darkM, -4.3, 6.2, 0); tail.rotation.z = 0.72;
+      mesh(g, new THREE.BoxGeometry(1.9, 0.45, 1.95), bardingM, -0.2, 8.6, 0);
+      horse = {
+        g, legsH, tail, hHead,
+        idle(t) {
+          for (const l of legsH) l.top.rotation.x = Math.sin(t / 900 + l.sx) * 0.05;
+          tail.rotation.x = Math.sin(t / 400) * 0.25;
+          g.position.y = Math.sin(t / 500) * 0.08;
+        },
+        rise(k, t) {
+          this.idle(t);
+          const rear = Math.sin(clamp01(k / 0.7) * Math.PI) * 0.65;
+          g.rotation.z = rear * 0.58; g.position.y = rear * 1.5;
+          for (const l of legsH) if (l.sx > 0) l.top.rotation.x = -rear * 1.7;
+        },
+        miniPose(s) {
+          this.idle(s.t);
+        },
+        deathPose(c, t) {
+          g.rotation.z = 0.9 * c; g.position.y = -2.2 * c;
+        }
+      };
+      if (actors[0] && actors[0].root) actors[0].root.position.set(-0.2, 5.8, 0);
+    }
+    // Solar seraph wings, radiant crown & halo for Aurelion
+    let auWings = null, auHalo = null, auCore = null;
+    if (id === "aurelion") {
+      const gW = new THREE.Group(); gW.position.set(0, 10.2, -0.6);
+      if (actors[0] && actors[0].root) actors[0].root.add(gW); else shell.add(gW);
+      const goldM = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.25, metalness: 0.9, emissive: new THREE.Color(0xd97706), emissiveIntensity: 0.8 });
+      const radiantM = new THREE.MeshStandardMaterial({ color: 0xfde047, roughness: 0.2, metalness: 0.8, emissive: new THREE.Color(0xfacc15), emissiveIntensity: 1.5 });
+      const featherM = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.15, metalness: 0.3, emissive: new THREE.Color(0xf59e0b), emissiveIntensity: 1.2, transparent: true, opacity: 0.92, side: THREE.DoubleSide });
+      const whiteM = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+      // 4 Articulated Solar Seraph Wings: 2 upper, 2 lower
+      const wings = [];
+      for (const [isLower, nFeathers, scale] of [[false, 5, 1.4], [true, 3, 0.95]]) {
+        for (const sx of [-1, 1]) {
+          const root = new THREE.Group();
+          root.position.set(sx * 1.8, isLower ? -2.4 : 1.2, 0);
+          gW.add(root);
+          const spar = new THREE.Group(); root.add(spar);
+          mesh(spar, new THREE.CylinderGeometry(0.18 * scale, 0.1 * scale, 4.5 * scale, 6), goldM, sx * 1.8 * scale, 1.8 * scale, 0).rotation.z = -sx * (isLower ? 0.9 : 0.65);
+          const feathers = [];
+          for (let f = 0; f < nFeathers; f++) {
+            const u = f / (nFeathers - 1 || 1);
+            const flen = (isLower ? (2.8 + u * 2.2) : (4.5 + u * 4.2)) * scale;
+            const fMesh = mesh(spar, new THREE.BoxGeometry(0.42 * scale, flen, 0.08), f % 2 === 0 ? featherM : radiantM, sx * (1.2 + u * 2.6) * scale, (isLower ? -u * 1.8 : (2.2 - u * 2.0)) * scale, -0.1 * f);
+            fMesh.rotation.z = -sx * (isLower ? (0.6 + u * 0.45) : (0.55 + u * 0.65));
+            feathers.push(fMesh);
+          }
+          wings.push({ root, spar, isLower, sx, feathers });
+        }
+      }
+
+      // Radiant Halo & Sunburst Crown
+      const gH = new THREE.Group(); gH.position.set(0, 15.6, -0.3);
+      if (actors[0] && actors[0].root) actors[0].root.add(gH); else shell.add(gH);
+      const halo1 = mesh(gH, new THREE.TorusGeometry(1.9, 0.09, 8, 36), radiantM);
+      const halo2 = mesh(gH, new THREE.TorusGeometry(2.6, 0.07, 8, 48), goldM);
+      const rays = [];
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * TAU;
+        const rLen = (k % 3 === 0) ? 1.6 : 1.0;
+        const rMesh = mesh(gH, new THREE.ConeGeometry(0.12, rLen, 5), radiantM, Math.cos(a) * 2.5, Math.sin(a) * 2.5, 0);
+        rMesh.rotation.z = a - Math.PI / 2;
+        rays.push(rMesh);
+      }
+      const gem = mesh(gH, new THREE.OctahedronGeometry(0.45), whiteM, 0, 3.2, 0);
+      const haloGlow = glowSprite(0xfde047, 14, 0.65); haloGlow.position.set(0, 0, -0.1); gH.add(haloGlow);
+
+      // Chest Solar Medallion
+      const gC = new THREE.Group(); gC.position.set(0, 11.4, 0.9);
+      if (actors[0] && actors[0].root) actors[0].root.add(gC); else shell.add(gC);
+      const coreSun = mesh(gC, new THREE.SphereGeometry(0.55, 12, 10), radiantM);
+      const coreRing = mesh(gC, new THREE.TorusGeometry(0.85, 0.08, 6, 20), goldM);
+      const coreGlow = glowSprite(0xfacc15, 6, 0.7); gC.add(coreGlow);
+
+      auWings = {
+        g: gW, wings,
+        pose(phase, k, t) {
+          const flap = Math.sin(t / (phase === 4 ? 130 : 250)) * (phase === 4 ? 0.35 : 0.15);
+          for (const w of wings) {
+            const spread = phase === 4 ? 0.55 : phase === 3 ? 0.38 : phase === 2 ? 0.2 : 0;
+            w.root.rotation.z = w.sx * (-0.2 - spread + flap * (w.isLower ? -0.8 : 1));
+            w.root.rotation.y = w.sx * (0.2 + (phase >= 3 ? 0.25 : 0) + (flap * 0.4));
+            w.spar.rotation.z = w.sx * (phase >= 3 ? -0.2 : 0);
+            for (const f of w.feathers) {
+              f.material.emissiveIntensity = phase === 4 ? 2.5 + Math.sin(t / 80) * 0.8 : phase === 3 ? 1.8 + Math.sin(t / 120) * 0.4 : 1.2;
+            }
+          }
+        }
+      };
+
+      auHalo = {
+        g: gH, halo1, halo2, rays, gem, haloGlow,
+        pose(phase, k, t) {
+          const mult = phase === 4 ? 3.5 : phase === 3 ? 2.0 : 1.0;
+          halo1.rotation.z = (t / 1400) * mult;
+          halo2.rotation.z = (-t / 1800) * mult;
+          gH.scale.setScalar(phase === 4 ? 1.55 : phase === 3 ? 1.25 : 1.0);
+          haloGlow.material.opacity = phase === 4 ? 0.95 : phase === 3 ? 0.8 : 0.65;
+          gem.rotation.y = t / 400;
+          gem.rotation.x = Math.sin(t / 600) * 0.3;
+        }
+      };
+
+      auCore = {
+        g: gC, coreSun, coreRing, coreGlow,
+        pose(phase, k, t) {
+          coreRing.rotation.z = t / 900;
+          const pulse = 1 + (phase === 4 ? 0.4 * Math.sin(t / 80) : phase === 3 ? 0.25 * Math.sin(t / 120) : 0.12 * Math.sin(t / 250));
+          coreSun.scale.setScalar(pulse);
+          coreGlow.scale.setScalar(pulse * (phase >= 3 ? 1.4 : 1.0));
+        }
+      };
     }
     root.updateMatrixWorld(true);
     const rp = root.getWorldPosition(new THREE.Vector3());
@@ -3622,7 +3836,15 @@
     }
     function idle(t) {
       each((a, s) => { a.pose([["idle", secs(t, s), 1]]); hover(a, s, t); });
+      if (horse && actors[0] && actors[0].root) {
+        horse.idle(t);
+        actors[0].root.position.set(-0.2, 3.6 + Math.sin(t / 500) * 0.08, 0);
+      }
+      if (grim) grim.idle(t);
       if (col) col.visible = false;
+      if (auWings) auWings.pose(1, 0, t);
+      if (auHalo) auHalo.pose(1, 0, t);
+      if (auCore) auCore.pose(1, 0, t);
       decoIdle(t);
     }
     // the boss entrance: the authored entrance clip across the beat, settling into the idle loop
@@ -3631,7 +3853,16 @@
         const n = clipOr(a, "entrance"), kk = s.delay ? clamp01(k * 1.1 - 0.05) : k, w = smoothW(0.9, 1, kk);
         a.pose([[n, kk * a.duration(n), 1 - w], ["idle", secs(t, s), w]]); hover(a, s, t);
       });
+      if (horse && actors[0] && actors[0].root) {
+        horse.rise(k, t);
+        const rear = Math.sin(clamp01(k / 0.7) * Math.PI) * 0.65;
+        actors[0].root.position.set(-0.2, 3.6 + rear * 1.5, -rear * 0.4);
+      }
+      if (grim) grim.rise(k, t);
       if (deco) { deco.sun.scale.setScalar(Math.max(0.01, easeOutBack(clamp01((k - 0.4) / 0.4)))); deco.moon.scale.setScalar(Math.max(0.01, easeOutBack(clamp01((k - 0.5) / 0.4)))); }
+      if (auWings) auWings.pose(1, k, t);
+      if (auHalo) auHalo.pose(1, k, t);
+      if (auCore) auCore.pose(1, k, t);
     }
     // the minis drop in: the first frame while falling, then the clip plays through the stand-up and the look
     function miniPose(s) {
@@ -3639,10 +3870,19 @@
         const n = clipOr(a, spec.mini || "entrance"), u = s.land <= 0 ? 0 : 0.06 + 0.94 * clamp01(0.55 * s.up + 0.45 * s.look), w = smoothW(0.85, 1, s.look);
         a.pose([[n, u * a.duration(n), 1 - w], ["idle", secs(s.t, sp), w]]); hover(a, sp, s.t);
       });
+      if (horse) horse.miniPose(s);
+      if (grim) grim.miniPose(s);
     }
     function deathPose(c, t) {
       each((a, s) => { const n = clipOr(a, "death"); a.pose([[n, c * a.duration(n), 1]]); hover(a, s, t, easeOut(c)); });
+      if (horse && actors[0] && actors[0].root) {
+        horse.deathPose(c, t);
+        actors[0].root.position.set(-0.2, 3.6 - 2.2 * c, 0);
+      }
+      if (grim) grim.deathPose(c, t);
       if (deco) { deco.sun.position.y = deco.Y - 17 * easeIn(c); deco.moon.position.y = deco.Y - 17 * easeIn(c); deco.sunGlow.position.y = deco.sun.position.y; deco.moonRim.position.y = deco.moon.position.y; }
+      if (auWings) { auWings.g.position.y = 10.2 - 10 * easeIn(c); auWings.pose(1, 0, t); }
+      if (auHalo) { auHalo.g.position.y = 15.6 - 10 * easeIn(c); auHalo.g.scale.setScalar(Math.max(0.01, 1 - c)); }
     }
     // a phase cinematic: the signature move, played out and settled back into the guard
     function phase2Pose(k, t) {
@@ -3658,6 +3898,43 @@
         }
         hover(a, s, t);
       });
+      if (horse && actors[0] && actors[0].root) {
+        actors[0].root.position.set(0, 0, 0);
+        horse.g.position.set(3.5, 0, -2);
+        horse.rise(k, t);
+      }
+      if (grim) grim.rise(k, t);
+      if (auWings) auWings.pose(2, k, t);
+      if (auHalo) auHalo.pose(2, k, t);
+      if (auCore) auCore.pose(2, k, t);
+      decoIdle(t);
+    }
+    function phase3Pose(k, t) {
+      each((a, s) => {
+        const n = clipOr(a, "swing"), w = smoothW(0.06, 0.14, k) * (1 - smoothW(0.82, 0.96, k)), u = clamp01((k - 0.1) / 0.65);
+        a.pose([[n, u * a.duration(n) * 0.75, w], ["idle", secs(t, s), 1 - w]]);
+        if (s.hover) hover(a, s, t);
+      });
+      if (actors[0] && actors[0].root) {
+        actors[0].root.position.y = 1.6 + Math.sin(t / 500) * 0.3;
+      }
+      if (auWings) auWings.pose(3, k, t);
+      if (auHalo) auHalo.pose(3, k, t);
+      if (auCore) auCore.pose(3, k, t);
+      decoIdle(t);
+    }
+    function phase4Pose(k, t) {
+      each((a, s) => {
+        const n = clipOr(a, "entrance"), w = smoothW(0.05, 0.12, k) * (1 - smoothW(0.85, 0.98, k)), u = clamp01((k - 0.1) / 0.6);
+        a.pose([[n, u * a.duration(n), w * 0.85], ["idle", secs(t, s), 1 - w * 0.85]]);
+        if (s.hover) hover(a, s, t);
+      });
+      if (actors[0] && actors[0].root) {
+        actors[0].root.position.y = 3.2 + Math.sin(t / 320) * 0.45;
+      }
+      if (auWings) auWings.pose(4, k, t);
+      if (auHalo) auHalo.pose(4, k, t);
+      if (auCore) auCore.pose(4, k, t);
       decoIdle(t);
     }
     // the King's second phase: down onto one knee over the sword
@@ -3665,7 +3942,7 @@
       each((a, s) => { const n = clipOr(a, "kneel"); a.pose([[n, clamp01(k / 0.45) * a.duration(n), 1]]); });
     }
     const A0 = actors[0];
-    return { eyes, eyeY, limbs: [], parts: [], idle, rise, miniPose, deathPose, phase2Pose, phaseKing: spec.colossus ? phaseKing : null,
+    return { eyes, eyeY, limbs: [], parts: [], idle, rise, miniPose, deathPose, phase2Pose, phase3Pose, phase4Pose, phaseKing: spec.colossus ? phaseKing : null,
       colossus: spec.colossus ? colossus : null, colGroup: col, colActor: colA, colEyes, torso: A0.bones.chest || A0.bones.body || A0.root, head: A0.bones.head || A0.root,
       sculpted: true, skinned: true, crownHuman: true, actors, trim: trimMat || trim };
   }
@@ -4318,9 +4595,11 @@
     // chains come up out of it, dragging
     const chains = beat(k, 0.44, 0.66);
     rig.shell.visible = chains > 0.02;
-    for (const c of rig.chains) {
-      c.g.rotation.z = Math.sin(t / 420 + c.sx) * 0.10 * chains;
-      c.g.position.y = lerp(2.0, 14.0, easeOut(chains));
+    if (rig.chains) {
+      for (const c of rig.chains) {
+        c.g.rotation.z = Math.sin(t / 420 + c.sx) * 0.10 * chains;
+        c.g.position.y = lerp(2.0, 14.0, easeOut(chains));
+      }
     }
 
     // and then the thing wearing them
@@ -4333,7 +4612,9 @@
       e.scale.setScalar(0.2 + 0.8 * clamp01((rise - 0.25) / 0.5));
       e.position.y = rig.root.position.y + rig.eyeY + 1.4;
     }
-    rig.lantern.children[1].material.opacity = 0.35 + 0.5 * rise;
+    if (rig.lantern && rig.lantern.children && rig.lantern.children[1]) {
+      rig.lantern.children[1].material.opacity = 0.35 + 0.5 * rise;
+    }
     eyeLight.color.copy(rig.accent);
     eyeLight.intensity = clamp01((rise - 0.3) / 0.5) * 1.6;
     eyeLight.position.set(0, rig.eyeY, ROOM.bossZ + 3);
@@ -4371,20 +4652,24 @@
     const rise=beat(k,E.dark,.62),slam=beat(k,.66,.86);
     rig.shell.visible=true;rig.root.position.y=0;
     for(const shard of fx.shards)shard.visible=false;
-    for(const part of rig.assembly){
-      const u=beat(k,part.begin,part.begin+.32),e=u*u*(3-2*u);
-      part.mesh.position.lerpVectors(part.start,part.home,e);
-      part.mesh.position.y+=Math.sin(Math.PI*u)*7;
-      part.mesh.quaternion.copy(part.spin).slerp(part.rotation,e);
+    if (rig.assembly) {
+      for(const part of rig.assembly){
+        const u=beat(k,part.begin,part.begin+.32),e=u*u*(3-2*u);
+        part.mesh.position.lerpVectors(part.start,part.home,e);
+        part.mesh.position.y+=Math.sin(Math.PI*u)*7;
+        part.mesh.quaternion.copy(part.spin).slerp(part.rotation,e);
+      }
     }
     if(rise>0&&rise<1)shake=.2*rise;
 
     // the forge lights, the hammers come down, the anvil rings
     const lit = beat(k, 0.84, 1);
-    rig.heart.material.color.copy(rig.accent);
-    rig.heartGlow.material.opacity = lit * 0.5 * (0.85 + 0.15 * Math.sin(t / 120));
-    rig.heartGlow.scale.setScalar(8);
-    rig.body.emissiveIntensity = 0.03 + 0.09 * lit;
+    if (rig.heart && rig.heart.material) rig.heart.material.color.copy(rig.accent);
+    if (rig.heartGlow && rig.heartGlow.material) {
+      rig.heartGlow.material.opacity = lit * 0.5 * (0.85 + 0.15 * Math.sin(t / 120));
+      rig.heartGlow.scale.setScalar(8);
+    }
+    if (rig.body && rig.body.emissiveIntensity != null) rig.body.emissiveIntensity = 0.03 + 0.09 * lit;
     for (const l of rig.limbs) {
       l.arm.visible = rig.shell.visible;
       l.arm.rotation.z = l.sx * (-0.24 - .5 * Math.sin(lit*Math.PI));
@@ -4408,10 +4693,12 @@
                     max: 70, r: 1, g: 0.7, b: 0.25, s: 0.075 });
       }
       // sparks off the two chimney stacks
-      for (const st of rig.stacks) {
-        if (Math.random() < 0.5) {
-          spawnMote({ x: st.position.x, y: 20.5, z: ROOM.bossZ - 3.2, vx: (Math.random() - 0.5) * 0.15,
-                      vy: 0.25 + Math.random() * 0.3, vz: 0, max: 80, r: 1, g: 0.75, b: 0.3, s: 0.06 });
+      if (rig.stacks) {
+        for (const st of rig.stacks) {
+          if (Math.random() < 0.5) {
+            spawnMote({ x: st.position.x, y: 20.5, z: ROOM.bossZ - 3.2, vx: (Math.random() - 0.5) * 0.15,
+                        vy: 0.25 + Math.random() * 0.3, vz: 0, max: 80, r: 1, g: 0.75, b: 0.3, s: 0.06 });
+          }
         }
       }
     }
@@ -4489,7 +4776,7 @@
     rig.root.position.z = ROOM.bossZ + lerp(2.5, 0, easeOut(step));
     rig.root.position.y = lerp(1.6, 0.6 + Math.sin(t / 1100) * 0.35, easeOut(step));
     rig.root.rotation.y = Math.sin(t / 2000) * 0.08;
-    rig.mantle.rotation.y = t / 3000;
+    if (rig.mantle) rig.mantle.rotation.y = t / 3000;
     for (const e of rig.eyes) {
       e.visible = step > 0.15;
       e.scale.setScalar(0.25 + 0.75 * clamp01((step - 0.15) / 0.5));
@@ -4498,16 +4785,20 @@
     }
     // the crown spins up last
     const crowned = beat(k, 0.84, 1);
-    for (let i = 0; i < rig.crown.length; i++) {
-      const sp = rig.crown[i];
-      const a = sp.userData.a + t / 1500;
-      sp.position.set(Math.cos(a) * 4.3, 21.0 + Math.sin(t / 700 + i) * 0.4, Math.sin(a) * 4.3);
-      sp.rotation.set(0, -a, 0);
-      sp.scale.setScalar(0.3 + 0.7 * crowned);
+    if (rig.crown) {
+      for (let i = 0; i < rig.crown.length; i++) {
+        const sp = rig.crown[i];
+        const a = sp.userData.a + t / 1500;
+        sp.position.set(Math.cos(a) * 4.3, 21.0 + Math.sin(t / 700 + i) * 0.4, Math.sin(a) * 4.3);
+        sp.rotation.set(0, -a, 0);
+        sp.scale.setScalar(0.3 + 0.7 * crowned);
+      }
     }
-    rig.halo.rotation.z = t / 1300;
-    rig.halo.material.color.copy(rig.accent);
-    rig.trim.emissiveIntensity = 0.5 + 1.4 * crowned;
+    if (rig.halo) {
+      rig.halo.rotation.z = t / 1300;
+      if (rig.halo.material) rig.halo.material.color.copy(rig.accent);
+    }
+    if (rig.trim && rig.trim.emissiveIntensity != null) rig.trim.emissiveIntensity = 0.5 + 1.4 * crowned;
     eyeLight.color.copy(rig.accent);
     eyeLight.intensity = step * 1.5;
     eyeLight.position.set(0, rig.eyeY, ROOM.bossZ + 4);
@@ -4809,22 +5100,26 @@
     rig.shell.visible = true;
     // veins crawl in along the floor toward the middle
     const crawl = beat(k, E.dark, 0.62);
-    for (const v of rig.veins) {
-      const count = v.tube.geometry.index ? v.tube.geometry.index.count : v.tube.geometry.attributes.position.count;
-      const u = clamp01(crawl * 1.2 - v.i * 0.02);
-      v.tube.geometry.setDrawRange(0, Math.floor(count * u));
-      v.node.visible = crawl > 0.05; v.pulse.visible = u > 0.95;
+    if (rig.veins) {
+      for (const v of rig.veins) {
+        const count = v.tube.geometry.index ? v.tube.geometry.index.count : v.tube.geometry.attributes.position.count;
+        const u = clamp01(crawl * 1.2 - v.i * 0.02);
+        v.tube.geometry.setDrawRange(0, Math.floor(count * u));
+        v.node.visible = crawl > 0.05; v.pulse.visible = u > 0.95;
+      }
     }
     const rise = easeOut(beat(k, 0.62, 0.86));
-    rig.heart.position.y = lerp(-8, rig.eyeY, rise);
-    rig.heart.visible = rise > 0.01;
-    rig.glow.material.opacity = (0.2 + thump * 0.6) * Math.max(0.3, rise);
-    for (const r of rig.runeRings) r.scale.setScalar(Math.max(0.01, beat(k, 0.8, 0.95)));
-    for (const s of rig.shards) s.m.visible = rise > 0.5;
+    if (rig.heart) {
+      rig.heart.position.y = lerp(-8, rig.eyeY, rise);
+      rig.heart.visible = rise > 0.01;
+    }
+    if (rig.glow && rig.glow.material) rig.glow.material.opacity = (0.2 + thump * 0.6) * Math.max(0.3, rise);
+    if (rig.runeRings) for (const r of rig.runeRings) r.scale.setScalar(Math.max(0.01, beat(k, 0.8, 0.95)));
+    if (rig.shards) for (const s of rig.shards) s.m.visible = rise > 0.5;
     shake = 0.35 * thump + 0.4 * rise * (1 - rise);
     if (thump > 0.5) shockwaves(0, ROOM.bossZ, ph * 2, rig.accent, 40); else if (k > 0.9) shockwaves(0, ROOM.bossZ, beat(k, 0.9, 1), rig.accent, 70); else hideWaves();
     const open = beat(k, 0.86, 0.95);
-    rig.pupil.visible = open > 0.3;
+    if (rig.pupil) rig.pupil.visible = open > 0.3;
     for (const e of rig.eyes) e.scale.set(1.35, Math.max(0.01, 0.8 * open), 0.6);
     eyeLight.color.copy(rig.accent); eyeLight.intensity = 1 + 3 * thump + 2 * rise; eyeLight.distance = 60; eyeLight.position.set(0, rig.heart.position.y, ROOM.bossZ + 5);
     fx.wash.material.color.copy(rig.accent);
@@ -4968,7 +5263,9 @@
     rig.shell.visible = true;
     litBraziers(1, t, 0, 0.1);
     const flare = beat(k, 0.15, 0.45), settle = beat(k, 0.45, 1);
-    if (rig.phase2Pose) rig.phase2Pose(k, t);
+    if (p.phase === 4 && rig.phase4Pose) rig.phase4Pose(k, t);
+    else if (p.phase === 3 && rig.phase3Pose) rig.phase3Pose(k, t);
+    else if (rig.phase2Pose) rig.phase2Pose(k, t);
     rig.root.position.y = Math.sin(flare * Math.PI) * 1.5;
     rig.trim.emissiveIntensity = 0.5 + 2 * Math.sin(flare * Math.PI);
     if (p.accent) rig.trim.emissive.set(p.accent);
@@ -5063,7 +5360,7 @@
     const shake = poseArrival(p);
     // a skinned rig has none of the procedural parts the old entrances animate (chains, assembly blocks, the
     // mantle): it rises the way the Crown cast does instead
-    const awake = (rig.skinned && SKINNED[skinKey(p.id) || ""] && SKINNED[skinKey(p.id)].legacy) ? awakeCrown : (AWAKE[p.id] || AWAKE.tyrant);
+    const awake = (rig.pending || rig.skinned || rig.crownHuman || !AWAKE[p.id]) ? awakeCrown : AWAKE[p.id];
     const extra = awake(p) || 0;
     flyCamera((awake === awakeCrown ? CAM_CROWN : AWAKE_CAM[p.id]) || CAM_TYRANT, p.k, Math.max(shake, extra));
   }
@@ -5443,9 +5740,11 @@
     }else if(p.id==='dragon'){
       rig.root.position.y=-4.2*collapse;rig.root.rotation.x=.23*collapse;
       const D=rig.dragon;
-      D.neck.rotation.x=.8*collapse;D.head.rotation.x=.48*collapse;D.jaw.rotation.x=.1;
+      if (D) {
+        D.neck.rotation.x=.8*collapse;D.head.rotation.x=.48*collapse;D.jaw.rotation.x=.1;
+        if(D.crown){D.crown.visible=true;D.crown.position.y=2.1-3.2*collapse;D.crown.rotation.z=.8*collapse;}
+      }
       for(const l of rig.limbs){l.arm.rotation.z=-l.sx*collapse*.8;l.arm.rotation.y=l.sx*collapse*1.2;}
-      if(D.crown){D.crown.visible=true;D.crown.position.y=2.1-3.2*collapse;D.crown.rotation.z=.8*collapse;}
       R.ceil.position.y=150;R.backWall.position.y=-40;for(const w of R.sideWalls)w.position.y=-40;fx.sky.visible=true;scene.fog.density=.008;
     }else if((p.id==='tyrant'&&!rig.skinned)||p.id==='tempest'){
       rig.root.position.y=-5*collapse;rig.root.rotation.z=.3*collapse;
@@ -5592,8 +5891,18 @@
     if (!DC || !DC.get) return false;
     const def = DC.get(p.id);
     if (!def) return false;
-    const mode = p.mode === "victory" ? "victory" : p.mode === "phase2" ? "phase2" : p.mini ? "mini" : "entrance";
-    const fn = def[mode];
+    let mode = p.mode === "victory" ? "victory"
+      : (p.phase === 4 || p.mode === "phase4") ? (def.phase4 ? "phase4" : "phase2")
+      : (p.phase === 3 || p.mode === "phase3") ? (def.phase3 ? "phase3" : "phase2")
+      : p.mode === "phase2" ? "phase2"
+      : p.mini ? "mini" : "entrance";
+    let fn = def[mode];
+    if (typeof fn !== "function") {
+      if ((mode === "phase3" || mode === "phase4") && typeof def.phase2 === "function") {
+        mode = "phase2";
+        fn = def.phase2;
+      }
+    }
     if (typeof fn !== "function" || DIR.failed[p.id + "|" + mode]) return false;
     try { return fn(directorCtx(q, p, mode)) === true; }
     catch (e) { console.warn("Cutscene direction failed for " + p.id + "/" + mode + "; built-in beats used", e); DIR.failed[p.id + "|" + mode] = true; return false; }
@@ -5626,8 +5935,8 @@
     }
     lastRenderAt = now;
     try { poseScene(p); }
-    catch (e) { renderer.setRenderTarget(null);console.warn('Dungeon cinematic failed',e);dead = true; return null; }
-    try { drawFrame(p.t); } catch (e) { renderer.setRenderTarget(null);console.warn('Dungeon cinematic failed',e);dead = true; return null; }
+    catch (e) { renderer.setRenderTarget(null); console.warn('Dungeon cinematic pose failed for ' + p.id + '/' + p.mode, e); rig = null; return null; }
+    try { drawFrame(p.t); } catch (e) { renderer.setRenderTarget(null); console.warn('Dungeon cinematic failed', e); if (renderer && renderer.getContext && renderer.getContext().isContextLost()) dead = true; return null; }
     lastRenderMs = nowMs() - now;
     return glCanvas;
   }
@@ -5685,7 +5994,7 @@
     {
       if (directed(q, p)) { /* js/cutscenes/<boss>.js drew this frame */ }
       else if (p.mode === "victory") poseVictory(q);
-      else if (p.mode === "phase2") posePhaseBuiltin(q);
+      else if (p.mode === "phase2" || p.mode === "phase3" || p.mode === "phase4" || p.phase >= 2) posePhaseBuiltin(q);
       else if (p.mini) poseMini(q);
       else poseEntrance(q);
       if(rig.stormRings && p.mode!=='victory'){
@@ -5877,4 +6186,7 @@
     skins: { load: loadSkins, ready: skinReady, state: () => SKIN.state, skinned: (id) => !!skinKey(id) },
     // js/cutscenes: which directions have been retired after throwing, and the live context (tests, review pages)
     director: { failed: () => Object.keys(DIR.failed), ctx: () => DIR.ctx, bounds: () => (rig && rig.bounds ? rig.bounds().concat(rig.id === "dragon" ? [] : staticBounds()) : []), renderer: () => renderer } };
+  if (typeof window._initAscensionDGL === "function") {
+    try { window._initAscensionDGL(window.DungeonGL); } catch (e) {}
+  }
 })();

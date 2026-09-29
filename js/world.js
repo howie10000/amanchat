@@ -42,10 +42,24 @@ const BUILDINGS = [
   // The FARM barn — in the activity band between the pond and the stage. Its
   // interior is your own personal farm (seed stall, 12 beds, a cooking pot).
   { x: 1180, y: 1450, w: 250, h: 180, type: "farm", label: "FARM", color: "#b91c1c", roofColor: "#3f2210", signColor: "#fde68a" },
-  { x: 3760, y: 860, w: 240, h: 180, type: "shipwright", label: "SHIPWRIGHT", color: "#245568", roofColor: "#283c48", signColor: "#f2d390" },
+  { x: 3760, y: 920, w: 240, h: 180, type: "shipwright", label: "SHIPWRIGHT", color: "#245568", roofColor: "#283c48", signColor: "#f2d390" },
   {x:1740,y:140,w:300,h:220,type:"dealership",label:"THE DEALERSHIP",color:"#164e63",roofColor:"#102334",signColor:"#67e8f9"},
   {x:3660,y:140,w:300,h:220,type:"racetrack",label:"APEX RACETRACK",color:"#4338ca",roofColor:"#172038",signColor:"#bef264"},
 
+  // HOTELS — 1-time room purchases with luxury suites (Standard, Deluxe, Presidential)
+  // 1. The Grand Plaza Hotel: flagship Beaux-Arts luxury overlooking Central Park south promenade
+  { x: 2560, y: 1380, w: 280, h: 220, type: "hotel_plaza", label: "THE GRAND PLAZA HOTEL",
+    color: "#f8fafc", roofColor: "#334155", signColor: "#f59e0b", doorHalf: 36, grand: true },
+
+  // 2. Palms Seaside Resort: oceanfront resort on the harbor beach with ocean views and palm promenade
+  { x: 3740, y: 620, w: 260, h: 195, type: "hotel_palms", label: "PALMS SEASIDE RESORT",
+    color: "#fef08a", roofColor: "#0284c7", signColor: "#0369a1", doorHalf: 32 },
+
+  // 3. Pinecrest Mountain Lodge: secluded rustic alpine retreat on the western mountain ridge above the lake
+  { x: 180, y: 1040, w: 280, h: 210, type: "hotel_lodge", label: "PINECREST MOUNTAIN LODGE",
+    color: "#78350f", roofColor: "#1e293b", signColor: "#fef08a", doorHalf: 32 },
+
+  // Note: Diamond Casino & VIP Suites are located purely inside the Vegas Casino (Floor 0 concierge & elevator)
 ];
 
 function mulberry32(a){return function(){var t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return ((t^t>>>14)>>>0)/4294967296;}}
@@ -153,13 +167,19 @@ function houseRect(i) {
 
 // Every house on the map: one per account that has a lot, online or not.
 // (The neighbourhood is a fixed set of lots; an empty street reads as broken.)
+let _cachedUserCacheRef = null;
+let _cachedVisibleHouseUsers = {};
+
 function visibleHouseUsers() {
   const users = state._userCache || {};
+  if (users === _cachedUserCacheRef) return _cachedVisibleHouseUsers;
+  _cachedUserCacheRef = users;
   const out = {};
   for (const [u, info] of Object.entries(users)) {
     if (!info || info.houseIndex == null) continue;   // the mayor lives here too
     out[u] = info;
   }
+  _cachedVisibleHouseUsers = out;
   return out;
 }
 // Kept as an alias: older call sites (and the mayor tools) still use this name.
@@ -354,12 +374,14 @@ function collidesNeighborhood(nx, ny) {
       if (!(nx > dxL && nx < dxR && ny > b.y + b.h - 30)) return true;
     }
   }
-  const users = onlineHouseUsers();
-  for (const info of Object.values(users)) {
-    const r = houseRect(info.houseIndex); if (!r) continue;
-    if (nx > r.x && nx < r.x + r.w && ny > r.y + 30 && ny < r.y + r.h - 8) {
-      const dxL = r.x + r.w/2 - 22, dxR = r.x + r.w/2 + 22;
-      if (!(nx > dxL && nx < dxR && ny > r.y + r.h - 28)) return true;
+  if (ny > 1950 && ny < 3360) {
+    const users = onlineHouseUsers();
+    for (const info of Object.values(users)) {
+      const r = houseRect(info.houseIndex); if (!r) continue;
+      if (nx > r.x && nx < r.x + r.w && ny > r.y + 30 && ny < r.y + r.h - 8) {
+        const dxL = r.x + r.w/2 - 22, dxR = r.x + r.w/2 + 22;
+        if (!(nx > dxL && nx < dxR && ny > r.y + r.h - 28)) return true;
+      }
     }
   }
   if (Math.hypot(nx - FOUNTAIN.x, ny - FOUNTAIN.y) < 56) return true;
@@ -367,7 +389,11 @@ function collidesNeighborhood(nx, ny) {
   for (const h of HOOPS) if (Math.hypot(nx - h.x, ny - h.y) < 12) return true;
   if (Math.hypot(nx - STAGE.x, ny - STAGE.y) < STAGE.r * 0.5) return true; // stage core
   if (nx > NOTICE.x - 6 && nx < NOTICE.x + NOTICE.w + 6 && ny > NOTICE.y && ny < NOTICE.y + NOTICE.h) return true;
-  for (const t of TREES) if (Math.hypot(nx - t.x, ny - t.y + 6) < 12) return true;
+  for (const t of TREES) {
+    if (Math.abs(nx - t.x) < 12 && Math.abs(ny - (t.y - 6)) < 12) {
+      if (Math.hypot(nx - t.x, ny - t.y + 6) < 12) return true;
+    }
+  }
   for (const sp of SIGNPOSTS) if (Math.abs(nx - sp.x) < 8 && Math.abs(ny - sp.y) < 8) return true;
   for (const b of allBenches()) {
     if (nx > b.x - 22 && nx < b.x + 22 && ny > b.y - 6 && ny < b.y + 8) return true;
@@ -390,12 +416,31 @@ function buildingAtPlayer() {
   return null;
 }
 function houseAtPlayer() {
+  if (state.pos.y < 1950 || state.pos.y > 3360) return null;
   const users = onlineHouseUsers();
   for (const [u, info] of Object.entries(users)) {
     const r = houseRect(info.houseIndex); if (!r) continue;
     const dxL = r.x + r.w/2 - 30, dxR = r.x + r.w/2 + 30;
     if (state.pos.x > dxL && state.pos.x < dxR &&
         state.pos.y > r.y + r.h - 14 && state.pos.y < r.y + r.h + 46) return u;
+  }
+  return null;
+}
+function lotAtPlayer() {
+  if (state.pos.y < 1950 || state.pos.y > 3360) return null;
+  const users = onlineHouseUsers();
+  const taken = {};
+  for (const [u, info] of Object.entries(users)) {
+    if (info && info.houseIndex != null) taken[info.houseIndex] = u;
+  }
+  for (let i = 0; i < HOUSE_COUNT; i++) {
+    const r = houseRect(i);
+    if (!r) continue;
+    const dxL = r.x + r.w/2 - 38, dxR = r.x + r.w/2 + 38;
+    if (state.pos.x > dxL && state.pos.x < dxR &&
+        state.pos.y > r.y + r.h - 16 && state.pos.y < r.y + r.h + 52) {
+      return { houseIndex: i, owner: taken[i] || null, rect: r, address: houseAddress(i) };
+    }
   }
   return null;
 }
@@ -445,7 +490,12 @@ function drawActivityRings() {
 // tiled ground iterates only the visible tile range. _cam is refreshed once
 // per frame at the top of drawNeighborhood.
 const _cam = { x: 0, y: 0, w: 0, h: 0 };
-function _syncCam() { _cam.x = state.cam.x; _cam.y = state.cam.y; _cam.w = canvas.width; _cam.h = canvas.height; }
+function _syncCam() {
+  _cam.x = state.cam.x;
+  _cam.y = state.cam.y;
+  _cam.w = canvas.width;
+  _cam.h = canvas.height;
+}
 function onScreen(x, y, m) {
   m = m || 80;
   return x > _cam.x - m && x < _cam.x + _cam.w + m && y > _cam.y - m && y < _cam.y + _cam.h + m;
@@ -567,11 +617,11 @@ function drawSeaHarbor() {
   ctx.strokeStyle='#5c422d';for(let x=3990;x<4300;x+=18){ctx.beginPath();ctx.moveTo(x,1070);ctx.lineTo(x,1170);ctx.stroke();}
   for(let x=4000;x<=4290;x+=72)for(const y of [1074,1166]){ctx.fillStyle='#473828';ctx.fillRect(x-5,y-7,10,14);}
   ctx.save();ctx.translate(4200,1220);ctx.fillStyle='rgba(3,20,31,.4)';ctx.beginPath();ctx.ellipse(3,10,91,30,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#543d2e';ctx.beginPath();ctx.moveTo(-80,-23);ctx.lineTo(45,-26);ctx.quadraticCurveTo(78,-18,90,0);ctx.quadraticCurveTo(78,18,45,26);ctx.lineTo(-80,23);ctx.closePath();ctx.fill();ctx.strokeStyle='#d1ac6b';ctx.lineWidth=4;ctx.stroke();ctx.strokeStyle='#9e7c51';ctx.lineWidth=1;for(let y=-15;y<=15;y+=6){ctx.beginPath();ctx.moveTo(-74,y);ctx.lineTo(59,y);ctx.stroke();}ctx.fillStyle='#583c29';ctx.fillRect(-20,-88,5,104);ctx.strokeStyle='#cbb98a';for(const x of [-74,65]){ctx.beginPath();ctx.moveTo(-17,-86);ctx.lineTo(x,0);ctx.stroke();}const sail=ctx.createLinearGradient(-16,0,40,0);sail.addColorStop(0,'#c2b18b');sail.addColorStop(.5,'#fff0c8');sail.addColorStop(1,'#d6c29a');ctx.fillStyle=sail;ctx.beginPath();ctx.moveTo(-13,-82);ctx.quadraticCurveTo(35,-54,48,-9);ctx.quadraticCurveTo(8,-19,-13,-9);ctx.closePath();ctx.fill();ctx.fillStyle='#bca05d';ctx.fillRect(-17,-92,31,10);ctx.restore();
- for(const [x,y] of [[4010,1000],[4010,1280],[3778,760]]){ctx.fillStyle='#614b33';ctx.fillRect(x-13,y-22,26,26);ctx.strokeStyle='#c3a271';ctx.lineWidth=2;ctx.strokeRect(x-13,y-22,26,26);ctx.beginPath();ctx.moveTo(x-12,y-21);ctx.lineTo(x+12,y+3);ctx.stroke();}
- for(const [x,y] of [[4000,1080],[4290,1080],[4290,1160]]){const glow=ctx.createRadialGradient(x,y-26,0,x,y-26,45);glow.addColorStop(0,'rgba(255,213,113,.35)');glow.addColorStop(1,'rgba(255,213,113,0)');ctx.fillStyle=glow;ctx.fillRect(x-45,y-71,90,90);ctx.fillStyle='#273640';ctx.fillRect(x-3,y-30,6,36);ctx.fillRect(x-8,y-44,16,18);ctx.fillStyle='#ffe0a0';ctx.fillRect(x-5,y-41,10,12);}
+  for(const [x,y] of [[4010,1000],[4010,1280],[3778,860]]){ctx.fillStyle='#614b33';ctx.fillRect(x-13,y-22,26,26);ctx.strokeStyle='#c3a271';ctx.lineWidth=2;ctx.strokeRect(x-13,y-22,26,26);ctx.beginPath();ctx.moveTo(x-12,y-21);ctx.lineTo(x+12,y+3);ctx.stroke();}
+  for(const [x,y] of [[4000,1080],[4290,1080],[4290,1160]]){const glow=ctx.createRadialGradient(x,y-26,0,x,y-26,45);glow.addColorStop(0,'rgba(255,213,113,.35)');glow.addColorStop(1,'rgba(255,213,113,0)');ctx.fillStyle=glow;ctx.fillRect(x-45,y-71,90,90);ctx.fillStyle='#273640';ctx.fillRect(x-3,y-30,6,36);ctx.fillRect(x-8,y-44,16,18);ctx.fillStyle='#ffe0a0';ctx.fillRect(x-5,y-41,10,12);}
 
   ctx.fillStyle='#f4ddb0';ctx.font='bold 22px Georgia';ctx.textAlign='center';ctx.fillText('THE DARK SEA',4220,735);
-  ctx.fillStyle='#243845';ctx.font='bold 15px Georgia';ctx.fillText('HARBOR ↓',3830,650);
+  ctx.fillStyle='#243845';ctx.font='bold 15px Georgia';ctx.fillText('HARBOR ↓',3830,855);
 }
 
 function drawShipwrightDetail(b){
@@ -584,15 +634,18 @@ function drawShipwrightDetail(b){
 }
 
 function drawNeighborhood() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   _syncCam();
   ctx.fillStyle = "#3f6212"; ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.save();
+  try {
   // Lakeside cinematics zoom in on the pond (about the screen centre) and the
   // Kraken shakes the ground. Zoom only ever goes IN, so culling stays safe.
   const lake = window.gameLake;
   const zoom = lake ? lake.zoom() : 1, shake = lake ? lake.shake() : { x: 0, y: 0 };
   if (zoom !== 1) { ctx.translate(canvas.width / 2, canvas.height / 2); ctx.scale(zoom, zoom); ctx.translate(-canvas.width / 2, -canvas.height / 2); }
-  ctx.translate(-state.cam.x + shake.x, -state.cam.y + shake.y);
+  const camX = state.cam.x, camY = state.cam.y;
+  ctx.translate(-camX + shake.x, -camY + shake.y);
 
   // ---- ground ----
   drawGrassPattern();
@@ -631,21 +684,36 @@ function drawNeighborhood() {
     if(b.type==='shipwright')drawShipwrightDetail(b);else GFX.drawBuildingBox(ctx, b);
   }
 
-  const users = onlineHouseUsers();
-  for (const [u, info] of Object.entries(users)) {
-    const r = houseRect(info.houseIndex); if (!r || !onScreen(r.x+r.w/2, r.y+r.h/2, Math.max(r.w,r.h)/2+140)) continue;
-    GFX.drawHouse(ctx, r, u, u === state.user, info.houseStyle);
-    // Street address under the nameplate — so "come to 4 Oak Lane" works.
-    ctx.fillStyle = "rgba(0,0,0,.6)";
-    GFX.roundFill(ctx, r.x + r.w/2 - 46, r.y - 42, 92, 16, 4, "rgba(0,0,0,.6)");
-    ctx.fillStyle = "#cbd5e1"; ctx.font = "10px sans-serif"; ctx.textAlign = "center";
-    ctx.fillText(houseAddress(info.houseIndex), r.x + r.w/2, r.y - 31);
-    // little lock badge on locked houses
-    if (info.locked) {
-      ctx.fillStyle = "rgba(0,0,0,.6)";
-      GFX.roundFill(ctx, r.x + r.w/2 - 12, r.y + r.h - 2, 24, 20, 5, "rgba(0,0,0,.6)");
-      ctx.fillStyle = "#fbbf24"; ctx.font = "13px sans-serif"; ctx.textAlign = "center";
-      ctx.fillText("🔒", r.x + r.w/2, r.y + r.h + 13);
+  if (rectOnScreen(HOUSES_START_X, HOUSE_ROW_Y[0] - 60, WORLD_W - HOUSES_START_X, 1400, 100)) {
+    const users = onlineHouseUsers();
+    const takenLots = {};
+    for (const [u, info] of Object.entries(users)) {
+      if (info && info.houseIndex != null) takenLots[info.houseIndex] = { user: u, info };
+    }
+    for (let i = 0; i < HOUSE_COUNT; i++) {
+      const r = houseRect(i);
+      if (!r || !onScreen(r.x + r.w / 2, r.y + r.h / 2, Math.max(r.w, r.h) / 2 + 140)) continue;
+      const occ = takenLots[i];
+      if (occ) {
+        const u = occ.user;
+        const info = occ.info;
+        const tier = info.residence?.tier || "cottage";
+        GFX.drawHouse(ctx, r, u, u === state.user, info.houseStyle, tier);
+        // Street address under the nameplate — so "come to 4 Oak Lane" works.
+        ctx.fillStyle = "rgba(0,0,0,.6)";
+        GFX.roundFill(ctx, r.x + r.w/2 - 46, r.y - 42, 92, 16, 4, "rgba(0,0,0,.6)");
+        ctx.fillStyle = "#cbd5e1"; ctx.font = "10px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText(houseAddress(i), r.x + r.w/2, r.y - 31);
+        // little lock badge on locked houses
+        if (info.locked) {
+          ctx.fillStyle = "rgba(0,0,0,.6)";
+          GFX.roundFill(ctx, r.x + r.w/2 - 12, r.y + r.h - 2, 24, 20, 5, "rgba(0,0,0,.6)");
+          ctx.fillStyle = "#fbbf24"; ctx.font = "13px sans-serif"; ctx.textAlign = "center";
+          ctx.fillText("🔒", r.x + r.w/2, r.y + r.h + 13);
+        }
+      } else {
+        GFX.drawVacantLot(ctx, r, houseAddress(i), i, state.pos);
+      }
     }
   }
 
@@ -673,14 +741,20 @@ function drawNeighborhood() {
   // When a staff member is invisible, nobody else's presence carries them, and
   // on their own screen they're drawn ghosted so they don't forget.
   if (state.invisible) ctx.globalAlpha = 0.35;
-  if(state.data?.equippedCar) gameCars.draw(ctx,state.pos.x,state.pos.y,state.data.equippedCar,state.facing);
+  if(state.data?.equippedCar) {
+    const isShift = typeof keys !== "undefined" && Boolean(keys["shift"] || keys["shiftleft"] || keys["shiftright"]);
+    const isMoving = typeof keys !== "undefined" && Boolean(keys["w"] || keys["a"] || keys["s"] || keys["d"] || keys["arrowup"] || keys["arrowdown"] || keys["arrowleft"] || keys["arrowright"]);
+    gameCars.draw(ctx, state.pos.x, state.pos.y, state.data.equippedCar, state.facing, isShift && isMoving);
+  }
   else GFX.drawCharacter(ctx, state.pos.x, state.pos.y, state.appearance,
                     { facing: state.facing, walking: state.walking, emote: state.emote });
   GFX.drawNameAndBubble(ctx, state.pos.x, state.pos.y, state.user, state.msgs, true, state.appearance, state.role);
   ctx.globalAlpha = 1;
   if (lake) lake.drawLakeFx();   // fishing rod, sword swing, bullets, splashes
 
-  ctx.restore();
+  } finally {
+    ctx.restore();
+  }
   drawInteractionPrompt();
   drawWaypointArrow();
   drawMinimap();
@@ -856,23 +930,44 @@ function drawGrassPattern() {
   ctx.fillStyle = "#44701a"; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
   const T = 96;
   const gx0 = Math.floor(x0 / T) * T - T, gy0 = Math.floor(y0 / T) * T - T;
+  const usePath2D = typeof Path2D !== "undefined";
+  const pA = usePath2D ? new Path2D() : null;
+  const pB = usePath2D ? new Path2D() : null;
+  const pC = usePath2D ? new Path2D() : null;
+  const pD = usePath2D ? new Path2D() : null;
+
+  ctx.fillStyle = "rgba(163,230,53,0.30)";
   for (let gy = gy0; gy < y1 + T; gy += T) {
     for (let gx = gx0; gx < x1 + T; gx += T) {
       const h = hash2(gx, gy), h2 = (h * 7.31) % 1, h3 = (h * 13.7) % 1;
       const bx = gx + h * T, by = gy + h2 * T;
-      // big soft blotch (lighter or darker), rotated ellipse
-      ctx.fillStyle = h3 > 0.5 ? "rgba(120,190,40,0.13)" : "rgba(20,50,10,0.13)";
-      ctx.beginPath(); ctx.ellipse(bx, by, 40 + h2 * 40, 24 + h3 * 22, h * 3.1, 0, Math.PI*2); ctx.fill();
-      // secondary smaller blotch offset from the first
-      ctx.fillStyle = h3 > 0.5 ? "rgba(20,50,10,0.09)" : "rgba(140,205,50,0.10)";
-      ctx.beginPath(); ctx.ellipse(bx + 50 - h3 * 100, by + 40 - h * 80, 22 + h * 18, 14 + h2 * 10, h2 * 3, 0, Math.PI*2); ctx.fill();
+      if (usePath2D) {
+        if (h3 > 0.5) {
+          pA.ellipse(bx, by, 40 + h2 * 40, 24 + h3 * 22, h * 3.1, 0, Math.PI * 2);
+          pC.ellipse(bx + 50 - h3 * 100, by + 40 - h * 80, 22 + h * 18, 14 + h2 * 10, h2 * 3, 0, Math.PI * 2);
+        } else {
+          pB.ellipse(bx, by, 40 + h2 * 40, 24 + h3 * 22, h * 3.1, 0, Math.PI * 2);
+          pD.ellipse(bx + 50 - h3 * 100, by + 40 - h * 80, 22 + h * 18, 14 + h2 * 10, h2 * 3, 0, Math.PI * 2);
+        }
+      } else {
+        ctx.fillStyle = h3 > 0.5 ? "rgba(120,190,40,0.13)" : "rgba(20,50,10,0.13)";
+        ctx.beginPath(); ctx.ellipse(bx, by, 40 + h2 * 40, 24 + h3 * 22, h * 3.1, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = h3 > 0.5 ? "rgba(20,50,10,0.09)" : "rgba(140,205,50,0.10)";
+        ctx.beginPath(); ctx.ellipse(bx + 50 - h3 * 100, by + 40 - h * 80, 22 + h * 18, 14 + h2 * 10, h2 * 3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "rgba(163,230,53,0.30)";
+      }
       // grass tufts
-      ctx.fillStyle = "rgba(163,230,53,0.30)";
       const tx = gx + h2 * T, ty = gy + h3 * T;
       ctx.fillRect(tx, ty, 2, 6); ctx.fillRect(tx + 3, ty - 2, 2, 8); ctx.fillRect(tx + 6, ty + 1, 2, 5);
       const ux = gx + h3 * T, uy = gy + h * T;
       ctx.fillRect(ux, uy, 2, 5); ctx.fillRect(ux + 3, uy - 2, 2, 7);
     }
+  }
+  if (usePath2D) {
+    ctx.fillStyle = "rgba(120,190,40,0.13)"; ctx.fill(pA);
+    ctx.fillStyle = "rgba(20,50,10,0.13)";   ctx.fill(pB);
+    ctx.fillStyle = "rgba(20,50,10,0.09)";   ctx.fill(pC);
+    ctx.fillStyle = "rgba(140,205,50,0.10)"; ctx.fill(pD);
   }
 }
 
@@ -2137,16 +2232,23 @@ function drawInteractionPrompt() {
   const b = buildingAtPlayer(); if (b) hint = "Press E to enter " + b.label;
   if (!hint) {
     const u = houseAtPlayer();
-    if (u) hint = (u === state.user) ? "Press E to enter your house" : `Press E to visit ${u}'s house`;
+    if (u) {
+      hint = (u === state.user) ? "Press E to enter your house (H to upgrade)" : `Press E to visit ${u}'s house`;
+    } else {
+      const lot = lotAtPlayer();
+      if (lot && !lot.owner) {
+        hint = `Press E to buy lot & build house (From $2,500)`;
+      }
+    }
   }
   if (!hint) {
     const a = activityAtPlayer();
     if (a) hint = "Press E to " + a.label;
   }
   if (hint) {
-    GFX.roundFill(ctx, canvas.width/2 - 200, canvas.height - 60, 400, 36, 8, "rgba(0,0,0,.85)");
+    GFX.roundFill(ctx, canvas.width/2 - 220, canvas.height - 60, 440, 36, 8, "rgba(0,0,0,.85)");
     ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 1.5;
-    GFX.roundStroke(ctx, canvas.width/2 - 200, canvas.height - 60, 400, 36, 8);
+    GFX.roundStroke(ctx, canvas.width/2 - 220, canvas.height - 60, 440, 36, 8);
     ctx.fillStyle = "#fbbf24"; ctx.font = "bold 14px sans-serif"; ctx.textAlign = "center";
     ctx.fillText(hint, canvas.width/2, canvas.height - 36);
   }
@@ -2154,7 +2256,7 @@ function drawInteractionPrompt() {
 
 window.gameWorld = {
   WORLD_W, WORLD_H, BUILDINGS, HOUSES_PER_ROW, HOUSE_ROW_Y, HOUSE_COUNT,
-  houseRect, drawNeighborhood, collidesNeighborhood, buildingAtPlayer, houseAtPlayer,
+  houseRect, drawNeighborhood, collidesNeighborhood, buildingAtPlayer, houseAtPlayer, lotAtPlayer,
   activityAtPlayer, visibleHouseUsers, houseAddress, STREET_NAMES,
   PARK, FOUNTAIN, POND, POND_DOCK, COURT, STAGE, NOTICE, FISH_SPOT, BALL_SPOT, NOTICE_SPOT, COOK_SPOT,
   // for scenery.js: "is this open grass with nothing standing on it?"

@@ -31,10 +31,26 @@
   "use strict";
   const G = typeof globalThis !== "undefined" ? globalThis : window;
   const REG = {}, LOADING = {};
-  const SELF = (typeof document !== "undefined" && document.currentScript && document.currentScript.src) || "";
+  function resolveSelf() {
+    if (typeof document === "undefined") return "";
+    if (document.currentScript && document.currentScript.src) return document.currentScript.src;
+    const scripts = (typeof document.getElementsByTagName === "function" && document.getElementsByTagName("script")) || document.scripts || [];
+    for (let i = scripts.length - 1; i >= 0; i--) {
+      const src = scripts[i] && scripts[i].src;
+      if (src && (src.includes("cutscenes/director.js") || src.includes("director.js"))) return src;
+    }
+    try {
+      return new URL("js/cutscenes/director.js", (document.baseURI || (typeof window !== "undefined" && window.location && window.location.href) || "http://localhost/")).href;
+    } catch (e) {
+      return "";
+    }
+  }
+  const SELF = resolveSelf();
   const VER = "cine-1";
   // which file directs which boss; ids missing here keep dungeon3d's built-in beats
   const FILE = { kael: "kael", gorehorn: "gorehorn", twin_monarchs: "twin_monarchs", sundered_king: "sundered_king",
+    vaughn: "ascension-cutscenes", mordaunt: "ascension-cutscenes", candlemas: "ascension-cutscenes",
+    ilse_grim: "ascension-cutscenes", ilse: "ascension-cutscenes", seraphine: "ascension-cutscenes", aurelion: "ascension-cutscenes",
     warden: "legacy", smith: "legacy", tyrant: "legacy", dragon: "legacy", astraea: "legacy", khyra: "legacy", iskarra: "legacy", heart: "legacy", concordant: "legacy" };
 
   const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -270,9 +286,10 @@
     if (!f) return Promise.resolve(null);
     if (REG[id]) return Promise.resolve(REG[id]);
     if (LOADING[f]) return LOADING[f].then(() => REG[id] || null);
-    if (!SELF || typeof document === "undefined") return Promise.resolve(null);
+    const base = SELF || resolveSelf();
+    if (!base || typeof document === "undefined") return Promise.resolve(null);
     LOADING[f] = new Promise((ok) => {
-      const el = document.createElement("script"); el.src = new URL(f + ".js?v=" + VER, SELF).href; el.async = true;
+      const el = document.createElement("script"); el.src = new URL(f + ".js?v=" + VER, base).href; el.async = true;
       el.onload = () => ok(true); el.onerror = () => { el.remove(); console.warn("Cutscene direction unavailable: " + f); ok(false); };
       document.head.appendChild(el);
     });
@@ -281,11 +298,17 @@
 
   G.DungeonCutscenes = {
     register(id, def) { REG[id] = def; return def; },
-    get(id) { return REG[id] || null; },
+    get(id) {
+      if (!REG[id] && typeof G._initAscensionCutscenes === "function") {
+        try { G._initAscensionCutscenes(G.DungeonCutscenes); } catch (e) {}
+      }
+      return REG[id] || null;
+    },
     ids: () => Object.keys(REG), files: FILE, ensure,
     preload() { const seen = {}; for (const id in FILE) if (!seen[FILE[id]]) { seen[FILE[id]] = 1; ensure(id); } },
     shots, clear, inside, warp, map, debris, godrays, cue, perf,
     onCue(fn) { cueListeners.push(fn); return () => { const i = cueListeners.indexOf(fn); if (i >= 0) cueListeners.splice(i, 1); }; },
     EASE, beat, lerp, clamp01,
   };
+  if (typeof G._initAscensionCutscenes === "function") G._initAscensionCutscenes(G.DungeonCutscenes);
 })();

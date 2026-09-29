@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict'),E=require('./shared/economy'),D=require('./shared/depths');
 for(let players=1;players<=24;players++)assert.equal(D.raidPylons('concordant',2,true,players).pylons,Math.min(4,players));
-assert.equal(D.raidPylons('khyra',2,true,1).pylons,4,'Other bosses retain their pylon rules');
+assert.equal(D.raidPylons('iskarra',3,true,1).pylons,4,'Other bosses retain their pylon rules');
+assert.equal(D.raidPylons('khyra',2,true,1),null,'Khyra in the Singing Geode does not have pylons');
 const boss=E.GUILD_BOSSES.concordant;
 assert.equal(boss.baseHp,480000);
 assert.deepEqual(boss.attacks.filter(a=>a.dmg).map(a=>a.dmg),[60,60,56,48]);

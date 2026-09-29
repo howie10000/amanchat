@@ -314,8 +314,10 @@
     if (k === 'polarity') {
       R.polarity = { exposed: m.exposed, swapAt: +m.swapAt || 0, periodMs: +m.periodMs || 11000, t0: +m.t0 || 0, first: m.first };
       if (g) {
-        const nm = m.exposed === 'sol' ? 'SOL IS EXPOSED' : 'UMBRA IS EXPOSED';
-        g.banner(nm, 'Only the exposed Monarch can be hurt', m.exposed === 'sol' ? '#fbbf24' : '#c4b5fd', 1500);
+        const isIlse = (R.bossId === 'ilse_grim' || R.bossId === 'ilse' || (R.def && (R.def.id === 'ilse_grim' || (R.def.name && R.def.name.includes('ILSE')))));
+        const bd = R.def && R.def.twins ? R.def.twins.bodies.find(b => b.key === m.exposed) : null;
+        const nm = isIlse ? (m.exposed === 'sol' ? 'ILSE' : 'GRIM') : (bd && bd.name ? bd.name.split(',')[0].trim().toUpperCase() : (m.exposed === 'sol' ? 'SOL' : 'UMBRA'));
+        g.banner(nm + ' IS EXPOSED', 'Only the exposed target can be hurt', m.exposed === 'sol' ? '#fbbf24' : '#c4b5fd', 1500);
         const p = bodyPos(m.exposed); g.burst(p.x, p.y - 20, m.exposed === 'sol' ? ['#fde68a', '#f59e0b'] : ['#c4b5fd', '#4c1d95'], 26, { speed: 5 });
       }
       return true;
@@ -329,15 +331,27 @@
         if (m.event === 'fell') { R.twinHp[m.which].dead = true; R.twinHp[m.which].hp = 0; }
         if (m.event === 'revive') R.twinHp[m.which].dead = false;
       }
-      const nm = m.which === 'sol' ? 'SOL' : 'UMBRA', other = m.which === 'sol' ? 'UMBRA' : 'SOL';
+      const isIlse = (R.bossId === 'ilse_grim' || R.bossId === 'ilse' || (R.def && (R.def.id === 'ilse_grim' || (R.def.name && R.def.name.includes('ILSE')))));
+      const bdThis = R.def && R.def.twins ? R.def.twins.bodies.find(b => b.key === m.which) : null;
+      const bdOther = R.def && R.def.twins ? R.def.twins.bodies.find(b => b.key !== m.which) : null;
+      const nm = isIlse ? (m.which === 'sol' ? 'ILSE' : 'GRIM') : (bdThis && bdThis.name ? bdThis.name.split(',')[0].trim().toUpperCase() : (m.which === 'sol' ? 'SOL' : 'UMBRA'));
+      const other = isIlse ? (m.which === 'sol' ? 'GRIM' : 'ILSE') : (bdOther && bdOther.name ? bdOther.name.split(',')[0].trim().toUpperCase() : (m.which === 'sol' ? 'UMBRA' : 'SOL'));
       if (g) {
         if (m.event === 'fell') g.banner(nm + ' FALLS', other + ' will raise ' + nm + ' — fell ' + other + ' before the link closes', '#fca5a5', 2600);
         else if (m.event === 'revive') g.banner(nm + ' RISES AGAIN', 'The link held. Break them together.', '#c4b5fd', 2400);
-        else if (m.event === 'both') g.banner('TOTAL ECLIPSE', 'Both Monarchs fall as one', '#fde68a', 3000);
+        else if (m.event === 'both') g.banner(isIlse ? 'HUNT BROKEN' : 'TOTAL ECLIPSE', 'Both targets fall as one', '#fde68a', 3000);
       }
       const p = bodyPos(m.which);
       if (g) g.burst(p.x, p.y - 20, ['#fde68a', '#c4b5fd', '#fff'], 50, { speed: 7, life: 44 });
       shake(14);
+      return true;
+    }
+    if (k === 'phase') {
+      if (m.phase != null) R.phase = m.phase;
+      if (m.form) R.form = m.form;
+      else if (R.bossId === 'aurelion') R.form = R.phase === 1 ? 'herald' : R.phase === 2 ? 'tempest' : R.phase === 3 ? 'legion' : 'apotheosis';
+      else if (R.bossId === 'vaughn') R.form = R.phase >= 2 ? 'unhorsed' : 'mounted';
+      if (m.boss) adopt(m.boss, m);
       return true;
     }
     if (k === 'form') {
@@ -699,7 +713,14 @@
   const _drawList = [];
   function drawBodies(ctx, t, layer, playerY) {
     if (!R.bossId) return;
-    const view = typeof state !== 'undefined' && state.dungeon ? state.dungeon.boss : null;
+    const baseView = typeof state !== 'undefined' && state.dungeon ? state.dungeon.boss : null;
+    const computedForm = R.form || (baseView && baseView.form) || (R.bossId === 'aurelion' ? (R.phase === 1 ? 'herald' : R.phase === 2 ? 'tempest' : R.phase === 3 ? 'legion' : 'apotheosis') : (R.bossId === 'vaughn' ? (R.phase >= 2 ? 'unhorsed' : 'mounted') : ''));
+    R.form = computedForm;
+    const view = baseView || { id: R.bossId, phase: R.phase || 1, form: computedForm, status: 'alive' };
+    if (baseView) {
+      if (R.phase != null) baseView.phase = R.phase;
+      if (computedForm) baseView.form = computedForm;
+    }
     const b3 = B3();
     _drawList.length = 0;
     for (let n = 0; n < R.order.length; n++) {
@@ -715,9 +736,12 @@
       P.body = b.key; P.clone = b.clone; P.real = !b.clone;
       P.flash = b.flashUntil > Date.now(); P.guard = guardUp(b.key); P.vuln = vulnOf(b.key);
       P.exposed = (b.key === 'sol' || b.key === 'umbra') ? twinDamageable(b.key, R.now) : true;
-      P.form = R.form; P.sundered = R.sunderedUntil > R.now;
+      P.form = computedForm; P.sundered = R.sunderedUntil > R.now;
       let drawn = false;
       if (b3 && typeof b3.drawMobileBoss === 'function') { try { drawn = !!b3.drawMobileBoss(ctx, view, P, t); } catch (e) { drawn = false; } }
+      if (!drawn && W.BossRigs && typeof W.BossRigs.drawMobile === 'function') {
+        try { drawn = !!W.BossRigs.drawMobile(ctx, view, P, t); } catch (e) { drawn = false; }
+      }
       if (!drawn) drawBodyFallback(ctx, b, t);
     }
     if (layer === 'front') drawShards(ctx, t);
@@ -732,6 +756,12 @@
     return col;
   }
   function drawBodyFallback(ctx, b, t) {
+    if (W.BossRigs && typeof W.BossRigs.drawMobile === 'function') {
+      const fallbackView = (typeof state !== 'undefined' && state.dungeon && state.dungeon.boss) || { id: R.bossId, phase: R.phase || 1, form: R.form, status: 'alive' };
+      try {
+        if (W.BossRigs.drawMobile(ctx, fallbackView, b.pose, t)) return;
+      } catch (e) {}
+    }
     const P = b.pose, st = P.step, r = bodyR(), c = bodyColors(b);
     const arche = (R.def && R.def.archetype) || 'duelist';
     const driver = CR() && CR().driverOf ? CR().driverOf(R.bossId, R.phase) : arche;
@@ -964,7 +994,9 @@
       ctx.fillStyle = hp.dead ? '#475569' : (bd && bd.color) || '#f59e0b'; ctx.fillRect(x, y, bw * clamp(hp.hp / (hp.maxHp || 1), 0, 1), 13);
       if (ex && !hp.dead) { ctx.strokeStyle = '#fef3c7'; ctx.lineWidth = 2; ctx.strokeRect(x - 1, y - 1, bw + 2, 15); }
       ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'left'; ctx.fillStyle = '#fff';
-      ctx.fillText((k === 'sol' ? 'SOL' : 'UMBRA') + (hp.dead ? ' · FALLEN' : ex ? ' · EXPOSED — HIT' : ' · VEILED — IMMUNE'), x + 4, y + 10);
+      const isIlse = (R.bossId === 'ilse_grim' || R.bossId === 'ilse' || (R.def && (R.def.id === 'ilse_grim' || (R.def.name && R.def.name.includes('ILSE')))));
+      const title = isIlse ? (k === 'sol' ? 'ILSE' : 'GRIM') : (bd && bd.name ? bd.name.split(',')[0].trim().toUpperCase() : (k === 'sol' ? 'SOL' : 'UMBRA'));
+      ctx.fillText(title + (hp.dead ? ' · FALLEN' : ex ? ' · EXPOSED — HIT' : ' · VEILED — IMMUNE'), x + 4, y + 10);
       ctx.textAlign = 'right';
       ctx.fillText(Math.max(0, Math.round(hp.hp)).toLocaleString(), x + bw - 4, y + 10);
     }
@@ -977,7 +1009,7 @@
   const API = {
     reset, enter, adopt, onPush, setHp, sample: sampleClock, update, strikeTarget, guardUp, vulnOf, flash, posOf, focusPos,
     drawGround, drawBodies, drawHud, drawTwinBars, hasTwins, pillarRects, takeWallsDirty, isMobileId, serverNow, offset, synced: () => R.clock.has,
-    active: () => !!R.bossId, bodyR, twinDamageable, polarityAt,
+    active: () => !!R.bossId, bossId: () => R.bossId, form: () => R.form, phase: () => R.phase, bodyR, twinDamageable, polarityAt,
     bodies: () => R.order.map(k => R.bodies[k]),
     shards: () => (R.shards ? R.shards.list : []),
     // pure pieces, for js/crown-client.test.js

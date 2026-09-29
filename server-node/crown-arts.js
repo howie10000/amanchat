@@ -127,8 +127,8 @@ module.exports = function createCrownArts(deps) {
         // Damage ------------------------------------------------------------
         const damaging = a.power > 0 && (id !== 'riposte' || counter);
         if (damaging) {
-            // WEAPONS: an art is the melee hand's (its ATK, never the ranged weapon's).
-            const swing = ECON.DUNGEON_HIT_DMG.sword * ECON.masteryCombatMult(masteryLevelOf(u, 'combat')) * ECON.gearAttackMult(weaponOf ? weaponOf(u, 'sword').atk : gearStatsOf(u).atk);
+            let swing = ECON.DUNGEON_HIT_DMG.sword * ECON.masteryCombatMult(masteryLevelOf(u, 'combat')) * ECON.gearAttackMult(weaponOf ? weaponOf(u, 'sword').atk : gearStatsOf(u).atk);
+            if (deps.hasAdminGear && deps.hasAdminGear(u, user)) swing *= 10;
             const base = CROWN.artBaseDamage(id, rank, swing, fx);
             // Where the art reaches (its geometry, validated against the cast point).
             let geo;

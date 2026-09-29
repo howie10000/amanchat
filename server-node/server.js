@@ -505,6 +505,50 @@ function pruneOldDms() {
 pruneOldDms();
 setInterval(pruneOldDms, 30 * 60 * 1000);   // every half hour
 
+// HOUSING V2 MIGRATION:
+// All players lose their houses, all placed furniture is returned to their inventory,
+// and players now have to buy houses or hotel rooms.
+function migrateHousingUpdate() {
+    const meta = store.get('meta') || {};
+    if (meta.housing_v2_migrated) return;
+    const users = store.get('users');
+    if (!users || typeof users !== 'object') {
+        meta.housing_v2_migrated = Date.now();
+        store.put('meta', meta);
+        return;
+    }
+    let count = 0, furnCount = 0;
+    for (const [uname, u] of Object.entries(users)) {
+        if (!u || typeof u !== 'object') continue;
+        let changed = false;
+        const placed = Array.isArray(u.furniture) ? u.furniture : (u.furniture && typeof u.furniture === 'object' ? Object.values(u.furniture) : []);
+        if (placed.length > 0) {
+            if (!u.inventory || typeof u.inventory !== 'object') u.inventory = {};
+            for (const item of placed) {
+                if (item && item.id) {
+                    u.inventory[item.id] = (u.inventory[item.id] || 0) + 1;
+                    furnCount++;
+                }
+            }
+            u.furniture = [];
+            changed = true;
+        }
+        if (u.houseIndex != null || u.residence != null) {
+            u.houseIndex = null;
+            u.residence = null;
+            changed = true;
+        }
+        if (changed) {
+            store.put('users/' + uname, u);
+            count++;
+        }
+    }
+    meta.housing_v2_migrated = Date.now();
+    store.put('meta', meta);
+    console.log(`[housing] v2 migration completed: ${count} users reset, ${furnCount} furniture items refunded to inventory.`);
+}
+migrateHousingUpdate();
+
 // ---------------------------------------------------------------- ROLES
 // owner > admin > user.
 //
@@ -1010,7 +1054,7 @@ setInterval(syncRoster, 2000);
 // them goes through an op below (bank/buy/earn/fish/casino/furniture_set) or
 // a server-side settlement. Staff editing OTHER players keep their powers.
 const PROTECTED_FIELDS = new Set(['cars', 'equippedCar', 'sea', 'money', 'inventory', 'cosmetics', 'vegasFloor', 'dailyStreak', 'lastDaily',
-    'lastInterest', 'fishInventory', 'houseStyle', 'furniture', 'houseIndex', 'createdAt',
+    'lastInterest', 'fishInventory', 'houseStyle', 'furniture', 'houseIndex', 'residence', 'createdAt',
     'bankBalance', 'bankLast', 'creditScore', 'creditGainLast', 'loan', 'notes',
     'farm', 'meals', 'luck', 'gear', 'equipped',
     'mastery', 'mats', 'gems', 'delve', 'codex', 'overflow', 'depthsBest', 'journey', 'guild', 'lastSeen', 'arts', 'ascension']);
@@ -1018,7 +1062,7 @@ const PROTECTED_FIELDS = new Set(['cars', 'equippedCar', 'sea', 'money', 'invent
 // SEE. Everything else — friends, keys, furniture, inventory, notes, all the
 // bank/loan/credit numbers — is private and never leaves the server for anyone
 // but the owner or staff.
-const PUBLIC_USER_FIELDS = new Set(['houseIndex', 'houseStyle', 'locked', 'appearance', 'createdAt', 'money']);
+const PUBLIC_USER_FIELDS = new Set(['houseIndex', 'residence', 'houseStyle', 'locked', 'appearance', 'createdAt', 'money']);
 function publicUser(u) {
     const out = {};
     if (u && typeof u === 'object') for (const k of PUBLIC_USER_FIELDS) if (u[k] !== undefined) out[k] = u[k];
@@ -1068,11 +1112,11 @@ function freeHouseIndex() {
     const taken = new Set(Object.values(users).map(u => u && u.houseIndex).filter(i => i != null));
     const free = [];
     for (let i = 0; i < HOUSE_COUNT; i++) if (!taken.has(i)) free.push(i);
-    return free.length ? free[Math.floor(Math.random() * free.length)] : (Object.keys(users).length % HOUSE_COUNT);
+    return free.length ? free[Math.floor(Math.random() * free.length)] : null;
 }
 function newUserRecord() {
     return {
-        money: 300, houseIndex: freeHouseIndex(),
+        money: 300, houseIndex: null, residence: null,
         inventory: {}, furniture: [], friends: {},
         keys: {}, locked: false,
         appearance: Object.assign({}, DEFAULT_APPEARANCE),
@@ -1092,6 +1136,7 @@ function userRec(user) {
     // bankSync and the loan office have something to work with.
     if (u.creditScore == null) { u.creditScore = ECON.CREDIT_START; store.put('users/' + user + '/creditScore', u.creditScore); }
     if (u.bankLast == null) { u.bankLast = Date.now(); store.put('users/' + user + '/bankLast', u.bankLast); }
+    u._user = user;
     return u;
 }
 function moneyOf(u) { return Math.max(0, Math.floor(+u.money || 0)); }
@@ -2555,13 +2600,26 @@ function equippedOf(u) {
 }
 // The pieces actually worn, in slot order, skipping any slot whose id has gone
 // stale (sold from under it by an older build, or a hand-edited record).
-function equippedItems(u) {
+function equippedItems(u, user) {
+    const uname = user || (u && u._user);
     const pack = gearPackOf(u), eq = equippedOf(u), out = [];
     for (const slot of ECON.GEAR_SLOTS) {
         const it = eq[slot] && pack[eq[slot]];
-        if (it && it.slot === slot) out.push(it);
+        if (it && it.slot === slot) {
+            if ((it.admin || (it.base && String(it.base).startsWith('admin_')) || (it.uq && String(it.uq).startsWith('admin_'))) && (!uname || !isStaff(uname))) {
+                continue;
+            }
+            out.push(it);
+        }
     }
     return out;
+}
+function hasAdminGear(u, user) {
+    const uname = user || (u && u._user);
+    if (!uname || !isStaff(uname)) return false;
+    if (!u) u = userRec(uname);
+    const items = equippedItems(u, uname);
+    return items.some(it => it && (it.admin || (it.base && String(it.base).startsWith('admin_')) || (it.uq && String(it.uq).startsWith('admin_'))));
 }
 function gearStatsOf(u) { return ECON.gearTotals(equippedItems(u)); }
 // WEAPONS (docs/sundered-crown/WEAPONS.md): the client names a HAND on the
@@ -3855,7 +3913,8 @@ function depthsRecords(user, tier) {
 
 // ---- THE ARCANE DEPTHS modules (features / raids) ----
 const features = createFeatureHandlers({
-    ECON, DEPTHS, DUNGEON, pushTo, pushMany, isOnline: (u) => byUser.has(u), guildRec, presenceOf, floorPlan, rowCfg,
+    ECON, DEPTHS, DUNGEON, pushTo, pushMany, isOnline: (u) => byUser.has(u), guildRec, presenceOf, floorPlan, rowCfg, userRec,
+    hasAdminGear: (u, user) => hasAdminGear(u, user),
     // A wipe after the final boss already fell still opens the chest.
     endGuildRun: (run, reason) => { if (reason === 'wiped') autoSettle(run, Date.now(), 'wiped after the kill'); if (guildRuns.has(run.id)) endGuildRun(run, reason); }, settleSegment, recordDepth,
     runBroadcast, floorStateView, onFloorChange: applyDepthFloor,
@@ -3867,6 +3926,7 @@ const ascendEngine = createAscensionEngine({ ECON, CROWN, ASCEND, userRec, gearS
 const crownEngine = createCrownEngine({
     ECON, CROWN, pushMany, runBroadcast, presenceOf, attackPayload, bossHpOf, pendingThreshold, checkBossPhase,
     userRec, masteryLevelOf, gearStatsOf, gearFxOf: (user) => gearFxOf(user), swingBuffMult, bossProcs, weaponOf, lifestealFor,
+    hasAdminGear: (u, user) => hasAdminGear(u, user),
     rescaleGuildBoss, raidSoak: DEPTHS.RAID_OVERLAY.soak, ext: ascendEngine,
     testKnobs: { crownForce: TEST.crownForce, twinLinkMs: TEST.twinLinkMs },
 });
@@ -3877,6 +3937,7 @@ const ascension = createAscension({
 });
 const crownArts = createCrownArts({
     ECON, CROWN, DUNGEON, store, userRec, runFor, presenceOf, gearFxOf: (user) => gearFxOf(user), gearStatsOf, weaponOf, masteryLevelOf, moneyOf, setMoney,
+    hasAdminGear: (u, user) => hasAdminGear(u, user),
     pushMany, pushTo, features, floorPlan, floorCleared, leashRefusal, engine: crownEngine, swingBuffMult, hurtBoss, lifestealFor,
     afterBossDamage: (run, now) => { if (!checkBossPhase(run, now)) runBroadcast(run, 'hp'); },
 });
@@ -4189,6 +4250,112 @@ const ECONOMY_OPS = {
                 u.vegasFloor = i; store.put(`users/${user}/vegasFloor`, i);
                 return { money: u.money, vegasFloor: i };
             }
+            case 'house': {
+                const houseIndex = Number(msg.houseIndex != null ? msg.houseIndex : msg.lot);
+                if (!Number.isInteger(houseIndex) || houseIndex < 0 || houseIndex >= HOUSE_COUNT) {
+                    throw new Error('Invalid lot number.');
+                }
+                const tier = String(msg.tier || 'cottage').toLowerCase();
+                const tierDef = ECON.houseTier(tier);
+                if (!tierDef) throw new Error('Unknown house size.');
+                // Check if lot is already taken by someone else
+                const allUsers = store.get('users') || {};
+                for (const [otherName, other] of Object.entries(allUsers)) {
+                    if (otherName !== user && other && other.houseIndex === houseIndex) {
+                        throw new Error(`Lot ${houseIndex + 1} is already owned by ${otherName}.`);
+                    }
+                }
+                pay(tierDef.price);
+                // Single-residence rule: you can only have 1 house or 1 hotel room total.
+                // Return all placed furniture from previous residence to inventory.
+                const placed = Array.isArray(u.furniture) ? u.furniture : (u.furniture && typeof u.furniture === 'object' ? Object.values(u.furniture) : []);
+                const inv = (u.inventory && typeof u.inventory === 'object') ? Object.assign({}, u.inventory) : {};
+                for (const item of placed) {
+                    if (item && item.id) inv[item.id] = (inv[item.id] || 0) + 1;
+                }
+                u.inventory = inv;
+                u.furniture = [];
+                u.houseIndex = houseIndex;
+                u.residence = { type: 'house', houseIndex, tier: tierDef.id };
+                store.put(`users/${user}/inventory`, inv);
+                store.put(`users/${user}/furniture`, []);
+                store.put(`users/${user}/houseIndex`, houseIndex);
+                store.put(`users/${user}/residence`, u.residence);
+                return {
+                    money: u.money,
+                    inventory: inv,
+                    furniture: [],
+                    houseIndex,
+                    residence: u.residence
+                };
+            }
+            case 'house_upgrade': {
+                if (u.houseIndex == null || !u.residence || u.residence.type !== 'house') {
+                    throw new Error('You must own a house to upgrade it.');
+                }
+                const curTier = ECON.houseTier(u.residence.tier || 'cottage');
+                const newTier = ECON.houseTier(msg.tier);
+                if (!newTier) throw new Error('Unknown house size.');
+                if (newTier.price <= curTier.price) throw new Error('House must be upgraded to a larger size.');
+                const cost = newTier.price - (curTier.resale || 0);
+                pay(cost);
+                u.residence = Object.assign({}, u.residence, { tier: newTier.id });
+                store.put(`users/${user}/residence`, u.residence);
+                return {
+                    money: u.money,
+                    residence: u.residence,
+                    houseIndex: u.houseIndex
+                };
+            }
+            case 'hotel_room': {
+                const hotelId = String(msg.hotelId || '');
+                const roomTier = String(msg.roomTier || 'standard').toLowerCase();
+                const hotel = ECON.hotelDef(hotelId);
+                if (!hotel) throw new Error('Unknown hotel.');
+                const room = ECON.hotelRoom(hotelId, roomTier);
+                if (!room) throw new Error('Unknown room suite.');
+                pay(room.price);
+                // Single-residence rule: you can only have 1 house or 1 hotel room total.
+                // Return all placed furniture from previous residence to inventory.
+                const placed = Array.isArray(u.furniture) ? u.furniture : (u.furniture && typeof u.furniture === 'object' ? Object.values(u.furniture) : []);
+                const inv = (u.inventory && typeof u.inventory === 'object') ? Object.assign({}, u.inventory) : {};
+                for (const item of placed) {
+                    if (item && item.id) inv[item.id] = (inv[item.id] || 0) + 1;
+                }
+                u.inventory = inv;
+                u.furniture = [];
+                u.houseIndex = null; // Living in hotel room frees up any house lot
+                u.residence = { type: 'hotel', hotelId, roomTier: room.id };
+                store.put(`users/${user}/inventory`, inv);
+                store.put(`users/${user}/furniture`, []);
+                store.put(`users/${user}/houseIndex`, null);
+                store.put(`users/${user}/residence`, u.residence);
+                return {
+                    money: u.money,
+                    inventory: inv,
+                    furniture: [],
+                    houseIndex: null,
+                    residence: u.residence
+                };
+            }
+            case 'hotel_upgrade': {
+                if (!u.residence || u.residence.type !== 'hotel' || u.residence.hotelId !== msg.hotelId) {
+                    throw new Error('You must own a room in this hotel to upgrade it.');
+                }
+                const curRoom = ECON.hotelRoom(u.residence.hotelId, u.residence.roomTier || 'standard');
+                const newRoom = ECON.hotelRoom(u.residence.hotelId, msg.roomTier);
+                if (!newRoom) throw new Error('Unknown room suite.');
+                if (newRoom.price <= curRoom.price) throw new Error('Must upgrade to a higher suite tier.');
+                const cost = newRoom.price - curRoom.price;
+                pay(cost);
+                u.residence = Object.assign({}, u.residence, { roomTier: newRoom.id });
+                store.put(`users/${user}/residence`, u.residence);
+                return {
+                    money: u.money,
+                    residence: u.residence,
+                    houseIndex: null
+                };
+            }
             default:
                 throw new Error('Unknown purchase kind.');
         }
@@ -4198,7 +4365,8 @@ const ECONOMY_OPS = {
         const u = userRec(user);
         const list = msg.furniture;
         if (!Array.isArray(list)) throw new Error('furniture must be a list.');
-        if (list.length > MAX_PLACED_FURNITURE) throw new Error(`Max ${MAX_PLACED_FURNITURE} placed items.`);
+        const maxAllowed = Math.min(MAX_PLACED_FURNITURE, ECON.maxFurnitureForResidence(u.residence));
+        if (list.length > maxAllowed) throw new Error(`Max ${maxAllowed} placed items for this residence.`);
         const before = Array.isArray(u.furniture) ? u.furniture : [];
         const inv = Object.assign({}, (u.inventory && typeof u.inventory === 'object') ? u.inventory : {});
         // owned = in the box + already placed; placing draws from that total
@@ -4591,7 +4759,7 @@ const ECONOMY_OPS = {
         const owner = String(msg.owner || '').trim().toLowerCase();
         if (!owner) throw new Error('No such house.');
         const rec = store.get('users/' + owner);
-        if (!rec || rec.houseIndex == null) throw new Error('No such house.');
+        if (!rec || (rec.houseIndex == null && !rec.residence)) throw new Error('No such house.');
         if (owner !== user && rec.locked && !isStaff(user)) {
             const friends = (rec.friends && typeof rec.friends === 'object') ? rec.friends : {};
             const keys = (rec.keys && typeof rec.keys === 'object') ? rec.keys : {};
@@ -4599,16 +4767,13 @@ const ECONOMY_OPS = {
                 throw new Error(`🔒 ${owner}'s door is locked — you need to be their friend AND hold their key.`);
             }
         }
-        // Remember this player was cleared into that house, so their presence
-        // is allowed to say `inside:<owner>` (see the presence handler). A
-        // console-hacker can't make themselves appear in a house they never
-        // legitimately entered.
         homeVisiting.set(user, { owner: owner === user ? null : owner, ts: Date.now() });
         const fr = rec.furniture;
         return {
             owner,
             locked: !!rec.locked,
             houseStyle: rec.houseStyle || {},
+            residence: rec.residence || (rec.houseIndex != null ? { type: 'house', houseIndex: rec.houseIndex, tier: 'townhouse' } : null),
             furniture: Array.isArray(fr) ? fr : (fr && typeof fr === 'object' ? Object.values(fr) : []),
         };
     },
@@ -4987,6 +5152,9 @@ const ECONOMY_OPS = {
             const it = pack[id];
             if (!it) throw new Error("That piece isn't in your pack.");
             if (!ECON.GEAR_SLOTS.includes(it.slot)) throw new Error('That piece has no slot.');
+            if ((it.admin || (it.base && String(it.base).startsWith('admin_')) || (it.uq && String(it.uq).startsWith('admin_'))) && !isStaff(user)) {
+                throw new Error('Staff only.');
+            }
             const wasWearing = eq[it.slot] || null;
             eq[it.slot] = id;
             saveGear(user, u);
@@ -5081,6 +5249,9 @@ const ECONOMY_OPS = {
                 if (msg.plus != null) it.plus = Math.max(0, Math.min(ECON.ENHANCE_MAX[it.rarity] || 5, msg.plus | 0));
                 if (Array.isArray(msg.mods)) it.mods = msg.mods.filter(m => m && ECON.GEAR_MODS[m.k]).slice(0, 6).map(m => ({ k: String(m.k), v: +m.v || 0 }));
             }
+            if ((it.admin || (it.base && String(it.base).startsWith('admin_')) || (it.uq && String(it.uq).startsWith('admin_'))) && !isStaff(target)) {
+                throw new Error('Admin gear can only be granted to staff.');
+            }
             it.staff = true;
             while (tpack[it.id]) it.id = it.id + 'x';
             tpack[it.id] = it;
@@ -5091,6 +5262,114 @@ const ECONOMY_OPS = {
                 return { granted: it, target };
             }
             return Object.assign(gearView(tu, user), { granted: it, target });
+        }
+
+        // Staff only: claim and auto-equip the Admin God Set (10x damage, complete invincibility).
+        // Authoritative enforcement: requireStaffPanel(user) and isStaff(user).
+        if (action === 'staff_admin_gear') {
+            requireStaffPanel(user);
+            if (!isStaff(user)) throw new Error('Staff only.');
+            const adminDefs = [
+                {
+                    base: 'admin_blade',
+                    slot: 'weapon',
+                    name: "Overseer's Sovereign Blade",
+                    stats: { atk: 1200, def: 200, vit: 400 },
+                    mods: [
+                        { k: 'crit', v: 0.50 },
+                        { k: 'critDmg', v: 2.0 },
+                        { k: 'bossDmg', v: 1.0 },
+                        { k: 'resonance', v: 0.25 },
+                    ],
+                },
+                {
+                    base: 'admin_ranged',
+                    slot: 'ranged',
+                    name: "Overseer's Judgement Arbalest",
+                    stats: { atk: 1200, def: 200, vit: 400 },
+                    mods: [
+                        { k: 'crit', v: 0.50 },
+                        { k: 'critDmg', v: 2.0 },
+                        { k: 'bossDmg', v: 1.0 },
+                        { k: 'resonance', v: 0.25 },
+                    ],
+                },
+                {
+                    base: 'admin_aegis',
+                    slot: 'chest',
+                    name: "Aegis of the Immortal Sovereign",
+                    stats: { atk: 300, def: 5000, vit: 5000 },
+                    mods: [
+                        { k: 'thorns', v: 2.0 },
+                        { k: 'takenMult', v: 0.0 },
+                        { k: 'regen', v: 50 },
+                        { k: 'resonance', v: 0.25 },
+                    ],
+                },
+                {
+                    base: 'admin_crown',
+                    slot: 'helmet',
+                    name: "Crown of the Overseer",
+                    stats: { atk: 400, def: 2500, vit: 2500 },
+                    mods: [
+                        { k: 'moveSpeed', v: 0.25 },
+                        { k: 'dashCd', v: 0.50 },
+                        { k: 'resonance', v: 0.25 },
+                    ],
+                },
+                {
+                    base: 'admin_greaves',
+                    slot: 'legs',
+                    name: "Greaves of the World-Strider",
+                    stats: { atk: 300, def: 2500, vit: 2500 },
+                    mods: [
+                        { k: 'moveSpeed', v: 0.35 },
+                        { k: 'dashDist', v: 0.50 },
+                        { k: 'resonance', v: 0.25 },
+                    ],
+                },
+                {
+                    base: 'admin_ring',
+                    slot: 'ring',
+                    name: "Seal of Absolute Authority",
+                    stats: { atk: 600, def: 2500, vit: 2500 },
+                    mods: [
+                        { k: 'magicFind', v: 2.0 },
+                        { k: 'lifesteal', v: 0.30 },
+                        { k: 'bossDmg', v: 1.0 },
+                        { k: 'resonance', v: 0.25 },
+                    ],
+                },
+            ];
+
+            const now = Date.now();
+            for (const def of adminDefs) {
+                const id = `admin_${def.slot}_${user}`;
+                const it = {
+                    id,
+                    base: def.base,
+                    slot: def.slot,
+                    lvl: 12,
+                    rarity: 'arcane',
+                    roll: 1.15,
+                    admin: true,
+                    staff: true,
+                    lock: true,
+                    v: 2,
+                    plus: 12,
+                    stats: def.stats,
+                    mods: def.mods,
+                    sockets: 3,
+                    gems: ['ruby_5', 'diamond_5', 'emerald_5'],
+                    uq: def.base,
+                    at: now,
+                };
+                pack[id] = it;
+                eq[def.slot] = id;
+            }
+            saveGear(user, u);
+            console.log(`[gear] STAFF ${user} claimed and equipped the Admin God Set`);
+            return Object.assign(gearView(u, user), { claimedAdminSet: true });
         }
 
         throw new Error('Unknown gear action.');
@@ -5305,7 +5584,8 @@ const ECONOMY_OPS = {
             run.hitLast.set(k, now);
             const ids = (Array.isArray(msg.enemies) ? msg.enemies : [])
                 .slice(0, swing ? ECON.kindTargets(wpn.kind) : ECON.DUNGEON_HIT_MAX_TARGETS).map(x => String(x || ''));
-            const mult = ECON.masteryCombatMult(masteryLevelOf(u, 'combat')) * ECON.gearAttackMult(wpn.atk);
+            let mult = ECON.masteryCombatMult(masteryLevelOf(u, 'combat')) * ECON.gearAttackMult(wpn.atk);
+            if (hasAdminGear(u, user)) mult *= 10;
             const swingBase = ECON.kindHitDmg(wpn.kind, 'dungeon');
             const legacyDmg = Math.max(1, Math.round((swing ? swingBase : ECON.DUNGEON_HIT_DMG.sword) * mult));
             const cfg = rowCfg(run, floor);
@@ -5572,8 +5852,9 @@ const ECONOMY_OPS = {
             // Combat mastery and equipped attack scale the swing; the gear's
             // effects (crit, boss damage, counters) roll on top of it.
             const fx = ECON.weaponFx(gearFxOf(user), wpn.kind);
-            const mult = ECON.masteryCombatMult(masteryLevelOf(u, 'combat'))
+            let mult = ECON.masteryCombatMult(masteryLevelOf(u, 'combat'))
                 * ECON.gearAttackMult(wpn.atk);
+            if (hasAdminGear(u, user)) mult *= 10;
             const r = ECON.rollHitDamage(ECON.kindHitDmg(wpn.kind, 'boss') * mult, fx, { kind: msg.part === 'head' ? 'boss' : 'part', hpFrac: bossHpOf(b) / b.maxHp }, Math.random, run.counters[user]);
             run.counters[user] = r.counterState;
             let dmg = Math.min(target.hp, Math.round(r.dmg * swingBuffMult(run, user, now, fx, !!msg.afterDash)));
@@ -5581,7 +5862,7 @@ const ECONOMY_OPS = {
             target.hp -= dmg;
             b.damage[user] = (b.damage[user] || 0) + dmg;
             if (run.tier === 'arcane_depths') run.segDamage[user] = (run.segDamage[user] | 0) + dmg;
-            const reflected = b.wardUntil && now >= b.wardFrom && now <= b.wardUntil ? Math.round(dmg * (b.reflect || 0)) : 0;
+            const reflected = hasAdminGear(u, user) ? 0 : (b.wardUntil && now >= b.wardFrom && now <= b.wardUntil ? Math.round(dmg * (b.reflect || 0)) : 0);
             // Arena procs land on the living adds.
             const procs = bossProcs(run, user, r, dmg, now);
             const downed = target.hp <= 0;
