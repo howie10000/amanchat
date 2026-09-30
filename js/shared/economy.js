@@ -2699,7 +2699,9 @@
     const m = GEAR_MODS[k];
     const scale = Math.sqrt(clampGearLvl(lvl) / 7);
     const v = (m.min + rand() * (m.max - m.min)) * scale;
-    return { k, v: Math.round(v * 10000) / 10000 };
+    let finalV = Math.round(v * 10000) / 10000;
+    if (k === "lifesteal" && finalV <= 0) finalV = 0.01;
+    return { k, v: finalV };
   }
 
   function gearStatBudget(base, lvl, rarity, roll) {
@@ -2770,7 +2772,11 @@
     o.v = (item.v | 0) || 1;
     o.plus = Math.max(0, Math.min(12, item.plus | 0));
     o.fs = Math.max(0, item.fs | 0);
-    o.mods = Array.isArray(item.mods) ? item.mods.map(m => Object.assign({}, m)) : [];
+    o.mods = Array.isArray(item.mods) ? item.mods.map(m => {
+      const copy = Object.assign({}, m);
+      if (copy && copy.k === "lifesteal" && (+copy.v <= 0)) copy.v = 0.01;
+      return copy;
+    }) : [];
     o.sockets = Math.max(0, item.sockets | 0);
     o.gems = Array.isArray(item.gems) ? item.gems.slice() : [];
     o.lock = !!item.lock;
@@ -2883,7 +2889,8 @@
   function addFx(fx, src, scale) {
     scale = scale == null ? 1 : scale;
     for (const k of Object.keys(src || {})) {
-      const v = src[k];
+      let v = src[k];
+      if (k === "lifesteal" && v != null && +v <= 0) v = 0.01;
       if (FX_SUM_KEYS.includes(k)) fx[k] += (+v || 0) * scale;
       else if (k === "chain") fx.chain.chance += (typeof v === "number" ? v : (+v.chance || 0)) * scale;
       else if (k === "takenMult") fx.takenMult *= (+v || 1);
@@ -2988,8 +2995,8 @@
     o = o || {};
     const ls = Math.max(0, +lifesteal || 0), d = Math.max(0, +dealt || 0);
     if (!(ls > 0) || !(d > 0)) return 0;
-    let heal = ls * d * (o.boss ? LIFESTEAL.BOSS_EFF : 1);
-    const maxHp = Math.max(1, +o.maxHp || GEAR_BASE_HP);
+    const maxHp = Math.max(1, +(o.maxHp != null ? o.maxHp : o.hp) || (o.dealtMaxHp ? d : 1000));
+    let heal = ls * maxHp * (o.boss ? LIFESTEAL.BOSS_EFF : 1);
     const b = o.bucket;
     if (b) {
       const rate = maxHp * (o.boss ? LIFESTEAL.BOSS_CAP_PCT_PER_SEC : LIFESTEAL.CAP_PCT_PER_SEC), depth = rate * LIFESTEAL.BURST_SEC;
@@ -2999,10 +3006,15 @@
       // (a bucket filled in the maze does not carry into a boss swing).
       b.avail = Math.min(depth, b.avail + Math.max(0, now - (+b.at || 0)) / 1000 * rate);
       b.at = now;
-      heal = Math.floor(Math.min(heal, b.avail) * 10) / 10;
-      b.avail -= heal;
+      const allowed = Math.min(heal, b.avail);
+      heal = Math.floor(allowed * 100) / 100;
+      if (heal === 0 && allowed > 0 && b.avail >= 0.01) heal = 0.01;
+      b.avail = Math.max(0, b.avail - heal);
+    } else {
+      heal = Math.floor(heal * 100) / 100;
+      if (heal === 0 && ls > 0 && maxHp > 0) heal = 0.01;
     }
-    return Math.max(0, Math.floor(heal * 10) / 10);
+    return Math.max(0, Math.floor(heal * 100) / 100);
   }
 
   // A fighter's power, from what they wear: max HP, mitigation, effective HP

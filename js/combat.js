@@ -1652,7 +1652,10 @@ function handleHitReply(res, weapon) {
   // ECON.lifestealHeal); an older server's reply falls back to the same rule.
   if (weapon !== "thorns") {
     const heal = applyLifesteal(res, (res.dmg || 0) * Math.max(1, changed.length), false);
-    if (heal >= 0.5 && G && Math.random() < 0.6) G.floatText(state.pos.x, state.pos.y - 36, "+" + Math.round(heal), "#4ade80", { size: 11, dur: 700 });
+    if (heal > 0 && G && Math.random() < 0.6) {
+      const txt = heal >= 1 ? "+" + Math.round(heal) : "+" + (Math.round(heal * 10) / 10 || Math.round(heal * 100) / 100);
+      G.floatText(state.pos.x, state.pos.y - 36, txt, "#4ade80", { size: 11, dur: 700 });
+    }
   }
   if (res.procs) showProcs(res.procs);
   if (res.spawned && res.spawned.length) adoptSpawned(res.spawned, {});
@@ -1699,7 +1702,11 @@ function onLocalHit(e, dmg, showNumber) {
   if (showNumber) {
     G.floatText(e.x, e.y - 22, (e._lastCrit ? "✦" : "") + Math.round(dmg), e._lastCrit ? "#fde047" : "#fff", { size: e._lastCrit ? 19 : 12, crit: !!e._lastCrit });
     const fx = playerFx();
-    applyLifesteal(null, dmg, false);
+    const lsHeal = applyLifesteal(null, dmg, false);
+    if (lsHeal > 0 && Math.random() < 0.6) {
+      const txt = lsHeal >= 1 ? "+" + Math.round(lsHeal) : "+" + (Math.round(lsHeal * 10) / 10 || Math.round(lsHeal * 100) / 100);
+      G.floatText(state.pos.x, state.pos.y - 36, txt, "#4ade80", { size: 11, dur: 700 });
+    }
     if (fx.onHitSlow && Math.random() < (fx.onHitSlow.chance || 0)) { e.slowUntil = Date.now() + (fx.onHitSlow.ms || 1500); e.slowMult = 1 - (fx.onHitSlow.pct || 0.3); }
   }
   G.burst(e.x, e.y, [e.color || "#fff", "#fde68a"], 5, { speed: 2.6, life: 20 });
@@ -1941,7 +1948,11 @@ function applyBossHit(res, tg) {
   if (res.crit || vuln > 1) shakeDungeon(5);
   if (res.procs) showProcs(res.procs);
   if (res.reflected > 0) { takePlayerDamage(res.reflected); playerDead(); }
-  applyLifesteal(res, dealt, true);
+  const bHeal = applyLifesteal(res, dealt, true);
+  if (bHeal > 0 && G && Math.random() < 0.6) {
+    const txt = bHeal >= 1 ? "+" + Math.round(bHeal) : "+" + (Math.round(bHeal * 10) / 10 || Math.round(bHeal * 100) / 100);
+    G.floatText(state.pos.x, state.pos.y - 36, txt, "#4ade80", { size: 11, dur: 700 });
+  }
 }
 
 // Arena setup, shared by the mini fight halfway through a run and the sealed
@@ -2800,7 +2811,11 @@ async function bossAttackAt(mx, my, handOverride) {
       shakeDungeon(6);
       playerDead();
     }
-    applyLifesteal(res, dealt, true);
+    const bHeal = applyLifesteal(res, dealt, true);
+    if (bHeal > 0 && G && Math.random() < 0.6) {
+      const txt = bHeal >= 1 ? "+" + Math.round(bHeal) : "+" + (Math.round(bHeal * 10) / 10 || Math.round(bHeal * 100) / 100);
+      G.floatText(state.pos.x, state.pos.y - 36, txt, "#4ade80", { size: 11, dur: 700 });
+    }
   } catch (e) {
     if (!/Too fast/.test(e.message)) toast(escapeHtml(e.message), 1200);
   }

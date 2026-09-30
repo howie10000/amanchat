@@ -251,9 +251,12 @@ function adIsV2(item) { return !!item && !ECON.isTome(item) && (item.v | 0) >= 2
 function adRar(r) { return ECON.GEAR_RARITY_INFO[r] || ECON.GEAR_RARITY_INFO.fine; }
 function adRarIdx(r) { return ECON.gearRarityIdx ? ECON.gearRarityIdx(r) : Math.max(0, ECON.GEAR_RARITIES.indexOf(r)); }
 function adPct(v, digits) {
-  const n = (+v || 0) * 100;
-  const d = digits != null ? digits : (Math.abs(n) < 10 && Math.round(n) !== n ? 1 : 0);
-  return n.toFixed(d).replace(/\.0$/, "") + "%";
+  let n = (+v || 0) * 100;
+  if (+v > 0 && n < 0.01) n = 0.01;
+  const d = digits != null ? digits
+    : (Math.abs(n) < 10 && Math.round(n * 100) !== Math.round(n * 10) * 10) ? 2
+    : (Math.abs(n) < 10 && Math.round(n) !== n ? 1 : 0);
+  return n.toFixed(d).replace(/(\.[0-9]*[1-9])0+$/, "$1").replace(/\.0+$/, "") + "%";
 }
 function adTitle(id) { return String(id || "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()); }
 // One rolled mod as text: "+4.3% Critical chance".
@@ -262,7 +265,9 @@ function adModText(m) {
   if (!def) return "";
   if (m.k === "resonance") return "Resonance: +5% to every other mod";
   if (m.k === "dashCd") return "-" + adPct(m.v) + " Dash cooldown";
-  const effective = m.k === "lifesteal" ? m.v * (ECON.LIFESTEAL_MULT != null ? ECON.LIFESTEAL_MULT : ECON.ITEM_HEALING_MULT) : m.k === "regen" ? m.v * ECON.ITEM_HEALING_MULT : m.v;
+  let v = m.v;
+  if (m.k === "lifesteal" && +v <= 0) v = 0.01;
+  const effective = m.k === "lifesteal" ? v * (ECON.LIFESTEAL_MULT != null ? ECON.LIFESTEAL_MULT : ECON.ITEM_HEALING_MULT) : m.k === "regen" ? v * ECON.ITEM_HEALING_MULT : v;
   if (!def.pct) return "+" + (Math.round((+effective || 0) * 100) / 100) + " " + def.label;
   return "+" + adPct(effective) + " " + def.label;
 }
@@ -281,7 +286,9 @@ function adFxLines(fx, effective = false) {
   const out = [];
   if (!fx || typeof fx !== "object") return out;
   for (const k of Object.keys(fx)) {
-    const v = effective ? fx[k] : k === "lifesteal" ? fx[k] * (ECON.LIFESTEAL_MULT != null ? ECON.LIFESTEAL_MULT : ECON.ITEM_HEALING_MULT) : k === "regen" ? fx[k] * ECON.ITEM_HEALING_MULT : fx[k];
+    let rawV = fx[k];
+    if (k === "lifesteal" && rawV != null && +rawV <= 0) rawV = 0.01;
+    const v = effective ? rawV : k === "lifesteal" ? rawV * (ECON.LIFESTEAL_MULT != null ? ECON.LIFESTEAL_MULT : ECON.ITEM_HEALING_MULT) : k === "regen" ? rawV * ECON.ITEM_HEALING_MULT : rawV;
     if (v == null || v === 0 || k === "sets") continue;
     if (AD_FX_LABEL[k] && typeof v === "number") out.push("+" + adPct(v) + " " + AD_FX_LABEL[k]);
     else if (k === "regen" && typeof v === "number") out.push("+" + (Math.round(v * 10) / 10) + " HP regen /s");
@@ -369,7 +376,7 @@ function adCompare(item) {
     const f0 = ECON.gearFx(cur), f1 = ECON.gearFx(next);
     for (const k of Object.keys(AD_FX_LABEL).concat(["regen"], Object.keys(AD_FX_CD))) {
       const d = (+f1[k] || 0) - (+f0[k] || 0);
-      if (Math.abs(d) < 1e-4) continue;
+      if (Math.abs(d) < 1e-5) continue;
       const good = d > 0;
       const txt = k === "regen" ? (good ? "+" : "−") + (Math.round(Math.abs(d) * 10) / 10) + " regen/s"
         : AD_FX_CD[k] ? (good ? "−" : "+") + adPct(Math.abs(d)) + " " + AD_FX_CD[k].toLowerCase()
