@@ -2911,9 +2911,9 @@
   // bonuses at 2/4 pieces, then applies GEAR_FX_CAPS.
   const ITEM_HEALING_MULT = 0.25;
   // Lifesteal has its own, much smaller multiplier (BALANCE.md): at the 12%
-  // cap it is 1.2% of the damage you deal, before the boss efficiency and the
+  // cap it is 1.5% of the damage you deal, before the boss efficiency and the
   // per-second cap in lifestealHeal.
-  const LIFESTEAL_MULT = 0.10;
+  const LIFESTEAL_MULT = 0.125;
   function gearFx(items) {
     const fx = emptyFx();
     for (const raw of (items || [])) {
@@ -3008,7 +3008,7 @@
       b.at = now;
       const allowed = Math.min(heal, b.avail);
       heal = Math.floor(allowed * 100) / 100;
-      if (heal === 0 && allowed > 0 && b.avail >= 0.01) heal = 0.01;
+      if (heal === 0 && ls > 0 && maxHp > 0) heal = 0.01;
       b.avail = Math.max(0, b.avail - heal);
     } else {
       heal = Math.floor(heal * 100) / 100;

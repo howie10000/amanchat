@@ -5595,37 +5595,49 @@ const ECONOMY_OPS = {
             let firstDmg = null, anyCrit = false, firstRoll = null, landed = 0;
             const escapeMs = (DUNGEON.ENEMY_TYPES.goblin || {}).escapeMs || 22000;
             const hitOne = (id, scale) => {
-                if (seen.has(id) || !(hp[id] > 0)) return null;
+                let targetHp = hp, targetMeta = meta, targetFloor = floor;
+                if (!(targetHp[id] > 0)) {
+                    for (const f of Object.keys(run.enemyHp || {})) {
+                        if (run.enemyHp[f] && run.enemyHp[f][id] > 0) {
+                            targetHp = run.enemyHp[f];
+                            targetMeta = (run.enemyMeta && run.enemyMeta[f]) || meta;
+                            targetFloor = f;
+                            break;
+                        }
+                    }
+                }
+                if (seen.has(id) || !(targetHp[id] > 0)) return null;
                 seen.add(id);
-                const m = meta[id] || { type: 'melee', affixes: [], maxHp: hp[id] };
+                const m = targetMeta[id] || { type: 'melee', affixes: [], maxHp: targetHp[id] };
+                if (run.boss && run.boss.adds && run.boss.adds.includes(id)) m.arena = true;
                 const far = leashRefusal(pres, m);
                 if (far) { refused.push({ id, why: far }); return null; }
-                const gob = m.treasure ? features.goblinOf(run, floor) : null;
+                const gob = m.treasure ? features.goblinOf(run, targetFloor) : null;
                 if (gob) {
                     if (!gob.wokeAt) gob.wokeAt = now;
                     else if (now > gob.wokeAt + escapeMs + 1500) { refused.push({ id, why: 'It slipped away.' }); return null; }
                 }
-                if ((m.affixes || []).includes('warded') && Object.keys(meta).some(o => o !== id && meta[o].trial && meta[o].trial === m.trial && meta[o].wave === m.wave && (meta[o].affixes || []).includes('warded') && hp[o] > 0)) { refused.push({ id, why: 'warded' }); return null; }
+                if ((m.affixes || []).includes('warded') && Object.keys(targetMeta).some(o => o !== id && targetMeta[o].trial && targetMeta[o].trial === m.trial && targetMeta[o].wave === m.wave && (targetMeta[o].affixes || []).includes('warded') && targetHp[o] > 0)) { refused.push({ id, why: 'warded' }); return null; }
                 const t = DUNGEON.ENEMY_TYPES[m.type] || {};
                 let base;
                 if (weapon === 'thorns') base = Math.round(fx.thorns * (t.dmg || 8) * (cfg.hpMult || 1) * 3);
                 else if (weapon === 'burst') base = ECON.DUNGEON_HIT_DMG.sword * mult * (+fx.onDashBurst.frac || 0);
                 else base = swingBase * mult;
                 base *= scale;
-                const r = ECON.rollHitDamage(base, fx, { kind: m.elite ? 'elite' : 'enemy', hpFrac: hp[id] / (m.maxHp || hp[id]) }, Math.random, run.counters[user]);
+                const r = ECON.rollHitDamage(base, fx, { kind: m.elite ? 'elite' : 'enemy', hpFrac: targetHp[id] / (m.maxHp || targetHp[id]) }, Math.random, run.counters[user]);
                 run.counters[user] = r.counterState;
                 const resist = (t.resist || {})[weapon];
                 let dmg = Math.max(1, Math.round(r.dmg * extra * (resist != null ? resist : 1)));
                 if ((m.affixes || []).includes('vampiric') && m.lastHitAt && now - m.lastHitAt > 2500)
-                    hp[id] = Math.min(m.maxHp, hp[id] + Math.round(m.maxHp * 0.025 * (now - m.lastHitAt - 2500) / 1000));
+                    targetHp[id] = Math.min(m.maxHp, targetHp[id] + Math.round(m.maxHp * 0.025 * (now - m.lastHitAt - 2500) / 1000));
                 if (m.shieldMax) {
                     if (m.lastHitAt && now - m.lastHitAt >= 6000) m.shield = m.shieldMax;
                     const ab = Math.min(m.shield | 0, dmg); m.shield -= ab; dmg -= ab;
                 }
                 m.lastHitAt = now;
-                landed += Math.min(hp[id], dmg);
-                hp[id] = Math.max(0, hp[id] - dmg);
-                const c = { id, hp: hp[id], dead: hp[id] <= 0 };
+                landed += Math.min(targetHp[id], dmg);
+                targetHp[id] = Math.max(0, targetHp[id] - dmg);
+                const c = { id, hp: targetHp[id], dead: targetHp[id] <= 0 };
                 if (m.shieldMax) c.shield = m.shield;
                 changed.push(c);
                 if (firstDmg == null) firstDmg = dmg;

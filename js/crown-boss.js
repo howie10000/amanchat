@@ -533,6 +533,24 @@
     let best = null, bestScore = Infinity, why = null;
     const consider = (key, box, r) => {
       const d = Math.hypot(me.x - box.x, me.y - box.y) - r;
+      if (aim) {
+        const ax = aim.x - me.x, ay = aim.y - me.y, alen = Math.hypot(ax, ay) || 1;
+        const bx = box.x - me.x, by = box.y - me.y, blen = Math.hypot(bx, by) || 1;
+        const along = (bx * ax + by * ay) / alen;
+        const perp = Math.abs(-bx * ay + by * ax) / alen;
+        const aimD = Math.hypot(aim.x - box.x, aim.y - box.y);
+        let diff = Math.abs(Math.atan2(by, bx) - Math.atan2(ay, ax));
+        if (diff > Math.PI) diff = 2 * Math.PI - diff;
+        if (weapon === 'pistol') {
+          const inRay = along > 0 && (perp < r + 36 || diff < Math.max(0.35, (r + 24) / blen));
+          const atCursor = aimD < r + 45;
+          if (!inRay && !atCursor) return;
+        } else {
+          const inArc = along > -10 && (diff < Math.PI * 0.55 || perp < r + 30);
+          const atCursor = aimD < r + 36;
+          if (!inArc && !atCursor) return;
+        }
+      }
       const aimD = aim ? Math.hypot(aim.x - box.x, aim.y - box.y) : 0;
       const score = weapon === 'pistol' ? aimD : d + aimD * 0.15;
       if (score < bestScore) { bestScore = score; best = { body: key, x: box.x, y: box.y, r }; }

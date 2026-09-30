@@ -692,8 +692,8 @@ function updateDungeon() {
     if (b.boom) { stepShotBoomerang(b); continue; }
     const nx = b.x + b.vx, ny = b.y + b.vy;
     if (collidesWalls(nx, ny, 3)) { b.life = 0; flushShot(b); continue; }
-    b.x = nx; b.y = ny; b.life--;
-    for (const e of state.enemies) {
+    const bulletTargets = (state.dungeon && state.dungeon.bossRoom ? (state.dungeon.arenaEnemies || []) : []).concat(state.enemies);
+    for (const e of bulletTargets) {
       if (e.gone || (e.ai === "mimic" && !e.awake)) continue;
       if (b.hitIds && b.hitIds.includes(e.id)) continue;     // a piercing bolt strikes each foe once
       if (Math.hypot(b.x - e.x, b.y - e.y) < e.size + 4) {
@@ -1652,7 +1652,7 @@ function handleHitReply(res, weapon) {
   // ECON.lifestealHeal); an older server's reply falls back to the same rule.
   if (weapon !== "thorns") {
     const heal = applyLifesteal(res, (res.dmg || 0) * Math.max(1, changed.length), false);
-    if (heal > 0 && G && Math.random() < 0.6) {
+    if (heal > 0 && G) {
       const txt = heal >= 1 ? "+" + Math.round(heal) : "+" + (Math.round(heal * 10) / 10 || Math.round(heal * 100) / 100);
       G.floatText(state.pos.x, state.pos.y - 36, txt, "#4ade80", { size: 11, dur: 700 });
     }
@@ -1703,7 +1703,7 @@ function onLocalHit(e, dmg, showNumber) {
     G.floatText(e.x, e.y - 22, (e._lastCrit ? "✦" : "") + Math.round(dmg), e._lastCrit ? "#fde047" : "#fff", { size: e._lastCrit ? 19 : 12, crit: !!e._lastCrit });
     const fx = playerFx();
     const lsHeal = applyLifesteal(null, dmg, false);
-    if (lsHeal > 0 && Math.random() < 0.6) {
+    if (lsHeal > 0) {
       const txt = lsHeal >= 1 ? "+" + Math.round(lsHeal) : "+" + (Math.round(lsHeal * 10) / 10 || Math.round(lsHeal * 100) / 100);
       G.floatText(state.pos.x, state.pos.y - 36, txt, "#4ade80", { size: 11, dur: 700 });
     }
@@ -1949,7 +1949,7 @@ function applyBossHit(res, tg) {
   if (res.procs) showProcs(res.procs);
   if (res.reflected > 0) { takePlayerDamage(res.reflected); playerDead(); }
   const bHeal = applyLifesteal(res, dealt, true);
-  if (bHeal > 0 && G && Math.random() < 0.6) {
+  if (bHeal > 0 && G) {
     const txt = bHeal >= 1 ? "+" + Math.round(bHeal) : "+" + (Math.round(bHeal * 10) / 10 || Math.round(bHeal * 100) / 100);
     G.floatText(state.pos.x, state.pos.y - 36, txt, "#4ade80", { size: 11, dur: 700 });
   }
@@ -2010,17 +2010,19 @@ function adoptBoss(view, summonIds) {
     if (look.open && !d.openField && view.status === "alive") setArenaOpen(true);
   }
   // Adds the server lists that we have not placed yet (a rejoin mid-fight).
-  if (Array.isArray(view.adds) && view.adds.length) {
-    const have = new Set((d.arenaEnemies || []).map(e => e.id));
-    // Adds this very push is summoning arrive through the attack's portal wind-up,
-    // not pre-placed and awake here (QA M-5).
-    const rows = view.adds.filter(a => a && a.hp > 0 && !have.has(a.id) && !(summonIds && summonIds.has(a.id))).map((a, i) => Object.assign({
-      x: DUNGEON_W / 2 + Math.cos(i * 2.1) * 220, y: DUNGEON_H * 0.46 + Math.sin(i * 2.1) * 120, arena: true,
-    }, a, { arena: true }));
-    const summoning = (d.bossAttacks || []).some(a => a.type === "summon" && !a.spawned);
-    if (rows.length && !summoning) adoptSpawned(rows, {});
-    const live = new Set(view.adds.filter(a => a.hp > 0).map(a => a.id));
-    for (const e of d.arenaEnemies || []) if (!live.has(e.id) && view.adds.some(a => a.id === e.id)) e.hp = 0;
+  if (Array.isArray(view.adds)) {
+    if (view.adds.length) {
+      const have = new Set((d.arenaEnemies || []).map(e => e.id));
+      // Adds this very push is summoning arrive through the attack's portal wind-up,
+      // not pre-placed and awake here (QA M-5).
+      const rows = view.adds.filter(a => a && a.hp > 0 && !have.has(a.id) && !(summonIds && summonIds.has(a.id))).map((a, i) => Object.assign({
+        x: DUNGEON_W / 2 + Math.cos(i * 2.1) * 220, y: DUNGEON_H * 0.46 + Math.sin(i * 2.1) * 120, arena: true,
+      }, a, { arena: true }));
+      const summoning = (d.bossAttacks || []).some(a => a.type === "summon" && !a.spawned);
+      if (rows.length && !summoning) adoptSpawned(rows, {});
+    }
+    const live = new Set(view.adds.filter(a => a && a.hp > 0).map(a => a.id));
+    for (const e of d.arenaEnemies || []) if (!live.has(e.id)) e.hp = 0;
   }
   if (view.status === "dead" && d.arenaEnemies) for (const e of d.arenaEnemies) e.hp = 0;
   // The Sundered Crown: motion plans, pillars, shards, polarity ride in the view.
@@ -2744,21 +2746,33 @@ async function bossAttackAt(mx, my, handOverride) {
   const reach = K.bossReach;
   const PR = ECON.GUILD_BOSS.PART_HIT_R, HR = ECON.GUILD_BOSS.HEAD_HIT_R;
   const nParts = bossPartCount(b);
-  // A weak point is a DISC, not a point, and both checks measure to the EDGE of
-  // that disc rather than to its centre. Measuring to the centre is what made a
-  // limb you were plainly standing under unhittable from one side and fine from
-  // the other: the art is drawn 1.2-1.3x around the anchor, so the anchor is
-  // never where the thing looks like it is.
   const guardUp = b.parts.some((p, i) => i < nParts && p.hp > 0);
   let part = null, best = Infinity;
+  const ang = Math.atan2(my - state.pos.y, mx - state.pos.x);
+  const pistol = hand === "ranged";
+  function partAimed(tx, ty, r) {
+    const ex = tx - state.pos.x, ey = ty - state.pos.y;
+    const dist = Math.hypot(ex, ey);
+    const dm = Math.hypot(mx - tx, my - ty);
+    const along = ex * Math.cos(ang) + ey * Math.sin(ang);
+    const perp = Math.abs(-ex * Math.sin(ang) + ey * Math.cos(ang));
+    let diff = Math.abs(Math.atan2(ey, ex) - ang);
+    if (diff > Math.PI) diff = 2 * Math.PI - diff;
+    if (pistol) {
+      return dm < r * 1.5 + 30 || (along > 0 && (perp < r + 26 || diff < Math.max(0.32, (r + 20) / Math.max(20, dist))));
+    } else {
+      return dm < r + 30 || (along > -10 && (inMeleeShape(K, ex, ey, ang, r) || diff < Math.PI / 1.6));
+    }
+  }
   // The leyline pylons, while the shield is up, are targets of their own.
   if (b.pylonShield && !b.pylonsBroken) {
     b.parts.forEach((p, i) => {
       if (i < nParts || p.hp <= 0) return;
       const pos = pylonScreenPos(i - nParts);
-      const dp = Math.max(0, Math.hypot(state.pos.x - pos.x, state.pos.y - (pos.y - 20)) - PR);
-      const dm = Math.hypot(mx - pos.x, my - (pos.y - 20));
-      if (dp < reach && dm < PR * 1.6 + 30 && dp < best) { best = dp; part = i; }
+      const py = pos.y - 20;
+      const dp = Math.max(0, Math.hypot(state.pos.x - pos.x, state.pos.y - py) - PR);
+      const dm = Math.hypot(mx - pos.x, my - py);
+      if (dp < reach && partAimed(pos.x, py, PR) && dm < best) { best = dm; part = i; }
     });
   }
   if (part === null) b.parts.forEach((p, i) => {
@@ -2766,24 +2780,12 @@ async function bossAttackAt(mx, my, handOverride) {
     const pos = bossPartScreenPos(i, nParts);
     const dm = Math.hypot(mx - pos.x, my - pos.y);
     const dp = Math.max(0, Math.hypot(state.pos.x - pos.x, state.pos.y - pos.y) - PR);
-    if (dm < PR && dp < reach && dp < best) { best = dp; part = i; }
+    if (dp < reach && partAimed(pos.x, pos.y, PR) && dm < best) { best = dm; part = i; }
   });
-  // Clicked past every disc while standing in range of one anyway? Take the
-  // one the cursor is nearest. Aiming decides WHICH weak point you hit, never
-  // whether the swing counts at all.
-  if (part === null && guardUp) {
-    b.parts.forEach((p, i) => {
-      if (i >= nParts || p.hp <= 0) return;
-      const pos = bossPartScreenPos(i, nParts);
-      const dp = Math.max(0, Math.hypot(state.pos.x - pos.x, state.pos.y - pos.y) - PR);
-      const aim = Math.hypot(mx - pos.x, my - pos.y);
-      if (dp < reach && aim < best) { best = aim; part = i; }
-    });
-  }
   if (part === null && !guardUp) {
     const hp = bossHeadScreenPos();
     const dp = Math.max(0, Math.hypot(state.pos.x - hp.x, state.pos.y - hp.y) - HR);
-    if (dp < reach) part = "head";
+    if (dp < reach && partAimed(hp.x, hp.y, HR)) part = "head";
   }
   if (part === null) return;
   _bossHitPending = true;
@@ -2812,7 +2814,7 @@ async function bossAttackAt(mx, my, handOverride) {
       playerDead();
     }
     const bHeal = applyLifesteal(res, dealt, true);
-    if (bHeal > 0 && G && Math.random() < 0.6) {
+    if (bHeal > 0 && G) {
       const txt = bHeal >= 1 ? "+" + Math.round(bHeal) : "+" + (Math.round(bHeal * 10) / 10 || Math.round(bHeal * 100) / 100);
       G.floatText(state.pos.x, state.pos.y - 36, txt, "#4ade80", { size: 11, dur: 700 });
     }
@@ -2832,20 +2834,30 @@ function hitArenaAdds(mx, my, hand) {
   for (const e of adds) {
     const ex = e.x - state.pos.x, ey = e.y - state.pos.y, dist = Math.hypot(ex, ey);
     const diff = Math.abs(DepthsCore.angleDiff(ang, Math.atan2(ey, ex)));
+    const along = ex * Math.cos(ang) + ey * Math.sin(ang);
+    const perp = Math.abs(-ex * Math.sin(ang) + ey * Math.cos(ang));
+    const inRay = along > 0 && along < K.bossReach && (perp < e.size + 24 || diff < Math.max(0.35, (e.size + 20) / Math.max(20, dist)));
+    const atCursor = Math.hypot(mx - e.x, my - e.y) < e.size + 35;
     // WEAPONS: the kind's reach / shape (the sword and gun are exactly the old tests)
-    if (pistol ? (dist < K.bossReach && Math.hypot(mx - e.x, my - e.y) < e.size + 30)
-      : K.id === "sword" ? (dist < 70 + e.size && diff < Math.PI / 1.6) : inMeleeShape(K, ex, ey, Math.atan2(my - state.pos.y, mx - state.pos.x), e.size + 8)) hits.push(e);
+    if (pistol ? (dist < K.bossReach && (inRay || atCursor))
+      : K.id === "sword" ? (dist < 70 + e.size && diff < Math.PI / 1.6) : inMeleeShape(K, ex, ey, ang, e.size + 8)) hits.push(e);
   }
   if (!hits.length) return false;
   const open = hits.filter(e => { if (guardBlocks(e, state.pos.x, state.pos.y)) { blockedFx(e); return false; } return true; });
   if (!open.length) return true;
   const take = open.slice(0, pistol ? (K.shape === "boomerang" || K.pierce ? K.targets : 1) : K.targets);
+  const isGuild = !!(d.cfg && d.cfg.guild);
+  const base = (pistol ? 22 : 55) * K.dmg * combatDamageMult(hand);
   for (const e of take) {
     e.hitFlash = 6;
     const m = Math.hypot(e.x - state.pos.x, e.y - state.pos.y) || 1;
     e.kbX += (e.x - state.pos.x) / m * (K.knock || 4); e.kbY += (e.y - state.pos.y) / m * (K.knock || 4);
     addParticles(e.x, e.y, "#fcd34d", 6);
     if (window.gameDepths) gameDepths.burst(e.x, e.y, [e.color, "#fff"], 6, { speed: 3 });
+    const dmg = isGuild ? base : localHitDamage(base, e, K.id);
+    if (!isGuild || !e.shield) e.hp -= dmg;
+    onLocalHit(e, dmg, !isGuild);
+    if (e.hp <= 0) onEnemyDeath(e);
   }
   reportEnemyHits(take.map(e => e.id), pistol ? "pistol" : "sword");
   return true;

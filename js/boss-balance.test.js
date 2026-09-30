@@ -11,7 +11,7 @@ const L = E.LIFESTEAL;
 test("lifesteal: the item multiplier is a hard cut (12% cap -> 1.2% of damage)", () => {
   const w = { v: 2, slot: "weapon", mods: [{ k: "lifesteal", v: 0.03 }], gems: [] };
   assert.equal(E.gearFx([w]).lifesteal, 0.03 * E.LIFESTEAL_MULT);
-  assert.ok(E.LIFESTEAL_MULT <= 0.1 + 1e-9 && E.LIFESTEAL_MULT < E.ITEM_HEALING_MULT, "well below the old x0.25");
+  assert.ok(E.LIFESTEAL_MULT <= 0.125 + 1e-9 && E.LIFESTEAL_MULT < E.ITEM_HEALING_MULT, "well below the old x0.25");
   const capped = E.gearFx(Array(20).fill(w)).lifesteal;
   assert.equal(capped, E.GEAR_FX_CAPS.lifesteal * E.LIFESTEAL_MULT);
   // regen keeps its own multiplier
