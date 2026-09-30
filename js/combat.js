@@ -692,6 +692,7 @@ function updateDungeon() {
     if (b.boom) { stepShotBoomerang(b); continue; }
     const nx = b.x + b.vx, ny = b.y + b.vy;
     if (collidesWalls(nx, ny, 3)) { b.life = 0; flushShot(b); continue; }
+    b.x = nx; b.y = ny; b.life--;
     const bulletTargets = (state.dungeon && state.dungeon.bossRoom ? (state.dungeon.arenaEnemies || []) : []).concat(state.enemies);
     for (const e of bulletTargets) {
       if (e.gone || (e.ai === "mimic" && !e.awake)) continue;

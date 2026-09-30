@@ -467,6 +467,18 @@ const fullTest = artsTest.then(async () => {
     ok(d.arenaEnemies.some(e => e.face != null) && d.arenaEnemies.some(e => e.vis != null), 'guards face, courtiers fade');
     ok(ctx._bad.length === 0, 'tells draw without NaN');
   }
+  // normal dungeon bullet movement and lifetime
+  {
+    S.state.area = 'dungeon';
+    S.state.pos = { x: 100, y: 100 };
+    S.state.dungeon = { cfg: { guild: false }, walls: [], bossRoom: false, cleared: false };
+    S.state.enemies = [];
+    S.state.bullets = [{ x: 100, y: 100, vx: 6, vy: 0, life: 10, dmg: 20 }];
+    K.updateDungeon();
+    ok(S.state.bullets.length === 1 && S.state.bullets[0].x === 106 && S.state.bullets[0].life === 9, 'bullets advance in position and decrement life in normal dungeon');
+    for (let i = 0; i < 9; i++) K.updateDungeon();
+    ok(S.state.bullets.length === 0, 'bullets cleanly expire when life reaches 0 rather than standing still');
+  }
 });
 
 fullTest.then(() => console.log(checks + ' crown-client checks passed'), (e) => { console.error(e); process.exit(1); });
