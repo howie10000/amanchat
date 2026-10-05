@@ -235,16 +235,18 @@
    tags.forEach(function(t){var src=t.getAttribute('src');if(/vendor\/three\.min\.js/.test(src))three=src;else rest.push(src);});
    rest.forEach(function(src){var l=document.createElement('link');l.rel='preload';l.as='script';l.href=src;l.fetchPriority='low';document.head.appendChild(l);});
    function load(src,high){return new Promise(function(ok,fail){var el=document.createElement('script');el.src=src;el.async=true;if(high)el.fetchPriority='high';el.onload=ok;el.onerror=function(){fail(new Error('Could not load '+src));};document.head.appendChild(el);});}
-   var started=false;
+   var started=false,lastInput=-Infinity;
+   document.addEventListener('input',function(e){if(e.target&&/^(INPUT|TEXTAREA)$/.test(e.target.tagName))lastInput=performance.now();},true);
+   function inputTurn(ok){if(performance.now()-lastInput<250){setTimeout(function(){inputTurn(ok);},50);return;}ok();}
    function startGame(){
     if(started)return;started=true;
     // One script per task preserves dependency order and gives input/paint a turn between parses.
-    var chain=Promise.resolve();rest.forEach(function(src){chain=chain.then(function(){return new Promise(function(ok){setTimeout(ok,16);});}).then(function(){return load(src,false);});});
+    var chain=Promise.resolve();rest.forEach(function(src){chain=chain.then(function(){return new Promise(function(ok){setTimeout(function(){inputTurn(ok);},16);});}).then(function(){return load(src,false);});});
     return chain;
    }
    window.__gameBoot=load(three,true).then(startGame);
    window.__gameBoot.catch(function(e){console.error('Game startup failed',e);});
-   window.__titleBoot=load('js/neighborhood-title.js?v=nb-13',true);
+   window.__titleBoot=load('js/neighborhood-title-background.js?v=nb-worker-1',true);
    window.__titleBoot.catch(function(e){console.warn('Optional login background unavailable',e);});
   })();
   </script>

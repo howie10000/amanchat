@@ -11,7 +11,7 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'sea-assets.js'),'utf8'),
  const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
  assert(!html.includes('<script defer src="js/race-models.js'),'Model download cannot block deferred login/game scripts');
  assert(!/<script[^>]*src="js\/crown-title\.js/.test(html),'Title scene stays off the deferred startup path');
- assert(html.includes("load('js/neighborhood-title.js"),'Boot loader owns title startup');
+ assert(html.includes("load('js/neighborhood-title-background.js"),'Boot loader owns title startup');
  scripts[0].onload();await Promise.resolve();
  // Racing models stay available on demand for the racetrack, sharing one request.
  const race=env.window.loadRacingAssets();assert.equal(env.window.loadRacingAssets(),race,'Background downloads share a promise');

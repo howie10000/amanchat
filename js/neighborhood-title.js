@@ -17,7 +17,7 @@
   const bail = () => { login.classList.add('nb-static'); window.titleBg = { start() {} }; };
   if (!T) { bail(); return; }
   let renderer;
-  try { renderer = new T.WebGLRenderer({ canvas: cv, antialias: true, powerPreference: 'high-performance' }); }
+  try { renderer = new T.WebGLRenderer({ canvas: cv, antialias: true, powerPreference: 'low-power' }); }
   catch (e) { bail(); return; }
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   // Integrated graphics (Intel Arc / Iris / UHD, AMD APUs) start at 1x resolution with a small shadow map;
@@ -815,14 +815,17 @@
     renderer.setSize(w, h, false); if (post) { post.rt.setSize(Math.floor(w * pixelRatio), Math.floor(h * pixelRatio)); post.u.res.value.set(w * pixelRatio, h * pixelRatio); } camera.aspect = w / h; camera.fov = w / h < 1 ? 75 : 58; camera.updateProjectionMatrix();
     if (reduced.matches) start();
   }
+  let renderCost = 0;
   function frame(now) {
     raf = 0;
     if (document.hidden || login.classList.contains('hidden') || !coreBuilt) { last = 0; if (!coreBuilt) raf = requestAnimationFrame(frame); return; }
+    const interval = typing() ? 1000 / 15 : 1000 / 30;
+    if (last && now - last < interval) { raf = requestAnimationFrame(frame); return; }
     const dt = last ? Math.min((now - last) / 1000, 0.1) : 0; last = now;
     if (!reduced.matches) t += dt;
     // adaptive quality ladder: bloom/rays -> shadows -> 80% resolution -> 60% resolution
     if (dt && ++frames > 40 && quality > 0) {
-      slow = slow * 0.92 + (dt > 0.03 ? 1 : 0);
+      slow = slow * 0.92 + (renderCost > 30 ? 1 : 0);
       if (slow > 6) {
         slow = 0; quality--;
         if (quality === 3) { if (post) post.u.q.value = 0; }
@@ -830,7 +833,9 @@
         else { pixelRatio = quality === 1 ? 0.8 : 0.6; renderer.setPixelRatio(pixelRatio); fit(); }
       }
     }
+    const paintStart = performance.now();
     paint(t, dt);
+    renderCost = performance.now() - paintStart;
     if (!started) { started = true; cv.classList.add('ready'); login.classList.add('nb-ready'); }
     if (!reduced.matches) raf = requestAnimationFrame(frame);
   }
