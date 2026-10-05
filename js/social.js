@@ -28,8 +28,10 @@ async function renderFriendsList() {
       <button class="menuBtn" onclick="sendFriendRequest()">Add</button>
     </div>
     <button class="menuBtn" style="width:100%;margin-bottom:10px;" onclick="openDirectoryPhone()">🌐 Search the player directory</button>
+    <div id="friendRequests"></div>
     <div id="friendsList"></div>
   `;
+  refreshFriendRequests();
   const list = document.getElementById("friendsList");
   const friends = Object.keys(state.friends || {});
   if (!friends.length) {
@@ -59,6 +61,26 @@ async function renderFriendsList() {
   }
   list.innerHTML = html;
 }
+// Pending friend requests, shown at the top of the phone's Friends app.
+function refreshFriendRequests() {
+  const box = document.getElementById("friendRequests");
+  if (!box) return;
+  const reqs = window.pendingFriendRequests ? pendingFriendRequests() : [];
+  if (!reqs.length) { box.innerHTML = ""; return; }
+  const q = (v) => escapeHtml(JSON.stringify(String(v)));
+  box.innerHTML = `<div class="flexBetween" style="margin:4px 0 6px;">
+      <b>Pending requests (${reqs.length})</b>
+      ${reqs.length > 1 ? `<button class="menuBtn red" onclick="declineAllFriendRequests()">Decline all</button>` : ""}
+    </div>` + reqs.map(n => `<div class="friendItem">
+      <div class="info"><b>${escapeHtml(n.from)}</b> <small class="muted">wants to be friends</small></div>
+      <div class="flexRow">
+        <button class="menuBtn green" onclick='respondFriendRequest(${q(n.from)}, true)'>Accept</button>
+        <button class="menuBtn red" onclick='respondFriendRequest(${q(n.from)}, false)'>Decline</button>
+      </div></div>`).join("") + `<hr style="border:0;border-top:1px solid #2a3344;margin:10px 0;">`;
+}
+window.refreshFriendRequests = refreshFriendRequests;
+window.renderFriendsList = renderFriendsList;
+
 // Give/revoke this friend a key to MY house. Stored on my own record
 // (users/<me>/keys/<friend>), which enterOtherHome reads when they visit.
 window.toggleKey = async (friend) => {

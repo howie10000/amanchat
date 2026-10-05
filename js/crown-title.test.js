@@ -122,7 +122,6 @@ for(let t=0;t<=period+1;t+=1/30){
  prev=c;
 }
 assert.equal(dips,1,'Exactly one hidden cut per loop');
-for(const id of ['crown','colosseum','warren','mirror','king','nova','throne'])assert(seen.has(id),'Shot plays: '+id);
 
 /* Live frames advance through the shots; Crown Nova re-ignites the title; seek can freeze a frame. */
 const shotsLive=new Set(),ign0=title.metrics().ignites;for(let i=1;i<=1000;i++){strong.frame(3000+i*70);shotsLive.add(title.metrics().shot);}
@@ -206,16 +205,11 @@ const typingScene=load();typingScene.doc.activeElement={tagName:'INPUT'};typingS
 
 /* Markup contract. */
 const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8'),block=html.slice(html.indexOf('<div id="loginScreen"'),html.indexOf('<!-- GAME SCREEN -->'));
-assert(/THE\s*(<\/small>)?\s*(<span class="crown-word">)?SUNDERED CROWN/.test(block),'Login heralds The Sundered Crown');
 for(const id of ['titleBg','loginUser','loginPass','btnLogin','btnRegister','loginMsg'])assert(block.includes('id="'+id+'"'),'Login keeps #'+id);
 assert(/<input id="loginPass" type="password"/.test(block)&&/autocomplete="current-password"/.test(block)&&/autocomplete="username"/.test(block),'Password field and autocomplete hints are unchanged');
-for(const name of ['The Thornwild Warren','The Ashen Colosseum','The Mirror Court','The Sundered Throne'])assert(block.includes(name),'Login names the new dungeon '+name);
-for(const boss of ['Gorehorn, the Rampager','Kael, the Sundered Blade','Sol &amp; Umbra','The Sundered King'])assert(block.includes(boss),'Login names the boss '+boss);
-for(const chip of ['New Guild Dungeons','Crown Arts','Bosses That Fight Back','The Sundered King Raid','Leaders Can Disband Guilds'])assert(block.includes(chip),'Feature chip: '+chip);
-for(const art of ['Blade Dash','Riposte','Thorn Snare','Mirror Step','Crown Nova'])assert(block.includes(art),'Crown Art named: '+art);
-for(const id of ['crown','colosseum','warren','mirror','king','nova','throne'])assert(block.includes('data-for="'+id+'"'),'Caption for shot '+id);
-assert(/class="screen crown-login"/.test(block),'Login uses the crown theme');
 assert(!/arcane/.test(block),'No Arcane Depths leftovers in the login');
+assert(/class="nb-title" aria-label="Neighborhood"/.test(block)&&/class="screen nb-login"/.test(block),'Login is the giant NEIGHBORHOOD wordmark over the town flight');
+assert(!/SUNDERED/.test(block),'No Sundered Crown marketing in the login');
 const css=fs.readFileSync(path.join(__dirname,'../style.css'),'utf8');assert(css.includes('/* ===== SUNDERED CROWN LOGIN ===== */')&&css.includes('/* ===== END SUNDERED CROWN LOGIN ===== */'));
 const crownCss=css.slice(css.indexOf('/* ===== SUNDERED CROWN LOGIN ===== */'),css.indexOf('/* ===== END SUNDERED CROWN LOGIN ===== */'));
 assert(/data-ignite/.test(crownCss)&&/data-shot/.test(crownCss),'CSS ignites the title and follows the cinematic');

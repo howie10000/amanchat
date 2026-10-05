@@ -3142,6 +3142,69 @@ function drawHouse(ctx, r, name, isYou, style, tier) {
 
 
 // ---------- FURNITURE DRAWING ----------
+// Moving scenery for the Window furniture. 0 meadow, 1 city at night,
+// 2 sunset sea, 3 snowy peaks, 4 deep space.
+function drawWindowScene(ctx, x, y, w, h, scene, t) {
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  const sky = ctx.createLinearGradient(0, y, 0, y + h);
+  const hz = y + h * 0.68;
+  const rnd = (i) => { const v = Math.sin(i * 127.1 + 311.7) * 43758.5453; return v - Math.floor(v); };
+  if (scene === 0) {
+    sky.addColorStop(0, "#60a5fa"); sky.addColorStop(1, "#e0f2fe"); ctx.fillStyle = sky; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    for (let i = 0; i < 3; i++) { const cx = x + ((t / 90 + i * w / 3) % (w + 40)) - 20; ctx.beginPath(); ctx.ellipse(cx, y + 12 + i * 9, 13, 5, 0, 0, 7); ctx.fill(); }
+    ctx.fillStyle = "#4ade80"; ctx.beginPath(); ctx.moveTo(x, hz); ctx.quadraticCurveTo(x + w * 0.3, hz - 18, x + w * 0.6, hz - 2); ctx.quadraticCurveTo(x + w * 0.85, hz - 12, x + w, hz - 4); ctx.lineTo(x + w, y + h); ctx.lineTo(x, y + h); ctx.fill();
+    ctx.fillStyle = "#16a34a"; ctx.fillRect(x, hz + 6, w, h);
+    for (let i = 0; i < 3; i++) { const bx = x + ((t / 40 + i * 37) % (w + 20)) - 10; ctx.fillStyle = "#1f2937"; ctx.fillRect(bx, y + 22 + i * 4 + Math.sin(t / 150 + i) * 2, 4, 1.5); }
+  } else if (scene === 1) {
+    sky.addColorStop(0, "#020617"); sky.addColorStop(1, "#312e81"); ctx.fillStyle = sky; ctx.fillRect(x, y, w, h);
+    for (let i = 0; i < 14; i++) { ctx.fillStyle = `rgba(255,255,255,${0.3 + 0.6 * Math.abs(Math.sin(t / 600 + i))})`; ctx.fillRect(x + rnd(i) * w, y + rnd(i + 30) * h * 0.5, 1.3, 1.3); }
+    for (let i = 0; i < 9; i++) {
+      const bh = 14 + rnd(i + 3) * 28, bx = x + i * (w / 8) - 4;
+      ctx.fillStyle = "#0f172a"; ctx.fillRect(bx, y + h - bh, 14, bh);
+      ctx.fillStyle = "#fde047";
+      for (let k = 0; k < 4; k++) if (rnd(i * 5 + k + Math.floor(t / 4000)) > 0.45) ctx.fillRect(bx + 3 + (k % 2) * 6, y + h - bh + 4 + Math.floor(k / 2) * 7, 3, 3);
+    }
+    const cx = x + ((t / 22) % (w + 20)) - 10; ctx.fillStyle = "#f8fafc"; ctx.fillRect(cx, y + h - 5, 6, 2); ctx.fillStyle = "#ef4444"; ctx.fillRect(cx + 6, y + h - 5, 2, 2);
+  } else if (scene === 2) {
+    sky.addColorStop(0, "#7c3aed"); sky.addColorStop(0.55, "#fb7185"); sky.addColorStop(1, "#fde68a"); ctx.fillStyle = sky; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = "#fef3c7"; ctx.beginPath(); ctx.arc(x + w * 0.5, hz - 4 + Math.sin(t / 3000) * 3, 11, 0, 7); ctx.fill();
+    ctx.fillStyle = "#0e7490"; ctx.fillRect(x, hz, w, h);
+    ctx.fillStyle = "rgba(254,243,199,0.5)";
+    for (let i = 0; i < 12; i++) ctx.fillRect(x + w * 0.5 - 14 + rnd(i) * 28, hz + 2 + i * 2, 6 + rnd(i + 4) * 10, 1.2);
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    for (let i = 0; i < 14; i++) ctx.fillRect(x + ((rnd(i) * w + t / 30) % w), hz + 4 + (i % 5) * 5, 8, 1.2);
+    const bx = x + ((t / 50) % (w + 30)) - 15; ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.moveTo(bx, hz - 14); ctx.lineTo(bx + 7, hz - 2); ctx.lineTo(bx - 1, hz - 2); ctx.fill();
+  } else if (scene === 3) {
+    sky.addColorStop(0, "#38bdf8"); sky.addColorStop(1, "#e0f2fe"); ctx.fillStyle = sky; ctx.fillRect(x, y, w, h);
+    const drift = (t / 120) % w;
+    for (const [col, k] of [["#94a3b8", 0.6], ["#64748b", 1]]) {
+      ctx.fillStyle = col;
+      for (let i = -1; i < 4; i++) {
+        const px = x + i * (w / 2.2) - (drift * k) % (w / 2.2 * 4) + (k === 1 ? 20 : 0), ph = 22 + rnd(i + 6 + k * 3) * 16;
+        ctx.beginPath(); ctx.moveTo(px - 34, hz + 6); ctx.lineTo(px, hz + 6 - ph); ctx.lineTo(px + 34, hz + 6); ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.moveTo(px - 8, hz + 6 - ph + 10); ctx.lineTo(px, hz + 6 - ph); ctx.lineTo(px + 8, hz + 6 - ph + 10); ctx.fill(); ctx.fillStyle = col;
+      }
+    }
+    ctx.fillStyle = "#f8fafc"; ctx.fillRect(x, hz + 6, w, h);
+    for (let i = 0; i < 22; i++) { ctx.fillStyle = "rgba(255,255,255,0.95)"; ctx.fillRect(x + ((rnd(i) * w + Math.sin(t / 700 + i) * 4) % w + w) % w, y + ((rnd(i + 9) * h + t / (14 + (i % 4) * 4)) % h), 1.6, 1.6); }
+  } else {
+    sky.addColorStop(0, "#000000"); sky.addColorStop(1, "#1e1b4b"); ctx.fillStyle = sky; ctx.fillRect(x, y, w, h);
+    for (let i = 0; i < 30; i++) {
+      const sp = 0.6 + rnd(i + 2) * 1.8;
+      ctx.fillStyle = `rgba(255,255,255,${0.4 + rnd(i) * 0.6})`;
+      ctx.fillRect(x + ((rnd(i) * w - t / 60 * sp) % w + w) % w, y + rnd(i + 20) * h, 1.4, 1.4);
+    }
+    ctx.fillStyle = "#6366f1"; ctx.beginPath(); ctx.arc(x + w * 0.72, y + h * 0.35, 12, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.18)"; ctx.beginPath(); ctx.arc(x + w * 0.72 - 3, y + h * 0.35 - 3, 8, 0, 7); ctx.fill();
+    ctx.strokeStyle = "rgba(199,210,254,0.8)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(x + w * 0.72, y + h * 0.35, 20, 4, -0.3, 0, 7); ctx.stroke();
+    const ph = (t / 3500) % 1; if (ph < 0.3) { const k = ph / 0.3; ctx.strokeStyle = `rgba(255,255,255,${1 - k})`; ctx.beginPath(); ctx.moveTo(x + w * k, y + 8 + h * 0.4 * k); ctx.lineTo(x + w * k - 14, y + 8 + h * 0.4 * k - 5); ctx.stroke(); }
+  }
+  ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fillRect(x, y, w * 0.28, h);
+  ctx.restore();
+}
+
 function drawFurniture(ctx, f, def, opts = {}) {
   const x = f.x, y = f.y;
   const w = def.w, h = def.h;
@@ -3716,6 +3779,19 @@ function drawFurniture(ctx, f, def, opts = {}) {
       ctx.fillStyle = "#0a0a0a";
       ctx.beginPath(); ctx.moveTo(x, y - h/2 + 18); ctx.lineTo(x, y - h/2 + 10); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(x, y - h/2 + 18); ctx.lineTo(x + 6, y - h/2 + 18); ctx.stroke();
+      break;
+    }
+    case "window": {
+      // Each window picks its own scene from where it hangs, then the scenes
+      // rotate every 24s so the view keeps changing.
+      const now = Date.now();
+      const scene = (Math.floor(now / 24000) + Math.abs(Math.round(x * 7 + y * 13))) % 5;
+      ctx.shadowColor = "transparent";
+      drawWindowScene(ctx, x - w/2, y - h/2, w, h, scene, now);
+      ctx.strokeStyle = a; ctx.lineWidth = 6; ctx.strokeRect(x - w/2, y - h/2, w, h);
+      ctx.strokeStyle = c; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(x, y - h/2); ctx.lineTo(x, y + h/2); ctx.moveTo(x - w/2, y); ctx.lineTo(x + w/2, y); ctx.stroke();
+      ctx.fillStyle = a; ctx.fillRect(x - w/2 - 5, y + h/2 + 2, w + 10, 6);
       break;
     }
     case "curtain": {

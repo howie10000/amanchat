@@ -268,6 +268,10 @@ add({ id: nid("curtain"),  name: "Blue Curtains",   kind: "curtain", w: 50, h: 9
 add({ id: nid("curtain"),  name: "Velvet Curtains", kind: "curtain", w: 50, h: 90, price: 280, color: "#7c2d12", accent: "#fcd34d" });
 add({ id: nid("globe"),    name: "World Globe",     kind: "globe",   w: 28, h: 36, price: 240, color: "#1d4ed8", accent: "#16a34a" });
 add({ id: nid("trash"),    name: "Trash Can",       kind: "trash",   w: 22, h: 30, price: 30, color: "#374151", accent: "#9ca3af" });
+// A window onto a changing, moving view (meadow, city night, sunset sea, snowy
+// peaks, deep space). Drawn by graphics.js drawWindowScene.
+add({ id: nid("window"),   name: "Window",          kind: "window", w: 96, h: 72, price: 450, color: "#fef3c7", accent: "#78350f",
+      search: "window scenery view glass" });
 
 // ---------- helpers ----------
 function capWord(s) {

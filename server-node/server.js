@@ -1739,6 +1739,21 @@ function handleMessage(c, msg) {
                 const isChat = parts[0] === 'dm_threads' || (parts[0] === 'inbox' && msg.value && msg.value.kind === 'dm');
                 if (isChat && activeMute(c.user)) return replyErr('You are muted.');
             }
+            {
+                // Friend-request spam guard: one pending request per sender,
+                // none to someone you're already friends with, and a hard cap
+                // on how many requests can pile up in one inbox.
+                const parts = Store.splitPath(msg.path);
+                if (parts[0] === 'inbox' && parts.length === 2 && msg.value && msg.value.kind === 'friend_req') {
+                    msg.value.from = c.user;   // can't spoof the sender
+                    const target = parts[1];
+                    const inbox = store.get('inbox/' + target) || {};
+                    const mine = Object.entries(inbox).find(([, n]) => n && n.kind === 'friend_req' && n.from === c.user);
+                    const already = (userRec(target).friends || {})[c.user];
+                    const total = Object.values(inbox).filter(n => n && n.kind === 'friend_req').length;
+                    if (mine || already || total >= 50) { reply({ name: mine ? mine[0] : null }); break; }
+                }
+            }
             const genId = store.push(msg.path, msg.value);
             afterWrite(msg.path + '/' + genId, msg.value);
             reply({ name: genId });

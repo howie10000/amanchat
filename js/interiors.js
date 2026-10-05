@@ -309,12 +309,21 @@ function collidesInterior(nx, ny) {
   const room = interiorRoom();
   if (nx < room.x + 16 || nx > room.x + room.w - 16) return true;
   if (ny < room.y + 16 || ny > room.y + room.h - 8) return true;
+  if (state.area === "interior_home") {
+    // The back wall is a wall: you stand on the floor in front of it, you can't
+    // walk up into it. (Only blocks moving further up, so nobody already
+    // inside it from an old position gets pinned.)
+    if (ny < room.y + WALL_H + 6 && ny < state.pos.y) return true;
+    for (const f of suiteFixtures(currentResidence(), room)) {
+      if (f.solid && fixtureHit(f, nx, ny)) return true;
+    }
+  }
   // furniture (only at home, build mode off)
   if (state.area === "interior_home" && !state.buildMode) {
     for (const f of state.interiorFurniture) {
       const def = FURNITURE_CATALOG[f.id]; if (!def) continue;
       // walkable categories: rugs, curtains, paintings, mirrors
-      if (["rug","persianrug","curtain","painting","mirror"].includes(def.kind)) continue;
+      if (["rug","persianrug","curtain","painting","mirror","window"].includes(def.kind)) continue;
       if (state.homeUse?.f === f && state.homeUse.kind === 'swim') continue;
       const p = furnitureLocal(f, nx, ny);
       if (def.kind === 'hottub') {
@@ -323,6 +332,51 @@ function collidesInterior(nx, ny) {
     }
   }
   return false;
+}
+
+const WALL_H = 130;
+// ---------------------------------------------------------------------
+// PRESIDENTIAL SUITES — the things the suite descriptions promise.
+// Two panoramic picture-window bays flank the centre of the back wall (the
+// seal / sign / fireplace sit between them) and show one continuous view over
+// the neighbourhood; each hotel's suite also gets its own fixtures (spa, bar,
+// terrace, hot tub, glass floor...).
+// ---------------------------------------------------------------------
+function currentResidence() {
+  return state.interiorResidence || (state.area === "interior_home" && state.interiorOf === state.user ? state.data?.residence : null);
+}
+function fixtureHit(f, x, y) {
+  const m = 14;   // keep the player's body clear of the edge
+  const dx = x - f.x, dy = y - f.y;
+  if (f.round) return (dx / (f.w / 2 + m)) ** 2 + (dy / (f.h / 2 + m)) ** 2 < 1;
+  return Math.abs(dx) < f.w / 2 + m && Math.abs(dy) < f.h / 2 + m;
+}
+function suiteFixtures(res, room) {
+  if (!res || res.type !== "hotel" || res.roomTier !== "presidential") return [];
+  const fl = room.y + WALL_H, R = room.x + room.w;
+  switch (res.hotelId) {
+    case "hotel_plaza":
+      return [{ t: "spa", x: room.x + 170, y: fl + 100, w: 190, h: 100, round: true, solid: true, rim: "#fbbf24" }];
+    case "hotel_palms":
+      return [
+        { t: "terrace", x: room.x + 190, y: fl + 110, w: 290, h: 150 },
+        { t: "lounger", x: room.x + 130, y: fl + 90, w: 74, h: 30, solid: true },
+        { t: "lounger", x: room.x + 240, y: fl + 90, w: 74, h: 30, solid: true },
+        { t: "infinity", x: R - 200, y: fl + 85, w: 260, h: 110, solid: true },
+      ];
+    case "hotel_lodge":
+      return [
+        { t: "hottub", x: R - 170, y: fl + 100, w: 160, h: 104, round: true, solid: true },
+        { t: "telescope", x: room.x + 130, y: fl + 90, w: 26, h: 26, solid: true },
+      ];
+    case "hotel_casino":
+      return [
+        { t: "glassfloor", x: room.x + 190, y: fl + 120, w: 270, h: 150 },
+        { t: "bar", x: R - 200, y: fl + 55, w: 290, h: 36, solid: true },
+        { t: "spa", x: room.x + 150, y: fl + 310, w: 150, h: 92, round: true, solid: true, rim: "#fcd34d" },
+      ];
+  }
+  return [];
 }
 
 function furnitureLocal(f, x, y) {
@@ -1646,7 +1700,6 @@ function drawFortuneStand(x, y) {
 // The back wall occupies the top WALL_H px of the room; the floor is the
 // rest. Props hug the walls so the walkable middle stays open.
 // =====================================================================
-const WALL_H = 130;
 const _gradCache = {};
 function cachedGrad(key, make) { return _gradCache[key] || (_gradCache[key] = make()); }
 function rgbaOf(hex, a) { return `rgba(${hexToRgb(hex)},${a})`; }
@@ -1753,6 +1806,203 @@ function drawWindow(x, y, w, h, o = {}) {
     ctx.fillStyle = GFX.shadeColor(o.curtain, -30); ctx.fillRect(x - 22, y - 12, w + 44, 5);
   }
   if (o.shaft !== false) drawLightShaft(x, y + h + 9, w, o.shaftLen || 150, o.night ? "#93c5fd" : "#fef9c3");
+}
+
+function drawPanorama(room, kind, t) {
+  const cx = room.x + room.w / 2;
+  const y0 = room.y + 18, h = 86;
+  const bays = [[room.x + 70, cx - 90], [cx + 90, room.x + room.w - 70]];
+  const sx = bays[0][0], sw = bays[1][1] - bays[0][0];
+  const night = kind === "nightcity";
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  for (const [a, b] of bays) ctx.fillRect(a - 5, y0 - 5, b - a + 10, h + 12);
+  ctx.beginPath(); for (const [a, b] of bays) ctx.rect(a, y0, b - a, h); ctx.clip();
+  const sky = cachedGrad("pano" + kind + y0, () => {
+    const g = ctx.createLinearGradient(0, y0, 0, y0 + h);
+    if (night) { g.addColorStop(0, "#050816"); g.addColorStop(1, "#312e81"); }
+    else if (kind === "ocean") { g.addColorStop(0, "#38bdf8"); g.addColorStop(0.7, "#fde68a"); g.addColorStop(1, "#fdba74"); }
+    else { g.addColorStop(0, "#3b82f6"); g.addColorStop(0.75, "#bae6fd"); g.addColorStop(1, "#e0f2fe"); }
+    return g;
+  });
+  ctx.fillStyle = sky; ctx.fillRect(sx, y0, sw, h);
+  if (night) {
+    for (let i = 0; i < 40; i++) {
+      ctx.fillStyle = `rgba(255,255,255,${0.35 + 0.55 * Math.abs(Math.sin(t / 700 + i))})`;
+      ctx.fillRect(sx + srand(i) * sw, y0 + srand(i + 50) * h * 0.55, 1.5, 1.5);
+    }
+    ctx.fillStyle = "#fef9c3"; ctx.beginPath(); ctx.arc(sx + sw * 0.8, y0 + 18, 9, 0, 7); ctx.fill();
+  } else {
+    ctx.fillStyle = kind === "ocean" ? "#fff7ed" : "#fef08a";
+    ctx.beginPath(); ctx.arc(sx + sw * (kind === "ocean" ? 0.5 : 0.18), y0 + 20, 10, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    for (let i = 0; i < 5; i++) {
+      const cxp = sx + ((t / 70 + i * 190) % (sw + 120)) - 60, cyp = y0 + 10 + (i % 3) * 14;
+      ctx.beginPath(); ctx.ellipse(cxp, cyp, 22, 6, 0, 0, 7); ctx.ellipse(cxp + 12, cyp - 4, 12, 6, 0, 0, 7); ctx.fill();
+    }
+  }
+  const gy = y0 + h - 16;   // ground / waterline
+  if (kind === "mountain") {
+    for (let layer = 0; layer < 2; layer++) {
+      for (let i = 0; i < 7; i++) {
+        const px = sx + i * (sw / 6) + (layer ? 40 : -10), ph = 34 + srand(i + layer * 9) * 28;
+        ctx.fillStyle = layer ? "#475569" : "#94a3b8";
+        ctx.beginPath(); ctx.moveTo(px - 70, gy); ctx.lineTo(px, gy - ph); ctx.lineTo(px + 70, gy); ctx.fill();
+        ctx.fillStyle = "#f8fafc"; ctx.beginPath(); ctx.moveTo(px - 14, gy - ph + 18); ctx.lineTo(px, gy - ph); ctx.lineTo(px + 14, gy - ph + 18); ctx.fill();
+      }
+    }
+    ctx.fillStyle = "#166534"; ctx.fillRect(sx, gy - 4, sw, 20);
+    for (let i = 0; i < 60; i++) { const px = sx + srand(i + 5) * sw; ctx.beginPath(); ctx.moveTo(px - 4, gy + 2); ctx.lineTo(px, gy - 10); ctx.lineTo(px + 4, gy + 2); ctx.fill(); }
+  } else if (kind === "ocean") {
+    ctx.fillStyle = "#0ea5e9"; ctx.fillRect(sx, gy - 24, sw, 40);
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    for (let i = 0; i < 30; i++) {
+      const wx = sx + ((srand(i) * sw + t / 40 * (0.3 + srand(i + 4))) % sw);
+      ctx.fillRect(wx, gy - 20 + (i % 6) * 6, 10 + srand(i + 8) * 14, 1.5);
+    }
+    const bx = sx + ((t / 55) % (sw + 80)) - 40;
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.moveTo(bx, gy - 40); ctx.lineTo(bx + 12, gy - 20); ctx.lineTo(bx - 2, gy - 20); ctx.fill();
+    ctx.fillStyle = "#7c2d12"; ctx.fillRect(bx - 8, gy - 20, 22, 3);
+    ctx.fillStyle = "#fde68a"; ctx.fillRect(sx, gy + 8, sw, 10);
+  } else {
+    // skyline over the neighbourhood: hazy far towers, the Vegas spire, then rooftops
+    for (let i = 0; i < 46; i++) {
+      const bx = sx + i * (sw / 45) - 6, bh = 16 + srand(i + 3) * 36;
+      ctx.fillStyle = night ? "#1e1b4b" : "#93c5fd"; ctx.fillRect(bx, gy - bh, 15, bh);
+    }
+    const tx = sx + sw * 0.62;
+    ctx.fillStyle = night ? "#312e81" : "#64748b"; ctx.fillRect(tx - 9, gy - 62, 18, 62);
+    ctx.fillStyle = "#fbbf24"; ctx.fillRect(tx - 11, gy - 66, 22, 4); ctx.fillRect(tx - 1, gy - 78, 2, 12);
+    for (let i = 0; i < 38; i++) {
+      const bx = sx + i * (sw / 37) - 8, bh = 10 + srand(i + 40) * 14, bw = 18 + srand(i + 80) * 8;
+      ctx.fillStyle = night ? "#0f172a" : "#475569"; ctx.fillRect(bx, gy - bh, bw, bh);
+      if (srand(i) > 0.5) { ctx.fillStyle = night ? "#1e293b" : "#b45309"; ctx.beginPath(); ctx.moveTo(bx - 2, gy - bh); ctx.lineTo(bx + bw / 2, gy - bh - 8); ctx.lineTo(bx + bw + 2, gy - bh); ctx.fill(); }
+      ctx.fillStyle = night ? "rgba(253,224,71,0.9)" : "rgba(255,255,255,0.35)";
+      for (let w = 0; w < 2; w++) ctx.fillRect(bx + 4 + w * 8, gy - bh + 4, 3, 3);
+    }
+    ctx.fillStyle = night ? "#020617" : "#1e293b"; ctx.fillRect(sx, gy + 4, sw, 14);
+    for (let i = 0; i < 4; i++) {
+      const carx = sx + ((t / (25 + i * 9) + i * 210) % (sw + 30)) - 15;
+      ctx.fillStyle = night ? "#fde047" : ["#ef4444", "#3b82f6", "#f8fafc", "#22c55e"][i]; ctx.fillRect(carx, gy + 8 + (i % 2) * 4, 8, 3);
+    }
+  }
+  ctx.restore();
+  for (const [a, b] of bays) {
+    const bw = b - a;
+    ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 5; ctx.strokeRect(a, y0, bw, h);
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    for (let i = 1; i < 4; i++) { ctx.moveTo(a + bw * i / 4, y0); ctx.lineTo(a + bw * i / 4, y0 + h); }
+    ctx.moveTo(a, y0 + h * 0.55); ctx.lineTo(b, y0 + h * 0.55); ctx.stroke();
+    ctx.fillStyle = "#fbbf24"; ctx.fillRect(a - 7, y0 + h, bw + 14, 6);
+    ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fillRect(a - 7, y0 + h + 6, bw + 14, 3);
+    ctx.fillStyle = "rgba(255,255,255,0.1)"; ctx.fillRect(a, y0, bw * 0.3, h);
+  }
+}
+
+function drawSuiteFixtures(room, t, res) {
+  const fixtures = suiteFixtures(res, room);
+  if (!fixtures.length) return;
+  const fl = room.y + WALL_H;
+  const tub = (f, water, rim) => {
+    ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.ellipse(f.x + 3, f.y + 6, f.w / 2 + 6, f.h / 2 + 4, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = rim; ctx.beginPath(); ctx.ellipse(f.x, f.y, f.w / 2 + 6, f.h / 2 + 5, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = water; ctx.beginPath(); ctx.ellipse(f.x, f.y, f.w / 2 - 4, f.h / 2 - 4, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    for (let i = 0; i < 9; i++) {
+      const a = srand(i) * 6.28, r = srand(i + 9) * 0.7, ph = (t / 900 + i * 0.37) % 1;
+      ctx.beginPath(); ctx.arc(f.x + Math.cos(a) * r * f.w / 2, f.y + Math.sin(a) * r * f.h / 2 - ph * 6, 1.5 + srand(i + 3) * 2, 0, 7); ctx.fill();
+    }
+    ctx.fillStyle = "#fff";
+    for (let i = 0; i < 3; i++) {
+      const ph = (t / 1800 + i / 3) % 1;
+      ctx.globalAlpha = 0.18 * (1 - ph);
+      ctx.beginPath(); ctx.ellipse(f.x + (i - 1) * 24, f.y - 14 - ph * 26, 14 + ph * 10, 7, 0, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  };
+  for (const f of fixtures) {
+    switch (f.t) {
+      case "spa": tub(f, "#38bdf8", f.rim); break;
+      case "hottub": {
+        ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.ellipse(f.x + 3, f.y + 6, f.w / 2 + 8, f.h / 2 + 5, 0, 0, 7); ctx.fill();
+        ctx.fillStyle = "#78350f"; ctx.beginPath(); ctx.ellipse(f.x, f.y, f.w / 2 + 8, f.h / 2 + 6, 0, 0, 7); ctx.fill();
+        ctx.strokeStyle = "#451a03"; ctx.lineWidth = 2;
+        for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.moveTo(f.x + i * 12, f.y - f.h / 2 - 5); ctx.lineTo(f.x + i * 12, f.y + f.h / 2 + 5); ctx.stroke(); }
+        tub({ x: f.x, y: f.y, w: f.w - 20, h: f.h - 18 }, "#fb923c", "#92400e");
+        break;
+      }
+      case "infinity": {
+        ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fillRect(f.x - f.w / 2 + 3, f.y - f.h / 2 + 5, f.w, f.h);
+        GFX.roundFill(ctx, f.x - f.w / 2 - 6, f.y - f.h / 2 - 6, f.w + 12, f.h + 8, 10, "#e2e8f0");
+        const g = ctx.createLinearGradient(0, f.y - f.h / 2, 0, f.y + f.h / 2);
+        g.addColorStop(0, "#67e8f9"); g.addColorStop(1, "#0891b2");
+        ctx.fillStyle = g; ctx.fillRect(f.x - f.w / 2, f.y - f.h / 2, f.w, f.h);
+        ctx.fillStyle = "rgba(255,255,255,0.4)";
+        for (let i = 0; i < 12; i++) ctx.fillRect(f.x - f.w / 2 + ((srand(i) * f.w + t / 30) % (f.w - 20)) + 6, f.y - f.h / 2 + 8 + (i % 5) * 18, 14, 1.5);
+        ctx.fillStyle = "#67e8f9"; ctx.fillRect(f.x - f.w / 2, f.y + f.h / 2 - 2, f.w, 4);
+        break;
+      }
+      case "terrace": {
+        ctx.fillStyle = "#a16207"; ctx.fillRect(f.x - f.w / 2, f.y - f.h / 2, f.w, f.h);
+        ctx.strokeStyle = "rgba(0,0,0,0.3)"; ctx.lineWidth = 1;
+        for (let yy = f.y - f.h / 2; yy < f.y + f.h / 2; yy += 10) { ctx.beginPath(); ctx.moveTo(f.x - f.w / 2, yy); ctx.lineTo(f.x + f.w / 2, yy); ctx.stroke(); }
+        ctx.strokeStyle = "#fef3c7"; ctx.lineWidth = 3; ctx.strokeRect(f.x - f.w / 2, f.y - f.h / 2, f.w, f.h);
+        ctx.fillStyle = "#7c2d12"; ctx.fillRect(f.x + f.w / 2 - 36, f.y - 52, 3, 60);
+        ctx.fillStyle = "#ef4444"; ctx.beginPath(); ctx.moveTo(f.x + f.w / 2 - 70, f.y - 46); ctx.quadraticCurveTo(f.x + f.w / 2 - 34, f.y - 80, f.x + f.w / 2, f.y - 46); ctx.fill();
+        break;
+      }
+      case "lounger":
+        GFX.roundFill(ctx, f.x - f.w / 2, f.y - f.h / 2, f.w, f.h, 6, "#f8fafc");
+        GFX.roundFill(ctx, f.x - f.w / 2 + 3, f.y - f.h / 2 + 3, f.w * 0.3, f.h - 6, 4, "#38bdf8");
+        break;
+      case "telescope":
+        ctx.strokeStyle = "#1c1917"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(f.x - 10, f.y + 14); ctx.moveTo(f.x, f.y); ctx.lineTo(f.x + 10, f.y + 14); ctx.moveTo(f.x, f.y); ctx.lineTo(f.x, f.y + 16); ctx.stroke();
+        ctx.save(); ctx.translate(f.x, f.y - 2); ctx.rotate(-0.7);
+        ctx.fillStyle = "#b45309"; ctx.fillRect(-4, -30, 8, 32); ctx.fillStyle = "#fcd34d"; ctx.fillRect(-5, -32, 10, 4);
+        ctx.restore();
+        break;
+      case "glassfloor": {
+        ctx.fillStyle = "#020617"; ctx.fillRect(f.x - f.w / 2, f.y - f.h / 2, f.w, f.h);
+        for (let i = 0; i < 70; i++) {
+          ctx.fillStyle = `rgba(${srand(i + 3) > 0.5 ? "253,224,71" : "125,211,252"},${0.4 + 0.5 * Math.abs(Math.sin(t / 600 + i))})`;
+          ctx.fillRect(f.x - f.w / 2 + 4 + srand(i) * (f.w - 8), f.y - f.h / 2 + 4 + srand(i + 77) * (f.h - 8), 2, 2);
+        }
+        ctx.strokeStyle = "rgba(186,230,253,0.55)"; ctx.lineWidth = 1.5;
+        ctx.strokeRect(f.x - f.w / 2, f.y - f.h / 2, f.w, f.h);
+        ctx.beginPath(); ctx.moveTo(f.x - f.w / 2, f.y); ctx.lineTo(f.x + f.w / 2, f.y); ctx.moveTo(f.x, f.y - f.h / 2); ctx.lineTo(f.x, f.y + f.h / 2); ctx.stroke();
+        break;
+      }
+      case "bar": {
+        ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.fillRect(f.x - f.w / 2 + 3, f.y + 6, f.w, f.h);
+        GFX.roundFill(ctx, f.x - f.w / 2, f.y - f.h / 2, f.w, f.h, 5, "#1c1917");
+        ctx.fillStyle = "#fcd34d"; ctx.fillRect(f.x - f.w / 2, f.y - f.h / 2, f.w, 4);
+        ctx.fillStyle = "#7e22ce"; ctx.fillRect(f.x - f.w / 2 + 6, f.y - f.h / 2 + 9, f.w - 12, f.h - 16);
+        const cols = ["#ef4444", "#22c55e", "#fbbf24", "#38bdf8", "#e879f9"];
+        for (let i = 0; i < 9; i++) { ctx.fillStyle = cols[i % 5]; ctx.fillRect(f.x - f.w / 2 + 14 + i * 29, f.y - f.h / 2 - 16, 6, 16); }
+        for (let i = 0; i < 5; i++) { const sx = f.x - f.w / 2 + 30 + i * 56; ctx.fillStyle = "#fcd34d"; ctx.beginPath(); ctx.ellipse(sx, f.y + f.h / 2 + 18, 9, 5, 0, 0, 7); ctx.fill(); ctx.fillStyle = "#7f1d1d"; ctx.fillRect(sx - 2, f.y + f.h / 2 + 18, 4, 10); }
+        break;
+      }
+    }
+  }
+  if (res.hotelId === "hotel_plaza") {   // gold trim
+    ctx.fillStyle = "#fbbf24";
+    ctx.fillRect(room.x, fl - 16, room.w, 3); ctx.fillRect(room.x, fl + 1, room.w, 3);
+    ctx.fillRect(room.x + 14, fl, 3, room.h - WALL_H); ctx.fillRect(room.x + room.w - 17, fl, 3, room.h - WALL_H);
+  }
+  if (res.hotelId === "hotel_casino") {   // diamond chandeliers
+    for (const dx of [-250, 250]) {
+      const cx = room.x + room.w / 2 + dx, top = room.y + 4;
+      ctx.strokeStyle = "#fcd34d"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(cx, top); ctx.lineTo(cx, top + 26); ctx.stroke();
+      ctx.fillStyle = "#fcd34d"; ctx.fillRect(cx - 16, top + 26, 32, 3);
+      for (let i = -2; i <= 2; i++) {
+        const dy = top + 32 + Math.abs(i) * 4, k = 0.55 + 0.45 * Math.abs(Math.sin(t / 380 + i + dx));
+        ctx.fillStyle = `rgba(224,242,254,${k})`;
+        ctx.beginPath(); ctx.moveTo(cx + i * 7, dy); ctx.lineTo(cx + i * 7 + 4, dy + 8); ctx.lineTo(cx + i * 7, dy + 17); ctx.lineTo(cx + i * 7 - 4, dy + 8); ctx.fill();
+      }
+    }
+  }
 }
 
 function drawLightShaft(x, y, w, len, col) {
@@ -1971,8 +2221,11 @@ const homeRoom = {
         });
         drawSideWalls(room, isPres ? "#1e293b" : "#334155");
 
-        drawWindow(room.x + 100, room.y + 26, 120, 76, { curtain: "#d97706", shaftLen: 160 });
-        drawWindow(room.x + room.w - 220, room.y + 26, 120, 76, { curtain: "#d97706", shaftLen: 160 });
+        if (isPres) drawPanorama(room, "city", t);
+        else {
+          drawWindow(room.x + 100, room.y + 26, 120, 76, { curtain: "#d97706", shaftLen: 160 });
+          drawWindow(room.x + room.w - 220, room.y + 26, 120, 76, { curtain: "#d97706", shaftLen: 160 });
+        }
 
         drawRug(room.x + room.w / 2, room.y + room.h / 2 + 50, isPres ? 340 : 260, isPres ? 170 : 130, "#991b1b", "#7f1d1d", { medallion: true });
 
@@ -2011,7 +2264,8 @@ const homeRoom = {
         });
         drawSideWalls(room, isPres ? "#0f766e" : "#0284c7");
 
-        drawWindow(room.x + room.w / 2 - 90, room.y + 24, 180, 80, { curtain: "#06b6d4", shaftLen: 180 });
+        if (isPres) drawPanorama(room, "ocean", t);
+        else drawWindow(room.x + room.w / 2 - 90, room.y + 24, 180, 80, { curtain: "#06b6d4", shaftLen: 180 });
         drawRug(room.x + room.w / 2, room.y + room.h / 2 + 60, isPres ? 300 : 220, 130, "#0891b2", "#164e63", { medallion: true });
 
         wallSign(room.x + room.w / 2, room.y + 118, isPres ? "PALMS RESORT · PRESIDENTIAL OCEAN SUITE" : isDeluxe ? "PALMS RESORT · DELUXE SUITE" : "PALMS RESORT · RESORT ROOM", { size: 9, bg: "#083344", border: "#38bdf8", color: "#fef08a" });
@@ -2036,8 +2290,11 @@ const homeRoom = {
         });
         drawSideWalls(room, "#451a03");
 
-        drawWindow(room.x + 90, room.y + 26, 120, 76, { curtain: "#991b1b", shaftLen: 160 });
-        drawWindow(room.x + room.w - 210, room.y + 26, 120, 76, { curtain: "#991b1b", shaftLen: 160 });
+        if (isPres) drawPanorama(room, "mountain", t);
+        else {
+          drawWindow(room.x + 90, room.y + 26, 120, 76, { curtain: "#991b1b", shaftLen: 160 });
+          drawWindow(room.x + room.w - 210, room.y + 26, 120, 76, { curtain: "#991b1b", shaftLen: 160 });
+        }
 
         const fx = room.x + room.w / 2, fy = room.y + WALL_H;
         ctx.fillStyle = "#57534e"; ctx.fillRect(fx - 44, fy - 68, 88, 68);
@@ -2072,8 +2329,11 @@ const homeRoom = {
         });
         drawSideWalls(room, isPres ? "#1e1b4b" : "#1f2937");
 
-        drawWindow(room.x + 100, room.y + 24, 130, 80, { curtain: "#fbbf24", shaftLen: 160 });
-        drawWindow(room.x + room.w - 230, room.y + 24, 130, 80, { curtain: "#fbbf24", shaftLen: 160 });
+        if (isPres) drawPanorama(room, "nightcity", t);
+        else {
+          drawWindow(room.x + 100, room.y + 24, 130, 80, { curtain: "#fbbf24", shaftLen: 160 });
+          drawWindow(room.x + room.w - 230, room.y + 24, 130, 80, { curtain: "#fbbf24", shaftLen: 160 });
+        }
 
         drawRug(room.x + room.w / 2, room.y + room.h / 2 + 50, isPres ? 320 : 240, 140, isPres ? "#7e22ce" : "#991b1b", "#fbbf24", { medallion: true });
 
@@ -2112,9 +2372,8 @@ const homeRoom = {
       drawSideWalls(room, "#fde9c4");
     }
 
-    const winW = tier === "mansion" ? 150 : 130;
-    drawWindow(room.x + 120, room.y + 26, winW, 76, { curtain: tier === "mansion" ? "#eab308" : "#c2410c", shaftLen: 170 });
-    drawWindow(room.x + room.w - 120 - winW, room.y + 26, winW, 76, { curtain: tier === "mansion" ? "#eab308" : "#c2410c", shaftLen: 170 });
+    // No built-in windows in houses: buy the Window from Furnitureland and hang
+    // it wherever you like.
 
     const rugW = tier === "mansion" ? 340 : tier === "manor" ? 300 : 260;
     drawRug(room.x + room.w / 2, room.y + room.h / 2 + 50, rugW, 140, tier === "mansion" ? "#854d0e" : "#b91c1c", "#7f1d1d", { medallion: true });
@@ -3459,6 +3718,15 @@ const hotelCasinoRoom = {
   },
   decor() {},
 };
+
+// Presidential suites add their fixtures on top of the hotel's themed shell.
+{
+  const shell = homeRoom.base;
+  homeRoom.base = function (room, t) {
+    shell.call(this, room, t);
+    drawSuiteFixtures(room, t, currentResidence());
+  };
+}
 
 const ROOM_RENDERERS = {
   interior_dealership:dealershipRoom,

@@ -412,7 +412,11 @@ function handleKey(e) {
     if (state.waypoint) { clearWaypoint(); return; }
     if (state.area.startsWith("interior_")) gameInteriors.leaveInterior();
     else if (state.area === "dungeon") {
-      if (confirm("Abandon the quest? You'll forfeit the reward.")) gameCombat.endDungeon(false);
+      // Not confirm(): browsers can silently suppress dialogs, which left
+      // players unable to leave. Press ESC twice instead.
+      const now = Date.now();
+      if (now - (window._dungeonEscAt || 0) < 3000) { window._dungeonEscAt = 0; gameCombat.endDungeon(false); }
+      else { window._dungeonEscAt = now; toast("Press ESC again to abandon the quest (you'll forfeit the reward).", 3000); }
     }
     else if (state.area === "duel") {
       if (confirm("Forfeit the duel and lose your stake?")) {
@@ -1185,24 +1189,51 @@ function drawCatalogPreviews() {
 // a seeded shuffle keyed to the current hour (ECON.marketStock, shared with
 // the server so it can validate purchases), so every player sees the same
 // shelf and it restocks on the hour with no server writes.
+function furnCardHtml(def, onShelf) {
+  const owned = (state.data.inventory && state.data.inventory[def.id]) || 0;
+  const canBuy = onShelf && state.data.money >= def.price;
+  return `<div class="furnCard ${!canBuy ? "disabled":""}" onclick="${canBuy ? `buyFurn('${def.id}')` : ""}">
+      <canvas data-id="${def.id}" width="120" height="70"></canvas>
+      <div class="nm">${def.name}</div>
+      <div class="pr">$${def.price} <span class="tier ${def.tier}">${def.tier}</span></div>
+      ${onShelf ? "" : `<div class="muted" style="font-size:10px;color:#f59e0b">not on the shelf this hour</div>`}
+      ${owned ? `<div class="muted" style="font-size:10px;">owned: ${owned}</div>` : ""}
+      ${def.interactable ? `<div class="muted" style="font-size:10px;color:#10b981">interactable</div>` : ""}
+    </div>`;
+}
+// Search box above the shelf. Matches name, kind and tier across the WHOLE
+// catalogue; things the shelf isn't carrying this hour show greyed out so you
+// know to come back rather than wondering where they went.
+window.furnSearch = (q) => {
+  const grid = document.getElementById("furnGrid");
+  if (!grid) return;
+  q = String(q || "").trim().toLowerCase();
+  const stock = ECON.marketStock(FURNITURE_LIST, Date.now());
+  if (!q) {
+    grid.innerHTML = stock.map(d => furnCardHtml(d, true)).join("");
+  } else {
+    const terms = q.split(/\s+/);
+    const onShelf = new Set(stock.map(d => d.id));
+    const hits = FURNITURE_LIST.filter(d => {
+      const hay = `${d.name} ${d.kind} ${d.tier} ${d.search || ""}`.toLowerCase();
+      return terms.every(t => hay.includes(t));
+    }).sort((a, b) => (onShelf.has(b.id) - onShelf.has(a.id)) || a.price - b.price).slice(0, 60);
+    grid.innerHTML = hits.length ? hits.map(d => furnCardHtml(d, onShelf.has(d.id))).join("")
+      : `<p class="muted">Nothing matches "${escapeHtml(q)}".</p>`;
+  }
+  drawCatalogPreviews();
+};
 function openFurnitureCatalog() {
   const stock = ECON.marketStock(FURNITURE_LIST, Date.now());
   const minsLeft = Math.max(1, 60 - Math.floor((Date.now() % 3600000) / 60000));
   const nLegend = stock.filter(f => f.tier === "legendary").length;
   let html = `<p class="muted">The shelf restocks <b>every hour</b> — ${
     nLegend ? `${nLegend === 2 ? "two legendaries are" : "a legendary is"} in stock right now.` : "no legendaries this hour, check back later."
-  } New stock in <b>${minsLeft} min</b>.</p><div class="furnGrid">`;
-  for (const def of stock) {
-    const owned = (state.data.inventory && state.data.inventory[def.id]) || 0;
-    const canBuy = state.data.money >= def.price;
-    html += `<div class="furnCard ${!canBuy ? "disabled":""}" onclick="${canBuy ? `buyFurn('${def.id}')` : ""}">
-      <canvas data-id="${def.id}" width="120" height="70"></canvas>
-      <div class="nm">${def.name}</div>
-      <div class="pr">$${def.price} <span class="tier ${def.tier}">${def.tier}</span></div>
-      ${owned ? `<div class="muted" style="font-size:10px;">owned: ${owned}</div>` : ""}
-      ${def.interactable ? `<div class="muted" style="font-size:10px;color:#10b981">interactable</div>` : ""}
-    </div>`;
-  }
+  } New stock in <b>${minsLeft} min</b>.</p>
+  <input id="furnSearch" type="search" placeholder="🔍 Search furniture (sofa, bed, window, lamp...)" oninput="furnSearch(this.value)"
+    style="width:100%;box-sizing:border-box;padding:8px 10px;margin-bottom:10px;background:#0a0e15;border:1px solid #2a3344;color:white;border-radius:6px;" />
+  <div class="furnGrid" id="furnGrid">`;
+  for (const def of stock) html += furnCardHtml(def, true);
   html += `</div>`;
   html += sellShopHtml();
   html += paintShopHtml();

@@ -705,7 +705,16 @@ function interpolateOthers() {
 async function pullNotifications() {
   if (!state.user) return;
   const inb = (await fbGet(`inbox/${state.user}`)) || {};
-  state.notifications = Object.entries(inb).map(([k,v]) => Object.assign({_id:k}, v));
+  const dismissed = dismissedInbox();
+  state.notifications = Object.entries(inb).map(([k,v]) => Object.assign({_id:k}, v)).filter(n => !dismissed.has(n._id));
+  // One pending request per sender: anything past the first is spam, drop it.
+  const seenReq = new Set();
+  state.notifications = state.notifications.filter(n => {
+    if (n.kind !== "friend_req") return true;
+    if (seenReq.has(n.from) || (state.friends && state.friends[n.from])) { removeInboxEntry(n._id); return false; }
+    seenReq.add(n.from);
+    return true;
+  });
   renderNotifications();
   // Unread DMs waiting from before you logged in: one gentle pop, then clear
   // them so they don't nag forever (the thread itself still has the messages).
@@ -725,6 +734,54 @@ async function pullNotifications() {
     state.notifications = state.notifications.filter(n => n.kind !== "dm" || n._id === dms[dms.length - 1]._id);
   }
 }
+// Inbox entries the server wouldn't delete (rate limit, dropped socket) are
+// remembered locally so a refresh can't bring a dismissed card back.
+function dismissedInbox() {
+  try { return new Set(JSON.parse(localStorage.getItem("dismissedInbox:" + state.user) || "[]")); } catch (e) { return new Set(); }
+}
+function rememberDismissed(id) {
+  try {
+    const set = dismissedInbox(); set.add(id);
+    localStorage.setItem("dismissedInbox:" + state.user, JSON.stringify([...set].slice(-500)));
+  } catch (e) {}
+}
+async function removeInboxEntry(id) {
+  state.notifications = state.notifications.filter(x => x._id !== id);
+  try { await fbDelete(`inbox/${state.user}/${id}`); }
+  catch (e) { rememberDismissed(id); }
+}
+function pendingFriendRequests() {
+  const seen = new Set();
+  return state.notifications.filter(n => {
+    if (n.kind !== "friend_req" || seen.has(n.from) || (state.friends && state.friends[n.from])) return false;
+    seen.add(n.from);
+    return true;
+  });
+}
+function updateFriendBadge() {
+  const n = pendingFriendRequests().length;
+  const badge = document.getElementById("friendBadge");
+  const btn = document.querySelector('.actBtn[data-act="friends"]');
+  if (badge) { badge.textContent = n > 99 ? "99+" : String(n); badge.classList.toggle("hidden", n === 0); }
+  if (btn) btn.classList.toggle("alert", n > 0);
+  if (window.refreshFriendRequests) window.refreshFriendRequests();
+}
+window.pendingFriendRequests = pendingFriendRequests;
+window.updateFriendBadge = updateFriendBadge;
+window.respondFriendRequest = async (from, accept) => {
+  const reqs = state.notifications.filter(n => n.kind === "friend_req" && n.from === from);
+  for (const n of reqs) { await handleNotification(n, accept ? "accept" : "dismiss"); accept = false; }
+  updateFriendBadge();
+  if (window.renderFriendsList) window.renderFriendsList();
+};
+window.declineAllFriendRequests = async () => {
+  const reqs = state.notifications.filter(n => n.kind === "friend_req");
+  state.notifications = state.notifications.filter(n => n.kind !== "friend_req");
+  renderNotifications();
+  await Promise.all(reqs.map(n => fbDelete(`inbox/${state.user}/${n._id}`).catch(() => rememberDismissed(n._id))));
+  toast("Declined all friend requests.");
+  if (window.renderFriendsList) window.renderFriendsList();
+};
 function startNotifyLoop() {
   pullNotifications();
   // Server pushes new inbox entries as `notify` events.
@@ -732,8 +789,12 @@ function startNotifyLoop() {
     // path = inbox/<user>/<msgId>; add to local list and re-render
     const parts = (m.path || "").split("/");
     const id = parts[parts.length - 1];
-    if (!state.notifications.find(n => n._id === id)) {
+    if (!state.notifications.find(n => n._id === id) && !dismissedInbox().has(id)) {
       const n = Object.assign({ _id: id }, m.data);
+      if (n.kind === "friend_req" && ((state.friends && state.friends[n.from]) || state.notifications.some(x => x.kind === "friend_req" && x.from === n.from))) {
+        removeInboxEntry(id);   // duplicate / already friends
+        return;
+      }
       state.notifications.push(n);
       // DMs slide in from the top-left like an iMessage and self-dismiss — no
       // Accept/Dismiss buttons. Everything else stays as a decision card.
@@ -788,8 +849,10 @@ function startNotifyLoop() {
 function renderNotifications() {
   const area = document.getElementById("notifyArea");
   area.innerHTML = "";
-  // DMs are handled by showMessagePop(), not as decision cards.
-  const cards = state.notifications.filter(n => n.kind !== "dm");
+  // DMs are handled by showMessagePop(); friend requests live in the phone's
+  // Friends app (with a badge) so spam can't cover the screen.
+  const cards = state.notifications.filter(n => n.kind !== "dm" && n.kind !== "friend_req");
+  updateFriendBadge();
   for (const n of cards.slice(-3)) {
     const card = document.createElement("div");
     card.className = "notifyCard";
@@ -854,11 +917,12 @@ function showMessagePop(n) {
 }
 window.showMessagePop = showMessagePop;
 async function handleNotification(n, act) {
-  await fbDelete(`inbox/${state.user}/${n._id}`);
-  // Remove locally and re-render immediately — the server doesn't push an
-  // event for deletes, so without this the card just sat there forever.
+  // Remove locally first and re-render — the server doesn't push an event for
+  // deletes, and a failed delete used to leave the card stuck on screen.
   state.notifications = state.notifications.filter(x => x._id !== n._id);
   renderNotifications();
+  try { await fbDelete(`inbox/${state.user}/${n._id}`); }
+  catch (e) { rememberDismissed(n._id); }
   if (act === "dismiss") return;
   if (n.kind === "friend_req") {
     state.friends[n.from] = true;

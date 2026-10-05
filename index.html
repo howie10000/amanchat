@@ -5,61 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Neighborhood</title>
 <link rel="icon" href="data:," />
-<link rel="stylesheet" href="style.css?v=styles-1" />
+<link rel="stylesheet" href="style.css?v=styles-6" />
 
 </head>
 <body>
-  <!-- LOGIN SCREEN: THE SUNDERED CROWN (js/title-background.js runs js/crown-title.js in a worker) -->
-  <div id="loginScreen" class="screen crown-login" data-shot="crown">
+  <!-- LOGIN SCREEN: a flight through the town (js/neighborhood-title.js draws it on #titleBg) -->
+  <div id="loginScreen" class="screen nb-login">
     <canvas id="titleBg" aria-hidden="true"></canvas>
-    <div class="crown-embers" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-    <div class="loginStack">
-      <div class="crown-brand">
-        <span class="crown-eyebrow">NEIGHBORHOOD <b>·</b> GUILD DUNGEONS UPDATE</span>
-        <div class="crown-title-wrap">
-          <div class="crown-sigil" aria-hidden="true"><i></i><i></i><i></i><b></b><b></b></div>
-          <h1 class="crown-title" aria-label="The Sundered Crown"><small>THE </small><span class="crown-word">SUNDERED CROWN</span></h1>
-          <span class="crown-flare" aria-hidden="true"></span>
+    <div class="nb-rays" aria-hidden="true"></div>
+    <div class="nb-shade" aria-hidden="true"></div>
+    <main class="nb-stack">
+      <h1 class="nb-title" aria-label="Neighborhood"><i style="--i:0">N</i><i style="--i:1">E</i><i style="--i:2">I</i><i style="--i:3">G</i><i style="--i:4">H</i><i style="--i:5">B</i><i style="--i:6">O</i><i style="--i:7">R</i><i style="--i:8">H</i><i style="--i:9">O</i><i style="--i:10">O</i><i style="--i:11">D</i></h1>
+      <form class="nb-panel" onsubmit="return false" autocomplete="on">
+        <input id="loginUser" placeholder="Username" maxlength="16" autocomplete="username" />
+        <input id="loginPass" type="password" placeholder="Password" maxlength="32" autocomplete="current-password" />
+        <div class="nb-btns">
+          <button id="btnLogin" type="button">Log In</button>
+          <button id="btnRegister" type="button">Register</button>
         </div>
-        <p class="crown-tagline">Four new guild dungeons. Bosses that fight back. Earn the Crown Arts and face the Sundered King.</p>
-        <ul class="crown-roster" aria-label="New guild dungeons">
-          <li class="r-thorn"><em>Early</em><span>The Thornwild Warren</span><small>Gorehorn, the Rampager</small></li>
-          <li class="r-ash"><em>Mid</em><span>The Ashen Colosseum</span><small>Kael, the Sundered Blade</small></li>
-          <li class="r-mirror"><em>Late</em><span>The Mirror Court</span><small>The Twin Monarchs, Sol &amp; Umbra</small></li>
-          <li class="r-throne"><em>Raid</em><span>The Sundered Throne</span><small>The Sundered King</small></li>
-        </ul>
-        <ul class="crown-chips" aria-label="What's new">
-          <li>New Guild Dungeons</li>
-          <li>Crown Arts</li>
-          <li>Bosses That Fight Back</li>
-          <li>The Sundered King Raid</li>
-          <li>Leaders Can Disband Guilds</li>
-        </ul>
-      </div>
-    <div class="loginBox">
-      <span class="crown-new">NEW UPDATE LIVE</span>
-      <h1>NEIGHBORHOOD</h1>
-      <p class="tagline">The crown is broken. Rally your guild and claim its shards.</p>
-      <input id="loginUser" placeholder="Username" maxlength="16" autocomplete="username" />
-      <input id="loginPass" type="password" placeholder="Password" maxlength="32" autocomplete="current-password" />
-      <div class="loginBtns">
-        <button id="btnLogin">Log In</button>
-        <button id="btnRegister">Register</button>
-      </div>
-      <div id="loginMsg" class="msg"></div>
-      <p class="crown-arts">Crown Arts: <span>Blade Dash</span> · <span>Riposte</span> · <span>Thorn Snare</span> · <span>Mirror Step</span> · <span>Crown Nova</span></p>
-      <div class="hint">Owners and admins get the Staff panel. Be nice — bans and mutes are real.</div>
-    </div>
-    </div>
-    <div class="crown-caption" aria-hidden="true">
-      <p data-for="crown"><b>The Sundered Crown</b><span>Its shards still remember a king</span></p>
-      <p data-for="colosseum"><b>The Ashen Colosseum</b><span>Kael, the Sundered Blade</span></p>
-      <p data-for="warren"><b>The Thornwild Warren</b><span>Gorehorn, the Rampager</span></p>
-      <p data-for="mirror"><b>The Mirror Court</b><span>The Twin Monarchs, Sol &amp; Umbra</span></p>
-      <p data-for="king"><b>The Sundered Throne</b><span>The Sundered King awakens</span></p>
-      <p data-for="nova"><b>Crown Arts</b><span>Mirror Step · Crown Nova</span></p>
-      <p data-for="throne"><b>The Sundered Throne</b><span>Endgame guild raid</span></p>
-    </div>
+        <div id="loginMsg" class="msg"></div>
+      </form>
+    </main>
   </div>
 
   <!-- GAME SCREEN -->
@@ -105,7 +71,7 @@
               <span class="phoneBannerBoard" id="phoneRaceBoard">Top 10 · tap to race</span>
             </button>
             <div class="phoneApps">
-              <button class="actBtn app" data-act="friends"><span class="ico" style="--c:#22c55e">👥</span><span>Friends</span></button>
+              <button class="actBtn app" data-act="friends"><span class="ico" style="--c:#22c55e">👥</span><span class="appBadge hidden" id="friendBadge">0</span><span>Friends</span></button>
               <button class="actBtn app" data-act="dms"><span class="ico" style="--c:#3b82f6">💬</span><span class="appBadge hidden" id="dmBadge">0</span><span>Messages</span></button>
               <button class="actBtn app" data-act="announcements"><span class="ico" style="--c:#eab308">📣</span><span class="appBadge hidden" id="newsBadge">0</span><span>News</span></button>
               <button class="actBtn app" data-act="journey"><span class="ico" style="--c:#a78bfa">✦</span><span>Journey</span></button>
@@ -278,7 +244,7 @@
    }
    window.__gameBoot=load(three,true).then(startGame);
    window.__gameBoot.catch(function(e){console.error('Game startup failed',e);});
-   window.__titleBoot=load('js/title-background.js?v=crown-1',true);
+   window.__titleBoot=load('js/neighborhood-title.js?v=nb-13',true);
    window.__titleBoot.catch(function(e){console.warn('Optional login background unavailable',e);});
   })();
   </script>

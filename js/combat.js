@@ -425,6 +425,35 @@ function collidesWalls(x, y, r) {
   return false;
 }
 
+// Never leave a player embedded in stone. A trial seal can close on someone
+// standing in its doorway, a restored checkpoint can land inside a wall that
+// has since been sealed, and a pillar can come down on you: in every case no
+// step is legal from inside a wall, so you would be pinned for good. If the
+// player overlaps a wall, move them to the nearest open spot.
+let _unstickTick = 0;
+function unstickPlayer() {
+  const d = state.dungeon;
+  if (!d || !d.walls || state.dash) return;
+  if (!collidesWalls(state.pos.x, state.pos.y, 12)) return;
+  const p = d.world;
+  const open = (x, y) => {
+    if (collidesWalls(x, y, 12)) return false;
+    if (d.bossRoom) return x > BOSS_ROOM.x + 30 && y > BOSS_ROOM.y + 30 && x < BOSS_ROOM.x + BOSS_ROOM.w - 30 && y < BOSS_ROOM.y + BOSS_ROOM.h - 30;
+    if (p && p.cells && p.tile) { const row = p.cells[Math.floor(y / p.tile)]; return !!(row && row[Math.floor(x / p.tile)]); }
+    return true;
+  };
+  for (let r = 6; r <= 420; r += 6) {
+    const n = Math.max(8, Math.round(r / 4));
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2, x = state.pos.x + Math.cos(a) * r, y = state.pos.y + Math.sin(a) * r;
+      if (open(x, y)) { state.pos.x = x; state.pos.y = y; return; }
+    }
+  }
+  // nowhere open nearby: back to where this floor starts
+  const sp = d.bossRoom ? null : (p && p.spawn) || (d.plan && d.plan.spawn);
+  if (sp) { state.pos.x = sp.x; state.pos.y = sp.y; }
+}
+
 function moveWithWalls(obj, nx, ny, radius) {
   if (obj.isBoss && state.dungeon.continuous) {
     const r=state.dungeon.world.final;
@@ -619,6 +648,7 @@ function updateDungeon() {
       : (dy > 0 ? "down" : "up");
   }
 
+  if (++_unstickTick % 6 === 0) unstickPlayer();
   if (state.attackCooldown > 0) state.attackCooldown--;
   if (state.swingT > 0) state.swingT--;
   {
@@ -2920,13 +2950,38 @@ let _endingDungeon = false;
 async function endDungeon(victory, alreadyPaid) {
   if (_endingDungeon) return;
   _endingDungeon = true;
+  try { await endDungeonInner(victory, alreadyPaid); }
+  catch (e) { console.error("endDungeon", e); }
+  finally {
+    // Whatever went wrong above, the player must end up out of the dungeon and
+    // free to leave/enter again (a thrown error here used to wedge the flag and
+    // trap them inside for the rest of the session).
+    if (state.area === "dungeon") forceLeaveDungeon();
+    _endingDungeon = false;
+  }
+}
+function forceLeaveDungeon() {
+  try { if (window.gameDepths) gameDepths.teardown(); } catch (e) {}
+  try { if (window.gameCrownBoss) gameCrownBoss.reset(); } catch (e) {}
+  state.maxHp = window.gameGear ? gameGear.maxHp() : 100;
+  state.hp = state.maxHp;
+  state.dungeon = null; state.party = null; state.dash = null;
+  state.enemies = []; state.bullets = []; state.enemyBullets = []; state.particles = [];
+  const qh = gameWorld.BUILDINGS.find(b => b.type === "quest");
+  state.area = "neighborhood";
+  state.pos.x = qh.x + qh.w / 2; state.pos.y = qh.y + qh.h + 40;
+  state.facing = "down";
+  updateHUD();
+}
+async function endDungeonInner(victory, alreadyPaid) {
   const cfg = state.dungeon && state.dungeon.cfg;
   const isGuild = !!(cfg && cfg.guild);
   if (isGuild && !alreadyPaid) {
     // Walking out of a guild run (death or ESC) releases the server-side run
-    // so the party isn't stuck holding a boss nobody is fighting.
+    // so the party isn't stuck holding a boss nobody is fighting. A hung
+    // request must not hold the player hostage, so it gets 5 seconds.
     try {
-      const r = await netGuildDungeon({ action: "abandon" });
+      const r = await Promise.race([netGuildDungeon({ action: "abandon" }), new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 5000))]);
       // Walking out after the final boss fell opens the chest for the whole
       // party on the way out; the loot arrives on the `reward` push.
       if (r && r.settled) toast("You left the chest behind — it was opened for the party. Your share is in your pack.", 6000);
@@ -2962,7 +3017,6 @@ async function endDungeon(victory, alreadyPaid) {
   state.pos.x = qh.x + qh.w/2; state.pos.y = qh.y + qh.h + 40;
   state.facing = "down";
   updateHUD();
-  _endingDungeon = false;   // released only once we're safely back in town
 }
 
 function doAttack() {
