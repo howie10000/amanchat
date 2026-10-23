@@ -699,6 +699,7 @@
   let broadcastChan = null;
   let selectedOrigin = null;
   let currentLegalMoves = [];
+  let boardZoom = 1;
 
   function sendChessPeerPacket(packet) {
     const msg = { ...packet, roomId, from: root.currentUser || 'Player', ts: Date.now() };
@@ -970,6 +971,15 @@
         </div>
       </div>
 
+      <div class="c5d-view-controls" role="group" aria-label="Board view">
+        <button type="button" class="c5d-btn" data-c5d="zoom-out" aria-label="Zoom out">−</button>
+        <label>Zoom <input data-c5d="zoom" type="range" min="50" max="200" step="10" value="${Math.round(boardZoom * 100)}" aria-label="Board zoom"></label>
+        <output data-c5d="zoom-value">${Math.round(boardZoom * 100)}%</output>
+        <button type="button" class="c5d-btn" data-c5d="zoom-in" aria-label="Zoom in">+</button>
+        <button type="button" class="c5d-btn" data-c5d="zoom-reset">Reset zoom</button>
+        <button type="button" class="c5d-btn" data-c5d="view-present">Current board</button>
+        <small>Scroll to explore · Ctrl + scroll to zoom</small>
+      </div>
       <div class="c5d-status-bar">
         <div class="c5d-status-main">
           <span class="c5d-mode-pill">${modeBadge}</span>
@@ -1007,11 +1017,46 @@
       newBodyEl.scrollTop = prevScrollTop;
     }
 
+    setBoardZoom(boardZoom);
     wireOverlayEvents();
+  }
+
+  function setBoardZoom(value, anchor) {
+    if (!activeOverlay) return;
+    const body = activeOverlay.querySelector('.c5d-body');
+    const next = Math.max(0.5, Math.min(2, Math.round(value * 10) / 10));
+    const ratio = next / boardZoom;
+    const x = anchor ? anchor.x : (body?.clientWidth || 0) / 2;
+    const y = anchor ? anchor.y : (body?.clientHeight || 0) / 2;
+    const left = body ? (body.scrollLeft + x) * ratio - x : 0;
+    const top = body ? (body.scrollTop + y) * ratio - y : 0;
+    boardZoom = next;
+    activeOverlay.style.setProperty('--c5d-zoom', String(next));
+    const slider = activeOverlay.querySelector('[data-c5d="zoom"]');
+    if (slider) slider.value = String(Math.round(next * 100));
+    const output = activeOverlay.querySelector('[data-c5d="zoom-value"]');
+    if (output) output.textContent = Math.round(next * 100) + '%';
+    activeOverlay.querySelector('[data-c5d="zoom-out"]').disabled = next <= 0.5;
+    activeOverlay.querySelector('[data-c5d="zoom-in"]').disabled = next >= 2;
+    if (body) { body.scrollLeft = left; body.scrollTop = top; }
   }
 
   function wireOverlayEvents() {
     if (!activeOverlay) return;
+    activeOverlay.querySelector('[data-c5d="zoom-out"]').addEventListener('click', () => setBoardZoom(boardZoom - 0.1));
+    activeOverlay.querySelector('[data-c5d="zoom-in"]').addEventListener('click', () => setBoardZoom(boardZoom + 0.1));
+    activeOverlay.querySelector('[data-c5d="zoom-reset"]').addEventListener('click', () => setBoardZoom(1));
+    activeOverlay.querySelector('[data-c5d="zoom"]').addEventListener('input', e => setBoardZoom(+e.target.value / 100));
+    activeOverlay.querySelector('[data-c5d="view-present"]').addEventListener('click', () => {
+      const target = activeOverlay.querySelector('.required-present') || activeOverlay.querySelector('.playable') || activeOverlay.querySelector('.is-present');
+      target?.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+    });
+    activeOverlay.querySelector('.c5d-body').addEventListener('wheel', e => {
+      if (!e.ctrlKey || !e.deltaY) return;
+      e.preventDefault();
+      const rect = e.currentTarget.getBoundingClientRect();
+      setBoardZoom(boardZoom + (e.deltaY < 0 ? 0.1 : -0.1), { x: e.clientX - rect.left, y: e.clientY - rect.top });
+    }, { passive: false });
     activeOverlay.querySelector('[data-c5d="close"]')?.addEventListener('click', close);
     activeOverlay.querySelector('[data-c5d="new"]')?.addEventListener('click', () => {
       const preset = activeOverlay.querySelector('.c5d-preset-select')?.value || activeGame.preset;
