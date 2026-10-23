@@ -701,6 +701,7 @@
   let currentLegalMoves = [];
   let boardZoom = 1;
   let cancelPieceDrag = null;
+  let stopEdgeScroll = null;
 
   function sendChessPeerPacket(packet) {
     const msg = { ...packet, roomId, from: root.currentUser || 'Player', ts: Date.now() };
@@ -975,7 +976,7 @@
         <button type="button" class="c5d-btn" data-c5d="zoom-in" aria-label="Zoom in">+</button>
         <button type="button" class="c5d-btn" data-c5d="zoom-reset">Reset zoom</button>
         <button type="button" class="c5d-btn" data-c5d="view-present">Current board</button>
-        <small>Scroll to explore · Ctrl + scroll to zoom</small>
+        <small>Hover at screen edges to pan · Ctrl + scroll to zoom</small>
       </div>
       <div class="c5d-status-bar">
         <div class="c5d-status-main">
@@ -1266,6 +1267,48 @@
     });
   }
 
+  function setupEdgeScroll(overlay) {
+    let frame = 0, velocity = 0, previous = 0;
+    const stop = () => {
+      cancelAnimationFrame(frame);
+      frame = 0; velocity = 0; previous = 0;
+    };
+    const step = now => {
+      frame = 0;
+      if (!velocity || document.hidden || activeOverlay !== overlay) { stop(); return; }
+      const body = overlay.querySelector('.c5d-body');
+      if (!body) { stop(); return; }
+      const dt = previous ? Math.min(32, now - previous) / 1000 : 1 / 60;
+      previous = now;
+      // A dragged piece already has its own edge scrolling.
+      if (!cancelPieceDrag) {
+        const before = body.scrollLeft;
+        body.scrollLeft += velocity * dt;
+        if (body.scrollLeft === before) { stop(); return; }
+      }
+      frame = requestAnimationFrame(step);
+    };
+    const move = e => {
+      if (e.pointerType && e.pointerType !== 'mouse') { stop(); return; }
+      const edge = 42, width = innerWidth, x = e.clientX;
+      velocity = x >= 0 && x < edge ? -850 * (1 - x / edge)
+        : x <= width && x > width - edge ? 850 * (1 - (width - x) / edge) : 0;
+      if (!velocity) { stop(); return; }
+      if (!frame) frame = requestAnimationFrame(step);
+    };
+    overlay.addEventListener('pointermove', move, { passive: true });
+    overlay.addEventListener('pointerleave', stop);
+    window.addEventListener('blur', stop);
+    document.addEventListener('visibilitychange', stop);
+    return () => {
+      stop();
+      overlay.removeEventListener('pointermove', move);
+      overlay.removeEventListener('pointerleave', stop);
+      window.removeEventListener('blur', stop);
+      document.removeEventListener('visibilitychange', stop);
+    };
+  }
+
   function onKeyDown(e) {
     if (!activeOverlay) return;
     if (e.key === 'Escape') {
@@ -1312,6 +1355,7 @@
       activeOverlay = document.createElement('section');
       activeOverlay.className = 'chess5d-overlay';
       document.body.appendChild(activeOverlay);
+      stopEdgeScroll = setupEdgeScroll(activeOverlay);
       document.addEventListener('keydown', onKeyDown, true);
     }
     selectedOrigin = null;
@@ -1320,6 +1364,7 @@
   }
 
   function close() {
+    if (stopEdgeScroll) { stopEdgeScroll(); stopEdgeScroll = null; }
     if (cancelPieceDrag) cancelPieceDrag();
     if (activeOverlay) {
       activeOverlay.remove();
