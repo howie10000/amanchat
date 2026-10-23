@@ -4,7 +4,7 @@
 // Hotspots = { x, y, label, action }
 const INTERIORS = {
   interior_dealership: {w:1024,h:640,floor:'#27384b',wall:'#d5eaf0',trim:'#22d3ee',hotspots:[{x:512,y:240,label:'TALK TO THE DEALER',action:'car_dealer',icon:'people'}]},
-  interior_racetrack: {w:1024,h:640,floor:'#27384b',wall:'#c7d2fe',trim:'#a3e635',hotspots:[{x:512,y:240,label:'RACE A NEW 3D TRACK',action:'car_race',icon:'flag'},{x:720,y:240,label:'THE APEX LEAGUE OPEN QUALIFIERS',action:'car_race_qualifier',icon:'trophy'}]},
+  interior_racetrack: {w:1024,h:640,floor:'#27384b',wall:'#c7d2fe',trim:'#a3e635',hotspots:[{x:304,y:240,label:'HOST P2P RACE WITH FRIENDS',action:'car_race_p2p',icon:'people'},{x:512,y:240,label:'RACE A NEW 3D TRACK',action:'car_race',icon:'flag'},{x:720,y:240,label:'THE APEX LEAGUE OPEN QUALIFIERS',action:'car_race_qualifier',icon:'trophy'}]},
   interior_home: { w: 1024, h: 640, floor: "#a16207", wall: "#fef3c7", trim: "#7c2d12" },
 
   // HOTEL LOBBIES
@@ -157,6 +157,7 @@ const INTERIORS = {
     w: 1024, h: 640, floor: "#9a3412", wall: "#fed7aa", trim: "#7c2d12",
     hotspots: [
       { x: 512, y: 240, label: "ANNOUNCEMENTS", action: "plaza_board", icon: "board" },
+      { x: 760, y: 240, label: "5D MULTIVERSAL CHESS", action: "chess5d_open", icon: "board" },
     ],
   },
   interior_mayor: {
@@ -249,8 +250,9 @@ function leaveInterior() {
   state.homeUse = null;
   const wasArea = state.area;
   // spawn outside whichever building/house we just left
-  if (wasArea === "interior_home" && state.interiorOf) {
-    const them = state._userCache?.[state.interiorOf] || (state.interiorOf === state.user ? state.data : null);
+  if (wasArea === "interior_home") {
+    const owner = state.interiorOf || state.user;
+    const them = (owner && state._userCache?.[owner]) || (owner === state.user ? state.data : null);
     const res = state.interiorResidence || them?.residence;
     if (res && res.type === "hotel") {
       if (res.hotelId === "hotel_casino") {
@@ -278,8 +280,17 @@ function leaveInterior() {
         return;
       }
     }
-    const r = them ? gameWorld.houseRect(them.houseIndex) : null;
-    if (r) { state.pos.x = r.x + r.w/2; state.pos.y = r.y + r.h + 36; }
+    const hIdx = res?.houseIndex ?? them?.houseIndex ?? (owner === state.user ? state.data?.houseIndex : null);
+    const r = gameWorld.houseRect(hIdx);
+    if (r) {
+      state.pos.x = r.x + r.w/2;
+      state.pos.y = r.y + r.h + 36;
+    } else {
+      // Fallback to safe Town Center on Mayor's Avenue so interior coordinates (512, 480)
+      // never land inside the solid VEGAS building wall in neighborhood space.
+      state.pos.x = 2100;
+      state.pos.y = 550;
+    }
     state.interiorOf = null;
     state.interiorResidence = null;
     state.buildMode = false; toggleBuildBanner(false);
@@ -295,12 +306,15 @@ function leaveInterior() {
   } else {
     // building interior — find which type and place outside it
     const type = wasArea.replace("interior_", "");
-    const b = gameWorld.BUILDINGS.find(x => x.type === type);
+    const lookupType = type === "hotel_casino" ? "casino" : type;
+    const b = gameWorld.BUILDINGS.find(x => x.type === lookupType);
     if (b) { state.pos.x = b.x + b.w/2; state.pos.y = b.y + b.h + 36; }
+    else { state.pos.x = 2100; state.pos.y = 550; }
   }
   state.area = "neighborhood";
   state.facing = "down";
-  if (state.pos.y < 200 || state.pos.y > gameWorld.WORLD_H - 20) state.pos.y = 600;
+  if (!Number.isFinite(state.pos.x)) state.pos.x = 2100;
+  if (!Number.isFinite(state.pos.y) || state.pos.y < 200 || state.pos.y > gameWorld.WORLD_H - 20) state.pos.y = 550;
   updateHUD();
 }
 

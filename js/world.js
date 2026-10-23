@@ -151,6 +151,7 @@ const HOUSE_ROW_Y = [2000, 2280, 2560, 2840, 3120];
 // "12 Maple Row" is a thing you can tell a friend and they can actually find.
 const STREET_NAMES = ["MAPLE ROW", "OAK LANE", "CEDAR WAY", "BIRCH DRIVE", "WILLOW COURT"];
 function houseAddress(i) {
+  if (typeof i !== "number" || !Number.isFinite(i) || i < 0) return "UNKNOWN ST";
   const row = Math.floor(i / HOUSES_PER_ROW);
   return `${(i % HOUSES_PER_ROW) + 1} ${STREET_NAMES[row] || "UNKNOWN ST"}`;
 }
@@ -159,6 +160,7 @@ const HOUSE_W = 240, HOUSE_H = 200, HOUSE_GAP_X = 100;
 const HOUSE_COUNT = HOUSES_PER_ROW * HOUSE_ROW_Y.length;
 const HOUSES_START_X = (WORLD_W - (HOUSES_PER_ROW * HOUSE_W + (HOUSES_PER_ROW - 1) * HOUSE_GAP_X)) / 2;
 function houseRect(i) {
+  if (typeof i !== "number" || !Number.isFinite(i) || i < 0) return null;
   const row = Math.floor(i / HOUSES_PER_ROW);
   const col = i % HOUSES_PER_ROW;
   if (row >= HOUSE_ROW_Y.length) return null;
@@ -637,11 +639,11 @@ function drawNeighborhood() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   _syncCam();
   ctx.fillStyle = "#3f6212"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const lake = window.gameLake;
   ctx.save();
   try {
   // Lakeside cinematics zoom in on the pond (about the screen centre) and the
   // Kraken shakes the ground. Zoom only ever goes IN, so culling stays safe.
-  const lake = window.gameLake;
   const zoom = lake ? lake.zoom() : 1, shake = lake ? lake.shake() : { x: 0, y: 0 };
   if (zoom !== 1) { ctx.translate(canvas.width / 2, canvas.height / 2); ctx.scale(zoom, zoom); ctx.translate(-canvas.width / 2, -canvas.height / 2); }
   const camX = state.cam.x, camY = state.cam.y;

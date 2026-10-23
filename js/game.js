@@ -55,6 +55,8 @@ document.querySelectorAll(".actBtn").forEach(b => {
     else if (a === "help") phoneApp(openHelp);
     else if (a === "graphics") { if (window.CutsceneQuality) { phoneView("Graphics", CutsceneQuality.settingsHtml()); CutsceneQuality.bindSettings(document.getElementById("spBody")); } else toast("Graphics settings are still loading."); }
     else if (a === "race-qualifier") phoneApp(openRaceQualifier);
+    else if (a === "race-p2p") { if (window.gameRace) gameRace.start({ p2p: true }); }
+    else if (a === "chess5d") { if (window.gameChess5D) gameChess5D.open(); }
   };
 });
 
@@ -686,7 +688,9 @@ function triggerHotspotAction(action, hs) {
     case "duel_open":        openDuelChallenge(); break;
     case "car_dealer": gameCars.dealer(); break;
     case "car_race": gameRace.start(); break;
+    case "car_race_p2p": gameRace.start({p2p:true}); break;
     case "car_race_qualifier": gameRace.start({qualifier:true}); break;
+    case "chess5d_open": if (window.gameChess5D) gameChess5D.open(); break;
     case "guild_broker":     gameGuild.openBroker(); break;
     case "gear_armory":     gameGear.openArmory(); break;
     case "guild_home":       gameGuild.enterGuildHall(); break;
@@ -2674,12 +2678,41 @@ function update() {
     ae === document.getElementById("chatBox") ||
     !document.getElementById("menu").classList.contains("hidden") ||
     // A phone app does NOT block movement (the phone is a HUD, not a modal) —
-    // only a focused text field in it does.
-    (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) ||
+    // only a visible focused text field in it does.
+    (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && !ae.closest?.(".hidden, .closed")) ||
     // A lakeside cinematic (mythical catch / the Kraken rising) or a Kraken
     // knock-out holds you in place.
     (window.gameLake && gameLake.blocksInput());
   if (state.swingT > 0) state.swingT--;
+
+  // Self-healing outdoor position guard: if coordinates ever become NaN or land
+  // inside a solid neighborhood collider (e.g. a building wall), nudge the player
+  // out to the nearest clear tile or safe street center so movement never locks up.
+  if (state.area === "neighborhood") {
+    if (!Number.isFinite(state.pos.x) || !Number.isFinite(state.pos.y)) {
+      state.pos.x = 2100;
+      state.pos.y = 550;
+    } else if (gameWorld.collidesNeighborhood(state.pos.x, state.pos.y)) {
+      let escaped = false;
+      const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]];
+      for (let dist = 8; dist <= 320 && !escaped; dist += 8) {
+        for (let di = 0; di < dirs.length; di++) {
+          const tx = state.pos.x + dirs[di][0] * dist;
+          const ty = state.pos.y + dirs[di][1] * dist;
+          if (!gameWorld.collidesNeighborhood(tx, ty)) {
+            state.pos.x = tx;
+            state.pos.y = ty;
+            escaped = true;
+            break;
+          }
+        }
+      }
+      if (!escaped) {
+        state.pos.x = 2100;
+        state.pos.y = 550;
+      }
+    }
+  }
 
   if (!inputBlocked) {
     if (typeof keys !== "undefined" && (keys[" "] || keys["space"])) attackAtCursor();

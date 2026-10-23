@@ -791,6 +791,20 @@ function startNotifyLoop() {
     const id = parts[parts.length - 1];
     if (!state.notifications.find(n => n._id === id) && !dismissedInbox().has(id)) {
       const n = Object.assign({ _id: id }, m.data);
+      if (n.kind === "p2p_race_answer") {
+        if (window.RaceP2P && typeof RaceP2P.handleAnswerSignal === "function") {
+          RaceP2P.handleAnswerSignal(n).catch(() => {});
+        }
+        removeInboxEntry(id);
+        return;
+      }
+      if (n.kind === "chess5d_sync") {
+        if (window.gameChess5D && typeof gameChess5D.handleIncomingSync === "function") {
+          gameChess5D.handleIncomingSync(n);
+        }
+        removeInboxEntry(id);
+        return;
+      }
       if (n.kind === "friend_req" && ((state.friends && state.friends[n.from]) || state.notifications.some(x => x.kind === "friend_req" && x.from === n.from))) {
         removeInboxEntry(id);   // duplicate / already friends
         return;
@@ -861,6 +875,8 @@ function renderNotifications() {
     else if (n.kind === "duel")   body = `<b>${n.from}</b> challenges you to a duel for $${n.stake}.`;
     else if (n.kind === "quest")  body = `<b>${n.from}</b> invites you to a co-op quest.`;
     else if (n.kind === "team_match") body = `<b>${n.teamA}</b> (captain ${n.from}) challenges your team <b>${n.teamB}</b> to a $${n.stakePerPlayer}/player match.`;
+    else if (n.kind === "p2p_race_invite") body = `🏁 <b>${escapeHtml(n.from)}</b> invited you to a P2P Apex Race (Room ${escapeHtml(n.roomId || "")})!`;
+    else if (n.kind === "chess5d_invite") body = `♟️ <b>${escapeHtml(n.from)}</b> challenged you to 5D Chess with Multiversal Time Travel!`;
     else body = `<b>${escapeHtml(n.from || "Someone")}</b> sent you something.`;
     card.innerHTML = `<div>${body}</div>
       <div class="row">
@@ -940,6 +956,27 @@ async function handleNotification(n, act) {
     openDMThread(n.from);
   } else if (n.kind === "team_match") {
     gameOutdoor.acceptTeamMatch(n.teamA, n.teamB, n.stakePerPlayer);
+  } else if (n.kind === "p2p_race_invite") {
+    if (window.gameRace) {
+      gameRace.start({
+        p2p: true,
+        p2pOffer: n.offerCode,
+        p2pRoom: n.roomId,
+        trackConfig: n.trackConfig,
+        inviter: n.from
+      });
+    }
+  } else if (n.kind === "chess5d_invite") {
+    if (window.gameChess5D) {
+      gameChess5D.open({
+        mode: "p2p",
+        roomId: n.roomId,
+        preset: n.preset || "standard",
+        inviter: n.from,
+        color: "b",
+        fresh: true
+      });
+    }
   }
 }
 
@@ -979,10 +1016,14 @@ function loop(now) {
       ticks++;
     }
     if (ticks === MAX_TICKS_PER_FRAME) _loopAcc = 0;
+  } catch (e) {
+    console.error("[loop:update]", e);
+    _loopAcc = 0;
+  }
+  try {
     if(!window.gameRace?.active) draw();
   } catch (e) {
-    console.error("[loop]", e);
-    _loopAcc = 0;
+    console.error("[loop:draw]", e);
     try { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.setLineDash([]); } catch (e2) {}
   }
   requestAnimationFrame(loop);
@@ -1010,4 +1051,6 @@ function pushChatMessage(text) {
 
 function escapeHtml(s){return (s+"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 
+Object.defineProperty(window, "currentUser", { get: () => state.user, configurable: true });
+Object.defineProperty(window, "currentUserFriends", { get: () => Object.keys(state.friends || {}), configurable: true });
 window.gameCore = { state, ctx, canvas, keys, toast, updateHUD, escapeHtml, pushChatMessage, frameUnits, WALK_SPEED, setRole, isMuted, muteText, ROLE_BADGE };

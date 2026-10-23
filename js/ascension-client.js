@@ -75,7 +75,7 @@
           return true;
         }
         if (m.kind === "snuffed") { banner("SNUFFED", "Every wick is out — strike her now (×1.6)", "#fbbf24", 2600); return true; }
-        const bId = (m.boss && m.boss.id) || (CB._t && CB._t.runtime && CB._t.runtime().bossId) || (W.state && W.state.dungeon && W.state.dungeon.boss && W.state.dungeon.boss.id);
+        const bId = (m.boss && m.boss.id) || (CB._t && CB._t.runtime && CB._t.runtime().bossId) || (typeof state !== "undefined" && state.dungeon && state.dungeon.boss && state.dungeon.boss.id);
         const targetForm = m.form || (m.boss && m.boss.form) || (bId === "aurelion" ? (m.phase === 3 ? "legion" : m.phase === 4 ? "apotheosis" : m.phase === 2 ? "tempest" : "") : "");
         if ((m.kind === "form" || m.kind === "phase") && targetForm && isOurBoss(bId)) {
           if (bId === "aurelion" && (targetForm === "legion" || targetForm === "apotheosis")) {

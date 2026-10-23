@@ -53,6 +53,8 @@ async function renderFriendsList() {
         <button class="menuBtn" onclick="openDMThread('${f}')">Chat</button>
         <button class="menuBtn gold" onclick="challengeDuel('${f}')">Duel</button>
         <button class="menuBtn green" onclick="inviteCoop('${f}')">Quest</button>
+        <button class="menuBtn" onclick="hostP2PRaceWithFriend('${f}')" title="Host a direct peer-to-peer Apex Race with this friend">🏁 P2P Race</button>
+        <button class="menuBtn" onclick="inviteChess5DWithFriend('${f}')" title="Play 5D Chess with Multiversal Time Travel">♟️ 5D Chess</button>
         <button class="menuBtn ${hasKey ? "" : "gray"}" onclick="toggleKey('${f}')"
           title="${hasKey ? "Revoke the key to your house" : "Give them a key to your house"}">${hasKey ? "🔑 Has Key" : "🔑 Give Key"}</button>
         <button class="menuBtn red" onclick="unfriend('${f}')" title="Remove friend (revokes any key)">Unfriend</button>
@@ -80,6 +82,14 @@ function refreshFriendRequests() {
 }
 window.refreshFriendRequests = refreshFriendRequests;
 window.renderFriendsList = renderFriendsList;
+window.hostP2PRaceWithFriend = (friend) => {
+  closeSidePanel();
+  if (window.gameRace) gameRace.start({ p2p: true, inviteFriend: friend });
+};
+window.inviteChess5DWithFriend = (friend) => {
+  closeSidePanel();
+  if (window.gameChess5D) gameChess5D.open({ mode: "p2p", friend, color: "w", sendInvite: true, fresh: true });
+};
 
 // Give/revoke this friend a key to MY house. Stored on my own record
 // (users/<me>/keys/<friend>), which enterOtherHome reads when they visit.
