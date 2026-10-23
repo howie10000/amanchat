@@ -3580,3 +3580,8 @@ body.dungeon-clean-hud #adRunHud{left:66px;width:min(292px,calc(100% - 82px))}
   .c5d-timeline-row { flex-direction: column; align-items: flex-start; }
   .c5d-tl-label { width: auto; flex-direction: row; flex-wrap: wrap; }
 }
+
+.c5d-sq { touch-action: none; }
+.c5d-sq .c5d-piece { cursor: grab; }
+.c5d-sq.dragging .c5d-piece { opacity: 0.2; }
+.c5d-drag-piece { position: fixed; z-index: 2; pointer-events: none; transform: translate(-50%, -50%); line-height: 1; color: #fff; text-shadow: 0 2px 3px #000, 0 0 2px #000; }

@@ -700,6 +700,7 @@
   let selectedOrigin = null;
   let currentLegalMoves = [];
   let boardZoom = 1;
+  let cancelPieceDrag = null;
 
   function sendChessPeerPacket(packet) {
     const msg = { ...packet, roomId, from: root.currentUser || 'Player', ts: Date.now() };
@@ -774,6 +775,7 @@
 
   function renderUI() {
     if (!activeOverlay || !activeGame) return;
+    if (cancelPieceDrag) cancelPieceDrag();
     const state = activeGame;
     const presentT = computePresent(state);
     const bounds = getActiveBounds(state);
@@ -831,9 +833,6 @@
                 selectedOrigin.t === t &&
                 selectedOrigin.x === x &&
                 selectedOrigin.y === y;
-              const destMove = currentLegalMoves.find(
-                (m) => m.to.l === tl.l && m.to.t === t && m.to.x === x && m.to.y === y
-              );
               const isLastFrom =
                 b.lastMove &&
                 b.lastMove.from &&
@@ -855,8 +854,6 @@
                 light ? 'light' : 'dark',
                 p ? `piece-${p[0]}` : '',
                 isSelected ? 'selected' : '',
-                destMove ? (destMove.isTimeTravel ? 'dest-timetravel' : 'dest-spatial') : '',
-                destMove && destMove.captured ? 'dest-capture' : '',
                 isLastFrom || isLastTo ? 'last-move' : '',
                 isKingChecked ? 'in-check' : ''
               ]
@@ -866,7 +863,7 @@
               sqRows.push(
                 `<button type="button" class="${classes}" data-l="${tl.l}" data-t="${t}" data-x="${x}" data-y="${y}" title="${formatCoord({ l: tl.l, t, x, y }, state.size)}">${
                   p ? `<span class="c5d-piece">${PIECE_ICONS[p] || p}</span>` : ''
-                }${destMove ? `<span class="c5d-dot ${destMove.isTimeTravel ? 'tt' : ''}"></span>` : ''}</button>`
+                }</button>`
               );
             }
           }
@@ -1007,7 +1004,7 @@
       </div>
 
       <div class="c5d-footer">
-        <span><strong>How 5D Time Travel Works:</strong> Select a piece on a glowing latest board. <span class="c5d-legend-spatial">● Green dots</span> are spatial moves on the same board; <span class="c5d-legend-tt">◆ Purple dots</span> travel through Time (T) or across Timelines (L)! Jumping to a past board branches a brand-new timeline. Advance all boards at <strong>⚡ THE PRESENT</strong>, then click <strong>Submit Turn</strong>.</span>
+        <span><strong>How 5D Time Travel Works:</strong> Drag a piece from a glowing latest board to its destination, on this board or across Time (T) and Timelines (L). Only legal moves are accepted. You can also click a piece and then its destination. Jumping to a past board branches a brand-new timeline. Advance all boards at <strong>⚡ THE PRESENT</strong>, then click <strong>Submit Turn</strong>.</span>
       </div>
     `;
 
@@ -1152,7 +1149,10 @@
     });
 
     for (const sq of activeOverlay.querySelectorAll('.c5d-sq')) {
+      wirePieceDrag(sq);
       sq.addEventListener('click', () => {
+        if (sq.dataset.dragged === 'true') { delete sq.dataset.dragged; return; }
+        if ((activeMode === 'ai' && activeGame.turnColor !== 'w') || (activeMode === 'p2p' && activeGame.turnColor !== localColor)) return;
         const l = Number(sq.getAttribute('data-l'));
         const t = Number(sq.getAttribute('data-t'));
         const x = Number(sq.getAttribute('data-x'));
@@ -1196,6 +1196,74 @@
         }
       });
     }
+  }
+
+  function wirePieceDrag(sq) {
+    sq.addEventListener('pointerdown', down => {
+      if (down.button !== 0 || !down.isPrimary || activeGame.winner) return;
+      if ((activeMode === 'ai' && activeGame.turnColor !== 'w') || (activeMode === 'p2p' && activeGame.turnColor !== localColor)) return;
+      const from = { l: +sq.dataset.l, t: +sq.dataset.t, x: +sq.dataset.x, y: +sq.dataset.y };
+      const piece = getPieceAt(activeGame, from.l, from.t, from.x, from.y);
+      if (!piece || piece[0] !== activeGame.turnColor) return;
+      const moves = getLegalMovesFrom(activeGame, from.l, from.t, from.x, from.y);
+      if (!moves.length) return;
+      if (cancelPieceDrag) cancelPieceDrag();
+      let ghost = null, x = down.clientX, y = down.clientY, scrollFrame = 0;
+      const body = activeOverlay.querySelector('.c5d-body');
+      const scroll = () => {
+        if (!ghost) return;
+        const r = body.getBoundingClientRect();
+        const step = (v, lo, hi) => v < lo + 35 ? -14 : v > hi - 35 ? 14 : 0;
+        body.scrollBy(step(x, r.left, r.right), step(y, r.top, r.bottom));
+        scrollFrame = requestAnimationFrame(scroll);
+      };
+      const move = e => {
+        if (e.pointerId !== down.pointerId) return;
+        x = e.clientX; y = e.clientY;
+        if (!ghost && Math.hypot(x - down.clientX, y - down.clientY) < 5) return;
+        if (!ghost) {
+          ghost = sq.querySelector('.c5d-piece').cloneNode(true);
+          ghost.classList.add('c5d-drag-piece');
+          ghost.style.fontSize = getComputedStyle(sq).fontSize;
+          ghost.style.color = getComputedStyle(sq.querySelector('.c5d-piece')).color;
+          activeOverlay.appendChild(ghost);
+          sq.classList.add('dragging');
+          sq.dataset.dragged = 'true';
+          scrollFrame = requestAnimationFrame(scroll);
+        }
+        ghost.style.left = x + 'px'; ghost.style.top = y + 'px';
+      };
+      const clean = () => {
+        cancelAnimationFrame(scrollFrame);
+        ghost?.remove(); sq.classList.remove('dragging');
+        sq.removeEventListener('pointermove', move);
+        sq.removeEventListener('pointerup', up);
+        sq.removeEventListener('pointercancel', cancel);
+        sq.removeEventListener('lostpointercapture', cancel);
+        cancelPieceDrag = null;
+        if (sq.hasPointerCapture(down.pointerId)) sq.releasePointerCapture(down.pointerId);
+      };
+      const cancel = () => { clean(); };
+      const up = e => {
+        if (e.pointerId !== down.pointerId) return;
+        const dragged = !!ghost;
+        const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.c5d-sq');
+        const chosen = dragged && target && activeOverlay.contains(target) && moves.find(m =>
+          m.to.l === +target.dataset.l && m.to.t === +target.dataset.t && m.to.x === +target.dataset.x && m.to.y === +target.dataset.y);
+        clean();
+        if (dragged) {
+          if (chosen) applyMove(activeGame, chosen);
+          selectedOrigin = null; currentLegalMoves = [];
+          renderUI();
+        }
+      };
+      cancelPieceDrag = cancel;
+      sq.setPointerCapture(down.pointerId);
+      sq.addEventListener('pointermove', move);
+      sq.addEventListener('pointerup', up);
+      sq.addEventListener('pointercancel', cancel);
+      sq.addEventListener('lostpointercapture', cancel);
+    });
   }
 
   function onKeyDown(e) {
@@ -1252,6 +1320,7 @@
   }
 
   function close() {
+    if (cancelPieceDrag) cancelPieceDrag();
     if (activeOverlay) {
       activeOverlay.remove();
       activeOverlay = null;
